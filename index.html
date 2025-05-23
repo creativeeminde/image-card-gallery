@@ -452,17 +452,12 @@ async function loadFilterTags() {
     filterContainer.appendChild(allButton);
 
     tags.forEach(tag => {
-      const tagButton = document.createElement('button');
-      tagButton.textContent = tag.name;
-      tagButton.className = currentFilterTag === tag.name ? 'active' : '';
-      tagButton.onclick = () => {
-        currentFilterTag = tag.name;
-        loadCards();
-        document.querySelectorAll('#filterTags button').forEach(btn => btn.classList.remove('active'));
-        tagButton.classList.add('active');
-      };
-      filterContainer.appendChild(tagButton);
-    });
+    const tagButton = document.createElement('button');
+    tagButton.textContent = tag.name;
+    tagButton.className = currentFilterTag === tag.name ? 'active' : '';
+    tagButton.onclick = () => filterByTag(tag.name);
+    filterContainer.appendChild(tagButton);
+  });
   } catch (error) {
     console.error("Error loading filter tags:", error);
   }
@@ -476,7 +471,11 @@ async function loadCards() {
       .order('created_at', { ascending: false });
 
     if (currentFilterTag) {
-      query = query.contains('tags', currentFilterTag);
+      // Use textSearch with proper formatting for comma-separated tags
+      query = query.textSearch('tags', currentFilterTag, {
+        config: 'english',
+        type: 'plain'
+      });
     }
 
     const { data: cards, error } = await query;
@@ -486,6 +485,21 @@ async function loadCards() {
     cards.forEach(card => addCardToPage(card));
   } catch (error) {
     console.error("Error loading cards:", error);
+  }
+}
+
+async function filterByTag(tagName) {
+  try {
+    // Clear current filter if clicking the same tag again
+    if (currentFilterTag === tagName) {
+      currentFilterTag = null;
+    } else {
+      currentFilterTag = tagName;
+    }
+    
+    await loadCards();
+  } catch (error) {
+    console.error("Error filtering by tag:", error);
   }
 }
 
