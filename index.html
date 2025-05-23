@@ -549,14 +549,20 @@ async function updateCard() {
       throw new Error("Title and Image URL are required");
     }
 
+    const updateData = {
+      title,
+      tags: selectedTags.join(', '),
+      main_image_url: imageUrl
+    };
+
+    // Only add updated_at if the column exists
+    if (await columnExists('cards', 'updated_at')) {
+      updateData.updated_at = new Date().toISOString();
+    }
+
     const { error } = await supabase
       .from('cards')
-      .update({
-        title,
-        tags: selectedTags.join(', '),
-        main_image_url: imageUrl,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', currentlyEditingCardId);
     
     if (error) throw error;
@@ -568,6 +574,17 @@ async function updateCard() {
     document.getElementById('errorMessage').textContent = error.message;
   } finally {
     currentlyEditingCardId = null;
+  }
+}
+
+// Helper function to check if column exists
+async function columnExists(table, column) {
+  try {
+    const { data, error } = await supabase
+      .rpc('column_exists', { table_name: table, column_name: column });
+    return data;
+  } catch (e) {
+    return false;
   }
 }
 
