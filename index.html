@@ -336,9 +336,9 @@
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
 
     // Store selected tags for the current form
-  let selectedTags = [];
+ let selectedTags = [];
 let allTags = [];
-let currentFilterTag = null; // Track currently filtered tag
+let currentFilterTag = null;
 
 window.onload = async function () {
   console.log("Initializing Supabase...");
@@ -349,13 +349,12 @@ window.onload = async function () {
   });
 
   try {
-    // First check if tags table exists by trying to select from it
     const { data: tags, error: tagsError } = await supabase
       .from('tags')
       .select('*')
       .limit(1);
     
-    if (tagsError && tagsError.code !== '42P01') { // Ignore "relation does not exist" error
+    if (tagsError && tagsError.code !== '42P01') {
       throw tagsError;
     }
     
@@ -378,21 +377,18 @@ window.onload = async function () {
 
 async function loadTags() {
   try {
-    // First try to get tags
     const { data: tags, error } = await supabase
       .from('tags')
       .select('name')
       .order('name', { ascending: true });
     
     if (error && error.code === '42P01') {
-      // Table doesn't exist, create it
       console.log("Creating tags table...");
       const { data, error: createError } = await supabase
         .rpc('create_tags_table');
       
       if (createError) throw createError;
       
-      // Now insert default tags
       const { error: insertError } = await supabase
         .from('tags')
         .insert([
@@ -405,7 +401,6 @@ async function loadTags() {
       
       if (insertError) throw insertError;
       
-      // Reload tags
       return loadTags();
     }
     
@@ -431,14 +426,12 @@ async function loadFilterTags() {
     const filterContainer = document.getElementById('filterTags');
     filterContainer.innerHTML = '';
     
-    // Add "All" button to clear filters
     const allButton = document.createElement('button');
     allButton.textContent = 'All';
     allButton.className = currentFilterTag === null ? 'active' : '';
     allButton.onclick = () => {
       currentFilterTag = null;
       loadCards();
-      // Update active state
       document.querySelectorAll('#filterTags button').forEach(btn => {
         btn.classList.remove('active');
       });
@@ -446,7 +439,6 @@ async function loadFilterTags() {
     };
     filterContainer.appendChild(allButton);
     
-    // Add tag buttons
     tags.forEach(tag => {
       const tagButton = document.createElement('button');
       tagButton.textContent = tag.name;
@@ -454,7 +446,6 @@ async function loadFilterTags() {
       tagButton.onclick = () => {
         currentFilterTag = tag.name;
         filterByTag(tag.name);
-        // Update active state
         document.querySelectorAll('#filterTags button').forEach(btn => {
           btn.classList.remove('active');
         });
@@ -500,7 +491,6 @@ async function addNewTag() {
   if (!newTag) return;
   
   try {
-    // Check if tag already exists
     if (!allTags.includes(newTag)) {
       const { error } = await supabase
         .from('tags')
@@ -511,7 +501,7 @@ async function addNewTag() {
       allTags.push(newTag);
       allTags.sort();
       updateTagDisplays();
-      await loadFilterTags(); // Refresh filter tags after adding new one
+      await loadFilterTags();
     }
     
     newTagInput.value = '';
@@ -522,7 +512,6 @@ async function addNewTag() {
 }
 
 function updateTagDisplays() {
-  // Update common tags display
   const commonTagsContainer = document.getElementById('commonTags');
   commonTagsContainer.innerHTML = '';
   allTags.forEach(tag => {
@@ -532,7 +521,6 @@ function updateTagDisplays() {
     commonTagsContainer.appendChild(tagButton);
   });
 
-  // Update available tags dropdown in popup
   const availableTagsSelect = document.getElementById('availableTags');
   availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
   allTags.forEach(tag => {
@@ -615,16 +603,14 @@ function addCardToPage(card) {
   const cardElem = document.createElement('div');
   cardElem.className = 'card';
   
-  const tags = card.tags ? card.tags.split(',').map(tag => tag.trim()) : [];
+  const tags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0) : [];
   
   cardElem.innerHTML = `
     <img src="${card.main_image_url}" alt="${card.title}" onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
     <div class="card-info">
       <h4>${card.title}</h4>
       <div class="card-tags">
-        ${tags.map(tag => `
-          <span class="tag-bubble">${tag}</span>
-        `).join('')}
+        ${tags.map(tag => `<span class="tag-bubble">${tag}</span>`).join('')}
       </div>
     </div>
   `;
