@@ -245,15 +245,11 @@
 
   <aside class="sidebar">
     <div class="filter-section">
-      <h3>Filter by Tags</h3>
-      <div class="filter-options">
-        <button>Small</button>
-        <button>Perfect</button>
-        <button>Large</button>
-        <button>Medium</button>
-        <button>Wide</button>
-      </div>
-    </div>
+  <h3>Filter by Tags</h3>
+  <div class="filter-options" id="filterTags">
+    <!-- Tags will be loaded dynamically from Supabase -->
+  </div>
+</div>
 
     <div class="upload-section">
       <h3>Upload New Image</h3>
@@ -316,250 +312,298 @@
 
     // Store selected tags for the current form
     let selectedTags = [];
-    let allTags = [];
+let allTags = [];
 
-    window.onload = async function () {
-      console.log("Initializing Supabase...");
-      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+window.onload = async function () {
+  console.log("Initializing Supabase...");
+  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-      supabase.auth.onAuthStateChange((event, session) => {
-        console.log("Auth state changed:", event, session);
-      });
+  supabase.auth.onAuthStateChange((event, session) => {
+    console.log("Auth state changed:", event, session);
+  });
 
-      try {
-        // First check if tags table exists by trying to select from it
-        const { data: tags, error: tagsError } = await supabase
-          .from('tags')
-          .select('*')
-          .limit(1);
-        
-        if (tagsError && tagsError.code !== '42P01') { // Ignore "relation does not exist" error
-          throw tagsError;
-        }
-        
-        // If tags table doesn't exist, create it
-        if (tagsError && tagsError.code === '42P01') {
-          console.log("Tags table doesn't exist, creating...");
-          const { error: createError } = await supabase
-            .from('tags')
-            .insert([{ name: 'Nature' }, { name: 'City' }, { name: 'Abstract' }, 
-                    { name: 'Portrait' }, { name: 'Landscape' }]);
-          
-          if (createError) throw createError;
-        }
+  try {
+    // First check if tags table exists by trying to select from it
+    const { data: tags, error: tagsError } = await supabase
+      .from('tags')
+      .select('*')
+      .limit(1);
+    
+    if (tagsError && tagsError.code !== '42P01') { // Ignore "relation does not exist" error
+      throw tagsError;
+    }
+    
+    // If tags table doesn't exist, we'll handle it in loadTags()
+    console.log("Supabase connection test successful");
+  } catch (error) {
+    console.error("Supabase connection failed:", error);
+    alert("Failed to connect to Supabase. Check console for details.");
+  }
 
-        // Check if cards table exists
-        const { data: cards, error: cardsError } = await supabase
-          .from('cards')
-          .select('*')
-          .limit(1);
-        
-        if (cardsError && cardsError.code !== '42P01') {
-          throw cardsError;
-        }
+  document.getElementById('cardForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    console.log("Form submitted");
+    await addCard();
+  });
 
-        console.log("Supabase connection test successful");
-      } catch (error) {
-        console.error("Supabase connection failed:", error);
-        alert("Failed to connect to Supabase. Check console for details.");
-      }
+  await loadTags();
+  await loadFilterTags(); // Load tags for filtering
+  await loadCards();
+};
 
-      document.getElementById('cardForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        console.log("Form submitted");
-        await addCard();
-      });
+async function loadTags() {
+  try {
+    // First try to get tags
+    const { data: tags, error } = await supabase
+      .from('tags')
+      .select('name')
+      .order('name', { ascending: true });
+    
+    if (error && error.code === '42P01') {
+      // Table doesn't exist, create it
+      console.log("Creating tags table...");
+      const { data, error: createError } = await supabase
+        .rpc('create_tags_table');
+      
+      if (createError) throw createError;
+      
+      // Now insert default tags
+      const { error: insertError } = await supabase
+        .from('tags')
+        .insert([
+          { name: 'Nature' }, 
+          { name: 'City' }, 
+          { name: 'Abstract' },
+          { name: 'Portrait' }, 
+          { name: 'Landscape' }
+        ]);
+      
+      if (insertError) throw insertError;
+      
+      // Reload tags
+      return loadTags();
+    }
+    
+    if (error) throw error;
 
-      await loadTags();
-      await loadCards();
+    allTags = tags.map(tag => tag.name);
+    updateTagDisplays();
+  } catch (error) {
+    console.error("Error loading tags:", error);
+    alert("Failed to load tags. Check console for details.");
+  }
+}
+
+async function loadFilterTags() {
+  try {
+    const { data: tags, error } = await supabase
+      .from('tags')
+      .select('name')
+      .order('name', { ascending: true });
+    
+    if (error) throw error;
+
+    const filterContainer = document.getElementById('filterTags');
+    filterContainer.innerHTML = '';
+    
+    tags.forEach(tag => {
+      const tagButton = document.createElement('button');
+      tagButton.textContent = tag.name;
+      tagButton.onclick = () => filterByTag(tag.name);
+      filterContainer.appendChild(tagButton);
+    });
+  } catch (error) {
+    console.error("Error loading filter tags:", error);
+  }
+}
+
+async function filterByTag(tagName) {
+  try {
+    const { data: cards, error } = await supabase
+      .from('cards')
+      .select('*')
+      .contains('tags', tagName);
+    
+    if (error) throw error;
+
+    document.getElementById('gallery').innerHTML = '';
+    cards.forEach(addCardToPage);
+  } catch (error) {
+    console.error("Error filtering by tag:", error);
+  }
+}
+
+async function addNewTag() {
+  const newTagInput = document.getElementById('newTagInput');
+  const newTag = newTagInput.value.trim();
+  
+  if (!newTag) return;
+  
+  try {
+    // Check if tag already exists
+    if (!allTags.includes(newTag)) {
+      const { error } = await supabase
+        .from('tags')
+        .insert([{ name: newTag }]);
+      
+      if (error) throw error;
+      
+      allTags.push(newTag);
+      allTags.sort();
+      updateTagDisplays();
+      await loadFilterTags(); // Refresh filter tags after adding new one
+    }
+    
+    newTagInput.value = '';
+  } catch (error) {
+    console.error("Error adding new tag:", error);
+    alert("Failed to add new tag. You may need to create the tags table first in Supabase.");
+  }
+}
+
+function updateTagDisplays() {
+  // Update common tags display
+  const commonTagsContainer = document.getElementById('commonTags');
+  commonTagsContainer.innerHTML = '';
+  allTags.forEach(tag => {
+    const tagButton = document.createElement('button');
+    tagButton.textContent = tag;
+    tagButton.onclick = () => addTagToCommon(tag);
+    commonTagsContainer.appendChild(tagButton);
+  });
+
+  // Update available tags dropdown in popup
+  const availableTagsSelect = document.getElementById('availableTags');
+  availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
+  allTags.forEach(tag => {
+    if (!selectedTags.includes(tag)) {
+      const option = document.createElement('option');
+      option.value = tag;
+      option.textContent = tag;
+      availableTagsSelect.appendChild(option);
+    }
+  });
+}
+
+function addTagToCommon(tag) {
+  const newTagInput = document.getElementById('newTagInput');
+  newTagInput.value = tag;
+}
+
+function addTagToSelection() {
+  const availableTagsSelect = document.getElementById('availableTags');
+  const selectedTag = availableTagsSelect.value;
+  
+  if (!selectedTag || selectedTags.includes(selectedTag)) return;
+  
+  selectedTags.push(selectedTag);
+  updateSelectedTagsDisplay();
+  updateTagDisplays();
+}
+
+function updateSelectedTagsDisplay() {
+  const container = document.getElementById('selectedTagsContainer');
+  container.innerHTML = '';
+  
+  selectedTags.forEach(tag => {
+    const tagElem = document.createElement('div');
+    tagElem.className = 'selected-tag';
+    tagElem.innerHTML = `
+      ${tag}
+      <button onclick="removeSelectedTag('${tag}')">×</button>
+    `;
+    container.appendChild(tagElem);
+  });
+}
+
+function removeSelectedTag(tagToRemove) {
+  selectedTags = selectedTags.filter(tag => tag !== tagToRemove);
+  updateSelectedTagsDisplay();
+  updateTagDisplays();
+}
+
+async function loadCards() {
+  try {
+    console.log("Loading cards...");
+    const { data: cards, error } = await supabase
+      .from('cards')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    document.getElementById('gallery').innerHTML = '';
+    cards.forEach(addCardToPage);
+  } catch (error) {
+    console.error("Error loading cards:", error);
+    document.getElementById('errorMessage').textContent = 'Failed to load cards: ' + error.message;
+  }
+}
+
+async function addCard() {
+  try {
+    const title = document.getElementById('title').value.trim();
+    const imageUrl = document.getElementById('imageUrl').value.trim();
+    
+    if (!title) throw new Error("Title is required");
+    if (!imageUrl) throw new Error("Image URL is required");
+    if (!supabase) throw new Error("Supabase not initialized");
+
+    const newCard = {
+      title,
+      tags: selectedTags.join(', '),
+      main_image_url: imageUrl,
+      related_images: [imageUrl]
     };
 
-    async function loadTags() {
-      try {
-        const { data: tags, error } = await supabase
-          .from('tags')
-          .select('name')
-          .order('name', { ascending: true });
-        
-        if (error) throw error;
+    const { data, error } = await supabase.from('cards').insert([newCard]).select();
+    if (error) throw error;
 
-        allTags = tags.map(tag => tag.name);
-        updateTagDisplays();
-      } catch (error) {
-        console.error("Error loading tags:", error);
-      }
-    }
+    addCardToPage(data[0]);
+    closePopup();
+    resetForm();
+    await loadCards();
+  } catch (error) {
+    console.error("Error adding card:", error);
+    document.getElementById('errorMessage').textContent = error.message;
+  }
+}
 
-    async function addNewTag() {
-      const newTagInput = document.getElementById('newTagInput');
-      const newTag = newTagInput.value.trim();
-      
-      if (!newTag) return;
-      
-      try {
-        // Check if tag already exists
-        if (!allTags.includes(newTag)) {
-          const { error } = await supabase
-            .from('tags')
-            .insert([{ name: newTag }]);
-          
-          if (error) throw error;
-          
-          allTags.push(newTag);
-          allTags.sort();
-          updateTagDisplays();
-        }
-        
-        newTagInput.value = '';
-      } catch (error) {
-        console.error("Error adding new tag:", error);
-        alert("Failed to add new tag. Check console for details.");
-      }
-    }
+function addCardToPage(card) {
+  const cardElem = document.createElement('div');
+  cardElem.className = 'card';
+  
+  const tags = card.tags ? card.tags.split(',').map(tag => tag.trim()) : [];
+  
+  cardElem.innerHTML = `
+    <img src="${card.main_image_url}" alt="${card.title}" onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
+    <div class="card-info">
+      <h4>${card.title}</h4>
+      <div class="card-tags">
+        ${tags.map(tag => `<span>${tag}</span>`).join('')}
+      </div>
+    </div>
+  `;
+  document.getElementById('gallery').appendChild(cardElem);
+}
 
-    function updateTagDisplays() {
-      // Update common tags display
-      const commonTagsContainer = document.getElementById('commonTags');
-      commonTagsContainer.innerHTML = '';
-      allTags.forEach(tag => {
-        const tagButton = document.createElement('button');
-        tagButton.textContent = tag;
-        tagButton.onclick = () => addTagToCommon(tag);
-        commonTagsContainer.appendChild(tagButton);
-      });
+function resetForm() {
+  document.getElementById('title').value = '';
+  document.getElementById('imageUrl').value = '';
+  selectedTags = [];
+  updateSelectedTagsDisplay();
+  updateTagDisplays();
+}
 
-      // Update available tags dropdown in popup
-      const availableTagsSelect = document.getElementById('availableTags');
-      availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
-      allTags.forEach(tag => {
-        if (!selectedTags.includes(tag)) {
-          const option = document.createElement('option');
-          option.value = tag;
-          option.textContent = tag;
-          availableTagsSelect.appendChild(option);
-        }
-      });
-    }
+function openPopup() {
+  document.getElementById('popup').style.display = 'flex';
+  resetForm();
+  document.getElementById('errorMessage').textContent = '';
+}
 
-    function addTagToCommon(tag) {
-      const newTagInput = document.getElementById('newTagInput');
-      newTagInput.value = tag;
-    }
-
-    function addTagToSelection() {
-      const availableTagsSelect = document.getElementById('availableTags');
-      const selectedTag = availableTagsSelect.value;
-      
-      if (!selectedTag || selectedTags.includes(selectedTag)) return;
-      
-      selectedTags.push(selectedTag);
-      updateSelectedTagsDisplay();
-      updateTagDisplays();
-    }
-
-    function updateSelectedTagsDisplay() {
-      const container = document.getElementById('selectedTagsContainer');
-      container.innerHTML = '';
-      
-      selectedTags.forEach(tag => {
-        const tagElem = document.createElement('div');
-        tagElem.className = 'selected-tag';
-        tagElem.innerHTML = `
-          ${tag}
-          <button onclick="removeSelectedTag('${tag}')">×</button>
-        `;
-        container.appendChild(tagElem);
-      });
-    }
-
-    function removeSelectedTag(tagToRemove) {
-      selectedTags = selectedTags.filter(tag => tag !== tagToRemove);
-      updateSelectedTagsDisplay();
-      updateTagDisplays();
-    }
-
-    async function loadCards() {
-      try {
-        console.log("Loading cards...");
-        const { data: cards, error } = await supabase
-          .from('cards')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-
-        document.getElementById('gallery').innerHTML = '';
-        cards.forEach(addCardToPage);
-      } catch (error) {
-        console.error("Error loading cards:", error);
-        document.getElementById('errorMessage').textContent = 'Failed to load cards: ' + error.message;
-      }
-    }
-
-    async function addCard() {
-      try {
-        const title = document.getElementById('title').value.trim();
-        const imageUrl = document.getElementById('imageUrl').value.trim();
-        
-        if (!title) throw new Error("Title is required");
-        if (!imageUrl) throw new Error("Image URL is required");
-        if (!supabase) throw new Error("Supabase not initialized");
-
-        const newCard = {
-          title,
-          tags: selectedTags.join(', '),
-          main_image_url: imageUrl,
-          related_images: [imageUrl]
-        };
-
-        const { data, error } = await supabase.from('cards').insert([newCard]).select();
-        if (error) throw error;
-
-        addCardToPage(data[0]);
-        closePopup();
-        resetForm();
-        await loadCards();
-      } catch (error) {
-        console.error("Error adding card:", error);
-        document.getElementById('errorMessage').textContent = error.message;
-      }
-    }
-
-    function addCardToPage(card) {
-      const cardElem = document.createElement('div');
-      cardElem.className = 'card';
-      
-      const tags = card.tags ? card.tags.split(',').map(tag => tag.trim()) : [];
-      
-      cardElem.innerHTML = `
-        <img src="${card.main_image_url}" alt="${card.title}" onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
-        <div class="card-info">
-          <h4>${card.title}</h4>
-          <div class="card-tags">
-            ${tags.map(tag => `<span>${tag}</span>`).join('')}
-          </div>
-        </div>
-      `;
-      document.getElementById('gallery').appendChild(cardElem);
-    }
-
-    function resetForm() {
-      document.getElementById('title').value = '';
-      document.getElementById('imageUrl').value = '';
-      selectedTags = [];
-      updateSelectedTagsDisplay();
-      updateTagDisplays();
-    }
-
-    function openPopup() {
-      document.getElementById('popup').style.display = 'flex';
-      resetForm();
-      document.getElementById('errorMessage').textContent = '';
-    }
-
-    function closePopup() {
-      document.getElementById('popup').style.display = 'none';
-    }
+function closePopup() {
+  document.getElementById('popup').style.display = 'none';
+}
   </script>
 </body>
 </html>
