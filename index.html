@@ -68,7 +68,11 @@
       border: 1px solid #ddd;
       border-radius: 4px 0 0 4px;
     }
-
+.filter-options button.active {
+  background: #4caf50 !important;
+  color: white !important;
+  border-color: #4caf50 !important;
+}
     .tag-input button {
       background: #4caf50;
       color: white;
@@ -311,8 +315,9 @@
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
 
     // Store selected tags for the current form
-    let selectedTags = [];
+  let selectedTags = [];
 let allTags = [];
+let currentFilterTag = null; // Track currently filtered tag
 
 window.onload = async function () {
   console.log("Initializing Supabase...");
@@ -333,7 +338,6 @@ window.onload = async function () {
       throw tagsError;
     }
     
-    // If tags table doesn't exist, we'll handle it in loadTags()
     console.log("Supabase connection test successful");
   } catch (error) {
     console.error("Supabase connection failed:", error);
@@ -347,7 +351,7 @@ window.onload = async function () {
   });
 
   await loadTags();
-  await loadFilterTags(); // Load tags for filtering
+  await loadFilterTags();
   await loadCards();
 };
 
@@ -406,10 +410,35 @@ async function loadFilterTags() {
     const filterContainer = document.getElementById('filterTags');
     filterContainer.innerHTML = '';
     
+    // Add "All" button to clear filters
+    const allButton = document.createElement('button');
+    allButton.textContent = 'All';
+    allButton.className = currentFilterTag === null ? 'active' : '';
+    allButton.onclick = () => {
+      currentFilterTag = null;
+      loadCards();
+      // Update active state
+      document.querySelectorAll('#filterTags button').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      allButton.classList.add('active');
+    };
+    filterContainer.appendChild(allButton);
+    
+    // Add tag buttons
     tags.forEach(tag => {
       const tagButton = document.createElement('button');
       tagButton.textContent = tag.name;
-      tagButton.onclick = () => filterByTag(tag.name);
+      tagButton.className = currentFilterTag === tag.name ? 'active' : '';
+      tagButton.onclick = () => {
+        currentFilterTag = tag.name;
+        filterByTag(tag.name);
+        // Update active state
+        document.querySelectorAll('#filterTags button').forEach(btn => {
+          btn.classList.remove('active');
+        });
+        tagButton.classList.add('active');
+      };
       filterContainer.appendChild(tagButton);
     });
   } catch (error) {
@@ -419,10 +448,16 @@ async function loadFilterTags() {
 
 async function filterByTag(tagName) {
   try {
-    const { data: cards, error } = await supabase
+    let query = supabase
       .from('cards')
       .select('*')
-      .contains('tags', tagName);
+      .order('created_at', { ascending: false });
+
+    if (tagName) {
+      query = query.ilike('tags', `%${tagName}%`);
+    }
+
+    const { data: cards, error } = await query;
     
     if (error) throw error;
 
@@ -431,6 +466,10 @@ async function filterByTag(tagName) {
   } catch (error) {
     console.error("Error filtering by tag:", error);
   }
+}
+
+async function loadCards() {
+  await filterByTag(currentFilterTag);
 }
 
 async function addNewTag() {
@@ -520,24 +559,6 @@ function removeSelectedTag(tagToRemove) {
   selectedTags = selectedTags.filter(tag => tag !== tagToRemove);
   updateSelectedTagsDisplay();
   updateTagDisplays();
-}
-
-async function loadCards() {
-  try {
-    console.log("Loading cards...");
-    const { data: cards, error } = await supabase
-      .from('cards')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-
-    document.getElementById('gallery').innerHTML = '';
-    cards.forEach(addCardToPage);
-  } catch (error) {
-    console.error("Error loading cards:", error);
-    document.getElementById('errorMessage').textContent = 'Failed to load cards: ' + error.message;
-  }
 }
 
 async function addCard() {
