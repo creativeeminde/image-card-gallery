@@ -452,12 +452,17 @@ async function loadFilterTags() {
     filterContainer.appendChild(allButton);
 
     tags.forEach(tag => {
-    const tagButton = document.createElement('button');
-    tagButton.textContent = tag.name;
-    tagButton.className = currentFilterTag === tag.name ? 'active' : '';
-    tagButton.onclick = () => filterByTag(tag.name);
-    filterContainer.appendChild(tagButton);
-  });
+      const tagButton = document.createElement('button');
+      tagButton.textContent = tag.name;
+      tagButton.className = currentFilterTag === tag.name ? 'active' : '';
+      tagButton.onclick = () => {
+        currentFilterTag = currentFilterTag === tag.name ? null : tag.name;
+        loadCards();
+        document.querySelectorAll('#filterTags button').forEach(btn => btn.classList.remove('active'));
+        currentFilterTag ? tagButton.classList.add('active') : allButton.classList.add('active');
+      };
+      filterContainer.appendChild(tagButton);
+    });
   } catch (error) {
     console.error("Error loading filter tags:", error);
   }
@@ -471,11 +476,8 @@ async function loadCards() {
       .order('created_at', { ascending: false });
 
     if (currentFilterTag) {
-      // Use textSearch with proper formatting for comma-separated tags
-      query = query.textSearch('tags', currentFilterTag, {
-        config: 'english',
-        type: 'plain'
-      });
+      // Exact match filtering for comma-separated tags
+      query = query.filter('tags', 'cs', currentFilterTag);
     }
 
     const { data: cards, error } = await query;
@@ -485,21 +487,6 @@ async function loadCards() {
     cards.forEach(card => addCardToPage(card));
   } catch (error) {
     console.error("Error loading cards:", error);
-  }
-}
-
-async function filterByTag(tagName) {
-  try {
-    // Clear current filter if clicking the same tag again
-    if (currentFilterTag === tagName) {
-      currentFilterTag = null;
-    } else {
-      currentFilterTag = tagName;
-    }
-    
-    await loadCards();
-  } catch (error) {
-    console.error("Error filtering by tag:", error);
   }
 }
 
@@ -569,11 +556,6 @@ async function updateCard() {
       main_image_url: imageUrl
     };
 
-    // Only add updated_at if the column exists
-    if (await columnExists('cards', 'updated_at')) {
-      updateData.updated_at = new Date().toISOString();
-    }
-
     const { error } = await supabase
       .from('cards')
       .update(updateData)
@@ -588,17 +570,6 @@ async function updateCard() {
     document.getElementById('errorMessage').textContent = error.message;
   } finally {
     currentlyEditingCardId = null;
-  }
-}
-
-// Helper function to check if column exists
-async function columnExists(table, column) {
-  try {
-    const { data, error } = await supabase
-      .rpc('column_exists', { table_name: table, column_name: column });
-    return data;
-  } catch (e) {
-    return false;
   }
 }
 
