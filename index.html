@@ -51,9 +51,29 @@
       margin-top: 8px;
     }
 
+    .related-image-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+      background-color: #fff8e1;
+      padding: 8px;
+      border-radius: 8px;
+    }
+
     .tag-bubble {
       background-color: #e0f7fa;
       color: #00796b;
+      padding: 4px 10px;
+      border-radius: 16px;
+      font-size: 0.8rem;
+      display: inline-block;
+      white-space: nowrap;
+    }
+
+    .related-tag-bubble {
+      background-color: #ffecb3;
+      color: #5d4037;
       padding: 4px 10px;
       border-radius: 16px;
       font-size: 0.8rem;
@@ -130,6 +150,17 @@
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 30px;
+    }
+
+    .related-images-section {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #ddd;
+    }
+
+    .related-images-section h2 {
+      margin-top: 0;
+      color: #333;
     }
 
     .card {
@@ -376,6 +407,28 @@
       background: rgba(0, 0, 0, 0.8);
     }
 
+    /* Related Image Tags Popup */
+    .related-tags-popup {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0,0,0,0.5);
+      align-items: center;
+      justify-content: center;
+      z-index: 3000;
+    }
+
+    .related-tags-content {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      width: 400px;
+      max-width: 90%;
+    }
+
     /* Popup Styles */
     .popup {
       display: none;
@@ -517,6 +570,12 @@
 
   <main class="main-content">
     <div class="gallery" id="gallery"></div>
+    
+    <div class="related-images-section" id="relatedImagesSection" style="display: none;">
+      <h2>Related Images</h2>
+      <div class="filter-options" id="relatedImageFilterTags"></div>
+      <div class="gallery" id="relatedImagesGallery"></div>
+    </div>
   </main>
 
   <!-- Add Button -->
@@ -540,6 +599,7 @@
     <div class="image-counter" id="imageCounter"></div>
     <div class="image-viewer-footer">
       <button class="upload-related-btn" onclick="openRelatedImagesPopup()">Upload Related Images</button>
+      <button class="upload-related-btn" onclick="openRelatedTagsPopup()" style="margin-top: 10px;">Edit Related Image Tags</button>
     </div>
   </div>
 
@@ -584,6 +644,27 @@
     </div>
   </div>
 
+  <!-- Popup for related image tags -->
+  <div class="related-tags-popup" id="relatedTagsPopup">
+    <div class="related-tags-content">
+      <h3>Edit Related Image Tags</h3>
+      <div id="currentRelatedImageInfo"></div>
+      <div id="selectedRelatedTagsContainer" class="selected-tags"></div>
+      
+      <select id="availableRelatedTags">
+        <option value="">Select tags to add</option>
+        <!-- Tags will be loaded here -->
+      </select>
+      <button type="button" onclick="addTagToRelatedImageSelection()">Add Tag</button>
+      
+      <div id="relatedTagsErrorMessage" class="error-message"></div>
+      <div>
+        <button type="button" onclick="saveRelatedImageTags()">Save</button>
+        <button type="button" onclick="closeRelatedTagsPopup()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Supabase JS -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js"></script>
 
@@ -598,6 +679,9 @@
     let currentlyEditingCardId = null;
     let currentViewingCard = null;
     let currentImageIndex = 0;
+    let currentRelatedImageTags = [];
+    let currentRelatedImageIndex = 0;
+    let currentFilterRelatedTag = null;
 
     // Zoom and pan variables
     let scale = 1;
@@ -748,12 +832,108 @@
       document.getElementById('gallery').appendChild(cardElem);
     }
 
+    async function loadRelatedImages(tag = null) {
+      if (!currentViewingCard) return;
+      
+      try {
+        const images = currentViewingCard.related_images || [];
+        const relatedImagesWithTags = currentViewingCard.related_images_with_tags || [];
+        
+        document.getElementById('relatedImagesGallery').innerHTML = '';
+        
+        if (images.length === 0) {
+          document.getElementById('relatedImagesSection').style.display = 'none';
+          return;
+        }
+        
+        document.getElementById('relatedImagesSection').style.display = 'block';
+        
+        // Load filter tags for related images
+        const allRelatedTags = [];
+        relatedImagesWithTags.forEach(img => {
+          if (img.tags) {
+            img.tags.split(',').forEach(tag => {
+              if (tag.trim() && !allRelatedTags.includes(tag.trim())) {
+                allRelatedTags.push(tag.trim());
+              }
+            });
+          }
+        });
+        
+        const filterContainer = document.getElementById('relatedImageFilterTags');
+        filterContainer.innerHTML = '';
+        
+        const allButton = document.createElement('button');
+        allButton.textContent = 'All';
+        allButton.className = !tag ? 'active' : '';
+        allButton.onclick = () => {
+          currentFilterRelatedTag = null;
+          loadRelatedImages();
+          document.querySelectorAll('#relatedImageFilterTags button').forEach(btn => btn.classList.remove('active'));
+          allButton.classList.add('active');
+        };
+        filterContainer.appendChild(allButton);
+        
+        allRelatedTags.forEach(tagName => {
+          const tagButton = document.createElement('button');
+          tagButton.textContent = tagName;
+          tagButton.className = tag === tagName ? 'active' : '';
+          tagButton.onclick = () => {
+            currentFilterRelatedTag = currentFilterRelatedTag === tagName ? null : tagName;
+            loadRelatedImages(currentFilterRelatedTag);
+            document.querySelectorAll('#relatedImageFilterTags button').forEach(btn => btn.classList.remove('active'));
+            currentFilterRelatedTag ? tagButton.classList.add('active') : allButton.classList.add('active');
+          };
+          filterContainer.appendChild(tagButton);
+        });
+        
+        // Filter images by tag if specified
+        const filteredImages = tag 
+          ? relatedImagesWithTags.filter(img => img.tags && img.tags.includes(tag))
+          : relatedImagesWithTags;
+        
+        if (filteredImages.length === 0) {
+          document.getElementById('relatedImagesGallery').innerHTML = '<p>No images found with this tag</p>';
+          return;
+        }
+        
+        filteredImages.forEach((img, index) => {
+          const imgElem = document.createElement('div');
+          imgElem.className = 'card';
+          
+          const tags = img.tags ? img.tags.split(',').map(t => t.trim()).filter(t => t) : [];
+          
+          imgElem.innerHTML = `
+            <img src="${img.url}" alt="Related image ${index + 1}" 
+                 onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
+            <div class="card-info">
+              ${tags.length > 0 ? `
+              <div class="related-image-tags">
+                ${tags.map(t => `<span class="related-tag-bubble" onclick="event.stopPropagation(); loadRelatedImages('${t}')">${t}</span>`).join('')}
+              </div>
+              ` : ''}
+            </div>
+          `;
+          
+          imgElem.addEventListener('click', () => {
+            currentImageIndex = currentViewingCard.related_images.indexOf(img.url);
+            updateViewerImage();
+          });
+          
+          document.getElementById('relatedImagesGallery').appendChild(imgElem);
+        });
+      } catch (error) {
+        console.error("Error loading related images:", error);
+      }
+    }
+
     function openImageViewer(card) {
       currentViewingCard = card;
       currentImageIndex = 0;
-      resetZoom(); // Reset zoom when opening new image
+      resetZoom();
       updateViewerImage();
       document.getElementById('imageViewer').style.display = 'flex';
+      loadRelatedImages();
       
       // Add event listeners for zoom and pan
       const viewerImage = document.getElementById('viewerImage');
@@ -787,6 +967,7 @@
       viewerContent.removeEventListener('touchend', handleTouchEnd);
       
       document.getElementById('imageViewer').style.display = 'none';
+      document.getElementById('relatedImagesSection').style.display = 'none';
       currentViewingCard = null;
     }
 
@@ -808,7 +989,7 @@
       
       const images = [currentViewingCard.main_image_url, ...(currentViewingCard.related_images || [])];
       currentImageIndex = (currentImageIndex - 1 + images.length) % images.length;
-      resetZoom(); // Reset zoom when changing images
+      resetZoom();
       updateViewerImage();
     }
 
@@ -817,7 +998,7 @@
       
       const images = [currentViewingCard.main_image_url, ...(currentViewingCard.related_images || [])];
       currentImageIndex = (currentImageIndex + 1) % images.length;
-      resetZoom(); // Reset zoom when changing images
+      resetZoom();
       updateViewerImage();
     }
 
@@ -957,6 +1138,150 @@
       }
     }
 
+    function openRelatedTagsPopup() {
+      if (!currentViewingCard || !currentViewingCard.related_images || currentViewingCard.related_images.length === 0) {
+        alert("No related images to tag");
+        return;
+      }
+      
+      currentRelatedImageIndex = 0;
+      loadRelatedImageForTagging();
+      document.getElementById('relatedTagsPopup').style.display = 'flex';
+    }
+
+    function closeRelatedTagsPopup() {
+      document.getElementById('relatedTagsPopup').style.display = 'none';
+      currentRelatedImageTags = [];
+    }
+
+    function loadRelatedImageForTagging() {
+      if (!currentViewingCard || !currentViewingCard.related_images) return;
+      
+      const images = currentViewingCard.related_images;
+      const relatedImagesWithTags = currentViewingCard.related_images_with_tags || [];
+      
+      if (currentRelatedImageIndex >= images.length) {
+        currentRelatedImageIndex = 0;
+      }
+      
+      const currentImage = images[currentRelatedImageIndex];
+      const currentImageData = relatedImagesWithTags.find(img => img.url === currentImage) || { url: currentImage, tags: '' };
+      
+      document.getElementById('currentRelatedImageInfo').innerHTML = `
+        <img src="${currentImage}" style="max-width: 100%; max-height: 150px; object-fit: contain; margin-bottom: 10px;">
+        <p>Image ${currentRelatedImageIndex + 1} of ${images.length}</p>
+      `;
+      
+      currentRelatedImageTags = currentImageData.tags ? currentImageData.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+      updateSelectedRelatedTagsDisplay();
+      updateAvailableRelatedTags();
+    }
+
+    function nextRelatedImageForTagging() {
+      if (!currentViewingCard || !currentViewingCard.related_images) return;
+      
+      currentRelatedImageIndex = (currentRelatedImageIndex + 1) % currentViewingCard.related_images.length;
+      loadRelatedImageForTagging();
+    }
+
+    function prevRelatedImageForTagging() {
+      if (!currentViewingCard || !currentViewingCard.related_images) return;
+      
+      currentRelatedImageIndex = (currentRelatedImageIndex - 1 + currentViewingCard.related_images.length) % currentViewingCard.related_images.length;
+      loadRelatedImageForTagging();
+    }
+
+    function updateSelectedRelatedTagsDisplay() {
+      const container = document.getElementById('selectedRelatedTagsContainer');
+      container.innerHTML = '';
+      
+      currentRelatedImageTags.forEach(tag => {
+        const tagElem = document.createElement('div');
+        tagElem.className = 'selected-tag';
+        tagElem.innerHTML = `
+          ${tag}
+          <button onclick="removeSelectedRelatedTag('${tag}')">×</button>
+        `;
+        container.appendChild(tagElem);
+      });
+    }
+
+    function updateAvailableRelatedTags() {
+      const availableTagsSelect = document.getElementById('availableRelatedTags');
+      availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
+      
+      allTags.forEach(tag => {
+        if (!currentRelatedImageTags.includes(tag)) {
+          const option = document.createElement('option');
+          option.value = tag;
+          option.textContent = tag;
+          availableTagsSelect.appendChild(option);
+        }
+      });
+    }
+
+    function addTagToRelatedImageSelection() {
+      const availableTagsSelect = document.getElementById('availableRelatedTags');
+      const selectedTag = availableTagsSelect.value;
+      
+      if (!selectedTag || currentRelatedImageTags.includes(selectedTag)) return;
+      
+      currentRelatedImageTags.push(selectedTag);
+      updateSelectedRelatedTagsDisplay();
+      updateAvailableRelatedTags();
+    }
+
+    function removeSelectedRelatedTag(tagToRemove) {
+      currentRelatedImageTags = currentRelatedImageTags.filter(tag => tag !== tagToRemove);
+      updateSelectedRelatedTagsDisplay();
+      updateAvailableRelatedTags();
+    }
+
+    async function saveRelatedImageTags() {
+      if (!currentViewingCard) return;
+      
+      try {
+        const images = currentViewingCard.related_images || [];
+        const currentImage = images[currentRelatedImageIndex];
+        
+        // Get current related images with tags
+        let relatedImagesWithTags = currentViewingCard.related_images_with_tags || [];
+        
+        // Update or add the current image's tags
+        const existingIndex = relatedImagesWithTags.findIndex(img => img.url === currentImage);
+        if (existingIndex >= 0) {
+          relatedImagesWithTags[existingIndex].tags = currentRelatedImageTags.join(', ');
+        } else {
+          relatedImagesWithTags.push({
+            url: currentImage,
+            tags: currentRelatedImageTags.join(', ')
+          });
+        }
+        
+        // Update the card in the database
+        const { error } = await supabase
+          .from('cards')
+          .update({ related_images_with_tags: relatedImagesWithTags })
+          .eq('id', currentViewingCard.id);
+        
+        if (error) throw error;
+        
+        // Update the current viewing card in memory
+        currentViewingCard.related_images_with_tags = relatedImagesWithTags;
+        
+        // Move to next image or close if done
+        if (currentRelatedImageIndex < images.length - 1) {
+          nextRelatedImageForTagging();
+        } else {
+          closeRelatedTagsPopup();
+          loadRelatedImages(); // Refresh the related images display
+        }
+      } catch (error) {
+        console.error("Error saving related image tags:", error);
+        document.getElementById('relatedTagsErrorMessage').textContent = "Failed to save tags: " + error.message;
+      }
+    }
+
     async function addRelatedImages() {
       if (!currentViewingCard || !currentViewingCard.id) {
         document.getElementById('relatedImagesErrorMessage').textContent = "No card selected for adding images";
@@ -974,15 +1299,20 @@
         .filter(url => url);
 
       try {
+        // Get current related images
         const { data: card, error: fetchError } = await supabase
           .from('cards')
-          .select('related_images')
+          .select('related_images, related_images_with_tags')
           .eq('id', currentViewingCard.id)
           .single();
         
         if (fetchError) throw fetchError;
 
+        // Initialize as empty arrays if null
         const currentRelatedImages = card.related_images || [];
+        const currentRelatedImagesWithTags = card.related_images_with_tags || [];
+        
+        // Filter out any duplicates
         const newUrls = urls.filter(url => !currentRelatedImages.includes(url));
         
         if (newUrls.length === 0) {
@@ -991,17 +1321,36 @@
         }
 
         const updatedRelatedImages = [...currentRelatedImages, ...newUrls];
+        const updatedRelatedImagesWithTags = [
+          ...currentRelatedImagesWithTags,
+          ...newUrls.map(url => ({ url, tags: '' }))
+        ];
 
+        // Update the card with new related images
         const { error } = await supabase
           .from('cards')
-          .update({ related_images: updatedRelatedImages })
+          .update({ 
+            related_images: updatedRelatedImages,
+            related_images_with_tags: updatedRelatedImagesWithTags
+          })
           .eq('id', currentViewingCard.id);
         
         if (error) throw error;
 
+        // Update the current viewing card in memory
         currentViewingCard.related_images = updatedRelatedImages;
+        currentViewingCard.related_images_with_tags = updatedRelatedImagesWithTags;
+        
+        // Reset the form and close popup
+        document.getElementById('relatedImageUrls').value = '';
+        document.getElementById('relatedImagesErrorMessage').textContent = '';
         closeRelatedImagesPopup();
+        
+        // Refresh the viewer to show new images
         updateViewerImage();
+        loadRelatedImages();
+        
+        // Show success message
         alert(`Successfully added ${newUrls.length} image(s) to this card`);
       } catch (error) {
         console.error("Error adding related images:", error);
@@ -1183,7 +1532,8 @@
           title,
           tags: selectedTags.join(', '),
           main_image_url: imageUrl,
-          related_images: [imageUrl]
+          related_images: [imageUrl],
+          related_images_with_tags: [{ url: imageUrl, tags: selectedTags.join(', ') }]
         };
 
         const { data, error } = await supabase.from('cards').insert([newCard]).select();
