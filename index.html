@@ -91,7 +91,8 @@
       width: 300px;
     }
 
-    .popup-content input, .popup-content textarea {
+    .popup-content input, 
+    .popup-content textarea {
       width: 100%;
       margin-bottom: 10px;
       padding: 8px;
@@ -101,6 +102,12 @@
 
     .popup-content button {
       margin-right: 8px;
+    }
+
+    .error-message {
+      color: red;
+      font-size: 0.8rem;
+      margin-bottom: 10px;
     }
   </style>
 </head>
@@ -119,11 +126,14 @@
   <div class="popup" id="popup">
     <div class="popup-content">
       <h3>Add Image Card</h3>
-      <input id="title" placeholder="Title" />
-      <input id="tags" placeholder="Tags (comma separated)" />
-      <textarea id="relatedLinks" rows="5" placeholder="Image URLs (1 per line)"></textarea>
-      <button id="addBtn">Add</button>
-      <button onclick="closePopup()">Cancel</button>
+      <form id="cardForm">
+        <input id="title" placeholder="Title" required />
+        <input id="tags" placeholder="Tags (comma separated)" />
+        <textarea id="relatedLinks" rows="5" placeholder="Image URLs (1 per line)" required></textarea>
+        <div id="errorMessage" class="error-message"></div>
+        <button type="submit">Add</button>
+        <button type="button" onclick="closePopup()">Cancel</button>
+      </form>
     </div>
   </div>
 
@@ -138,35 +148,57 @@
 
       supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
 
-      // Bind the button after supabase is ready
-      document.getElementById('addBtn').addEventListener('click', addCard);
+      // Bind the form submission
+      document.getElementById('cardForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          await addCard();
+        } catch (error) {
+          console.error('Error adding card:', error);
+          document.getElementById('errorMessage').textContent = 'Failed to add card: ' + error.message;
+        }
+      });
 
-      const { data: cards, error } = await supabase
-        .from('cards')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Failed to load cards:', error.message);
-        return;
-      }
-
-      cards.forEach(addCardToPage);
+      // Load existing cards
+      await loadCards();
     };
+
+    async function loadCards() {
+      try {
+        const { data: cards, error } = await supabase
+          .from('cards')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('Failed to load cards:', error.message);
+          return;
+        }
+
+        cards.forEach(addCardToPage);
+      } catch (error) {
+        console.error('Error loading cards:', error);
+      }
+    }
 
     async function addCard() {
       const title = document.getElementById('title').value.trim();
       const tags = document.getElementById('tags').value.trim();
       const links = document.getElementById('relatedLinks').value.trim().split('\n').map(link => link.trim()).filter(Boolean);
 
-      if (!title || links.length === 0) {
-        alert("Please enter a title and at least one image link.");
-        return;
+      // Clear previous errors
+      document.getElementById('errorMessage').textContent = '';
+
+      if (!title) {
+        throw new Error("Title is required");
+      }
+
+      if (links.length === 0) {
+        throw new Error("At least one image link is required");
       }
 
       if (!supabase) {
-        alert("Supabase is not ready yet. Try again.");
-        return;
+        throw new Error("Supabase is not ready yet. Try again.");
       }
 
       const newCard = {
@@ -179,14 +211,13 @@
       const { data, error } = await supabase.from('cards').insert([newCard]);
 
       if (error) {
-        alert("Error saving to Supabase: " + error.message);
-        return;
+        throw new Error("Error saving to Supabase: " + error.message);
       }
 
       addCardToPage(newCard);
       closePopup();
 
-      // clear fields
+      // Clear fields
       document.getElementById('title').value = '';
       document.getElementById('tags').value = '';
       document.getElementById('relatedLinks').value = '';
@@ -208,6 +239,9 @@
 
     function openPopup() {
       document.getElementById('popup').style.display = 'flex';
+      // Clear form and errors when opening
+      document.getElementById('cardForm').reset();
+      document.getElementById('errorMessage').textContent = '';
     }
 
     function closePopup() {
