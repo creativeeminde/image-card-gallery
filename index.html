@@ -721,15 +721,23 @@
       document.getElementById('relatedImagesPopup').style.display = 'none';
     }
 
-    async function addRelatedImages() {
+  async function addRelatedImages() {
+      // Check if we have a valid card to add images to
+      if (!currentViewingCard || !currentViewingCard.id) {
+        document.getElementById('relatedImagesErrorMessage').textContent = "No card selected for adding images";
+        return;
+      }
+
       const urlsText = document.getElementById('relatedImageUrls').value.trim();
       if (!urlsText) {
         document.getElementById('relatedImagesErrorMessage').textContent = "Please enter at least one image URL";
         return;
       }
 
-      const urls = urlsText.split('\n').filter(url => url.trim());
-      
+      const urls = urlsText.split('\n')
+        .map(url => url.trim())
+        .filter(url => url); // Remove empty lines
+
       try {
         // Get current related images
         const { data: card, error: fetchError } = await supabase
@@ -740,8 +748,18 @@
         
         if (fetchError) throw fetchError;
 
+        // Initialize as empty array if null
         const currentRelatedImages = card.related_images || [];
-        const updatedRelatedImages = [...currentRelatedImages, ...urls];
+        
+        // Filter out any duplicates
+        const newUrls = urls.filter(url => !currentRelatedImages.includes(url));
+        
+        if (newUrls.length === 0) {
+          document.getElementById('relatedImagesErrorMessage').textContent = "All images already exist in this card";
+          return;
+        }
+
+        const updatedRelatedImages = [...currentRelatedImages, ...newUrls];
 
         // Update the card with new related images
         const { error } = await supabase
@@ -751,13 +769,22 @@
         
         if (error) throw error;
 
-        // Update the current viewing card
+        // Update the current viewing card in memory
         currentViewingCard.related_images = updatedRelatedImages;
+        
+        // Reset the form and close popup
+        document.getElementById('relatedImageUrls').value = '';
+        document.getElementById('relatedImagesErrorMessage').textContent = '';
         closeRelatedImagesPopup();
+        
+        // Refresh the viewer to show new images
         updateViewerImage();
+        
+        // Show success message
+        alert(`Successfully added ${newUrls.length} image(s) to this card`);
       } catch (error) {
         console.error("Error adding related images:", error);
-        document.getElementById('relatedImagesErrorMessage').textContent = "Failed to add related images";
+        document.getElementById('relatedImagesErrorMessage').textContent = "Failed to add related images: " + error.message;
       }
     }
 
