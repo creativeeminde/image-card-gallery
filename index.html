@@ -1,196 +1,218 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Image Card Gallery</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Image Cards Gallery</title>
   <style>
     body {
-      font-family: Arial, sans-serif;
-      margin: 0; padding: 0;
-      background: #f9f9f9;
+      font-family: sans-serif;
+      margin: 0;
+      background: #f5f5f5;
     }
+
     header {
-      background: #4a90e2;
+      background: #333;
       color: white;
       padding: 1rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      text-align: center;
     }
-    .btn {
-      background: #fff;
-      border: none;
-      padding: 0.5rem 1rem;
-      font-weight: bold;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    #gallery {
+
+    .gallery {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-      gap: 1rem;
-      padding: 1rem;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 20px;
+      padding: 20px;
     }
+
     .card {
       background: white;
       padding: 1rem;
       border-radius: 10px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
+
     .card img {
       width: 100%;
-      border-radius: 8px;
+      height: 180px;
       object-fit: cover;
+      border-radius: 8px;
     }
+
     .tags {
-      margin-top: 0.5rem;
-      color: #777;
-      font-size: 0.9em;
+      color: #666;
+      font-size: 0.85rem;
+      margin: 0.5rem 0;
     }
+
     .related {
       display: flex;
       flex-wrap: wrap;
       gap: 5px;
-      margin-top: 0.5rem;
+      margin-top: 10px;
     }
+
     .related img {
-      width: 40px;
-      height: 40px;
+      width: 48px;
+      height: 48px;
       object-fit: cover;
-      border-radius: 4px;
+      border-radius: 6px;
     }
-    #popup {
+
+    .add-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #4caf50;
+      color: white;
+      border: none;
+      padding: 14px 18px;
+      border-radius: 50%;
+      font-size: 20px;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+
+    .popup {
       display: none;
       position: fixed;
       top: 0; left: 0;
-      width: 100%; height: 100%;
+      width: 100vw;
+      height: 100vh;
       background: rgba(0,0,0,0.5);
-      justify-content: center;
       align-items: center;
+      justify-content: center;
     }
-    #popupContent {
+
+    .popup-content {
       background: white;
-      padding: 1rem;
-      border-radius: 10px;
+      padding: 20px;
+      border-radius: 12px;
       width: 300px;
     }
-    input, textarea {
+
+    .popup-content input, .popup-content textarea {
       width: 100%;
-      margin-bottom: 0.5rem;
-      padding: 0.5rem;
+      margin-bottom: 10px;
+      padding: 8px;
       border: 1px solid #ccc;
-      border-radius: 5px;
+      border-radius: 6px;
+    }
+
+    .popup-content button {
+      margin-right: 8px;
     }
   </style>
 </head>
 <body>
 
-<header>
-  <h2>Image Card Gallery</h2>
-  <button class="btn" onclick="openPopup()">Upload Image Card</button>
-</header>
+  <header>
+    <h1>Image Cards Gallery</h1>
+  </header>
 
-<div id="gallery"></div>
+  <main class="gallery" id="gallery"></main>
 
-<!-- Upload Popup -->
-<div id="popup">
-  <div id="popupContent">
-    <h3>Add Image Card</h3>
-    <input type="text" id="title" placeholder="Title" />
-    <input type="text" id="tags" placeholder="Tags (comma separated)" />
-    <textarea id="relatedLinks" placeholder="Paste 1 main image and up to 10 related image URLs (one per line)" rows="6"></textarea>
-    <button class="btn" onclick="addCard()">Add</button>
-    <button class="btn" onclick="closePopup()">Cancel</button>
+  <!-- Add Button -->
+  <button class="add-btn" onclick="openPopup()">＋</button>
+
+  <!-- Popup -->
+  <div class="popup" id="popup">
+    <div class="popup-content">
+      <h3>Add Image Card</h3>
+      <input id="title" placeholder="Title" />
+      <input id="tags" placeholder="Tags (comma separated)" />
+      <textarea id="relatedLinks" rows="5" placeholder="Image URLs (1 per line)"></textarea>
+      <button id="addBtn">Add</button>
+      <button onclick="closePopup()">Cancel</button>
+    </div>
   </div>
-</div>
 
-<!-- Supabase JS -->
-<!-- Supabase JS -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js"></script>
-<script>
-  let supabase;
+  <!-- Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js"></script>
+  <script>
+    let supabase;
 
-  // Only run once the page AND the Supabase library have loaded
-  window.onload = async function () {
-    const supabaseUrl = 'https://fwzffqwjprjuwidkrckb.supabase.co';
-    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
+    window.onload = async function () {
+      const supabaseUrl = 'https://fwzffqwjprjuwidkrckb.supabase.co';
+      const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
 
-    // ✅ NOW we create the Supabase client
-    supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+      supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
 
-    // ✅ Load existing cards from Supabase
-    const { data: cards, error } = await supabase
-      .from('cards')
-      .select('*')
-      .order('created_at', { ascending: false });
+      // Bind the button after supabase is ready
+      document.getElementById('addBtn').addEventListener('click', addCard);
 
-    if (error) {
-      console.error('Failed to load cards:', error.message);
-      return;
-    }
+      const { data: cards, error } = await supabase
+        .from('cards')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    cards.forEach(addCardToPage);
-  };
+      if (error) {
+        console.error('Failed to load cards:', error.message);
+        return;
+      }
 
-  async function addCard() {
-    const title = document.getElementById('title').value.trim();
-    const tags = document.getElementById('tags').value.trim();
-    const links = document.getElementById('relatedLinks').value.trim().split('\n').map(l => l.trim()).filter(Boolean);
-
-    if (!title || links.length === 0) {
-      alert("Please enter a title and at least one image link.");
-      return;
-    }
-
-    const newCard = {
-      title,
-      tags,
-      main_image_url: links[0],
-      related_images: links
+      cards.forEach(addCardToPage);
     };
 
-    if (!supabase) {
-      alert("Supabase is not ready yet. Try again.");
-      return;
+    async function addCard() {
+      const title = document.getElementById('title').value.trim();
+      const tags = document.getElementById('tags').value.trim();
+      const links = document.getElementById('relatedLinks').value.trim().split('\n').map(link => link.trim()).filter(Boolean);
+
+      if (!title || links.length === 0) {
+        alert("Please enter a title and at least one image link.");
+        return;
+      }
+
+      if (!supabase) {
+        alert("Supabase is not ready yet. Try again.");
+        return;
+      }
+
+      const newCard = {
+        title,
+        tags,
+        main_image_url: links[0],
+        related_images: links
+      };
+
+      const { data, error } = await supabase.from('cards').insert([newCard]);
+
+      if (error) {
+        alert("Error saving to Supabase: " + error.message);
+        return;
+      }
+
+      addCardToPage(newCard);
+      closePopup();
+
+      // clear fields
+      document.getElementById('title').value = '';
+      document.getElementById('tags').value = '';
+      document.getElementById('relatedLinks').value = '';
     }
 
-    const { data, error } = await supabase.from('cards').insert([newCard]);
-
-    if (error) {
-      alert("Error saving to Supabase: " + error.message);
-      return;
+    function addCardToPage(card) {
+      const cardElem = document.createElement('div');
+      cardElem.className = 'card';
+      cardElem.innerHTML = `
+        <img src="${card.main_image_url}" alt="${card.title}" />
+        <h4>${card.title}</h4>
+        <div class="tags">${card.tags}</div>
+        <div class="related">
+          ${card.related_images.map(link => `<img src="${link}" alt="related" />`).join('')}
+        </div>
+      `;
+      document.getElementById('gallery').appendChild(cardElem);
     }
 
-    addCardToPage(newCard);
-    closePopup();
-    document.getElementById('title').value = '';
-    document.getElementById('tags').value = '';
-    document.getElementById('relatedLinks').value = '';
-  }
+    function openPopup() {
+      document.getElementById('popup').style.display = 'flex';
+    }
 
-  function addCardToPage(card) {
-    const cardElem = document.createElement('div');
-    cardElem.className = 'card';
-    cardElem.innerHTML = `
-      <img src="${card.main_image_url}" alt="${card.title}" />
-      <h4>${card.title}</h4>
-      <div class="tags">${card.tags}</div>
-      <div class="related">
-        ${card.related_images.map(link => `<img src="${link}" alt="related" />`).join('')}
-      </div>
-    `;
-    document.getElementById('gallery').appendChild(cardElem);
-  }
-
-  function openPopup() {
-    document.getElementById('popup').style.display = 'flex';
-  }
-
-  function closePopup() {
-    document.getElementById('popup').style.display = 'none';
-  }
-</script>
-
+    function closePopup() {
+      document.getElementById('popup').style.display = 'none';
+    }
+  </script>
 </body>
 </html>
