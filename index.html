@@ -327,9 +327,38 @@
       });
 
       try {
-        const { data, error } = await supabase.from('cards').select('*').limit(1);
-        if (error) throw error;
-        console.log("Supabase connection test successful", data);
+        // First check if tags table exists by trying to select from it
+        const { data: tags, error: tagsError } = await supabase
+          .from('tags')
+          .select('*')
+          .limit(1);
+        
+        if (tagsError && tagsError.code !== '42P01') { // Ignore "relation does not exist" error
+          throw tagsError;
+        }
+        
+        // If tags table doesn't exist, create it
+        if (tagsError && tagsError.code === '42P01') {
+          console.log("Tags table doesn't exist, creating...");
+          const { error: createError } = await supabase
+            .from('tags')
+            .insert([{ name: 'Nature' }, { name: 'City' }, { name: 'Abstract' }, 
+                    { name: 'Portrait' }, { name: 'Landscape' }]);
+          
+          if (createError) throw createError;
+        }
+
+        // Check if cards table exists
+        const { data: cards, error: cardsError } = await supabase
+          .from('cards')
+          .select('*')
+          .limit(1);
+        
+        if (cardsError && cardsError.code !== '42P01') {
+          throw cardsError;
+        }
+
+        console.log("Supabase connection test successful");
       } catch (error) {
         console.error("Supabase connection failed:", error);
         alert("Failed to connect to Supabase. Check console for details.");
@@ -347,29 +376,44 @@
 
     async function loadTags() {
       try {
-        // In a real app, you'd have a separate 'tags' table in Supabase
-        // For now, we'll extract tags from existing cards
-        const { data: cards, error } = await supabase
-          .from('cards')
-          .select('tags');
+        const { data: tags, error } = await supabase
+          .from('tags')
+          .select('name')
+          .order('name', { ascending: true });
         
         if (error) throw error;
 
-        // Extract all unique tags
-        const tagsSet = new Set();
-        cards.forEach(card => {
-          if (card.tags) {
-            card.tags.split(',').forEach(tag => {
-              const trimmedTag = tag.trim();
-              if (trimmedTag) tagsSet.add(trimmedTag);
-            });
-          }
-        });
-
-        allTags = Array.from(tagsSet).sort();
+        allTags = tags.map(tag => tag.name);
         updateTagDisplays();
       } catch (error) {
         console.error("Error loading tags:", error);
+      }
+    }
+
+    async function addNewTag() {
+      const newTagInput = document.getElementById('newTagInput');
+      const newTag = newTagInput.value.trim();
+      
+      if (!newTag) return;
+      
+      try {
+        // Check if tag already exists
+        if (!allTags.includes(newTag)) {
+          const { error } = await supabase
+            .from('tags')
+            .insert([{ name: newTag }]);
+          
+          if (error) throw error;
+          
+          allTags.push(newTag);
+          allTags.sort();
+          updateTagDisplays();
+        }
+        
+        newTagInput.value = '';
+      } catch (error) {
+        console.error("Error adding new tag:", error);
+        alert("Failed to add new tag. Check console for details.");
       }
     }
 
@@ -400,21 +444,6 @@
     function addTagToCommon(tag) {
       const newTagInput = document.getElementById('newTagInput');
       newTagInput.value = tag;
-    }
-
-    async function addNewTag() {
-      const newTagInput = document.getElementById('newTagInput');
-      const newTag = newTagInput.value.trim();
-      
-      if (!newTag) return;
-      
-      if (!allTags.includes(newTag)) {
-        allTags.push(newTag);
-        allTags.sort();
-        updateTagDisplays();
-      }
-      
-      newTagInput.value = '';
     }
 
     function addTagToSelection() {
