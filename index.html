@@ -138,134 +138,121 @@
   </div>
 
   <!-- Supabase JS -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/+esm"></script>
+  <!-- Load Supabase correctly -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js"></script>
 
- <script>
-    let supabase;
-    const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
+<script>
+  let supabase;
 
-    window.onload = async function () {
-      // Initialize Supabase with debug logging
-      console.log("Initializing Supabase...");
-      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-      supabase.auth.onAuthStateChange((event, session) => {
-        console.log("Auth state changed:", event, session);
-      });
+  const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
 
-      // Test connection
-      try {
-        const { data, error } = await supabase.from('cards').select('*').limit(1);
-        if (error) throw error;
-        console.log("Supabase connection test successful", data);
-      } catch (error) {
-        console.error("Supabase connection failed:", error);
-        alert("Failed to connect to Supabase. Check console for details.");
-      }
+  window.onload = async function () {
+    console.log("Initializing Supabase...");
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-      // Bind form submission
-      document.getElementById('cardForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        console.log("Form submitted");
-        await addCard();
-      });
+    supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Auth state changed:", event, session);
+    });
 
-      // Load existing cards
-      await loadCards();
-    };
-
-    async function loadCards() {
-      try {
-        console.log("Loading cards...");
-        const { data: cards, error } = await supabase
-          .from('cards')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-
-        console.log("Cards loaded:", cards);
-        document.getElementById('gallery').innerHTML = ''; // Clear existing
-        cards.forEach(addCardToPage);
-      } catch (error) {
-        console.error("Error loading cards:", error);
-        document.getElementById('errorMessage').textContent = 'Failed to load cards: ' + error.message;
-      }
+    try {
+      const { data, error } = await supabase.from('cards').select('*').limit(1);
+      if (error) throw error;
+      console.log("Supabase connection test successful", data);
+    } catch (error) {
+      console.error("Supabase connection failed:", error);
+      alert("Failed to connect to Supabase. Check console for details.");
     }
 
-    async function addCard() {
-      try {
-        const title = document.getElementById('title').value.trim();
-        const tags = document.getElementById('tags').value.trim();
-        const links = document.getElementById('relatedLinks').value.trim().split('\n').map(link => link.trim()).filter(Boolean);
+    document.getElementById('cardForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      console.log("Form submitted");
+      await addCard();
+    });
 
-        console.log("Attempting to add card:", { title, tags, links });
+    await loadCards();
+  };
 
-        // Validation
-        if (!title) throw new Error("Title is required");
-        if (links.length === 0) throw new Error("At least one image link is required");
-        if (!supabase) throw new Error("Supabase not initialized");
+  async function loadCards() {
+    try {
+      console.log("Loading cards...");
+      const { data: cards, error } = await supabase
+        .from('cards')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-        // Prepare card data
-        const newCard = {
-          title,
-          tags,
-          main_image_url: links[0],
-          related_images: links
-        };
+      if (error) throw error;
 
-        console.log("Inserting card:", newCard);
-        const { data, error } = await supabase.from('cards').insert([newCard]).select();
-
-        if (error) throw error;
-
-        console.log("Insert successful:", data);
-        addCardToPage(data[0]); // Use the returned data which includes id
-        closePopup();
-        resetForm();
-
-        // Force reload from database to ensure consistency
-        await loadCards();
-        
-      } catch (error) {
-        console.error("Error adding card:", error);
-        document.getElementById('errorMessage').textContent = error.message;
-      }
+      document.getElementById('gallery').innerHTML = '';
+      cards.forEach(addCardToPage);
+    } catch (error) {
+      console.error("Error loading cards:", error);
+      document.getElementById('errorMessage').textContent = 'Failed to load cards: ' + error.message;
     }
+  }
 
-    function addCardToPage(card) {
-      console.log("Adding card to page:", card);
-      const cardElem = document.createElement('div');
-      cardElem.className = 'card';
-      cardElem.innerHTML = `
-        <img src="${card.main_image_url}" alt="${card.title}" onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
-        <h4>${card.title}</h4>
-        <div class="tags">${card.tags}</div>
-        <div class="related">
-          ${card.related_images.map(link => 
-            `<img src="${link}" alt="related" onerror="this.src='https://via.placeholder.com/50?text=X'" />`
-          ).join('')}
-        </div>
-      `;
-      document.getElementById('gallery').prepend(cardElem);
-    }
+  async function addCard() {
+    try {
+      const title = document.getElementById('title').value.trim();
+      const tags = document.getElementById('tags').value.trim();
+      const links = document.getElementById('relatedLinks').value.trim().split('\n').map(link => link.trim()).filter(Boolean);
 
-    function resetForm() {
-      document.getElementById('title').value = '';
-      document.getElementById('tags').value = '';
-      document.getElementById('relatedLinks').value = '';
-    }
+      if (!title) throw new Error("Title is required");
+      if (links.length === 0) throw new Error("At least one image link is required");
+      if (!supabase) throw new Error("Supabase not initialized");
 
-    function openPopup() {
-      document.getElementById('popup').style.display = 'flex';
+      const newCard = {
+        title,
+        tags,
+        main_image_url: links[0],
+        related_images: links
+      };
+
+      const { data, error } = await supabase.from('cards').insert([newCard]).select();
+      if (error) throw error;
+
+      addCardToPage(data[0]);
+      closePopup();
       resetForm();
-      document.getElementById('errorMessage').textContent = '';
+      await loadCards();
+    } catch (error) {
+      console.error("Error adding card:", error);
+      document.getElementById('errorMessage').textContent = error.message;
     }
+  }
 
-    function closePopup() {
-      document.getElementById('popup').style.display = 'none';
-    }
-  </script>
+  function addCardToPage(card) {
+    const cardElem = document.createElement('div');
+    cardElem.className = 'card';
+    cardElem.innerHTML = `
+      <img src="${card.main_image_url}" alt="${card.title}" onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
+      <h4>${card.title}</h4>
+      <div class="tags">${card.tags}</div>
+      <div class="related">
+        ${card.related_images.map(link =>
+          `<img src="${link}" alt="related" onerror="this.src='https://via.placeholder.com/50?text=X'" />`
+        ).join('')}
+      </div>
+    `;
+    document.getElementById('gallery').prepend(cardElem);
+  }
+
+  function resetForm() {
+    document.getElementById('title').value = '';
+    document.getElementById('tags').value = '';
+    document.getElementById('relatedLinks').value = '';
+  }
+
+  function openPopup() {
+    document.getElementById('popup').style.display = 'flex';
+    resetForm();
+    document.getElementById('errorMessage').textContent = '';
+  }
+
+  function closePopup() {
+    document.getElementById('popup').style.display = 'none';
+  }
+</script>
+
 </body>
 </html>
