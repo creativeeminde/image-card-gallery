@@ -124,11 +124,17 @@
 
     .gallery {
       display: grid;
-      grid-template-columns: repeat(3, 1fr); /* Changed to exactly 3 columns */
-      gap: 30px; /* Increased gap between cards */
+      grid-template-columns: repeat(3, 1fr);
+      gap: 30px;
     }
 .card {
   position: relative;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.card:hover {
+  transform: scale(1.02);
 }
 
 .card-actions {
@@ -175,30 +181,30 @@
 
     .card img {
       width: 100%;
-      height: 410px; /* Increased image height */
+      height: 300px;
       object-fit: cover;
     }
 
     .card-info {
-      padding: 15px; /* Increased padding */
+      padding: 15px;
     }
 
     .card-info h4 {
-      margin: 0 0 10px 0; /* Increased margin */
-      font-size: 1.2rem; /* Larger font size */
+      margin: 0 0 10px 0;
+      font-size: 1.2rem;
     }
 
     .card-tags {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px; /* Increased gap between tags */
-      margin-top: 10px; /* Increased margin */
+      gap: 8px;
+      margin-top: 10px;
     }
 
     .card-tags span {
       background: #f0f0f0;
       border-radius: 4px;
-      padding: 4px 8px; /* Increased padding */
+      padding: 4px 8px;
       font-size: 0.8rem;
       color: #666;
     }
@@ -217,6 +223,101 @@
       box-shadow: 0 4px 10px rgba(0,0,0,0.3);
     }
 
+    /* Image Viewer Styles */
+    .image-viewer {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.9);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+
+    .image-viewer-content {
+      position: relative;
+      width: 90%;
+      height: 80%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .image-viewer img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    .image-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 20px;
+    }
+
+    .nav-btn {
+      background: rgba(255, 255, 255, 0.3);
+      border: none;
+      color: white;
+      font-size: 2rem;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .nav-btn:hover {
+      background: rgba(255, 255, 255, 0.5);
+    }
+
+    .image-counter {
+      color: white;
+      text-align: center;
+      margin-top: 10px;
+    }
+
+    .image-viewer-close {
+      position: absolute;
+      top: 20px;
+      right: 30px;
+      color: white;
+      font-size: 2rem;
+      cursor: pointer;
+    }
+
+    .image-viewer-footer {
+      position: absolute;
+      bottom: 20px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .upload-related-btn {
+      background: #4caf50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+
+    .upload-related-btn:hover {
+      background: #45a049;
+    }
+
+    /* Popup Styles */
     .popup {
       display: none;
       position: fixed;
@@ -303,7 +404,7 @@
     /* Responsive adjustments */
     @media (max-width: 1200px) {
       .gallery {
-        grid-template-columns: repeat(2, 1fr); /* 2 columns on medium screens */
+        grid-template-columns: repeat(2, 1fr);
       }
     }
 
@@ -313,7 +414,7 @@
       }
       
       .gallery {
-        grid-template-columns: 1fr; /* 1 column on small screens */
+        grid-template-columns: 1fr;
       }
     }
   </style>
@@ -358,7 +459,23 @@
   <!-- Add Button -->
   <button class="add-btn" onclick="openPopup()">＋</button>
 
-  <!-- Popup -->
+  <!-- Image Viewer -->
+  <div class="image-viewer" id="imageViewer">
+    <span class="image-viewer-close" onclick="closeImageViewer()">&times;</span>
+    <div class="image-viewer-content">
+      <img id="viewerImage" src="" alt="">
+      <div class="image-nav">
+        <button class="nav-btn" onclick="prevImage()">&#10094;</button>
+        <button class="nav-btn" onclick="nextImage()">&#10095;</button>
+      </div>
+    </div>
+    <div class="image-counter" id="imageCounter"></div>
+    <div class="image-viewer-footer">
+      <button class="upload-related-btn" onclick="openRelatedImagesPopup()">Upload Related Images</button>
+    </div>
+  </div>
+
+  <!-- Popup for main upload -->
   <div class="popup" id="popup">
     <div class="popup-content">
       <h3>Upload New Image</h3>
@@ -383,6 +500,22 @@
     </div>
   </div>
 
+  <!-- Popup for related images upload -->
+  <div class="popup" id="relatedImagesPopup">
+    <div class="popup-content">
+      <h3>Upload Related Images</h3>
+      <form id="relatedImagesForm">
+        <textarea id="relatedImageUrls" rows="5" placeholder="Enter image URLs, one per line"></textarea>
+        
+        <div id="relatedImagesErrorMessage" class="error-message"></div>
+        <div>
+          <button type="button" onclick="addRelatedImages()">Upload</button>
+          <button type="button" onclick="closeRelatedImagesPopup()">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Supabase JS -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js"></script>
 
@@ -395,6 +528,8 @@
     let allTags = [];
     let currentFilterTag = null;
     let currentlyEditingCardId = null;
+    let currentViewingCard = null;
+    let currentImageIndex = 0;
 
     window.onload = async function () {
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -493,7 +628,6 @@
           .order('created_at', { ascending: false });
 
         if (currentFilterTag) {
-          // Use ilike with % wildcards to match tags within comma-separated values
           query = query.ilike('tags', `%${currentFilterTag}%`);
         }
 
@@ -516,8 +650,8 @@
       
       cardElem.innerHTML = `
         <div class="card-actions">
-          <button class="edit-btn" onclick="startEditCard('${card.id}')">✏️</button>
-          <button class="delete-btn" onclick="deleteCard('${card.id}')">🗑️</button>
+          <button class="edit-btn" onclick="event.stopPropagation(); startEditCard('${card.id}')">✏️</button>
+          <button class="delete-btn" onclick="event.stopPropagation(); deleteCard('${card.id}')">🗑️</button>
         </div>
         <img src="${card.main_image_url}" alt="${card.title}" 
              onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
@@ -530,7 +664,101 @@
           ` : ''}
         </div>
       `;
+      
+      // Add click event to open image viewer
+      cardElem.addEventListener('click', () => openImageViewer(card));
+      
       document.getElementById('gallery').appendChild(cardElem);
+    }
+
+    function openImageViewer(card) {
+      currentViewingCard = card;
+      currentImageIndex = 0;
+      updateViewerImage();
+      document.getElementById('imageViewer').style.display = 'flex';
+    }
+
+    function closeImageViewer() {
+      document.getElementById('imageViewer').style.display = 'none';
+      currentViewingCard = null;
+    }
+
+    function updateViewerImage() {
+      if (!currentViewingCard) return;
+      
+      const images = [currentViewingCard.main_image_url, ...(currentViewingCard.related_images || [])];
+      const viewerImage = document.getElementById('viewerImage');
+      const imageCounter = document.getElementById('imageCounter');
+      
+      if (images.length > 0 && currentImageIndex >= 0 && currentImageIndex < images.length) {
+        viewerImage.src = images[currentImageIndex];
+        imageCounter.textContent = `${currentImageIndex + 1} / ${images.length}`;
+      }
+    }
+
+    function prevImage() {
+      if (!currentViewingCard) return;
+      
+      const images = [currentViewingCard.main_image_url, ...(currentViewingCard.related_images || [])];
+      currentImageIndex = (currentImageIndex - 1 + images.length) % images.length;
+      updateViewerImage();
+    }
+
+    function nextImage() {
+      if (!currentViewingCard) return;
+      
+      const images = [currentViewingCard.main_image_url, ...(currentViewingCard.related_images || [])];
+      currentImageIndex = (currentImageIndex + 1) % images.length;
+      updateViewerImage();
+    }
+
+    function openRelatedImagesPopup() {
+      document.getElementById('relatedImagesPopup').style.display = 'flex';
+      document.getElementById('relatedImageUrls').value = '';
+    }
+
+    function closeRelatedImagesPopup() {
+      document.getElementById('relatedImagesPopup').style.display = 'none';
+    }
+
+    async function addRelatedImages() {
+      const urlsText = document.getElementById('relatedImageUrls').value.trim();
+      if (!urlsText) {
+        document.getElementById('relatedImagesErrorMessage').textContent = "Please enter at least one image URL";
+        return;
+      }
+
+      const urls = urlsText.split('\n').filter(url => url.trim());
+      
+      try {
+        // Get current related images
+        const { data: card, error: fetchError } = await supabase
+          .from('cards')
+          .select('related_images')
+          .eq('id', currentViewingCard.id)
+          .single();
+        
+        if (fetchError) throw fetchError;
+
+        const currentRelatedImages = card.related_images || [];
+        const updatedRelatedImages = [...currentRelatedImages, ...urls];
+
+        // Update the card with new related images
+        const { error } = await supabase
+          .from('cards')
+          .update({ related_images: updatedRelatedImages })
+          .eq('id', currentViewingCard.id);
+        
+        if (error) throw error;
+
+        // Update the current viewing card
+        currentViewingCard.related_images = updatedRelatedImages;
+        closeRelatedImagesPopup();
+        updateViewerImage();
+      } catch (error) {
+        console.error("Error adding related images:", error);
+        document.getElementById('relatedImagesErrorMessage').textContent = "Failed to add related images";
+      }
     }
 
     async function startEditCard(cardId) {
