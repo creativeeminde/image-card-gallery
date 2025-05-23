@@ -809,9 +809,9 @@
       }
     }
 
-    async function loadCards() {
+   async function loadCards() {
       try {
-        // First fetch all cards
+        // First fetch all cards with their related images
         let { data: cards, error } = await supabase
           .from('cards')
           .select('*')
@@ -819,38 +819,93 @@
         
         if (error) throw error;
 
-        // If no filter tag, display all cards
+        // If no filter tag, display all main cards as before
         if (!currentFilterTag) {
           document.getElementById('gallery').innerHTML = '';
           cards.forEach(card => addCardToPage(card));
           return;
         }
 
-        // Filter cards client-side to match the tag
-        const filteredCards = cards.filter(card => {
-          // Check main tags
+        document.getElementById('gallery').innerHTML = '';
+
+        // We'll collect all matching images (both main and related)
+        const matchingImages = [];
+
+        cards.forEach(card => {
+          // Check if main card has the tag
           const mainTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
-          if (mainTags.includes(currentFilterTag)) {
-            return true;
+          const mainCardHasTag = mainTags.includes(currentFilterTag);
+
+          // Check related images
+          if (card.related_images_with_tags) {
+            card.related_images_with_tags.forEach(relatedImage => {
+              const relatedTags = relatedImage.tags ? relatedImage.tags.split(',').map(t => t.trim()) : [];
+              if (relatedTags.includes(currentFilterTag)) {
+                // Add the related image to our matches
+                matchingImages.push({
+                  type: 'related',
+                  url: relatedImage.url,
+                  tags: relatedImage.tags,
+                  parentCard: card
+                });
+              }
+            });
           }
 
-          // Check related image tags
-          if (card.related_images_with_tags) {
-            for (const img of card.related_images_with_tags) {
-              if (img.tags) {
-                const imgTags = img.tags.split(',').map(t => t.trim());
-                if (imgTags.includes(currentFilterTag)) {
-                  return true;
-                }
-              }
-            }
+          // If main card has the tag, add it to matches
+          if (mainCardHasTag) {
+            matchingImages.push({
+              type: 'main',
+              card: card
+            });
           }
-          
-          return false;
         });
 
-        document.getElementById('gallery').innerHTML = '';
-        filteredCards.forEach(card => addCardToPage(card));
+        // Display all matching images
+        if (matchingImages.length === 0) {
+          document.getElementById('gallery').innerHTML = '<p>No images found with this tag</p>';
+          return;
+        }
+
+        matchingImages.forEach(match => {
+          if (match.type === 'main') {
+            // Show the main card
+            addCardToPage(match.card);
+          } else {
+            // Show the related image as a standalone card
+            const cardElem = document.createElement('div');
+            cardElem.className = 'card';
+            
+            const tags = match.tags ? match.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+            
+            cardElem.innerHTML = `
+              <img src="${match.url}" alt="Related image" 
+                   onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
+              <div class="card-info">
+                <small>From: ${match.parentCard.title}</small>
+                ${tags.length > 0 ? `
+                <div class="card-tags">
+                  ${tags.map(tag => `<span class="tag-bubble">${tag}</span>`).join('')}
+                </div>
+                ` : ''}
+              </div>
+            `;
+            
+            // Clicking opens the parent card's viewer at this image
+            cardElem.addEventListener('click', () => {
+              openImageViewer(match.parentCard);
+              // Find the index of this related image
+              const index = match.parentCard.related_images.indexOf(match.url);
+              if (index >= 0) {
+                currentImageIndex = index + 1; // +1 because main image is index 0
+                updateViewerImage();
+              }
+            });
+            
+            document.getElementById('gallery').appendChild(cardElem);
+          }
+        });
+
       } catch (error) {
         console.error("Error loading cards:", error);
       }
