@@ -918,15 +918,6 @@
       
       const tags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
       
-      // Get all unique tags from related images
-      const relatedTags = card.related_images_with_tags 
-        ? [...new Set(
-            card.related_images_with_tags.flatMap(img => 
-              img.tags ? img.tags.split(',').map(t => t.trim()) : []
-            )
-          )]
-        : [];
-      
       cardElem.innerHTML = `
         <div class="card-actions">
           <button class="edit-btn" onclick="event.stopPropagation(); startEditCard('${card.id}')">✏️</button>
@@ -941,21 +932,102 @@
             ${tags.map(tag => `<span class="tag-bubble">${tag}</span>`).join('')}
           </div>
           ` : ''}
-          ${relatedTags.length > 0 ? `
-          <div class="related-image-tags">
-            <small>Related image tags:</small>
-            ${relatedTags.map(tag => `<span class="related-tag-bubble">${tag}</span>`).join('')}
-          </div>
-          ` : ''}
         </div>
       `;
       
-      // Add click event to open image viewer
       cardElem.addEventListener('click', () => openImageViewer(card));
-      
       document.getElementById('gallery').appendChild(cardElem);
     }
 
+    async function loadCards() {
+      try {
+        // First fetch all cards with their related images
+        let { data: cards, error } = await supabase
+          .from('cards')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+
+        // If no filter tag, display all main cards as before
+        if (!currentFilterTag) {
+          document.getElementById('gallery').innerHTML = '';
+          cards.forEach(card => addCardToPage(card));
+          return;
+        }
+
+        document.getElementById('gallery').innerHTML = '';
+
+        // We'll collect all matching images (both main and related)
+        const matchingImages = [];
+
+        cards.forEach(card => {
+          // Check if main card has the tag
+          const mainTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
+          const mainCardHasTag = mainTags.includes(currentFilterTag);
+
+          // Check related images
+          if (card.related_images_with_tags) {
+            card.related_images_with_tags.forEach(relatedImage => {
+              const relatedTags = relatedImage.tags ? relatedImage.tags.split(',').map(t => t.trim()) : [];
+              if (relatedTags.includes(currentFilterTag)) {
+                matchingImages.push({
+                  type: 'related',
+                  url: relatedImage.url,
+                  parentCard: card
+                });
+              }
+            });
+          }
+
+          // If main card has the tag, add it to matches
+          if (mainCardHasTag) {
+            matchingImages.push({
+              type: 'main',
+              card: card
+            });
+          }
+        });
+
+        // Display all matching images
+        if (matchingImages.length === 0) {
+          document.getElementById('gallery').innerHTML = '<p>No images found with this tag</p>';
+          return;
+        }
+
+        matchingImages.forEach(match => {
+          if (match.type === 'main') {
+            addCardToPage(match.card);
+          } else {
+            // Show the related image as a standalone card
+            const cardElem = document.createElement('div');
+            cardElem.className = 'card';
+            
+            cardElem.innerHTML = `
+              <img src="${match.url}" alt="Related image" 
+                   onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
+              <div class="card-info">
+                <small>From: ${match.parentCard.title}</small>
+              </div>
+            `;
+            
+            cardElem.addEventListener('click', () => {
+              openImageViewer(match.parentCard);
+              const index = match.parentCard.related_images.indexOf(match.url);
+              if (index >= 0) {
+                currentImageIndex = index + 1;
+                updateViewerImage();
+              }
+            });
+            
+            document.getElementById('gallery').appendChild(cardElem);
+          }
+        });
+
+      } catch (error) {
+        console.error("Error loading cards:", error);
+      }
+    }
     async function loadRelatedImages(tag = null) {
       if (!currentViewingCard) return;
       
