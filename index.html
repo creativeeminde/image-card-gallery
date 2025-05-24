@@ -690,255 +690,147 @@
     const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
 
-    let selectedTags = [];
-    let allTags = [];
-    let currentFilterTag = null;
-    let currentlyEditingCardId = null;
-    let currentViewingCard = null;
-    let currentImageIndex = 0;
-    let currentRelatedImageTags = [];
-    let currentRelatedImageIndex = 0;
-    let currentFilterRelatedTag = null;
+let selectedTags = [];
+let allTags = [];
+let currentFilterTag = null;
+let currentlyEditingCardId = null;
+let currentViewingCard = null;
+let currentImageIndex = 0;
+let currentRelatedImageTags = [];
+let currentRelatedImageIndex = 0;
+let currentFilterRelatedTag = null;
 
-    // Zoom and pan variables
-    let scale = 1;
-    let posX = 0;
-    let posY = 0;
-    let isDragging = false;
-    let startX, startY;
-    let initialPinchDistance = null;
-    let lastZoom = 1;
+// Zoom and pan variables
+let scale = 1;
+let posX = 0;
+let posY = 0;
+let isDragging = false;
+let startX, startY;
+let initialPinchDistance = null;
+let lastZoom = 1;
 
-    window.onload = async function () {
-      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+window.onload = async function () {
+  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-      try {
-        const { data, error } = await supabase.from('cards').select('*').limit(1);
-        if (error && error.code !== '42P01') throw error;
-      } catch (error) {
-        console.error("Supabase connection failed:", error);
-        alert("Database connection error. Check console for details.");
+  try {
+    const { data, error } = await supabase.from('cards').select('*').limit(1);
+    if (error && error.code !== '42P01') throw error;
+  } catch (error) {
+    console.error("Supabase connection failed:", error);
+    alert("Database connection error. Check console for details.");
+  }
+
+  document.getElementById('cardForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (currentlyEditingCardId) {
+      await updateCard();
+    } else {
+      await addCard();
+    }
+  });
+
+  await loadTags();
+  await loadFilterTags();
+  await loadCards();
+};
+
+async function loadTags() {
+  try {
+    const { data: tags, error } = await supabase
+      .from('tags')
+      .select('name')
+      .order('name', { ascending: true });
+
+    if (error && error.code === '42P01') {
+      await supabase.rpc('create_tags_table');
+      await supabase.from('tags').insert([
+        { name: 'Nature' }, { name: 'City' }, { name: 'Abstract' },
+        { name: 'Portrait' }, { name: 'Landscape' }
+      ]);
+      return loadTags();
+    }
+
+    if (error) throw error;
+    allTags = tags.map(tag => tag.name);
+    updateTagDisplays();
+  } catch (error) {
+    console.error("Error loading tags:", error);
+  }
+}
+
+async function loadFilterTags() {
+  try {
+    const { data: cards, error: cardsError } = await supabase
+      .from('cards')
+      .select('tags, related_images_with_tags');
+    
+    if (cardsError) throw cardsError;
+
+    const allMainTags = new Set();
+    const allRelatedTags = new Set();
+
+    cards.forEach(card => {
+      if (card.tags) {
+        card.tags.split(',').forEach(tag => {
+          if (tag.trim()) allMainTags.add(tag.trim());
+        });
       }
+      
+      if (card.related_images_with_tags) {
+        card.related_images_with_tags.forEach(img => {
+          if (img.tags) {
+            img.tags.split(',').forEach(tag => {
+              if (tag.trim()) allRelatedTags.add(tag.trim());
+            });
+          }
+        });
+      }
+    });
 
-      document.getElementById('cardForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        if (currentlyEditingCardId) {
-          await updateCard();
-        } else {
-          await addCard();
-        }
-      });
+    const allTags = [...allMainTags, ...allRelatedTags];
+    const uniqueTags = [...new Set(allTags)].sort();
 
-      await loadTags();
-      await loadFilterTags();
-      await loadCards();
+    const filterContainer = document.getElementById('filterTags');
+    filterContainer.innerHTML = '';
+
+    const allButton = document.createElement('button');
+    allButton.textContent = 'All';
+    allButton.className = !currentFilterTag ? 'active' : '';
+    allButton.onclick = () => {
+      currentFilterTag = null;
+      loadCards();
+      document.querySelectorAll('#filterTags button').forEach(btn => btn.classList.remove('active'));
+      allButton.classList.add('active');
     };
+    filterContainer.appendChild(allButton);
 
-    async function loadTags() {
-      try {
-        const { data: tags, error } = await supabase
-          .from('tags')
-          .select('name')
-          .order('name', { ascending: true });
+    uniqueTags.forEach(tag => {
+      const tagButton = document.createElement('button');
+      tagButton.textContent = tag;
+      tagButton.className = currentFilterTag === tag ? 'active' : '';
+      tagButton.onclick = () => {
+        currentFilterTag = currentFilterTag === tag ? null : tag;
+        loadCards();
+        document.querySelectorAll('#filterTags button').forEach(btn => btn.classList.remove('active'));
+        currentFilterTag ? tagButton.classList.add('active') : allButton.classList.add('active');
+      };
+      filterContainer.appendChild(tagButton);
+    });
+  } catch (error) {
+    console.error("Error loading filter tags:", error);
+  }
+}
 
-        if (error && error.code === '42P01') {
-          await supabase.rpc('create_tags_table');
-          await supabase.from('tags').insert([
-            { name: 'Nature' }, { name: 'City' }, { name: 'Abstract' },
-            { name: 'Portrait' }, { name: 'Landscape' }
-          ]);
-          return loadTags();
-        }
-
-        if (error) throw error;
-        allTags = tags.map(tag => tag.name);
-        updateTagDisplays();
-      } catch (error) {
-        console.error("Error loading tags:", error);
-      }
-    }
-
-    async function loadFilterTags() {
-      try {
-        // Get all tags from both main tags and related images
-        const { data: cards, error: cardsError } = await supabase
-          .from('cards')
-          .select('tags, related_images_with_tags');
-        
-        if (cardsError) throw cardsError;
-
-        // Extract all unique tags
-        const allMainTags = new Set();
-        const allRelatedTags = new Set();
-
-        cards.forEach(card => {
-          // Main tags
-          if (card.tags) {
-            card.tags.split(',').forEach(tag => {
-              if (tag.trim()) allMainTags.add(tag.trim());
-            });
-          }
-          
-          // Related image tags
-          if (card.related_images_with_tags) {
-            card.related_images_with_tags.forEach(img => {
-              if (img.tags) {
-                img.tags.split(',').forEach(tag => {
-                  if (tag.trim()) allRelatedTags.add(tag.trim());
-                });
-              }
-            });
-          }
-        });
-
-        // Combine all tags
-        const allTags = [...allMainTags, ...allRelatedTags];
-        const uniqueTags = [...new Set(allTags)].sort();
-
-        const filterContainer = document.getElementById('filterTags');
-        filterContainer.innerHTML = '';
-
-        const allButton = document.createElement('button');
-        allButton.textContent = 'All';
-        allButton.className = !currentFilterTag ? 'active' : '';
-        allButton.onclick = () => {
-          currentFilterTag = null;
-          loadCards();
-          document.querySelectorAll('#filterTags button').forEach(btn => btn.classList.remove('active'));
-          allButton.classList.add('active');
-        };
-        filterContainer.appendChild(allButton);
-
-        uniqueTags.forEach(tag => {
-          const tagButton = document.createElement('button');
-          tagButton.textContent = tag;
-          tagButton.className = currentFilterTag === tag ? 'active' : '';
-          tagButton.onclick = () => {
-            currentFilterTag = currentFilterTag === tag ? null : tag;
-            loadCards();
-            document.querySelectorAll('#filterTags button').forEach(btn => btn.classList.remove('active'));
-            currentFilterTag ? tagButton.classList.add('active') : allButton.classList.add('active');
-          };
-          filterContainer.appendChild(tagButton);
-        });
-      } catch (error) {
-        console.error("Error loading filter tags:", error);
-      }
-    }
-
-   async function loadCards() {
-      try {
-        // First fetch all cards with their related images
-        let { data: cards, error } = await supabase
-          .from('cards')
-          .select('*')
-          .order('created_at', { ascending: false });
-        
-        if (error) throw error;
-
-        // If no filter tag, display all main cards as before
-        if (!currentFilterTag) {
-          document.getElementById('gallery').innerHTML = '';
-          cards.forEach(card => addCardToPage(card));
-          return;
-        }
-
-        document.getElementById('gallery').innerHTML = '';
-
-        // We'll collect all matching images (both main and related)
-        const matchingImages = [];
-
-        cards.forEach(card => {
-          // Check if main card has the tag
-          const mainTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
-          const mainCardHasTag = mainTags.includes(currentFilterTag);
-
-          // Check related images
-          if (card.related_images_with_tags) {
-            card.related_images_with_tags.forEach(relatedImage => {
-              const relatedTags = relatedImage.tags ? relatedImage.tags.split(',').map(t => t.trim()) : [];
-              if (relatedTags.includes(currentFilterTag)) {
-                // Add the related image to our matches
-                matchingImages.push({
-                  type: 'related',
-                  url: relatedImage.url,
-                  tags: relatedImage.tags,
-                  parentCard: card
-                });
-              }
-            });
-          }
-
-          // If main card has the tag, add it to matches
-          if (mainCardHasTag) {
-            matchingImages.push({
-              type: 'main',
-              card: card
-            });
-          }
-        });
-
-        // Display all matching images
-        if (matchingImages.length === 0) {
-          document.getElementById('gallery').innerHTML = '<p>No images found with this tag</p>';
-          return;
-        }
-
-        matchingImages.forEach(match => {
-          if (match.type === 'main') {
-            // Show the main card
-            addCardToPage(match.card);
-          } else {
-            // Show the related image as a standalone card
-            const cardElem = document.createElement('div');
-            cardElem.className = 'card';
-            
-            const tags = match.tags ? match.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
-            
-            cardElem.innerHTML = `
-              <img src="${match.url}" alt="Related image" 
-                   onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
-              <div class="card-info">
-                <small>From: ${match.parentCard.title}</small>
-                ${tags.length > 0 ? `
-                <div class="card-tags">
-                  ${tags.map(tag => `<span class="tag-bubble">${tag}</span>`).join('')}
-                </div>
-                ` : ''}
-              </div>
-            `;
-            
-            // Clicking opens the parent card's viewer at this image
-            cardElem.addEventListener('click', () => {
-              openImageViewer(match.parentCard);
-              // Find the index of this related image
-              const index = match.parentCard.related_images.indexOf(match.url);
-              if (index >= 0) {
-                currentImageIndex = index + 1; // +1 because main image is index 0
-                updateViewerImage();
-              }
-            });
-            
-            document.getElementById('gallery').appendChild(cardElem);
-          }
-        });
-
-      } catch (error) {
-        console.error("Error loading cards:", error);
-      }
-    }
-
-   function addCardToPage(card) {
+function addCardToPage(card) {
   const cardElem = document.createElement('div');
   cardElem.className = 'card';
   cardElem.dataset.cardId = card.id;
   
   const tags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
   
-  // Use ImageKit's quality transformation in the URL
   const mainImageUrl = card.main_image_url.includes('ik.imagekit.io') ? 
-    `${card.main_image_url}?tr=q-90` : // Add quality parameter for ImageKit URLs
-    card.main_image_url; // Keep original URL for non-ImageKit images
+    `${card.main_image_url}?tr=q-90` : 
+    card.main_image_url;
   
   cardElem.innerHTML = `
     <div class="card-actions">
@@ -961,248 +853,283 @@
   document.getElementById('gallery').appendChild(cardElem);
 }
 
-    async function loadCards() {
-      try {
-        // First fetch all cards with their related images
-        let { data: cards, error } = await supabase
-          .from('cards')
-          .select('*')
-          .order('created_at', { ascending: false });
-        
-        if (error) throw error;
+async function loadCards() {
+  try {
+    let { data: cards, error } = await supabase
+      .from('cards')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
 
-        // If no filter tag, display all main cards as before
-        if (!currentFilterTag) {
-          document.getElementById('gallery').innerHTML = '';
-          cards.forEach(card => addCardToPage(card));
-          return;
-        }
+    if (!currentFilterTag) {
+      document.getElementById('gallery').innerHTML = '';
+      cards.forEach(card => addCardToPage(card));
+      return;
+    }
 
-        document.getElementById('gallery').innerHTML = '';
+    document.getElementById('gallery').innerHTML = '';
 
-        // We'll collect all matching images (both main and related)
-        const matchingImages = [];
+    const matchingImages = [];
 
-        cards.forEach(card => {
-          // Check if main card has the tag
-          const mainTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
-          const mainCardHasTag = mainTags.includes(currentFilterTag);
+    cards.forEach(card => {
+      const mainTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
+      const mainCardHasTag = mainTags.includes(currentFilterTag);
 
-          // Check related images
-          if (card.related_images_with_tags) {
-            card.related_images_with_tags.forEach(relatedImage => {
-              const relatedTags = relatedImage.tags ? relatedImage.tags.split(',').map(t => t.trim()) : [];
-              if (relatedTags.includes(currentFilterTag)) {
-                matchingImages.push({
-                  type: 'related',
-                  url: relatedImage.url,
-                  parentCard: card
-                });
-              }
-            });
-          }
-
-          // If main card has the tag, add it to matches
-          if (mainCardHasTag) {
+      if (card.related_images_with_tags) {
+        card.related_images_with_tags.forEach(relatedImage => {
+          const relatedTags = relatedImage.tags ? relatedImage.tags.split(',').map(t => t.trim()) : [];
+          if (relatedTags.includes(currentFilterTag)) {
             matchingImages.push({
-              type: 'main',
-              card: card
+              type: 'related',
+              url: relatedImage.url,
+              tags: relatedImage.tags,
+              parentCard: card
             });
           }
         });
-
-        // Display all matching images
-        if (matchingImages.length === 0) {
-          document.getElementById('gallery').innerHTML = '<p>No images found with this tag</p>';
-          return;
-        }
-
-        matchingImages.forEach(match => {
-          if (match.type === 'main') {
-            addCardToPage(match.card);
-          } else {
-            // Show the related image as a standalone card
-            const cardElem = document.createElement('div');
-            cardElem.className = 'card';
-            
-            cardElem.innerHTML = `
-  <img src="${match.url.includes('ik.imagekit.io') ? `${match.url}?tr=q-80,w-600` : match.url}" 
-       alt="Related image" 
-       onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'"
-       loading="lazy" />
-  <div class="card-info">
-    <small>From: ${match.parentCard.title}</small>
-  </div>
-`;
-            
-            cardElem.addEventListener('click', () => {
-              openImageViewer(match.parentCard);
-              const index = match.parentCard.related_images.indexOf(match.url);
-              if (index >= 0) {
-                currentImageIndex = index + 1;
-                updateViewerImage();
-              }
-            });
-            
-            document.getElementById('gallery').appendChild(cardElem);
-          }
-        });
-
-      } catch (error) {
-        console.error("Error loading cards:", error);
       }
+
+      if (mainCardHasTag) {
+        matchingImages.push({
+          type: 'main',
+          card: card
+        });
+      }
+    });
+
+    if (matchingImages.length === 0) {
+      document.getElementById('gallery').innerHTML = '<p>No images found with this tag</p>';
+      return;
     }
-    async function loadRelatedImages(tag = null) {
-      if (!currentViewingCard) return;
-      
-      try {
-        const images = currentViewingCard.related_images || [];
-        const relatedImagesWithTags = currentViewingCard.related_images_with_tags || [];
+
+    matchingImages.forEach(match => {
+      if (match.type === 'main') {
+        addCardToPage(match.card);
+      } else {
+        const cardElem = document.createElement('div');
+        cardElem.className = 'card';
         
-        document.getElementById('relatedImagesGallery').innerHTML = '';
+        const tags = match.tags ? match.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
         
-        if (images.length === 0) {
-          document.getElementById('relatedImagesSection').style.display = 'none';
-          return;
-        }
+        cardElem.innerHTML = `
+          <img src="${match.url}" alt="Related image" 
+               onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
+          <div class="card-info">
+            <small>From: ${match.parentCard.title}</small>
+            ${tags.length > 0 ? `
+            <div class="card-tags">
+              ${tags.map(tag => `<span class="tag-bubble">${tag}</span>`).join('')}
+            </div>
+            ` : ''}
+          </div>
+        `;
         
-        document.getElementById('relatedImagesSection').style.display = 'block';
-        
-        // Load filter tags for related images
-        const allRelatedTags = [];
-        relatedImagesWithTags.forEach(img => {
-          if (img.tags) {
-            img.tags.split(',').forEach(tag => {
-              if (tag.trim() && !allRelatedTags.includes(tag.trim())) {
-                allRelatedTags.push(tag.trim());
-              }
-            });
-          }
-        });
-        
-        const filterContainer = document.getElementById('relatedImageFilterTags');
-        filterContainer.innerHTML = '';
-        
-        const allButton = document.createElement('button');
-        allButton.textContent = 'All';
-        allButton.className = !tag ? 'active' : '';
-        allButton.onclick = () => {
-          currentFilterRelatedTag = null;
-          loadRelatedImages();
-          document.querySelectorAll('#relatedImageFilterTags button').forEach(btn => btn.classList.remove('active'));
-          allButton.classList.add('active');
-        };
-        filterContainer.appendChild(allButton);
-        
-        allRelatedTags.forEach(tagName => {
-          const tagButton = document.createElement('button');
-          tagButton.textContent = tagName;
-          tagButton.className = tag === tagName ? 'active' : '';
-          tagButton.onclick = () => {
-            currentFilterRelatedTag = currentFilterRelatedTag === tagName ? null : tagName;
-            loadRelatedImages(currentFilterRelatedTag);
-            document.querySelectorAll('#relatedImageFilterTags button').forEach(btn => btn.classList.remove('active'));
-            currentFilterRelatedTag ? tagButton.classList.add('active') : allButton.classList.add('active');
-          };
-          filterContainer.appendChild(tagButton);
-        });
-        
-        // Filter images by tag if specified
-        const filteredImages = tag 
-          ? relatedImagesWithTags.filter(img => img.tags && img.tags.split(',').map(t => t.trim()).includes(tag))
-          : relatedImagesWithTags;
-        
-        if (filteredImages.length === 0) {
-          document.getElementById('relatedImagesGallery').innerHTML = '<p>No images found with this tag</p>';
-          return;
-        }
-        
-        filteredImages.forEach((img, index) => {
-          const imgElem = document.createElement('div');
-          imgElem.className = 'card';
-          
-          const tags = img.tags ? img.tags.split(',').map(t => t.trim()).filter(t => t) : [];
-          
-         // Inside loadRelatedImages(), update the imgElem.innerHTML to include a delete button:
-imgElem.innerHTML = `
-  <div class="card-actions">
-    <button class="delete-btn" onclick="event.stopPropagation(); deleteRelatedImage('${currentViewingCard.id}', '${img.url}')">🗑️</button>
-  </div>
-  <img src="${img.url}" alt="Related image ${index + 1}" 
-       onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
-  <div class="card-info">
-    ${tags.length > 0 ? `
-    <div class="related-image-tags">
-      ${tags.map(t => `<span class="related-tag-bubble" onclick="event.stopPropagation(); filterAllByRelatedTag('${t}')">${t}</span>`).join('')}
-    </div>
-    ` : ''}
-  </div>
-`;
-          
-          imgElem.addEventListener('click', () => {
-            currentImageIndex = currentViewingCard.related_images.indexOf(img.url);
+        cardElem.addEventListener('click', () => {
+          openImageViewer(match.parentCard);
+          const index = match.parentCard.related_images.indexOf(match.url);
+          if (index >= 0) {
+            currentImageIndex = index + 1;
             updateViewerImage();
-          });
-          
-          document.getElementById('relatedImagesGallery').appendChild(imgElem);
+          }
         });
-      } catch (error) {
-        console.error("Error loading related images:", error);
+        
+        document.getElementById('gallery').appendChild(cardElem);
+      }
+    });
+  } catch (error) {
+    console.error("Error loading cards:", error);
+  }
+}
+
+async function loadRelatedImages(tag = null) {
+  if (!currentViewingCard) return;
+  
+  try {
+    const images = currentViewingCard.related_images || [];
+    const relatedImagesWithTags = currentViewingCard.related_images_with_tags || [];
+    
+    document.getElementById('relatedImagesGallery').innerHTML = '';
+    
+    if (images.length === 0) {
+      document.getElementById('relatedImagesSection').style.display = 'none';
+      return;
+    }
+    
+    document.getElementById('relatedImagesSection').style.display = 'block';
+    
+    const allRelatedTags = [];
+    relatedImagesWithTags.forEach(img => {
+      if (img.tags) {
+        img.tags.split(',').forEach(tag => {
+          if (tag.trim() && !allRelatedTags.includes(tag.trim())) {
+            allRelatedTags.push(tag.trim());
+          }
+        });
+      }
+    });
+    
+    const filterContainer = document.getElementById('relatedImageFilterTags');
+    filterContainer.innerHTML = '';
+    
+    const allButton = document.createElement('button');
+    allButton.textContent = 'All';
+    allButton.className = !tag ? 'active' : '';
+    allButton.onclick = () => {
+      currentFilterRelatedTag = null;
+      loadRelatedImages();
+      document.querySelectorAll('#relatedImageFilterTags button').forEach(btn => btn.classList.remove('active'));
+      allButton.classList.add('active');
+    };
+    filterContainer.appendChild(allButton);
+    
+    allRelatedTags.forEach(tagName => {
+      const tagButton = document.createElement('button');
+      tagButton.textContent = tagName;
+      tagButton.className = tag === tagName ? 'active' : '';
+      tagButton.onclick = () => {
+        currentFilterRelatedTag = currentFilterRelatedTag === tagName ? null : tagName;
+        loadRelatedImages(currentFilterRelatedTag);
+        document.querySelectorAll('#relatedImageFilterTags button').forEach(btn => btn.classList.remove('active'));
+        currentFilterRelatedTag ? tagButton.classList.add('active') : allButton.classList.add('active');
+      };
+      filterContainer.appendChild(tagButton);
+    });
+    
+    const filteredImages = tag 
+      ? relatedImagesWithTags.filter(img => img.tags && img.tags.split(',').map(t => t.trim()).includes(tag))
+      : relatedImagesWithTags;
+    
+    if (filteredImages.length === 0) {
+      document.getElementById('relatedImagesGallery').innerHTML = '<p>No images found with this tag</p>';
+      return;
+    }
+    
+    filteredImages.forEach((img, index) => {
+      const imgElem = document.createElement('div');
+      imgElem.className = 'card';
+      
+      const tags = img.tags ? img.tags.split(',').map(t => t.trim()).filter(t => t) : [];
+      
+      imgElem.innerHTML = `
+        <div class="card-actions">
+          <button class="delete-btn" onclick="event.stopPropagation(); deleteRelatedImage('${currentViewingCard.id}', '${img.url}')">🗑️</button>
+        </div>
+        <img src="${img.url}" alt="Related image ${index + 1}" 
+             onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
+        <div class="card-info">
+          ${tags.length > 0 ? `
+          <div class="related-image-tags">
+            ${tags.map(t => `<span class="related-tag-bubble" onclick="event.stopPropagation(); filterAllByRelatedTag('${t}')">${t}</span>`).join('')}
+          </div>
+          ` : ''}
+        </div>
+      `;
+      
+      imgElem.addEventListener('click', () => {
+        currentImageIndex = currentViewingCard.related_images.indexOf(img.url) + 1;
+        updateViewerImage();
+      });
+      
+      document.getElementById('relatedImagesGallery').appendChild(imgElem);
+    });
+  } catch (error) {
+    console.error("Error loading related images:", error);
+  }
+}
+
+async function deleteRelatedImage(cardId, imageUrl) {
+  if (!confirm("Are you sure you want to delete this related image?")) return;
+  
+  try {
+    const { data: card, error: fetchError } = await supabase
+      .from('cards')
+      .select('related_images, related_images_with_tags')
+      .eq('id', cardId)
+      .single();
+    
+    if (fetchError) throw fetchError;
+
+    const updatedRelatedImages = card.related_images.filter(url => url !== imageUrl);
+    const updatedRelatedImagesWithTags = card.related_images_with_tags.filter(img => img.url !== imageUrl);
+
+    const { error } = await supabase
+      .from('cards')
+      .update({ 
+        related_images: updatedRelatedImages,
+        related_images_with_tags: updatedRelatedImagesWithTags
+      })
+      .eq('id', cardId);
+    
+    if (error) throw error;
+
+    if (currentViewingCard && currentViewingCard.id === cardId) {
+      currentViewingCard.related_images = updatedRelatedImages;
+      currentViewingCard.related_images_with_tags = updatedRelatedImagesWithTags;
+      
+      loadRelatedImages(currentFilterRelatedTag);
+      
+      // If we're currently viewing the deleted image, go to the previous image
+      const currentImageUrl = currentViewingCard.related_images[currentImageIndex - 1];
+      if (currentImageUrl === imageUrl) {
+        prevImage();
       }
     }
+  } catch (error) {
+    console.error("Error deleting related image:", error);
+    alert("Failed to delete related image");
+  }
+}
 
-    function filterAllByRelatedTag(tag) {
-      currentFilterTag = tag;
-      closeImageViewer();
-      loadCards();
-      loadFilterTags(); // Refresh the filter buttons to highlight the selected tag
-    }
+function filterAllByRelatedTag(tag) {
+  currentFilterTag = tag;
+  closeImageViewer();
+  loadCards();
+  loadFilterTags();
+}
 
-    function openImageViewer(card) {
-      currentViewingCard = card;
-      currentImageIndex = 0;
-      resetZoom();
-      updateViewerImage();
-      document.getElementById('imageViewer').style.display = 'flex';
-      loadRelatedImages();
-      
-      // Add event listeners for zoom and pan
-      const viewerImage = document.getElementById('viewerImage');
-      const viewerContent = document.getElementById('viewerContent');
-      
-      viewerImage.addEventListener('mousedown', startDrag);
-      viewerContent.addEventListener('mousemove', dragImage);
-      viewerContent.addEventListener('mouseup', endDrag);
-      viewerContent.addEventListener('mouseleave', endDrag);
-      viewerContent.addEventListener('wheel', handleWheelZoom, { passive: false });
-      
-      // Touch events for mobile
-      viewerImage.addEventListener('touchstart', handleTouchStart, { passive: false });
-      viewerContent.addEventListener('touchmove', handleTouchMove, { passive: false });
-      viewerContent.addEventListener('touchend', handleTouchEnd);
-    }
+function openImageViewer(card) {
+  currentViewingCard = card;
+  currentImageIndex = 0;
+  resetZoom();
+  updateViewerImage();
+  document.getElementById('imageViewer').style.display = 'flex';
+  loadRelatedImages();
+  
+  const viewerImage = document.getElementById('viewerImage');
+  const viewerContent = document.getElementById('viewerContent');
+  
+  viewerImage.addEventListener('mousedown', startDrag);
+  viewerContent.addEventListener('mousemove', dragImage);
+  viewerContent.addEventListener('mouseup', endDrag);
+  viewerContent.addEventListener('mouseleave', endDrag);
+  viewerContent.addEventListener('wheel', handleWheelZoom, { passive: false });
+  
+  viewerImage.addEventListener('touchstart', handleTouchStart, { passive: false });
+  viewerContent.addEventListener('touchmove', handleTouchMove, { passive: false });
+  viewerContent.addEventListener('touchend', handleTouchEnd);
+}
 
-    function closeImageViewer() {
-      // Remove event listeners
-      const viewerImage = document.getElementById('viewerImage');
-      const viewerContent = document.getElementById('viewerContent');
-      
-      viewerImage.removeEventListener('mousedown', startDrag);
-      viewerContent.removeEventListener('mousemove', dragImage);
-      viewerContent.removeEventListener('mouseup', endDrag);
-      viewerContent.removeEventListener('mouseleave', endDrag);
-      viewerContent.removeEventListener('wheel', handleWheelZoom);
-      
-      viewerImage.removeEventListener('touchstart', handleTouchStart);
-      viewerContent.removeEventListener('touchmove', handleTouchMove);
-      viewerContent.removeEventListener('touchend', handleTouchEnd);
-      
-      document.getElementById('imageViewer').style.display = 'none';
-      document.getElementById('relatedImagesSection').style.display = 'none';
-      currentViewingCard = null;
-    }
+function closeImageViewer() {
+  const viewerImage = document.getElementById('viewerImage');
+  const viewerContent = document.getElementById('viewerContent');
+  
+  viewerImage.removeEventListener('mousedown', startDrag);
+  viewerContent.removeEventListener('mousemove', dragImage);
+  viewerContent.removeEventListener('mouseup', endDrag);
+  viewerContent.removeEventListener('mouseleave', endDrag);
+  viewerContent.removeEventListener('wheel', handleWheelZoom);
+  
+  viewerImage.removeEventListener('touchstart', handleTouchStart);
+  viewerContent.removeEventListener('touchmove', handleTouchMove);
+  viewerContent.removeEventListener('touchend', handleTouchEnd);
+  
+  document.getElementById('imageViewer').style.display = 'none';
+  document.getElementById('relatedImagesSection').style.display = 'none';
+  currentViewingCard = null;
+}
 
-    function updateViewerImage() {
+function updateViewerImage() {
   if (!currentViewingCard) return;
   
   const images = [currentViewingCard.main_image_url, ...(currentViewingCard.related_images || [])];
@@ -1211,147 +1138,143 @@ imgElem.innerHTML = `
   
   if (images.length > 0 && currentImageIndex >= 0 && currentImageIndex < images.length) {
     const imageUrl = images[currentImageIndex];
-    // Use high quality version for ImageKit images
     const displayUrl = imageUrl.includes('ik.imagekit.io') ? 
-      `${imageUrl}?tr=q-90` : // Higher quality for viewer
+      `${imageUrl}?tr=q-90` : 
       imageUrl;
     viewerImage.src = displayUrl;
     imageCounter.textContent = `${currentImageIndex + 1} / ${images.length}`;
   }
 }
-    function prevImage() {
-      if (!currentViewingCard) return;
-      
-      const images = [currentViewingCard.main_image_url, ...(currentViewingCard.related_images || [])];
-      currentImageIndex = (currentImageIndex - 1 + images.length) % images.length;
-      resetZoom();
-      updateViewerImage();
-    }
 
-    function nextImage() {
-      if (!currentViewingCard) return;
-      
-      const images = [currentViewingCard.main_image_url, ...(currentViewingCard.related_images || [])];
-      currentImageIndex = (currentImageIndex + 1) % images.length;
-      resetZoom();
-      updateViewerImage();
-    }
+function prevImage() {
+  if (!currentViewingCard) return;
+  
+  const images = [currentViewingCard.main_image_url, ...(currentViewingCard.related_images || [])];
+  currentImageIndex = (currentImageIndex - 1 + images.length) % images.length;
+  resetZoom();
+  updateViewerImage();
+}
 
-    // Zoom functions
-    function zoomIn() {
-      scale *= 1.2;
+function nextImage() {
+  if (!currentViewingCard) return;
+  
+  const images = [currentViewingCard.main_image_url, ...(currentViewingCard.related_images || [])];
+  currentImageIndex = (currentImageIndex + 1) % images.length;
+  resetZoom();
+  updateViewerImage();
+}
+
+// Zoom functions
+function zoomIn() {
+  scale *= 1.2;
+  applyZoom();
+}
+
+function zoomOut() {
+  scale /= 1.2;
+  if (scale < 1) {
+    resetZoom();
+  } else {
+    applyZoom();
+  }
+}
+
+function resetZoom() {
+  scale = 1;
+  posX = 0;
+  posY = 0;
+  applyZoom();
+}
+
+function applyZoom() {
+  const viewerImage = document.getElementById('viewerImage');
+  viewerImage.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+}
+
+// Pan/drag functions
+function startDrag(e) {
+  if (scale <= 1) return;
+  
+  isDragging = true;
+  startX = e.clientX - posX;
+  startY = e.clientY - posY;
+  document.getElementById('viewerImage').classList.add('grabbing');
+  e.preventDefault();
+}
+
+function dragImage(e) {
+  if (!isDragging) return;
+  
+  posX = e.clientX - startX;
+  posY = e.clientY - startY;
+  applyZoom();
+  e.preventDefault();
+}
+
+function endDrag() {
+  isDragging = false;
+  document.getElementById('viewerImage').classList.remove('grabbing');
+}
+
+// Mouse wheel zoom
+function handleWheelZoom(e) {
+  if (e.ctrlKey) {
+    e.preventDefault();
+    const delta = -e.deltaY;
+    
+    if (delta > 0) {
+      zoomIn();
+    } else {
+      zoomOut();
+    }
+  }
+}
+
+// Touch zoom and pan
+function handleTouchStart(e) {
+  if (e.touches.length === 2) {
+    initialPinchDistance = getDistance(
+      e.touches[0].clientX, e.touches[0].clientY,
+      e.touches[1].clientX, e.touches[1].clientY
+    );
+    lastZoom = scale;
+    e.preventDefault();
+  } else if (e.touches.length === 1 && scale > 1) {
+    isDragging = true;
+    startX = e.touches[0].clientX - posX;
+    startY = e.touches[0].clientY - posY;
+    e.preventDefault();
+  }
+}
+
+function handleTouchMove(e) {
+  if (e.touches.length === 2) {
+    const currentDistance = getDistance(
+      e.touches[0].clientX, e.touches[0].clientY,
+      e.touches[1].clientX, e.touches[1].clientY
+    );
+    
+    if (initialPinchDistance !== null) {
+      scale = lastZoom * (currentDistance / initialPinchDistance);
       applyZoom();
     }
+    e.preventDefault();
+  } else if (e.touches.length === 1 && isDragging) {
+    posX = e.touches[0].clientX - startX;
+    posY = e.touches[0].clientY - startY;
+    applyZoom();
+    e.preventDefault();
+  }
+}
 
-    function zoomOut() {
-      scale /= 1.2;
-      if (scale < 1) {
-        resetZoom();
-      } else {
-        applyZoom();
-      }
-    }
+function handleTouchEnd() {
+  initialPinchDistance = null;
+  isDragging = false;
+}
 
-    function resetZoom() {
-      scale = 1;
-      posX = 0;
-      posY = 0;
-      applyZoom();
-    }
-
-    function applyZoom() {
-      const viewerImage = document.getElementById('viewerImage');
-      viewerImage.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
-    }
-
-    // Pan/drag functions
-    function startDrag(e) {
-      if (scale <= 1) return;
-      
-      isDragging = true;
-      startX = e.clientX - posX;
-      startY = e.clientY - posY;
-      document.getElementById('viewerImage').classList.add('grabbing');
-      e.preventDefault();
-    }
-
-    function dragImage(e) {
-      if (!isDragging) return;
-      
-      posX = e.clientX - startX;
-      posY = e.clientY - startY;
-      applyZoom();
-      e.preventDefault();
-    }
-
-    function endDrag() {
-      isDragging = false;
-      document.getElementById('viewerImage').classList.remove('grabbing');
-    }
-
-    // Mouse wheel zoom
-    function handleWheelZoom(e) {
-      if (e.ctrlKey) { // Only zoom when Ctrl key is pressed
-        e.preventDefault();
-        const delta = -e.deltaY;
-        
-        if (delta > 0) {
-          zoomIn();
-        } else {
-          zoomOut();
-        }
-      }
-    }
-
-    // Touch zoom and pan
-    function handleTouchStart(e) {
-      if (e.touches.length === 2) {
-        // Pinch zoom
-        initialPinchDistance = getDistance(
-          e.touches[0].clientX, e.touches[0].clientY,
-          e.touches[1].clientX, e.touches[1].clientY
-        );
-        lastZoom = scale;
-        e.preventDefault();
-      } else if (e.touches.length === 1 && scale > 1) {
-        // Single touch pan
-        isDragging = true;
-        startX = e.touches[0].clientX - posX;
-        startY = e.touches[0].clientY - posY;
-        e.preventDefault();
-      }
-    }
-
-    function handleTouchMove(e) {
-      if (e.touches.length === 2) {
-        // Handle pinch zoom
-        const currentDistance = getDistance(
-          e.touches[0].clientX, e.touches[0].clientY,
-          e.touches[1].clientX, e.touches[1].clientY
-        );
-        
-        if (initialPinchDistance !== null) {
-          scale = lastZoom * (currentDistance / initialPinchDistance);
-          applyZoom();
-        }
-        e.preventDefault();
-      } else if (e.touches.length === 1 && isDragging) {
-        // Handle pan
-        posX = e.touches[0].clientX - startX;
-        posY = e.touches[0].clientY - startY;
-        applyZoom();
-        e.preventDefault();
-      }
-    }
-
-    function handleTouchEnd() {
-      initialPinchDistance = null;
-      isDragging = false;
-    }
-
-    function getDistance(x1, y1, x2, y2) {
-      return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-    }
+function getDistance(x1, y1, x2, y2) {
+  return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+}
 
     function openRelatedImagesPopup() {
       // Close the image viewer temporarily
