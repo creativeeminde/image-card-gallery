@@ -911,33 +911,38 @@
       }
     }
 
-    function addCardToPage(card) {
-      const cardElem = document.createElement('div');
-      cardElem.className = 'card';
-      cardElem.dataset.cardId = card.id;
-      
-      const tags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
-      
-      cardElem.innerHTML = `
-        <div class="card-actions">
-          <button class="edit-btn" onclick="event.stopPropagation(); startEditCard('${card.id}')">✏️</button>
-          <button class="delete-btn" onclick="event.stopPropagation(); deleteCard('${card.id}')">🗑️</button>
-        </div>
-        <img src="${card.main_image_url}" alt="${card.title}" 
-             onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
-        <div class="card-info">
-          <h4>${card.title}</h4>
-          ${tags.length > 0 ? `
-          <div class="card-tags">
-            ${tags.map(tag => `<span class="tag-bubble">${tag}</span>`).join('')}
-          </div>
-          ` : ''}
-        </div>
-      `;
-      
-      cardElem.addEventListener('click', () => openImageViewer(card));
-      document.getElementById('gallery').appendChild(cardElem);
-    }
+   function addCardToPage(card) {
+  const cardElem = document.createElement('div');
+  cardElem.className = 'card';
+  cardElem.dataset.cardId = card.id;
+  
+  const tags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+  
+  // Use ImageKit's quality transformation in the URL
+  const mainImageUrl = card.main_image_url.includes('ik.imagekit.io') ? 
+    `${card.main_image_url}?tr=q-90` : // Add quality parameter for ImageKit URLs
+    card.main_image_url; // Keep original URL for non-ImageKit images
+  
+  cardElem.innerHTML = `
+    <div class="card-actions">
+      <button class="edit-btn" onclick="event.stopPropagation(); startEditCard('${card.id}')">✏️</button>
+      <button class="delete-btn" onclick="event.stopPropagation(); deleteCard('${card.id}')">🗑️</button>
+    </div>
+    <img src="${mainImageUrl}" alt="${card.title}" 
+         onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
+    <div class="card-info">
+      <h4>${card.title}</h4>
+      ${tags.length > 0 ? `
+      <div class="card-tags">
+        ${tags.map(tag => `<span class="tag-bubble">${tag}</span>`).join('')}
+      </div>
+      ` : ''}
+    </div>
+  `;
+  
+  cardElem.addEventListener('click', () => openImageViewer(card));
+  document.getElementById('gallery').appendChild(cardElem);
+}
 
     async function loadCards() {
       try {
@@ -1004,12 +1009,14 @@
             cardElem.className = 'card';
             
             cardElem.innerHTML = `
-              <img src="${match.url}" alt="Related image" 
-                   onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
-              <div class="card-info">
-                <small>From: ${match.parentCard.title}</small>
-              </div>
-            `;
+  <img src="${match.url.includes('ik.imagekit.io') ? `${match.url}?tr=q-80,w-600` : match.url}" 
+       alt="Related image" 
+       onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'"
+       loading="lazy" />
+  <div class="card-info">
+    <small>From: ${match.parentCard.title}</small>
+  </div>
+`;
             
             cardElem.addEventListener('click', () => {
               openImageViewer(match.parentCard);
@@ -1175,18 +1182,22 @@
     }
 
     function updateViewerImage() {
-      if (!currentViewingCard) return;
-      
-      const images = [currentViewingCard.main_image_url, ...(currentViewingCard.related_images || [])];
-      const viewerImage = document.getElementById('viewerImage');
-      const imageCounter = document.getElementById('imageCounter');
-      
-      if (images.length > 0 && currentImageIndex >= 0 && currentImageIndex < images.length) {
-        viewerImage.src = images[currentImageIndex];
-        imageCounter.textContent = `${currentImageIndex + 1} / ${images.length}`;
-      }
-    }
-
+  if (!currentViewingCard) return;
+  
+  const images = [currentViewingCard.main_image_url, ...(currentViewingCard.related_images || [])];
+  const viewerImage = document.getElementById('viewerImage');
+  const imageCounter = document.getElementById('imageCounter');
+  
+  if (images.length > 0 && currentImageIndex >= 0 && currentImageIndex < images.length) {
+    const imageUrl = images[currentImageIndex];
+    // Use high quality version for ImageKit images
+    const displayUrl = imageUrl.includes('ik.imagekit.io') ? 
+      `${imageUrl}?tr=q-90` : // Higher quality for viewer
+      imageUrl;
+    viewerImage.src = displayUrl;
+    imageCounter.textContent = `${currentImageIndex + 1} / ${images.length}`;
+  }
+}
     function prevImage() {
       if (!currentViewingCard) return;
       
