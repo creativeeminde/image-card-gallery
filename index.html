@@ -120,7 +120,32 @@
       border-radius: 0 4px 4px 0;
       cursor: pointer;
     }
+/* Add to your existing CSS */
+.related-images-section .card-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+}
 
+.related-images-section .delete-btn {
+  background: rgba(255, 255, 255, 0.8);
+  border: none;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #f44336;
+  font-size: 14px;
+}
+
+.related-images-section .delete-btn:hover {
+  background: white;
+  transform: scale(1.1);
+}
     .common-tags {
       display: flex;
       flex-wrap: wrap;
@@ -1098,17 +1123,21 @@
           
           const tags = img.tags ? img.tags.split(',').map(t => t.trim()).filter(t => t) : [];
           
-          imgElem.innerHTML = `
-            <img src="${img.url}" alt="Related image ${index + 1}" 
-                 onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
-            <div class="card-info">
-              ${tags.length > 0 ? `
-              <div class="related-image-tags">
-                ${tags.map(t => `<span class="related-tag-bubble" onclick="event.stopPropagation(); filterAllByRelatedTag('${t}')">${t}</span>`).join('')}
-              </div>
-              ` : ''}
-            </div>
-          `;
+         // Inside loadRelatedImages(), update the imgElem.innerHTML to include a delete button:
+imgElem.innerHTML = `
+  <div class="card-actions">
+    <button class="delete-btn" onclick="event.stopPropagation(); deleteRelatedImage('${currentViewingCard.id}', '${img.url}')">🗑️</button>
+  </div>
+  <img src="${img.url}" alt="Related image ${index + 1}" 
+       onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
+  <div class="card-info">
+    ${tags.length > 0 ? `
+    <div class="related-image-tags">
+      ${tags.map(t => `<span class="related-tag-bubble" onclick="event.stopPropagation(); filterAllByRelatedTag('${t}')">${t}</span>`).join('')}
+    </div>
+    ` : ''}
+  </div>
+`;
           
           imgElem.addEventListener('click', () => {
             currentImageIndex = currentViewingCard.related_images.indexOf(img.url);
@@ -1442,7 +1471,53 @@
       updateSelectedRelatedTagsDisplay();
       updateAvailableRelatedTags();
     }
+async function deleteRelatedImage(cardId, imageUrl) {
+  if (!confirm("Are you sure you want to delete this related image?")) return;
+  
+  try {
+    // Get current card data
+    const { data: card, error: fetchError } = await supabase
+      .from('cards')
+      .select('related_images, related_images_with_tags')
+      .eq('id', cardId)
+      .single();
+    
+    if (fetchError) throw fetchError;
 
+    // Filter out the deleted image
+    const updatedRelatedImages = card.related_images.filter(url => url !== imageUrl);
+    const updatedRelatedImagesWithTags = card.related_images_with_tags.filter(img => img.url !== imageUrl);
+
+    // Update the card in Supabase
+    const { error } = await supabase
+      .from('cards')
+      .update({ 
+        related_images: updatedRelatedImages,
+        related_images_with_tags: updatedRelatedImagesWithTags
+      })
+      .eq('id', cardId);
+    
+    if (error) throw error;
+
+    // Update the current viewing card in memory
+    if (currentViewingCard && currentViewingCard.id === cardId) {
+      currentViewingCard.related_images = updatedRelatedImages;
+      currentViewingCard.related_images_with_tags = updatedRelatedImagesWithTags;
+      
+      // Refresh the display
+      loadRelatedImages(currentFilterRelatedTag);
+      
+      // If we're currently viewing the deleted image, go to the previous image
+      const currentImageUrl = currentViewingCard.related_images[currentImageIndex - 1];
+      if (currentImageUrl === imageUrl) {
+        prevImage();
+      }
+    }
+  } catch (error) {
+    console.error("Error deleting related image:", error);
+    alert("Failed to delete related image");
+  }
+}
     async function saveRelatedImageTags() {
       if (!currentViewingCard) return;
       
