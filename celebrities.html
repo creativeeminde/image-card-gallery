@@ -625,6 +625,10 @@
       <button class="nav-btn" onclick="nextCelebrity()">&#10095;</button>
     </div>
     <div class="celebrity-counter" id="celebrityCounter"></div>
+    <div class="celebrity-viewer-footer">
+      <button class="upload-related-btn" onclick="openRelatedCelebritiesPopup()">Upload Related Celebrities</button>
+      <button class="upload-related-btn" onclick="openRelatedTagsPopup()" style="margin-top: 10px;">Edit Related Celebrity Tags</button>
+    </div>
   </div>
 
   <div class="popup" id="popup">
@@ -649,6 +653,40 @@
       </form>
     </div>
   </div>
+
+  <div class="popup" id="relatedCelebritiesPopup">
+    <div class="popup-content">
+      <h3>Upload Related Celebrities</h3>
+      <form id="relatedCelebritiesForm">
+        <textarea id="relatedCelebrityUrls" rows="5" placeholder="Enter celebrity URLs, one per line"></textarea>
+        
+        <div id="relatedCelebritiesErrorMessage" class="error-message"></div>
+        <div>
+          <button type="button" onclick="addRelatedCelebrities()">Upload</button>
+          <button type="button" onclick="closeRelatedCelebritiesPopup()">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="related-tags-popup" id="relatedTagsPopup">
+    <div class="related-tags-content">
+      <h3>Edit Related Celebrity Tags</h3>
+      <div id="currentRelatedCelebrityInfo"></div>
+      <div id="selectedRelatedTagsContainer" class="selected-tags"></div>
+      
+      <select id="availableRelatedTags">
+        <option value="">Select tags to add</option>
+        </select>
+      <button type="button" onclick="addTagToRelatedCelebritySelection()">Add Tag</button>
+      
+      <div id="relatedTagsErrorMessage" class="error-message"></div>
+      <div>
+        <button type="button" onclick="saveRelatedCelebrityTags()">Save</button>
+        <button type="button" onclick="closeRelatedTagsPopup()">Cancel</button>
+      </div>
+    </div>
+  </div>
   
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js"></script>
 
@@ -662,6 +700,9 @@
     let currentlyEditingCardId = null;
     let currentViewingCard = null;
     let currentCelebrityIndex = 0;
+    let currentRelatedCelebrityTags = [];
+    let currentRelatedCelebrityIndex = 0;
+    let currentFilterRelatedTag = null;
 
     window.onload = async function () {
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -831,7 +872,7 @@
         
         const tags = Array.from(document.querySelectorAll('#selectedTagsContainer .selected-tag')).map(el => el.textContent.trim().replace('×',''));
 
-        const newCard = { title, main_celebrity_url: celebrityUrl, tags: tags.join(', ') };
+        const newCard = { title, main_celebrity_url: celebrityUrl, tags: tags.join(', '), related_celebrities: [], related_celebrities_with_tags: [] };
         const { data, error } = await supabase.from('celebrities').insert([newCard]).select();
         
         if (error) throw error;
@@ -957,6 +998,59 @@
     function closePopup() {
       document.getElementById('popup').style.display = 'none';
     }
+
+    function openRelatedCelebritiesPopup() {
+      if (!currentViewingCard) return;
+      document.getElementById('relatedCelebritiesPopup').style.display = 'flex';
+    }
+
+    function closeRelatedCelebritiesPopup() {
+      document.getElementById('relatedCelebritiesPopup').style.display = 'none';
+    }
+
+    async function addRelatedCelebrities() {
+        if (!currentViewingCard) return;
+        const urlsText = document.getElementById('relatedCelebrityUrls').value.trim();
+        if (!urlsText) return;
+        const urls = urlsText.split('\n').map(url => url.trim()).filter(Boolean);
+
+        try {
+            const { data: card, error: fetchError } = await supabase
+                .from('celebrities')
+                .select('related_celebrities, related_celebrities_with_tags')
+                .eq('id', currentViewingCard.id)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            const currentRelated = card.related_celebrities || [];
+            const newUrls = urls.filter(url => !currentRelated.includes(url));
+
+            if (newUrls.length > 0) {
+                const updatedRelated = [...currentRelated, ...newUrls];
+                const updatedRelatedWithTags = [...(card.related_celebrities_with_tags || []), ...newUrls.map(url => ({ url, tags: '' }))];
+                
+                const { error: updateError } = await supabase
+                    .from('celebrities')
+                    .update({ related_celebrities: updatedRelated, related_celebrities_with_tags: updatedRelatedWithTags })
+                    .eq('id', currentViewingCard.id);
+
+                if (updateError) throw updateError;
+                currentViewingCard.related_celebrities = updatedRelated;
+                currentViewingCard.related_celebrities_with_tags = updatedRelatedWithTags;
+                updateViewerCelebrity();
+            }
+            closeRelatedCelebritiesPopup();
+        } catch (error) {
+            console.error('Error adding related celebrities:', error);
+            document.getElementById('relatedCelebritiesErrorMessage').textContent = 'Failed to add celebrities.';
+        }
+    }
+
+    function openRelatedTagsPopup() {
+        // This function would be implemented if needed
+    }
+
   </script>
 </body>
 </html>
