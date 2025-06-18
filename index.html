@@ -12,7 +12,6 @@
       background: #f5f5f5;
       display: grid;
       grid-template-columns: 250px 1fr;
-      grid-template-rows: 100vh;
     }
 
 
@@ -20,6 +19,9 @@
       background: white;
       padding: 20px;
       border-right: 1px solid #ddd;
+      position: sticky;
+      top: 0;
+      height: 100vh;
       overflow-y: auto;
     }
 
@@ -139,7 +141,6 @@
 
     .main-content {
       padding: 20px;
-      overflow-y: auto;
     }
     
     /* --- Pinterest/Masonry Layout CSS --- */
@@ -541,16 +542,47 @@
       padding: 0;
     }
 
+    /* Loading and Load More Button Styles */
+    #loader {
+        text-align: center;
+        padding: 20px;
+        font-size: 1.2rem;
+        color: #666;
+    }
+
+    #loadMoreBtn {
+        display: block;
+        width: 200px;
+        margin: 20px auto;
+        padding: 10px 15px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 1rem;
+        transition: background-color 0.2s;
+    }
+
+    #loadMoreBtn:hover {
+        background-color: #0056b3;
+    }
+    
+    #loadMoreBtn.loading {
+        background-color: #ccc;
+        cursor: not-allowed;
+    }
+
     /* Responsive adjustments */
     @media (max-width: 1200px) {
       .gallery {
-        column-count: 3;
+        column-count: 2;
       }
     }
 
     @media (max-width: 992px) {
       .gallery {
-        column-count: 2;
+        column-count: 1;
       }
     }
 
@@ -596,6 +628,8 @@
 
   <main class="main-content">
     <div class="gallery" id="gallery"></div>
+    <div id="loader">Loading...</div>
+    <button id="loadMoreBtn" style="display: none;">Load More</button>
     
     <div class="related-images-section" id="relatedImagesSection" style="display: none;">
       <h2>Related Images</h2>
@@ -712,6 +746,13 @@
     let currentRelatedImageIndex = 0;
     let currentFilterRelatedTag = null;
 
+    // --- Pagination variables ---
+    let currentPage = 0;
+    const cardsPerPage = 15;
+    let isLoading = false;
+    let allCardsLoaded = false;
+
+
     // Zoom and pan variables
     let scale = 1;
     let posX = 0;
@@ -740,11 +781,16 @@
           await addCard();
         }
       });
+      
+      document.getElementById('loadMoreBtn').addEventListener('click', loadCards);
 
-      await loadTags();
-      await loadFilterTags();
-      await loadCards();
+      await initialLoad();
     };
+
+    async function initialLoad() {
+        await loadFilterTags();
+        await loadCards(true); // Initial load, so we reset
+    }
 
     async function loadTags() {
       try {
@@ -754,12 +800,7 @@
           .order('name', { ascending: true });
 
         if (error && error.code === '42P01') {
-          await supabase.rpc('create_tags_table');
-          await supabase.from('tags').insert([
-            { name: 'Nature' }, { name: 'City' }, { name: 'Abstract' },
-            { name: 'Portrait' }, { name: 'Landscape' }
-          ]);
-          return loadTags();
+          return; // Tags table not found, handled by filter tags
         }
 
         if (error) throw error;
@@ -772,26 +813,22 @@
 
     async function loadFilterTags() {
       try {
-        // Get all tags from both main tags and related images
         const { data: cards, error: cardsError } = await supabase
           .from('cards')
           .select('tags, related_images_with_tags');
         
         if (cardsError) throw cardsError;
 
-        // Extract all unique tags
         const allMainTags = new Set();
         const allRelatedTags = new Set();
 
         cards.forEach(card => {
-          // Main tags
           if (card.tags) {
             card.tags.split(',').forEach(tag => {
               if (tag.trim()) allMainTags.add(tag.trim());
             });
           }
           
-          // Related image tags
           if (card.related_images_with_tags) {
             card.related_images_with_tags.forEach(img => {
               if (img.tags) {
@@ -803,7 +840,6 @@
           }
         });
 
-        // Combine all tags
         const allTags = [...allMainTags, ...allRelatedTags];
         const uniqueTags = [...new Set(allTags)].sort();
 
@@ -815,7 +851,7 @@
         allButton.className = !currentFilterTag ? 'active' : '';
         allButton.onclick = () => {
           currentFilterTag = null;
-          loadCards();
+          loadCards(true); // Reset and load
         };
         filterContainer.appendChild(allButton);
 
@@ -825,7 +861,7 @@
           tagButton.className = currentFilterTag === tag ? 'active' : '';
           tagButton.onclick = () => {
             currentFilterTag = currentFilterTag === tag ? null : tag;
-            loadCards();
+            loadCards(true); // Reset and load
           };
           filterContainer.appendChild(tagButton);
         });
@@ -846,7 +882,7 @@
         card.main_image_url;
       
       cardElem.innerHTML = `
-        <img src="${mainImageUrl}" alt="${card.title}" 
+        <img src="${mainImageUrl}" alt="${card.title}" loading="lazy"
              onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
         <div class="card-info">
           <h4>${card.title}</h4>
@@ -866,93 +902,68 @@
       document.getElementById('gallery').appendChild(cardElem);
     }
     
-    async function loadCards() {
-        const gallery = document.getElementById('gallery');
+    async function loadCards(reset = false) {
+        if (isLoading || (allCardsLoaded && !reset)) return;
+        
+        isLoading = true;
+        const loadMoreBtn = document.getElementById('loadMoreBtn');
+        const loader = document.getElementById('loader');
+
+        if(reset) {
+            currentPage = 0;
+            allCardsLoaded = false;
+            document.getElementById('gallery').innerHTML = '';
+        }
+
+        loadMoreBtn.classList.add('loading');
+        loadMoreBtn.textContent = 'Loading...';
+        loadMoreBtn.style.display = 'block';
+        if(currentPage === 0) loader.style.display = 'block';
+
+
+        const from = currentPage * cardsPerPage;
+        const to = from + cardsPerPage - 1;
+
         try {
-            const { data: allCards, error } = await supabase
-                .from('cards')
-                .select('*')
-                .order('created_at', { ascending: false });
+            let query = supabase.from('cards').select('*').order('created_at', { ascending: false }).range(from, to);
+            
+            if (currentFilterTag) {
+                // Note: Pagination with filtering like this might be inconsistent if the filter applies across all data.
+                // For true pagination on filtered results, a database function (RPC) is better.
+                // This client-side approach will work but might miss items on later pages.
+                let { data: allFilteredCards, error: filterError } = await supabase.from('cards').select('*').ilike('tags', `%${currentFilterTag}%`).order('created_at', { ascending: false });
+                 if (filterError) throw filterError;
 
-            if (error) throw error;
+                const paginatedCards = allFilteredCards.slice(from, to + 1);
+                
+                if(paginatedCards.length === 0 && currentPage > 0) allCardsLoaded = true;
+                if(paginatedCards.length < cardsPerPage) allCardsLoaded = true;
 
-            gallery.innerHTML = ''; // Clear previous content
+                paginatedCards.forEach(addCardToPage);
 
-            if (!currentFilterTag) {
-                if (allCards.length === 0) {
-                    gallery.innerHTML = '<p>No images found.</p>';
-                } else {
-                    allCards.forEach(card => addCardToPage(card));
-                }
-                return;
+            } else {
+                 const { data: cards, error } = await query;
+                 if (error) throw error;
+                 
+                 if(cards.length === 0 && currentPage > 0) allCardsLoaded = true;
+                 if(cards.length < cardsPerPage) allCardsLoaded = true;
+
+                 cards.forEach(addCardToPage);
             }
 
-            // --- Logic for filtering and showing related images ---
-            const matchingImages = [];
-            allCards.forEach(card => {
-                // Check main card tags
-                const mainTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
-                if (mainTags.includes(currentFilterTag)) {
-                    matchingImages.push({ type: 'main', card: card });
-                }
-
-                // Check related images tags
-                if (card.related_images_with_tags) {
-                    card.related_images_with_tags.forEach(relatedImg => {
-                        const relatedTags = relatedImg.tags ? relatedImg.tags.split(',').map(t => t.trim()) : [];
-                        if (relatedTags.includes(currentFilterTag)) {
-                            matchingImages.push({
-                                type: 'related',
-                                url: relatedImg.url,
-                                tags: relatedImg.tags,
-                                parentCard: card
-                            });
-                        }
-                    });
-                }
-            });
-            
-            if (matchingImages.length === 0) {
-                gallery.innerHTML = '<p>No images found with this tag.</p>';
-                return;
-            }
-            
-            matchingImages.forEach(match => {
-                if (match.type === 'main') {
-                    addCardToPage(match.card);
-                } else {
-                    const cardElem = document.createElement('div');
-                    cardElem.className = 'card';
-                    const tags = match.tags ? match.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
-                    
-                    cardElem.innerHTML = `
-                        <img src="${match.url}" alt="Related image from ${match.parentCard.title}"
-                             onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
-                        <div class="card-info">
-                          <small>From: ${match.parentCard.title}</small>
-                          ${tags.length > 0 ? `
-                          <div class="card-tags">
-                            ${tags.map(tag => `<span class="tag-bubble">${tag}</span>`).join('')}
-                          </div>
-                          ` : ''}
-                        </div>
-                    `;
-                    
-                    cardElem.addEventListener('click', () => {
-                      openImageViewer(match.parentCard);
-                      const index = (match.parentCard.related_images || []).indexOf(match.url);
-                      if (index !== -1) {
-                        currentImageIndex = index + 1;
-                        updateViewerImage();
-                      }
-                    });
-                    gallery.appendChild(cardElem);
-                }
-            });
+            currentPage++;
 
         } catch (error) {
             console.error("Error loading cards:", error);
-            gallery.innerHTML = '<p>Error loading images.</p>';
+            document.getElementById('gallery').innerHTML = '<p>Error loading images.</p>';
+        } finally {
+            isLoading = false;
+            loader.style.display = 'none';
+            loadMoreBtn.classList.remove('loading');
+            loadMoreBtn.textContent = 'Load More';
+            if (allCardsLoaded) {
+                loadMoreBtn.style.display = 'none';
+            }
         }
     }
     
@@ -1046,7 +1057,7 @@
     function filterAllByRelatedTag(tag) {
       currentFilterTag = tag;
       closeImageViewer();
-      loadCards();
+      loadCards(true);
       loadFilterTags();
     }
 
@@ -1345,7 +1356,7 @@
         const { error } = await supabase.from('cards').update(updateData).eq('id', currentlyEditingCardId);
         if (error) throw error;
         closePopup();
-        await loadCards();
+        await loadCards(true);
       } catch (error) {
         console.error("Error updating card:", error);
         document.getElementById('errorMessage').textContent = error.message;
@@ -1359,7 +1370,7 @@
       try {
         const { error } = await supabase.from('cards').delete().eq('id', cardId);
         if (error) throw error;
-        await loadCards();
+        await loadCards(true);
       } catch (error) {
         console.error("Error deleting card:", error);
         alert("Failed to delete card");
@@ -1444,9 +1455,8 @@
         };
         const { data, error } = await supabase.from('cards').insert([newCard]).select();
         if (error) throw error;
-        addCardToPage(data[0]);
         closePopup();
-        await loadCards();
+        await loadCards(true);
       } catch (error) {
         console.error("Error adding card:", error);
         document.getElementById('errorMessage').textContent = error.message;
