@@ -665,10 +665,11 @@
     let currentRelatedCelebrityIndex = 0;
     let currentFilterRelatedTag = null;
 
-    // --- Touch swipe variables ---
     let touchStartX = 0;
     let touchEndX = 0;
-
+    
+    let scale = 1, posX = 0, posY = 0, isDragging = false, startX, startY;
+    let initialPinchDistance = null, lastZoom = 1;
 
     window.onload = async function () {
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -798,39 +799,119 @@
       document.getElementById('celebrityViewer').style.display = 'flex';
       
       const viewerContent = document.getElementById('viewerContent');
-      viewerContent.addEventListener('touchstart', handleTouchStart, { passive: true });
+      viewerContent.addEventListener('touchstart', handleTouchStart);
       viewerContent.addEventListener('touchend', handleTouchEnd);
+      viewerContent.addEventListener('touchmove', handleTouchMove);
+      viewerContent.addEventListener('wheel', handleWheelZoom, { passive: false });
+      viewerContent.addEventListener('mousedown', startDrag);
+      viewerContent.addEventListener('mousemove', dragCelebrity);
+      viewerContent.addEventListener('mouseup', endDrag);
+      viewerContent.addEventListener('mouseleave', endDrag);
+      viewerContent.addEventListener('dblclick', handleDoubleClick);
     }
 
     function closeCelebrityViewer() {
       const viewerContent = document.getElementById('viewerContent');
       viewerContent.removeEventListener('touchstart', handleTouchStart);
       viewerContent.removeEventListener('touchend', handleTouchEnd);
+      viewerContent.removeEventListener('touchmove', handleTouchMove);
+      viewerContent.removeEventListener('wheel', handleWheelZoom);
+      viewerContent.removeEventListener('mousedown', startDrag);
+      viewerContent.removeEventListener('mousemove', dragCelebrity);
+      viewerContent.removeEventListener('mouseup', endDrag);
+      viewerContent.removeEventListener('mouseleave', endDrag);
+      viewerContent.removeEventListener('dblclick', handleDoubleClick);
       document.getElementById('celebrityViewer').style.display = 'none';
       currentViewingCard = null;
     }
     
-    // --- Swipe gesture handlers ---
     function handleTouchStart(e) {
-        touchStartX = e.touches[0].clientX;
-    }
-
-    function handleTouchEnd(e) {
-        touchEndX = e.changedTouches[0].clientX;
-        handleSwipe();
-    }
-
-    function handleSwipe() {
-        const swipeThreshold = 50; // Minimum distance for a swipe
-        if (touchStartX - touchEndX > swipeThreshold) {
-            nextCelebrity();
-        } else if (touchEndX - touchStartX > swipeThreshold) {
-            prevCelebrity();
+        if (e.touches.length === 2) {
+            initialPinchDistance = getDistance(e.touches[0].clientX, e.touches[0].clientY, e.touches[1].clientX, e.touches[1].clientY);
+            lastZoom = scale;
+        } else if (e.touches.length === 1) {
+            touchStartX = e.touches[0].clientX;
+            startDrag(e.touches[0]);
         }
     }
 
+    function handleTouchMove(e) {
+        if (e.touches.length === 2) {
+            const currentDistance = getDistance(e.touches[0].clientX, e.touches[0].clientY, e.touches[1].clientX, e.touches[1].clientY);
+            scale = lastZoom * (currentDistance / initialPinchDistance);
+            applyZoom();
+        } else if (e.touches.length === 1) {
+             dragCelebrity(e.touches[0]);
+        }
+    }
+
+    function handleTouchEnd(e) {
+        if(e.touches.length < 2) initialPinchDistance = null;
+        if(e.touches.length < 1) {
+            touchEndX = e.changedTouches[0].clientX;
+            if (scale <= 1) handleSwipe();
+            endDrag();
+        }
+    }
+    
+    function handleSwipe() {
+        const swipeThreshold = 50;
+        if (touchStartX - touchEndX > swipeThreshold) nextCelebrity();
+        else if (touchEndX - touchStartX > swipeThreshold) prevCelebrity();
+    }
+
+    function handleDoubleClick(e) {
+        e.preventDefault();
+        if (scale > 1) {
+            resetZoom();
+        } else {
+            scale = 2;
+            const rect = e.target.getBoundingClientRect();
+            posX = -(e.clientX - rect.left) * (scale - 1);
+            posY = -(e.clientY - rect.top) * (scale - 1);
+            applyZoom();
+        }
+    }
+    
+    function handleWheelZoom(e) {
+        if (e.ctrlKey) {
+            e.preventDefault();
+            const delta = Math.sign(e.deltaY);
+            if (delta < 0) zoomIn(); else zoomOut();
+        }
+    }
+
+    function zoomIn() { scale *= 1.2; applyZoom(); }
+    function zoomOut() { scale /= 1.2; if (scale < 1) resetZoom(); else applyZoom(); }
+    function resetZoom() { scale = 1; posX = 0; posY = 0; applyZoom(); }
+    function applyZoom() { document.getElementById('viewerCelebrity').style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`; }
+
+    function startDrag(e) {
+        if (scale <= 1) return;
+        isDragging = true;
+        startX = e.clientX - posX;
+        startY = e.clientY - posY;
+        document.getElementById('viewerCelebrity').classList.add('grabbing');
+    }
+
+    function dragCelebrity(e) {
+        if (!isDragging) return;
+        posX = e.clientX - startX;
+        posY = e.clientY - startY;
+        applyZoom();
+    }
+
+    function endDrag() {
+        isDragging = false;
+        document.getElementById('viewerCelebrity').classList.remove('grabbing');
+    }
+
+    function getDistance(x1, y1, x2, y2) { return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)); }
+
+
     function updateViewerCelebrity() {
       if (!currentViewingCard) return;
+      resetZoom();
       
       const celebrities = [currentViewingCard.main_celebrity_url, ...(currentViewingCard.related_celebrities || [])];
       const viewerCelebrity = document.getElementById('viewerCelebrity');
