@@ -867,29 +867,93 @@
     }
     
     async function loadCards() {
-      try {
-        let query = supabase.from('cards').select('*').order('created_at', { ascending: false });
-        if (currentFilterTag) {
-            query = query.ilike('tags', `%${currentFilterTag}%`)
-        }
-        
-        const { data: cards, error } = await query;
-        
-        if (error) throw error;
-        
         const gallery = document.getElementById('gallery');
-        gallery.innerHTML = ''; // Clear previous content
+        try {
+            const { data: allCards, error } = await supabase
+                .from('cards')
+                .select('*')
+                .order('created_at', { ascending: false });
 
-        if (cards.length === 0) {
-            gallery.innerHTML = '<p>No images found.</p>';
-            return;
+            if (error) throw error;
+
+            gallery.innerHTML = ''; // Clear previous content
+
+            if (!currentFilterTag) {
+                if (allCards.length === 0) {
+                    gallery.innerHTML = '<p>No images found.</p>';
+                } else {
+                    allCards.forEach(card => addCardToPage(card));
+                }
+                return;
+            }
+
+            // --- Logic for filtering and showing related images ---
+            const matchingImages = [];
+            allCards.forEach(card => {
+                // Check main card tags
+                const mainTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
+                if (mainTags.includes(currentFilterTag)) {
+                    matchingImages.push({ type: 'main', card: card });
+                }
+
+                // Check related images tags
+                if (card.related_images_with_tags) {
+                    card.related_images_with_tags.forEach(relatedImg => {
+                        const relatedTags = relatedImg.tags ? relatedImg.tags.split(',').map(t => t.trim()) : [];
+                        if (relatedTags.includes(currentFilterTag)) {
+                            matchingImages.push({
+                                type: 'related',
+                                url: relatedImg.url,
+                                tags: relatedImg.tags,
+                                parentCard: card
+                            });
+                        }
+                    });
+                }
+            });
+            
+            if (matchingImages.length === 0) {
+                gallery.innerHTML = '<p>No images found with this tag.</p>';
+                return;
+            }
+            
+            matchingImages.forEach(match => {
+                if (match.type === 'main') {
+                    addCardToPage(match.card);
+                } else {
+                    const cardElem = document.createElement('div');
+                    cardElem.className = 'card';
+                    const tags = match.tags ? match.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+                    
+                    cardElem.innerHTML = `
+                        <img src="${match.url}" alt="Related image from ${match.parentCard.title}"
+                             onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
+                        <div class="card-info">
+                          <small>From: ${match.parentCard.title}</small>
+                          ${tags.length > 0 ? `
+                          <div class="card-tags">
+                            ${tags.map(tag => `<span class="tag-bubble">${tag}</span>`).join('')}
+                          </div>
+                          ` : ''}
+                        </div>
+                    `;
+                    
+                    cardElem.addEventListener('click', () => {
+                      openImageViewer(match.parentCard);
+                      const index = (match.parentCard.related_images || []).indexOf(match.url);
+                      if (index !== -1) {
+                        currentImageIndex = index + 1;
+                        updateViewerImage();
+                      }
+                    });
+                    gallery.appendChild(cardElem);
+                }
+            });
+
+        } catch (error) {
+            console.error("Error loading cards:", error);
+            gallery.innerHTML = '<p>Error loading images.</p>';
         }
-
-        cards.forEach(card => addCardToPage(card));
-
-      } catch (error) {
-        console.error("Error loading cards:", error);
-      }
     }
     
     async function loadRelatedImages(tag = null) {
