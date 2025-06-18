@@ -533,15 +533,8 @@
     let currentViewingCard = null;
     let currentImageIndex = 0;
     
-    let currentPage = 0;
-    const cardsPerPage = 15;
-    let isLoading = false;
-    let allCardsLoaded = false;
-    let observer;
-
     window.onload = async function () {
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-      setupInfiniteScroll();
 
       document.getElementById('cardForm').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -553,34 +546,8 @@
       });
       
       await loadAllTags();
-      resetAndLoadCards();
+      await loadCards();
     };
-
-    function setupInfiniteScroll() {
-        const loader = document.getElementById('loader');
-        const options = {
-            root: null,
-            rootMargin: '0px',
-            threshold: 1.0
-        };
-
-        observer = new IntersectionObserver((entries) => {
-            if (entries[0].isIntersecting && !isLoading) {
-                loadCards();
-            }
-        }, options);
-
-        observer.observe(loader);
-    }
-    
-    async function resetAndLoadCards() {
-        currentPage = 0;
-        allCardsLoaded = false;
-        document.getElementById('gallery').innerHTML = '';
-        const loader = document.getElementById('loader');
-        if (observer) observer.observe(loader);
-        await loadCards();
-    }
     
     async function loadAllTags() {
       try {
@@ -606,7 +573,7 @@
         allButton.onclick = () => {
           currentFilterTag = null;
           updateActiveTagButton(allButton);
-          resetAndLoadCards();
+          loadCards();
         };
         filterContainer.appendChild(allButton);
 
@@ -617,12 +584,11 @@
           tagButton.onclick = () => {
             currentFilterTag = currentFilterTag === tag ? null : tag;
             updateActiveTagButton(tagButton);
-            resetAndLoadCards();
+            loadCards();
           };
           filterContainer.appendChild(tagButton);
         });
     }
-
 
     function updateActiveTagButton(activeButton) {
         document.querySelectorAll('#filterTags button').forEach(btn => {
@@ -652,7 +618,7 @@
           ${tags.length > 0 ? `<div class="card-tags">${tags.map(tag => `<span class="tag-bubble">${tag}</span>`).join('')}</div>` : ''}
         </div>
         <div class="card-actions">
-          <button class="edit-btn" onclick="event.stopPropagation(); startEditCard('${card.id}')">✏️</button>
+          <button class="edit-btn" onclick="event.stopPropagation(); openPopup(${JSON.stringify(card).replace(/"/g, '&quot;')})">✏️</button>
           <button class="delete-btn" onclick="event.stopPropagation(); deleteCard('${card.id}')">🗑️</button>
         </div>
       `;
@@ -662,14 +628,9 @@
     }
     
     async function loadCards() {
-        if (isLoading || allCardsLoaded) return;
-        
-        isLoading = true;
-        const loader = document.getElementById('loader');
-        loader.style.display = 'block';
-
-        const from = currentPage * cardsPerPage;
-        const to = from + cardsPerPage - 1;
+        const gallery = document.getElementById('gallery');
+        gallery.innerHTML = '';
+        document.getElementById('loader').style.display = 'block';
 
         try {
             let query = supabase.from('cards').select('*');
@@ -678,26 +639,21 @@
                 query = query.ilike('tags', `%${currentFilterTag}%`);
             }
             
-            const { data: cards, error } = await query.order('created_at', { ascending: false }).range(from, to);
+            const { data: cards, error } = await query.order('created_at', { ascending: false });
             
             if (error) throw error;
             
             if (cards.length > 0) {
                 cards.forEach(addCardToPage);
-                currentPage++;
-            }
-            
-            if (cards.length < cardsPerPage) {
-                allCardsLoaded = true;
-                observer.unobserve(loader);
-                loader.style.display = 'none';
+            } else {
+                gallery.innerHTML = '<p>No images found.</p>';
             }
 
         } catch (error) {
             console.error("Error loading cards:", error);
+            gallery.innerHTML = '<p>Error loading images.</p>';
         } finally {
-            isLoading = false;
-            if(!allCardsLoaded) loader.style.display = 'none';
+            document.getElementById('loader').style.display = 'none';
         }
     }
     
@@ -754,7 +710,7 @@
         if (error) throw error;
         
         closePopup();
-        resetAndLoadCards();
+        loadCards();
         await loadAllTags(); 
       } catch (error) {
         console.error("Error adding card:", error);
@@ -762,6 +718,40 @@
       }
     }
     
+    async function updateCard() {
+      try {
+        const title = document.getElementById('title').value.trim();
+        const imageUrl = document.getElementById('imageUrl').value.trim();
+        if (!title || !imageUrl) throw new Error("Title and Image URL are required");
+        const tags = Array.from(document.querySelectorAll('#selectedTagsContainer .selected-tag')).map(el => el.textContent.trim().replace('×',''));
+
+        const updateData = { title, tags: tags.join(', '), main_image_url: imageUrl };
+        const { error } = await supabase.from('cards').update(updateData).eq('id', currentlyEditingCardId);
+        if (error) throw error;
+
+        closePopup();
+        await loadCards();
+        await loadAllTags();
+      } catch (error) {
+        console.error("Error updating card:", error);
+        document.getElementById('errorMessage').textContent = error.message;
+      } finally {
+        currentlyEditingCardId = null;
+      }
+    }
+
+    async function deleteCard(cardId) {
+      if (!confirm("Are you sure you want to delete this card?")) return;
+      try {
+        const { error } = await supabase.from('cards').delete().eq('id', cardId);
+        if (error) throw error;
+        await loadCards();
+      } catch (error) {
+        console.error("Error deleting card:", error);
+        alert("Failed to delete card");
+      }
+    }
+
     // Functions for tag selection in popup
     function updateTagDisplays() {
       const commonTagsContainer = document.getElementById('commonTags');
@@ -797,7 +787,7 @@
 
       const tagElem = document.createElement('div');
       tagElem.className = 'selected-tag';
-      tagElem.innerHTML = `${selectedTag} <button onclick="removeSelectedTag(this)">×</button>`;
+      tagElem.innerHTML = `${selectedTag} <button type="button" onclick="removeSelectedTag(this)">×</button>`;
       container.appendChild(tagElem);
       updateTagDisplays();
     }
@@ -825,7 +815,7 @@
                   if(!tag.trim()) return;
                   const tagElem = document.createElement('div');
                   tagElem.className = 'selected-tag';
-                  tagElem.innerHTML = `${tag.trim()} <button onclick="removeSelectedTag(this)">×</button>`;
+                  tagElem.innerHTML = `${tag.trim()} <button type="button" onclick="removeSelectedTag(this)">×</button>`;
                   selectedTagsContainer.appendChild(tagElem);
               });
           }
