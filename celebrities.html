@@ -546,6 +546,34 @@
         display: none;
     }
 
+    .thumbnail-carousel {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 10px;
+        background: rgba(0,0,0,0.5);
+        padding: 10px;
+        border-radius: 10px;
+        overflow-x: auto;
+        max-width: 80vw;
+    }
+
+    .thumbnail {
+        width: 60px;
+        height: 60px;
+        object-fit: cover;
+        cursor: pointer;
+        border-radius: 5px;
+        border: 2px solid transparent;
+        transition: border-color 0.2s;
+    }
+
+    .thumbnail.active {
+        border-color: #4CAF50;
+    }
+
     @media (max-width: 1200px) {
       .gallery {
         column-count: 2;
@@ -614,21 +642,13 @@
     <span class="celebrity-viewer-close" onclick="closeCelebrityViewer()">&times;</span>
     <div class="celebrity-viewer-content" id="viewerContent">
       <img id="viewerCelebrity" src="" alt="">
-      <div class="zoom-controls">
-        <button class="zoom-btn" onclick="zoomIn()">+</button>
-        <button class="zoom-btn" onclick="zoomOut()">-</button>
-      </div>
-      <button class="reset-zoom" onclick="resetZoom()">Reset Zoom</button>
     </div>
     <div class="celebrity-nav">
       <button class="nav-btn" onclick="prevCelebrity()">&#10094;</button>
       <button class="nav-btn" onclick="nextCelebrity()">&#10095;</button>
     </div>
     <div class="celebrity-counter" id="celebrityCounter"></div>
-    <div class="celebrity-viewer-footer">
-      <button class="upload-related-btn" onclick="openRelatedCelebritiesPopup()">Upload Related Celebrities</button>
-      <button class="upload-related-btn" onclick="openRelatedTagsPopup()" style="margin-top: 10px;">Edit Related Celebrity Tags</button>
-    </div>
+    <div class="thumbnail-carousel" id="thumbnailCarousel"></div>
   </div>
 
   <div class="popup" id="popup">
@@ -654,40 +674,6 @@
     </div>
   </div>
 
-  <div class="popup" id="relatedCelebritiesPopup">
-    <div class="popup-content">
-      <h3>Upload Related Celebrities</h3>
-      <form id="relatedCelebritiesForm">
-        <textarea id="relatedCelebrityUrls" rows="5" placeholder="Enter celebrity URLs, one per line"></textarea>
-        
-        <div id="relatedCelebritiesErrorMessage" class="error-message"></div>
-        <div>
-          <button type="button" onclick="addRelatedCelebrities()">Upload</button>
-          <button type="button" onclick="closeRelatedCelebritiesPopup()">Cancel</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div class="related-tags-popup" id="relatedTagsPopup">
-    <div class="related-tags-content">
-      <h3>Edit Related Celebrity Tags</h3>
-      <div id="currentRelatedCelebrityInfo"></div>
-      <div id="selectedRelatedTagsContainer" class="selected-tags"></div>
-      
-      <select id="availableRelatedTags">
-        <option value="">Select tags to add</option>
-        </select>
-      <button type="button" onclick="addTagToRelatedCelebritySelection()">Add Tag</button>
-      
-      <div id="relatedTagsErrorMessage" class="error-message"></div>
-      <div>
-        <button type="button" onclick="saveRelatedCelebrityTags()">Save</button>
-        <button type="button" onclick="closeRelatedTagsPopup()">Cancel</button>
-      </div>
-    </div>
-  </div>
-  
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js"></script>
 
   <script>
@@ -700,9 +686,6 @@
     let currentlyEditingCardId = null;
     let currentViewingCard = null;
     let currentCelebrityIndex = 0;
-    let currentRelatedCelebrityTags = [];
-    let currentRelatedCelebrityIndex = 0;
-    let currentFilterRelatedTag = null;
 
     window.onload = async function () {
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -843,10 +826,26 @@
       const celebrities = [currentViewingCard.main_celebrity_url, ...(currentViewingCard.related_celebrities || [])];
       const viewerCelebrity = document.getElementById('viewerCelebrity');
       const celebrityCounter = document.getElementById('celebrityCounter');
-      
+      const thumbnailCarousel = document.getElementById('thumbnailCarousel');
+      thumbnailCarousel.innerHTML = '';
+
       if (celebrities.length > 0 && currentCelebrityIndex >= 0 && currentCelebrityIndex < celebrities.length) {
         viewerCelebrity.src = celebrities[currentCelebrityIndex];
         celebrityCounter.textContent = `${currentCelebrityIndex + 1} / ${celebrities.length}`;
+        
+        celebrities.forEach((imgUrl, index) => {
+            const thumb = document.createElement('img');
+            thumb.src = imgUrl;
+            thumb.className = 'thumbnail';
+            if(index === currentCelebrityIndex) {
+                thumb.classList.add('active');
+            }
+            thumb.onclick = () => {
+                currentCelebrityIndex = index;
+                updateViewerCelebrity();
+            };
+            thumbnailCarousel.appendChild(thumb);
+        });
       }
     }
     
