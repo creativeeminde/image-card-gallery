@@ -12,13 +12,16 @@
       background: #f5f5f5;
       display: grid;
       grid-template-columns: 250px 1fr;
-      grid-template-rows: 100vh;
     }
 
     .sidebar {
       background: white;
       padding: 20px;
       border-right: 1px solid #ddd;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
     }
 
     .sidebar h3 {
@@ -137,12 +140,10 @@
 
     .main-content {
       padding: 20px;
-      overflow-y: auto;
     }
 
-    /* --- Pinterest/Masonry Layout CSS --- */
     .gallery {
-      column-count: 4; /* Adjust number of columns as needed */
+      column-count: 3;
       column-gap: 20px;
     }
 
@@ -150,17 +151,16 @@
       background: white;
       border-radius: 8px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-      margin-bottom: 20px; /* Space between cards in a column */
-      display: inline-block; /* Important for masonry */
-      width: 100%; /* Ensure card takes full column width */
-      break-inside: avoid; /* Prevents cards from breaking across columns */
+      margin-bottom: 20px;
+      display: inline-block;
+      width: 100%;
+      break-inside: avoid;
       position: relative;
+      cursor: pointer;
     }
-    /* --- End of Masonry Layout CSS --- */
-
-
-    .card:hover {
-      transform: scale(1.02);
+    
+    .card:hover .card-actions {
+      opacity: 1;
     }
 
     .card-actions {
@@ -170,14 +170,9 @@
       display: flex;
       gap: 5px;
       z-index: 1;
-      opacity: 0; /* Initially hidden */
+      opacity: 0;
       transition: opacity 0.2s;
     }
-    
-    .card:hover .card-actions {
-        opacity: 1; /* Show on hover */
-    }
-
 
     .card-actions button {
       background: rgba(255, 255, 255, 0.8);
@@ -208,9 +203,9 @@
 
     .card img {
       width: 100%;
-      height: auto; /* This is key: image height is now automatic */
-      display: block; /* Removes bottom space under image */
-      border-radius: 8px 8px 0 0; /* Match card rounding at the top */
+      height: auto;
+      display: block;
+      border-radius: 8px 8px 0 0;
     }
 
     .card-info {
@@ -220,21 +215,6 @@
     .card-info h4 {
       margin: 0 0 10px 0;
       font-size: 1.2rem;
-    }
-
-    .card-tags {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 10px;
-    }
-
-    .card-tags span {
-      background: #f0f0f0;
-      border-radius: 4px;
-      padding: 4px 8px;
-      font-size: 0.8rem;
-      color: #666;
     }
     
     .add-btn {
@@ -562,14 +542,8 @@
     /* Responsive adjustments */
     @media (max-width: 1200px) {
       .gallery {
-        column-count: 3;
+        column-count: 2;
       }
-    }
-
-    @media (max-width: 992px) {
-        .gallery {
-            column-count: 2;
-        }
     }
 
     @media (max-width: 768px) {
@@ -744,6 +718,7 @@
       try {
         const { error } = await supabase.from('models').select('id').limit(1);
 
+        // The specific error code for a missing table is '42P01'
         if (error && error.code === '42P01') {
           const gallery = document.getElementById('gallery');
           gallery.innerHTML = `
@@ -754,8 +729,10 @@
               <p>After creating the table, refresh this page.</p>
             </div>
           `;
+          // Stop further execution since the table doesn't exist
           return;
         } else if (error) {
+          // Handle other potential errors
           throw error;
         }
       } catch (error) {
@@ -878,7 +855,7 @@
           </div>
           ` : ''}
         </div>
-        <div class="card-actions">
+         <div class="card-actions">
           <button class="edit-btn" onclick="event.stopPropagation(); startEditCard('${card.id}')">✏️</button>
           <button class="delete-btn" onclick="event.stopPropagation(); deleteCard('${card.id}')">🗑️</button>
         </div>
@@ -890,25 +867,31 @@
 
     async function loadCards() {
       try {
-        let query = supabase.from('models').select('*').order('created_at', { ascending: false });
-        
-        if (currentFilterTag) {
-            query = query.ilike('tags', `%${currentFilterTag}%`);
-        }
-
-        let { data: cards, error } = await query;
+        let { data: cards, error } = await supabase
+          .from('models')
+          .select('*')
+          .order('created_at', { ascending: false });
         
         if (error) throw error;
 
-        const gallery = document.getElementById('gallery');
-        gallery.innerHTML = ''; 
-        
-        if (cards.length === 0) {
-            gallery.innerHTML = '<p>No models found.</p>';
-            return;
+        document.getElementById('gallery').innerHTML = ''; // Clear previous results
+
+        if (!currentFilterTag) {
+          cards.forEach(card => addCardToPage(card));
+          return;
         }
 
-        cards.forEach(card => addCardToPage(card));
+        const matchingModels = cards.filter(card => {
+            const mainTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
+            return mainTags.includes(currentFilterTag);
+        });
+
+        if (matchingModels.length === 0) {
+          document.getElementById('gallery').innerHTML = '<p>No models found with this tag</p>';
+          return;
+        }
+
+        matchingModels.forEach(card => addCardToPage(card));
 
       } catch (error) {
         console.error("Error loading cards:", error);
