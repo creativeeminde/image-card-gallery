@@ -581,8 +581,7 @@
     <div class="filter-section">
       <h3>Filter by Tags</h3>
       <div class="filter-options" id="filterTags">
-        <!-- Tags will be loaded dynamically from Supabase -->
-      </div>
+        </div>
     </div>
 
     <div class="upload-section">
@@ -599,8 +598,7 @@
       
       <h4>Common Tags</h4>
       <div class="common-tags" id="commonTags">
-        <!-- Tags will be loaded here -->
-      </div>
+        </div>
     </div>
   </aside>
 
@@ -614,13 +612,11 @@
     </div>
   </main>
 
-  <!-- Add Button -->
   <button class="add-btn" onclick="openPopup()">＋</button>
   <button class="videos-btn" onclick="window.location.href='videos.html'">🎬</button>
   <button class="celebrities-btn" onclick="window.location.href='celebrities.html'">🌟</button>
   <button class="models-btn" onclick="window.location.href='models.html'">👗</button>
 
-  <!-- Image Viewer -->
   <div class="image-viewer" id="imageViewer">
     <span class="image-viewer-close" onclick="closeImageViewer()">&times;</span>
     <div class="image-viewer-content" id="viewerContent">
@@ -642,7 +638,6 @@
     </div>
   </div>
 
-  <!-- Popup for main upload -->
   <div class="popup" id="popup">
     <div class="popup-content">
       <h3>Upload New Image</h3>
@@ -654,8 +649,7 @@
         
         <select id="availableTags">
           <option value="">Select tags to add</option>
-          <!-- Tags will be loaded here -->
-        </select>
+          </select>
         <button type="button" onclick="addTagToSelection()">Add Tag</button>
         
         <div id="errorMessage" class="error-message"></div>
@@ -667,7 +661,6 @@
     </div>
   </div>
 
-  <!-- Popup for related images upload -->
   <div class="popup" id="relatedImagesPopup">
     <div class="popup-content">
       <h3>Upload Related Images</h3>
@@ -683,7 +676,6 @@
     </div>
   </div>
 
-  <!-- Popup for related image tags -->
   <div class="related-tags-popup" id="relatedTagsPopup">
     <div class="related-tags-content">
       <h3>Edit Related Image Tags</h3>
@@ -692,8 +684,7 @@
       
       <select id="availableRelatedTags">
         <option value="">Select tags to add</option>
-        <!-- Tags will be loaded here -->
-      </select>
+        </select>
       <button type="button" onclick="addTagToRelatedImageSelection()">Add Tag</button>
       
       <div id="relatedTagsErrorMessage" class="error-message"></div>
@@ -704,7 +695,6 @@
     </div>
   </div>
 
-  <!-- Supabase JS -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js"></script>
 
   <script>
@@ -734,11 +724,14 @@
     let pinchCenter = null;
     let initialPinchPosX = 0;
     let initialPinchPosY = 0;
+    
+    // NEW: Variables for swipe gesture
+    let swipeStartX = 0;
+    let swipeStartY = 0;
 
 
     window.onload = async function () {
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
       try {
         const { data, error } = await supabase.from('cards').select('*').limit(1);
         if (error && error.code !== '42P01') throw error;
@@ -755,7 +748,6 @@
           await addCard();
         }
       });
-
       await loadTags();
       await loadFilterTags();
       await loadCards();
@@ -767,7 +759,6 @@
           .from('tags')
           .select('name')
           .order('name', { ascending: true });
-
         if (error && error.code === '42P01') {
           // This is a placeholder for creating the table if it doesn't exist.
           // In a real app, you'd handle this with migrations.
@@ -788,12 +779,10 @@
         const { data: cards, error: cardsError } = await supabase
           .from('cards')
           .select('tags, related_images_with_tags');
-        
         if (cardsError) throw cardsError;
 
         const allMainTags = new Set();
         const allRelatedTags = new Set();
-
         cards.forEach(card => {
           if (card.tags) {
             card.tags.split(',').forEach(tag => {
@@ -809,15 +798,14 @@
                 });
               }
             });
+  
           }
         });
-
         const allTags = [...allMainTags, ...allRelatedTags];
         const uniqueTags = [...new Set(allTags)].sort();
 
         const filterContainer = document.getElementById('filterTags');
         filterContainer.innerHTML = '';
-
         const allButton = document.createElement('button');
         allButton.textContent = 'All';
         allButton.className = !currentFilterTag ? 'active' : '';
@@ -826,7 +814,6 @@
           loadCards();
         };
         filterContainer.appendChild(allButton);
-
         uniqueTags.forEach(tag => {
           const tagButton = document.createElement('button');
           tagButton.textContent = tag;
@@ -834,7 +821,7 @@
           tagButton.onclick = () => {
             currentFilterTag = currentFilterTag === tag ? null : tag;
             loadCards();
-          };
+           };
           filterContainer.appendChild(tagButton);
         });
       } catch (error) {
@@ -848,11 +835,9 @@
       cardElem.dataset.cardId = card.id;
       
       const tags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
-      
       const mainImageUrl = card.main_image_url.includes('ik.imagekit.io') ? 
         `${card.main_image_url}?tr=q-90` :
         card.main_image_url;
-      
       cardElem.innerHTML = `
         <img src="${mainImageUrl}" alt="${card.title}" 
              onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
@@ -868,7 +853,7 @@
           <button class="edit-btn" onclick="event.stopPropagation(); startEditCard('${card.id}')">✏️</button>
           <button class="delete-btn" onclick="event.stopPropagation(); deleteCard('${card.id}')">🗑️</button>
         </div>
-      `;
+       `;
       
       cardElem.addEventListener('click', () => openImageViewer(card));
       document.getElementById('gallery').appendChild(cardElem);
@@ -881,7 +866,6 @@
                 .from('cards')
                 .select('*')
                 .order('created_at', { ascending: false });
-
             if (error) throw error;
 
             gallery.innerHTML = ''; 
@@ -906,17 +890,16 @@
                     card.related_images_with_tags.forEach(relatedImg => {
                         const relatedTags = relatedImg.tags ? relatedImg.tags.split(',').map(t => t.trim()) : [];
                         if (relatedTags.includes(currentFilterTag)) {
-                            matchingImages.push({
+                             matchingImages.push({
                                 type: 'related',
                                 url: relatedImg.url,
-                                tags: relatedImg.tags,
+                                 tags: relatedImg.tags,
                                 parentCard: card
                             });
                         }
-                    });
+                     });
                 }
             });
-            
             if (matchingImages.length === 0) {
                 gallery.innerHTML = '<p>No images found with this tag.</p>';
                 return;
@@ -926,35 +909,34 @@
                 if (match.type === 'main') {
                     addCardToPage(match.card);
                 } else {
-                    const cardElem = document.createElement('div');
+                     const cardElem = document.createElement('div');
                     cardElem.className = 'card';
                     const tags = match.tags ? match.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
                     
-                    cardElem.innerHTML = `
+                     cardElem.innerHTML = `
                         <img src="${match.url}" alt="Related image from ${match.parentCard.title}"
                              onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
                         <div class="card-info">
-                          <small>From: ${match.parentCard.title}</small>
+                           <small>From: ${match.parentCard.title}</small>
                           ${tags.length > 0 ? `
                           <div class="card-tags">
                             ${tags.map(tag => `<span class="tag-bubble">${tag}</span>`).join('')}
                           </div>
                           ` : ''}
                         </div>
-                    `;
+                     `;
                     
                     cardElem.addEventListener('click', () => {
                       openImageViewer(match.parentCard);
                       const index = (match.parentCard.related_images || []).indexOf(match.url);
                       if (index !== -1) {
-                        currentImageIndex = index + 1;
+                           currentImageIndex = index + 1;
                         updateViewerImage();
                       }
                     });
                     gallery.appendChild(cardElem);
                 }
             });
-
         } catch (error) {
             console.error("Error loading cards:", error);
             gallery.innerHTML = '<p>Error loading images.</p>';
@@ -963,10 +945,10 @@
     
     async function loadRelatedImages(tag = null) {
       if (!currentViewingCard) return;
-      
       try {
         const images = currentViewingCard.related_images || [];
-        const relatedImagesWithTags = currentViewingCard.related_images_with_tags || [];
+        const relatedImagesWithTags = currentViewingCard.related_images_with_tags ||
+        [];
         
         document.getElementById('relatedImagesGallery').innerHTML = '';
         
@@ -976,7 +958,6 @@
         }
         
         document.getElementById('relatedImagesSection').style.display = 'block';
-        
         const allRelatedTags = new Set();
         relatedImagesWithTags.forEach(img => {
           if (img.tags) {
@@ -985,13 +966,13 @@
             });
           }
         });
-        
         const filterContainer = document.getElementById('relatedImageFilterTags');
         filterContainer.innerHTML = '';
         
         const allButton = document.createElement('button');
         allButton.textContent = 'All';
-        allButton.className = !tag ? 'active' : '';
+        allButton.className = !tag ?
+        'active' : '';
         allButton.onclick = () => {
           currentFilterRelatedTag = null;
           loadRelatedImages();
@@ -1005,14 +986,13 @@
           tagButton.onclick = () => {
             currentFilterRelatedTag = currentFilterRelatedTag === tagName ? null : tagName;
             loadRelatedImages(currentFilterRelatedTag);
-          };
+           };
           filterContainer.appendChild(tagButton);
         });
-        
         const filteredImages = tag 
-          ? relatedImagesWithTags.filter(img => img.tags && img.tags.split(',').map(t => t.trim()).includes(tag))
+          ?
+          relatedImagesWithTags.filter(img => img.tags && img.tags.split(',').map(t => t.trim()).includes(tag))
           : relatedImagesWithTags;
-        
         if (filteredImages.length === 0) {
           document.getElementById('relatedImagesGallery').innerHTML = '<p>No images found with this tag</p>';
           return;
@@ -1025,7 +1005,7 @@
           const tags = img.tags ? img.tags.split(',').map(t => t.trim()).filter(t => t) : [];
           
           imgElem.innerHTML = `
-            <img src="${img.url}" alt="Related image ${index + 1}" 
+             <img src="${img.url}" alt="Related image ${index + 1}" 
                  onerror="this.src='https://via.placeholder.com/300?text=Image+Not+Found'" />
             <div class="card-info">
               ${tags.length > 0 ? `
@@ -1038,7 +1018,7 @@
           
           imgElem.addEventListener('click', () => {
             currentImageIndex = currentViewingCard.related_images.indexOf(img.url);
-            updateViewerImage();
+               updateViewerImage();
           });
           
           document.getElementById('relatedImagesGallery').appendChild(imgElem);
@@ -1085,11 +1065,9 @@
 
     function updateViewerImage() {
       if (!currentViewingCard) return;
-      
       const images = [currentViewingCard.main_image_url, ...(currentViewingCard.related_images || [])];
       const viewerImage = document.getElementById('viewerImage');
       const imageCounter = document.getElementById('imageCounter');
-      
       if (images.length > 0 && currentImageIndex >= 0 && currentImageIndex < images.length) {
         const imageUrl = images[currentImageIndex];
         const displayUrl = imageUrl.includes('ik.imagekit.io') ? 
@@ -1150,7 +1128,7 @@
       }
     }
 
-    // FIX: Updated handleTouchStart function for centered zooming
+    // FIX: Updated handleTouchStart function for swipe gesture detection
     function handleTouchStart(e) {
       if (e.touches.length === 2) {
         initialPinchDistance = getDistance(e.touches[0].clientX, e.touches[0].clientY, e.touches[1].clientX, e.touches[1].clientY);
@@ -1167,13 +1145,15 @@
         startX = e.touches[0].clientX - posX;
         startY = e.touches[0].clientY - posY;
         e.preventDefault();
+      } else if (e.touches.length === 1 && scale === 1) {
+        swipeStartX = e.touches[0].clientX;
+        swipeStartY = e.touches[0].clientY;
       }
     }
 
     // FIX: Updated handleTouchMove function for centered zooming and panning
     function handleTouchMove(e) {
       e.preventDefault();
-
       if (e.touches.length === 1 && isDragging) {
         posX = e.touches[0].clientX - startX;
         posY = e.touches[0].clientY - startY;
@@ -1189,12 +1169,10 @@
           x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
           y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
         };
-
         const scaleRatio = newScale / lastZoom;
         posX = currentPinchCenter.x - (pinchCenter.x - initialPinchPosX) * scaleRatio;
         posY = currentPinchCenter.y - (pinchCenter.y - initialPinchPosY) * scaleRatio;
         scale = newScale;
-
         if (scale < 1) {
           resetZoom();
         } else {
@@ -1203,11 +1181,36 @@
       }
     }
 
-    // FIX: Updated handleTouchEnd to reset variables
-    function handleTouchEnd() {
-      initialPinchDistance = null;
-      pinchCenter = null;
-      isDragging = false;
+    // FIX: Updated handleTouchEnd to detect swipe gestures
+    function handleTouchEnd(e) {
+        // Only process for a single touch that has ended and the image is not zoomed
+        if (e.changedTouches.length === 1 && scale === 1 && swipeStartX !== 0) {
+            const swipeEndX = e.changedTouches[0].clientX;
+            const swipeEndY = e.changedTouches[0].clientY;
+            const swipeDiffX = swipeStartX - swipeEndX;
+            const swipeDiffY = swipeStartY - swipeEndY;
+            const swipeThreshold = 50; // Minimum distance for a swipe
+
+            // Check if the horizontal swipe is more significant than the vertical one
+            if (Math.abs(swipeDiffX) > Math.abs(swipeDiffY) && Math.abs(swipeDiffX) > swipeThreshold) {
+                if (swipeDiffX > 0) {
+                    // Swiped left
+                    nextImage();
+                } else {
+                    // Swiped right
+                    prevImage();
+                }
+            }
+        }
+
+        // Reset variables for pinch-to-zoom and dragging
+        initialPinchDistance = null;
+        pinchCenter = null;
+        isDragging = false;
+        
+        // Reset swipe start coordinates
+        swipeStartX = 0;
+        swipeStartY = 0;
     }
     
     function getDistance(x1, y1, x2, y2) { return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)); }
@@ -1363,7 +1366,8 @@
         currentlyEditingCardId = cardId;
         document.getElementById('title').value = card.title;
         document.getElementById('imageUrl').value = card.main_image_url;
-        selectedTags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+        selectedTags = card.tags ?
+        card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
         updateSelectedTagsDisplay();
         document.querySelector('.popup-content h3').textContent = 'Edit Card';
         openPopup();
