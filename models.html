@@ -489,6 +489,7 @@
       padding: 8px;
       border: 1px solid #ccc;
       border-radius: 6px;
+      box-sizing: border-box;
     }
 
     .popup-content button {
@@ -547,18 +548,21 @@
     }
 
     @media (max-width: 768px) {
-  body {
-    grid-template-columns: 1fr;
-  }
-  .sidebar {
-    position: static;
-    height: auto;
-    overflow-y: visible;
-  }
-  .gallery {
-    column-count: 1;
-  }
-}
+      body {
+        grid-template-columns: 1fr;
+      }
+      /* FIX: Adjust sidebar for mobile */
+      .sidebar {
+        position: static;
+        height: auto;
+        overflow-y: visible;
+        border-right: none;
+        border-bottom: 1px solid #ddd;
+      }
+      .gallery {
+        column-count: 1;
+      }
+    }
   </style>
 </head>
 <body>
@@ -567,7 +571,7 @@
     <div class="filter-section">
       <h3>Filter by Tags</h3>
       <div class="filter-options" id="filterTags">
-        <!-- Tags will be loaded dynamically from Supabase -->
+        <!-- Tags will be loaded dynamically -->
       </div>
     </div>
 
@@ -715,15 +719,14 @@
     let startX, startY;
     let initialPinchDistance = null;
     let lastZoom = 1;
+    // FIX: Add pinchCenter variable
+    let pinchCenter = null; 
 
     window.onload = async function () {
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-      // Check if the 'models' table exists and handle error gracefully
       try {
         const { error } = await supabase.from('models').select('id').limit(1);
-
-        // The specific error code for a missing table is '42P01'
         if (error && error.code === '42P01') {
           const gallery = document.getElementById('gallery');
           gallery.innerHTML = `
@@ -734,10 +737,8 @@
               <p>After creating the table, refresh this page.</p>
             </div>
           `;
-          // Stop further execution since the table doesn't exist
           return;
         } else if (error) {
-          // Handle other potential errors
           throw error;
         }
       } catch (error) {
@@ -1096,11 +1097,17 @@
         if (-e.deltaY > 0) zoomIn(); else zoomOut();
       }
     }
-
+    
+    // FIX: Updated handleTouchStart function
     function handleTouchStart(e) {
       if (e.touches.length === 2) {
         initialPinchDistance = getDistance(e.touches[0].clientX, e.touches[0].clientY, e.touches[1].clientX, e.touches[1].clientY);
         lastZoom = scale;
+        // Capture the initial center of the pinch
+        pinchCenter = {
+          x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+          y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+        };
         e.preventDefault();
       } else if (e.touches.length === 1 && scale > 1) {
         isDragging = true;
@@ -1110,21 +1117,51 @@
       }
     }
 
+    // FIX: Replaced handleTouchMove function with corrected version
     function handleTouchMove(e) {
-      if (e.touches.length === 2) {
+      e.preventDefault(); 
+
+      // Fix for single-finger drag on touch
+      if (e.touches.length === 1 && isDragging) {
+        posX = e.touches[0].clientX - startX;
+        posY = e.touches[0].clientY - startY;
+        applyZoom();
+        return;
+      }
+
+      // Logic for centered pinch-to-zoom
+      if (e.touches.length === 2 && initialPinchDistance !== null && pinchCenter !== null) {
         const currentDistance = getDistance(e.touches[0].clientX, e.touches[0].clientY, e.touches[1].clientX, e.touches[1].clientY);
-        if (initialPinchDistance !== null) scale = lastZoom * (currentDistance / initialPinchDistance);
-        applyZoom();
-        e.preventDefault();
-      } else if (e.touches.length === 1 && isDragging) {
-        posX = e.clientX - startX;
-        posY = e.clientY - startY;
-        applyZoom();
-        e.preventDefault();
+        let newScale = lastZoom * (currentDistance / initialPinchDistance);
+
+        const currentPinchCenter = {
+          x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+          y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+        };
+        
+        const scaleRatio = newScale / lastZoom;
+        const newPosX = currentPinchCenter.x - scaleRatio * (pinchCenter.x - posX);
+        const newPosY = currentPinchCenter.y - scaleRatio * (pinchCenter.y - posY);
+
+        scale = newScale;
+        posX = newPosX;
+        posY = newPosY;
+
+        if (scale < 1) {
+          resetZoom();
+        } else {
+          applyZoom();
+        }
       }
     }
 
-    function handleTouchEnd() { initialPinchDistance = null; isDragging = false; }
+    // FIX: Updated handleTouchEnd function
+    function handleTouchEnd() {
+      initialPinchDistance = null;
+      pinchCenter = null; // Reset the pinch center
+      isDragging = false;
+    }
+
     function getDistance(x1, y1, x2, y2) { return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)); }
 
     function openRelatedModelsPopup() {
