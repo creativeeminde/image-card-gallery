@@ -358,65 +358,6 @@
       cursor: pointer;
     }
 
-    .image-viewer-footer {
-      position: absolute;
-      bottom: 20px;
-      width: 100%;
-      text-align: center;
-    }
-
-    .upload-related-btn {
-      background: #4caf50;
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 1rem;
-    }
-
-    .upload-related-btn:hover {
-      background: #45a049;
-    }
-
-    .zoom-controls {
-      position: absolute;
-      bottom: 80px;
-      right: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      z-index: 10;
-    }
-
-    .zoom-btn {
-      background: rgba(0, 0, 0, 0.6);
-      color: white;
-      border: none;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      font-size: 1.2rem;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .reset-zoom {
-      position: absolute;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.6);
-      color: white;
-      border: none;
-      border-radius: 20px;
-      padding: 8px 16px;
-      font-size: 0.9rem;
-      cursor: pointer;
-    }
-
     .popup {
       display: none;
       position: fixed;
@@ -552,11 +493,6 @@
     <span class="image-viewer-close" onclick="closeImageViewer()">&times;</span>
     <div class="image-viewer-content" id="viewerContent">
       <img id="viewerImage" src="" alt="">
-      <div class="zoom-controls">
-        <button class="zoom-btn" onclick="zoomIn()">+</button>
-        <button class="zoom-btn" onclick="zoomOut()">-</button>
-      </div>
-      <button class="reset-zoom" onclick="resetZoom()">Reset Zoom</button>
     </div>
     <div class="image-nav">
       <button class="nav-btn" onclick="prevImage()">&#10094;</button>
@@ -616,17 +552,23 @@
         }
       });
       
-      await loadFilterTags();
+      await loadAllTags();
       resetAndLoadCards();
     };
 
     function setupInfiniteScroll() {
         const loader = document.getElementById('loader');
+        const options = {
+            root: null,
+            rootMargin: '0px',
+            threshold: 1.0
+        };
+
         observer = new IntersectionObserver((entries) => {
             if (entries[0].isIntersecting && !isLoading) {
                 loadCards();
             }
-        }, { threshold: 1.0 });
+        }, options);
 
         observer.observe(loader);
     }
@@ -636,22 +578,25 @@
         allCardsLoaded = false;
         document.getElementById('gallery').innerHTML = '';
         const loader = document.getElementById('loader');
-        observer.observe(loader); // Re-observe if it was stopped
-        loadCards();
+        if (observer) observer.observe(loader);
+        await loadCards();
     }
     
-    async function loadFilterTags() {
+    async function loadAllTags() {
       try {
-        const { data: cards, error } = await supabase.from('cards').select('tags');
+        const { data, error } = await supabase.from('tags').select('name');
         if (error) throw error;
         
-        const tagSet = new Set();
-        cards.forEach(card => {
-            if(card.tags) {
-                card.tags.split(',').forEach(tag => tagSet.add(tag.trim()));
-            }
-        });
+        allTags = data.map(t => t.name).sort();
+        populateFilterTags(allTags);
+        updateTagDisplays();
 
+      } catch (error) {
+        console.error("Error loading all tags:", error);
+      }
+    }
+
+    function populateFilterTags(tags) {
         const filterContainer = document.getElementById('filterTags');
         filterContainer.innerHTML = '';
 
@@ -660,35 +605,36 @@
         allButton.className = !currentFilterTag ? 'active' : '';
         allButton.onclick = () => {
           currentFilterTag = null;
+          updateActiveTagButton(allButton);
           resetAndLoadCards();
-          updateActiveTagButton();
         };
         filterContainer.appendChild(allButton);
 
-        [...tagSet].sort().forEach(tag => {
+        tags.forEach(tag => {
           const tagButton = document.createElement('button');
           tagButton.textContent = tag;
           tagButton.className = currentFilterTag === tag ? 'active' : '';
           tagButton.onclick = () => {
             currentFilterTag = currentFilterTag === tag ? null : tag;
+            updateActiveTagButton(tagButton);
             resetAndLoadCards();
-            updateActiveTagButton();
           };
           filterContainer.appendChild(tagButton);
         });
-      } catch (error) {
-        console.error("Error loading filter tags:", error);
-      }
     }
 
-    function updateActiveTagButton() {
+
+    function updateActiveTagButton(activeButton) {
         document.querySelectorAll('#filterTags button').forEach(btn => {
-            if (btn.textContent === (currentFilterTag || 'All')) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
-            }
+            btn.classList.remove('active');
         });
+        if (activeButton) {
+            if (currentFilterTag === null && activeButton.textContent === 'All') {
+                activeButton.classList.add('active');
+            } else if (activeButton.textContent === currentFilterTag) {
+                 activeButton.classList.add('active');
+            }
+        }
     }
 
     function addCardToPage(card) {
@@ -809,14 +755,85 @@
         
         closePopup();
         resetAndLoadCards();
-        await loadFilterTags(); 
+        await loadAllTags(); 
       } catch (error) {
         console.error("Error adding card:", error);
         document.getElementById('errorMessage').textContent = error.message;
       }
     }
+    
+    // Functions for tag selection in popup
+    function updateTagDisplays() {
+      const commonTagsContainer = document.getElementById('commonTags');
+      commonTagsContainer.innerHTML = '';
+      allTags.forEach(tag => {
+        const tagButton = document.createElement('button');
+        tagButton.textContent = tag;
+        tagButton.onclick = () => { document.getElementById('newTagInput').value = tag; };
+        commonTagsContainer.appendChild(tagButton);
+      });
 
-    function openPopup() {
+      const availableTagsSelect = document.getElementById('availableTags');
+      const selectedTagValues = Array.from(document.querySelectorAll('#selectedTagsContainer .selected-tag')).map(el => el.textContent.trim().replace('×',''));
+      availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
+      allTags.forEach(tag => {
+        if (!selectedTagValues.includes(tag)) {
+          const option = document.createElement('option');
+          option.value = tag;
+          option.textContent = tag;
+          availableTagsSelect.appendChild(option);
+        }
+      });
+    }
+
+    function addTagToSelection() {
+      const availableTagsSelect = document.getElementById('availableTags');
+      const selectedTag = availableTagsSelect.value;
+      if (!selectedTag) return;
+      
+      const container = document.getElementById('selectedTagsContainer');
+      const existingTags = Array.from(container.querySelectorAll('.selected-tag')).map(el => el.textContent.trim().replace('×',''));
+      if (existingTags.includes(selectedTag)) return;
+
+      const tagElem = document.createElement('div');
+      tagElem.className = 'selected-tag';
+      tagElem.innerHTML = `${selectedTag} <button onclick="removeSelectedTag(this)">×</button>`;
+      container.appendChild(tagElem);
+      updateTagDisplays();
+    }
+    
+    function removeSelectedTag(button) {
+        button.parentElement.remove();
+        updateTagDisplays();
+    }
+
+    function openPopup(card = null) {
+      currentlyEditingCardId = card ? card.id : null;
+      const popupTitle = document.querySelector('#popup h3');
+      const cardForm = document.getElementById('cardForm');
+      cardForm.reset();
+      
+      const selectedTagsContainer = document.getElementById('selectedTagsContainer');
+      selectedTagsContainer.innerHTML = '';
+
+      if (card) {
+          popupTitle.textContent = 'Edit Image';
+          document.getElementById('title').value = card.title;
+          document.getElementById('imageUrl').value = card.main_image_url;
+          if (card.tags) {
+              card.tags.split(',').forEach(tag => {
+                  if(!tag.trim()) return;
+                  const tagElem = document.createElement('div');
+                  tagElem.className = 'selected-tag';
+                  tagElem.innerHTML = `${tag.trim()} <button onclick="removeSelectedTag(this)">×</button>`;
+                  selectedTagsContainer.appendChild(tagElem);
+              });
+          }
+      } else {
+          popupTitle.textContent = 'Upload New Image';
+      }
+      
+      updateTagDisplays();
       document.getElementById('popup').style.display = 'flex';
     }
 
