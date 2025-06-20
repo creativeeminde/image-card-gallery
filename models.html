@@ -710,6 +710,7 @@
     let currentRelatedModelTags = [];
     let currentRelatedModelIndex = 0;
     let currentFilterRelatedTag = null;
+    let displayedCards = []; // Holds the currently visible cards for navigation
 
     // Zoom and pan variables
     let scale = 1;
@@ -720,7 +721,6 @@
     let initialPinchDistance = null;
     let lastZoom = 1;
     let pinchCenter = null; 
-    // FIX: Add variables to store position at the start of a pinch
     let initialPinchPosX = 0;
     let initialPinchPosY = 0;
 
@@ -871,7 +871,10 @@
         </div>
       `;
       
-      cardElem.addEventListener('click', () => openModelViewer(card));
+      cardElem.addEventListener('click', () => {
+        currentModelIndex = 0;
+        openModelViewer(card);
+      });
       document.getElementById('gallery').appendChild(cardElem);
     }
 
@@ -884,24 +887,23 @@
         
         if (error) throw error;
 
-        document.getElementById('gallery').innerHTML = ''; // Clear previous results
+        document.getElementById('gallery').innerHTML = '';
+        displayedCards = []; // Clear previous list
 
-        if (!currentFilterTag) {
-          cards.forEach(card => addCardToPage(card));
-          return;
-        }
+        const cardsToDisplay = currentFilterTag 
+          ? cards.filter(card => {
+              const mainTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
+              return mainTags.includes(currentFilterTag);
+            })
+          : cards;
 
-        const matchingModels = cards.filter(card => {
-            const mainTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
-            return mainTags.includes(currentFilterTag);
-        });
-
-        if (matchingModels.length === 0) {
+        if (cardsToDisplay.length === 0) {
           document.getElementById('gallery').innerHTML = '<p>No models found with this tag</p>';
           return;
         }
 
-        matchingModels.forEach(card => addCardToPage(card));
+        displayedCards = cardsToDisplay; // Store the filtered list
+        displayedCards.forEach(card => addCardToPage(card));
 
       } catch (error) {
         console.error("Error loading cards:", error);
@@ -1009,7 +1011,6 @@
 
     function openModelViewer(card) {
       currentViewingCard = card;
-      if (currentModelIndex === undefined) currentModelIndex = 0;
       resetZoom();
       updateViewerModel();
       document.getElementById('modelViewer').style.display = 'flex';
@@ -1052,18 +1053,46 @@
 
     function prevModel() {
       if (!currentViewingCard) return;
-      const models = [currentViewingCard.main_model_url, ...(currentViewingCard.related_models || [])];
-      currentModelIndex = (currentModelIndex - 1 + models.length) % models.length;
-      resetZoom();
-      updateViewerModel();
+
+      if (currentModelIndex > 0) {
+        // There are previous images for the current card, so just move to the previous image
+        currentModelIndex--;
+        resetZoom();
+        updateViewerModel();
+      } else {
+        // This is the first image of the current card, so move to the previous card
+        const currentCardIndexInDisplay = displayedCards.findIndex(card => card.id === currentViewingCard.id);
+
+        if (currentCardIndexInDisplay > 0) {
+          const prevCard = displayedCards[currentCardIndexInDisplay - 1];
+          // Set index to the last image of the previous card
+          const prevCardModels = [prevCard.main_model_url, ...(prevCard.related_models || [])];
+          currentModelIndex = prevCardModels.length - 1; 
+          openModelViewer(prevCard);
+        }
+      }
     }
 
     function nextModel() {
       if (!currentViewingCard) return;
+
       const models = [currentViewingCard.main_model_url, ...(currentViewingCard.related_models || [])];
-      currentModelIndex = (currentModelIndex + 1) % models.length;
-      resetZoom();
-      updateViewerModel();
+      
+      if (currentModelIndex < models.length - 1) {
+        // There are more images for the current card, so just move to the next image
+        currentModelIndex++;
+        resetZoom();
+        updateViewerModel();
+      } else {
+        // This is the last image of the current card, so move to the next card
+        const currentCardIndexInDisplay = displayedCards.findIndex(card => card.id === currentViewingCard.id);
+
+        if (currentCardIndexInDisplay !== -1 && currentCardIndexInDisplay < displayedCards.length - 1) {
+          const nextCard = displayedCards[currentCardIndexInDisplay + 1];
+          currentModelIndex = 0; // Start with the first image of the next card
+          openModelViewer(nextCard);
+        }
+      }
     }
 
     function zoomIn() { scale *= 1.2; applyZoom(); }
@@ -1100,17 +1129,14 @@
       }
     }
     
-    // FIX: Updated handleTouchStart function
     function handleTouchStart(e) {
       if (e.touches.length === 2) {
         initialPinchDistance = getDistance(e.touches[0].clientX, e.touches[0].clientY, e.touches[1].clientX, e.touches[1].clientY);
         lastZoom = scale;
-        // Capture the initial center of the pinch
         pinchCenter = {
           x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
           y: (e.touches[0].clientY + e.touches[1].clientY) / 2
         };
-        // Capture the position at the start of the pinch
         initialPinchPosX = posX;
         initialPinchPosY = posY;
         e.preventDefault();
@@ -1122,11 +1148,9 @@
       }
     }
 
-    // FIX: Replaced handleTouchMove function with corrected version
     function handleTouchMove(e) {
       e.preventDefault(); 
 
-      // Fix for single-finger drag on touch
       if (e.touches.length === 1 && isDragging) {
         posX = e.touches[0].clientX - startX;
         posY = e.touches[0].clientY - startY;
@@ -1134,7 +1158,6 @@
         return;
       }
 
-      // Logic for centered pinch-to-zoom
       if (e.touches.length === 2 && initialPinchDistance !== null && pinchCenter !== null) {
         const currentDistance = getDistance(e.touches[0].clientX, e.touches[0].clientY, e.touches[1].clientX, e.touches[1].clientY);
         let newScale = lastZoom * (currentDistance / initialPinchDistance);
@@ -1146,7 +1169,6 @@
         
         const scaleRatio = newScale / lastZoom;
 
-        // Use the initial position from the start of the pinch for a stable calculation
         posX = currentPinchCenter.x - (pinchCenter.x - initialPinchPosX) * scaleRatio;
         posY = currentPinchCenter.y - (pinchCenter.y - initialPinchPosY) * scaleRatio;
         scale = newScale;
@@ -1159,10 +1181,9 @@
       }
     }
 
-    // FIX: Updated handleTouchEnd function
     function handleTouchEnd() {
       initialPinchDistance = null;
-      pinchCenter = null; // Reset the pinch center
+      pinchCenter = null;
       isDragging = false;
     }
 
@@ -1463,10 +1484,13 @@
 
         const { data, error } = await supabase.from('models').insert([newCard]).select();
         if (error) throw error;
+        
+        // Add new card to the start of the displayed list and re-render
+        displayedCards.unshift(data[0]);
+        document.getElementById('gallery').innerHTML = '';
+        displayedCards.forEach(card => addCardToPage(card));
 
-        addCardToPage(data[0]);
         closePopup();
-        await loadCards();
       } catch (error) {
         console.error("Error adding card:", error);
         document.getElementById('errorMessage').textContent = error.message;
