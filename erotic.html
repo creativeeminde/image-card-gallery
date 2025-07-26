@@ -468,7 +468,6 @@
         grid-template-areas: "main";
       }
       .sidebar {
-          /* In mobile view, you might want to hide the sidebar or make it a toggleable menu */
           display: none;
       }
     }
@@ -517,6 +516,20 @@
   <button class="videos-btn" onclick="window.location.href='videos.html'">📷</button>
   <button class="add-btn" onclick="openPopup()">＋</button>
 
+  <div class="video-viewer" id="videoViewer">
+    <span class="video-viewer-close" onclick="closeVideoViewer()">&times;</span>
+    <div class="video-viewer-content" id="viewerContent">
+      <video id="viewerVideo" controls></video>
+    </div>
+    <div class="video-nav">
+      <button class="nav-btn" onclick="prevVideo()">&#10094;</button>
+      <button class="nav-btn" onclick="nextVideo()">&#10095;</button>
+    </div>
+    <div class="video-counter" id="videoCounter"></div>
+    <div class="video-viewer-footer">
+        </div>
+  </div>
+
   <div class="popup" id="popup">
     <div class="popup-content">
       <h3>Upload New Video</h3>
@@ -533,7 +546,7 @@
         
         <select id="availableTags">
           <option value="">Select tags to add</option>
-          </select>
+        </select>
         <button type="button" onclick="addTagToSelection()">Add Tag</button>
         
         <div id="errorMessage" class="error-message"></div>
@@ -545,7 +558,7 @@
       </form>
     </div>
   </div>
-
+  
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js"></script>
 
   <script>
@@ -561,6 +574,8 @@
     let currentFilterTag = null;
     let currentFilterGirl = null;
     let currentlyEditingCardId = null;
+    let currentViewingCard = null; // for video viewer
+    let currentVideoIndex = 0; // for video viewer
 
     window.onload = async function () {
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -574,7 +589,6 @@
         }
       });
       
-      // Load all necessary data on page start
       await Promise.all([
         loadTags(),
         loadGirls(),
@@ -584,7 +598,7 @@
       await loadCards();
     };
 
-    // --- NEW: Girl Management Functions ---
+    // --- Girl Management Functions ---
 
     async function addNewGirl() {
       const newGirlInput = document.getElementById('newGirlInput');
@@ -593,12 +607,10 @@
 
       try {
         if (!allGirls.includes(newGirl)) {
-          // Add to the 'girls' table
           const { error } = await supabase.from('girls').insert([{ name: newGirl }]);
           if (error) throw error;
           
           newGirlInput.value = '';
-          // Refresh the lists
           await loadGirls();
           await loadFilterGirls();
         }
@@ -610,17 +622,12 @@
 
     async function loadGirls() {
       try {
-        const { data: girls, error } = await supabase
-          .from('girls')
-          .select('name')
-          .order('name', { ascending: true });
+        const { data: girls, error } = await supabase.from('girls').select('name').order('name', { ascending: true });
         if (error) throw error;
-
         allGirls = girls.map(g => g.name);
         
-        // Populate the dropdown in the upload form
         const girlSelect = document.getElementById('girlNameSelect');
-        girlSelect.innerHTML = '<option value="">-- Select a Girl --</option>'; // Reset
+        girlSelect.innerHTML = '<option value="">-- Select a Girl --</option>';
         allGirls.forEach(girl => {
             const option = document.createElement('option');
             option.value = girl;
@@ -646,10 +653,10 @@
             allButton.textContent = 'All';
             allButton.className = !currentFilterGirl ? 'active' : '';
             allButton.onclick = () => {
-                currentFilterGirl = null;
-                loadCards();
                 document.querySelectorAll('#filterGirls button').forEach(btn => btn.classList.remove('active'));
                 allButton.classList.add('active');
+                currentFilterGirl = null;
+                loadCards();
             };
             filterContainer.appendChild(allButton);
 
@@ -658,10 +665,10 @@
                 girlButton.textContent = name;
                 girlButton.className = currentFilterGirl === name ? 'active' : '';
                 girlButton.onclick = () => {
-                    currentFilterGirl = name;
-                    loadCards();
                     document.querySelectorAll('#filterGirls button').forEach(btn => btn.classList.remove('active'));
                     girlButton.classList.add('active');
+                    currentFilterGirl = name;
+                    loadCards();
                 };
                 filterContainer.appendChild(girlButton);
             });
@@ -670,7 +677,7 @@
         }
     }
 
-    // --- Tag Management Functions (Largely unchanged) ---
+    // --- Tag Management Functions ---
     async function addNewTag() {
         const newTagInput = document.getElementById('newTagInput');
         const newTag = newTagInput.value.trim();
@@ -691,10 +698,7 @@
     
     async function loadTags() {
       try {
-        const { data: tags, error } = await supabase
-          .from('tags')
-          .select('name')
-          .order('name', { ascending: true });
+        const { data: tags, error } = await supabase.from('tags').select('name').order('name', { ascending: true });
         if (error) throw error;
         allTags = tags.map(tag => tag.name);
         updateTagDisplays();
@@ -716,10 +720,10 @@
             allButton.textContent = 'All';
             allButton.className = !currentFilterTag ? 'active' : '';
             allButton.onclick = () => {
-                currentFilterTag = null;
-                loadCards();
                 document.querySelectorAll('#filterTags button').forEach(btn => btn.classList.remove('active'));
                 allButton.classList.add('active');
+                currentFilterTag = null;
+                loadCards();
             };
             filterContainer.appendChild(allButton);
 
@@ -728,10 +732,10 @@
                 tagButton.textContent = tag;
                 tagButton.className = currentFilterTag === tag ? 'active' : '';
                 tagButton.onclick = () => {
-                    currentFilterTag = tag;
-                    loadCards();
                     document.querySelectorAll('#filterTags button').forEach(btn => btn.classList.remove('active'));
                     tagButton.classList.add('active');
+                    currentFilterTag = tag;
+                    loadCards();
                 };
                 filterContainer.appendChild(tagButton);
             });
@@ -740,35 +744,26 @@
         }
     }
     
-    // --- UPDATED: Main Data Handling Functions ---
+    // --- Main Data Handling Functions ---
 
     async function loadCards() {
       try {
-        let query = supabase
-          .from('erotic_videos')
-          .select('*')
-          .order('created_at', { ascending: false });
+        let query = supabase.from('erotic_videos').select('*').order('created_at', { ascending: false });
 
-        // Apply filters directly to the Supabase query
-        if (currentFilterGirl) {
-          query = query.eq('girl_name', currentFilterGirl);
-        }
-        if (currentFilterTag) {
-          query = query.ilike('tags', `%${currentFilterTag}%`);
-        }
+        if (currentFilterGirl) query = query.eq('girl_name', currentFilterGirl);
+        if (currentFilterTag) query = query.ilike('tags', `%${currentFilterTag}%`);
 
         const { data: cards, error } = await query;
         if (error) throw error;
 
         allLoadedCards = cards;
         const gallery = document.getElementById('gallery');
-        gallery.innerHTML = ''; // Clear previous results
+        gallery.innerHTML = ''; 
 
         if (cards.length === 0) {
             gallery.innerHTML = '<p>No videos found with the selected filters.</p>';
             return;
         }
-
         cards.forEach(card => addCardToPage(card));
       } catch (error) {
         console.error("Error loading cards:", error);
@@ -776,6 +771,7 @@
       }
     }
 
+    // THIS FUNCTION IS NOW FIXED
     function addCardToPage(card) {
       const cardElem = document.createElement('div');
       cardElem.className = 'card';
@@ -803,39 +799,32 @@
       `;
 
       const videoElem = cardElem.querySelector('video');
-      videoElem.addEventListener('loadeddata', () => {
-        videoElem.currentTime = 0.1;
-      });
+      videoElem.addEventListener('loadeddata', () => { videoElem.currentTime = 0.1; });
       cardElem.addEventListener('mouseenter', () => videoElem.play());
       cardElem.addEventListener('mouseleave', () => {
         videoElem.pause();
         videoElem.currentTime = 0;
       });
+      // THIS LINE IS NOW RESTORED
+      cardElem.addEventListener('click', () => openVideoViewer(card));
       document.getElementById('gallery').appendChild(cardElem);
     }
     
-    // --- UPDATED: addCard for Girl Name ---
     async function addCard() {
       try {
         const title = document.getElementById('title').value.trim();
         const girlName = document.getElementById('girlNameSelect').value;
         const videoUrlsText = document.getElementById('videoUrl').value.trim();
         
-        if (!girlName) {
-            throw new Error("You must select a girl.");
-        }
-        if (!videoUrlsText) {
-          throw new Error("At least one Video URL is required");
-        }
+        if (!girlName) throw new Error("You must select a girl.");
+        if (!videoUrlsText) throw new Error("At least one Video URL is required");
 
         const urls = videoUrlsText.split(',').map(url => url.trim()).filter(url => url);
-        if (urls.length === 0) {
-          throw new Error("Please provide valid, comma-separated video URLs.");
-        }
+        if (urls.length === 0) throw new Error("Please provide valid, comma-separated video URLs.");
 
         const newCards = urls.map(url => ({
           title: title,
-          girl_name: girlName, // Add girl name here
+          girl_name: girlName,
           tags: selectedTags.join(', '),
           main_video_url: url,
           related_videos: [],
@@ -847,15 +836,48 @@
 
         closePopup();
         await loadCards();
-        await loadFilterGirls(); // Refresh filters in case a new girl was used
+        await loadFilterGirls();
       } catch (error) {
         console.error("Error adding multiple cards:", error);
         document.getElementById('errorMessage').textContent = error.message;
       }
     }
 
-    // --- Other functions ---
+    // --- Video Viewer Functions ---
+    function openVideoViewer(card) {
+      currentViewingCard = card;
+      const cardIndex = allLoadedCards.findIndex(c => c.id === card.id);
+      document.getElementById('videoViewer').style.display = 'flex';
+      const viewerVideo = document.getElementById('viewerVideo');
+      const videoCounter = document.getElementById('videoCounter');
+      viewerVideo.src = card.main_video_url;
+      videoCounter.textContent = `${cardIndex + 1} / ${allLoadedCards.length}`;
+      viewerVideo.play();
+    }
 
+    function closeVideoViewer() {
+        const viewerVideo = document.getElementById('viewerVideo');
+        viewerVideo.pause();
+        viewerVideo.src = ""; // Stop video loading
+        document.getElementById('videoViewer').style.display = 'none';
+        currentViewingCard = null;
+    }
+
+    function prevVideo() {
+      if (!currentViewingCard) return;
+      let currentIndex = allLoadedCards.findIndex(c => c.id === currentViewingCard.id);
+      let prevIndex = (currentIndex - 1 + allLoadedCards.length) % allLoadedCards.length;
+      openVideoViewer(allLoadedCards[prevIndex]);
+    }
+
+    function nextVideo() {
+      if (!currentViewingCard) return;
+      let currentIndex = allLoadedCards.findIndex(c => c.id === currentViewingCard.id);
+      let nextIndex = (currentIndex + 1) % allLoadedCards.length;
+      openVideoViewer(allLoadedCards[nextIndex]);
+    }
+
+    // --- Other Helper Functions ---
     function updateTagDisplays() {
       const availableTagsSelect = document.getElementById('availableTags');
       availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
@@ -873,7 +895,6 @@
       const availableTagsSelect = document.getElementById('availableTags');
       const selectedTag = availableTagsSelect.value;
       if (!selectedTag || selectedTags.includes(selectedTag)) return;
-      
       selectedTags.push(selectedTag);
       updateSelectedTagsDisplay();
       updateTagDisplays();
@@ -882,14 +903,10 @@
     function updateSelectedTagsDisplay() {
       const container = document.getElementById('selectedTagsContainer');
       container.innerHTML = '';
-      
       selectedTags.forEach(tag => {
         const tagElem = document.createElement('div');
         tagElem.className = 'selected-tag';
-        tagElem.innerHTML = `
-          ${tag}
-          <button onclick="removeSelectedTag('${tag}')">×</button>
-        `;
+        tagElem.innerHTML = `${tag} <button onclick="removeSelectedTag('${tag}')">×</button>`;
         container.appendChild(tagElem);
       });
     }
@@ -930,10 +947,6 @@
     function closePopup() {
       document.getElementById('popup').style.display = 'none';
     }
-
-    // Edit and other functions would need similar updates if you want to edit the girl's name.
-    // This example focuses on adding and filtering.
-
   </script>
 </body>
 </html>
