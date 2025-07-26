@@ -527,7 +527,7 @@
     </div>
     <div class="video-counter" id="videoCounter"></div>
     <div class="video-viewer-footer">
-        </div>
+    </div>
   </div>
 
   <div class="popup" id="popup">
@@ -536,9 +536,9 @@
       <form id="cardForm">
         <input id="title" placeholder="Title (applies to all videos)" />
         
-        <select id="girlNameSelect" required>
-            <option value="">-- Select a Girl --</option>
-            </select>
+        <select id="girlNameSelect">
+            <option value="">-- Select a Girl (Optional) --</option>
+        </select>
 
         <textarea id="videoUrl" rows="4" placeholder="Enter video URLs, separated by commas" required></textarea>
         
@@ -566,7 +566,6 @@
     const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
 
-    // Global state variables
     let selectedTags = [];
     let allTags = [];
     let allGirls = [];
@@ -574,8 +573,7 @@
     let currentFilterTag = null;
     let currentFilterGirl = null;
     let currentlyEditingCardId = null;
-    let currentViewingCard = null; // for video viewer
-    let currentVideoIndex = 0; // for video viewer
+    let currentViewingCard = null;
 
     window.onload = async function () {
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -598,18 +596,14 @@
       await loadCards();
     };
 
-    // --- Girl Management Functions ---
-
     async function addNewGirl() {
       const newGirlInput = document.getElementById('newGirlInput');
       const newGirl = newGirlInput.value.trim();
       if (!newGirl) return;
-
       try {
         if (!allGirls.includes(newGirl)) {
           const { error } = await supabase.from('girls').insert([{ name: newGirl }]);
           if (error) throw error;
-          
           newGirlInput.value = '';
           await loadGirls();
           await loadFilterGirls();
@@ -627,7 +621,7 @@
         allGirls = girls.map(g => g.name);
         
         const girlSelect = document.getElementById('girlNameSelect');
-        girlSelect.innerHTML = '<option value="">-- Select a Girl --</option>';
+        girlSelect.innerHTML = '<option value="">-- Select a Girl (Optional) --</option>';
         allGirls.forEach(girl => {
             const option = document.createElement('option');
             option.value = girl;
@@ -644,7 +638,6 @@
         try {
             const { data, error } = await supabase.rpc('get_distinct_girl_names');
             if (error) throw error;
-
             const uniqueGirls = data.map(item => item.girl_name).filter(Boolean).sort();
             const filterContainer = document.getElementById('filterGirls');
             filterContainer.innerHTML = ''; 
@@ -677,7 +670,6 @@
         }
     }
 
-    // --- Tag Management Functions ---
     async function addNewTag() {
         const newTagInput = document.getElementById('newTagInput');
         const newTag = newTagInput.value.trim();
@@ -744,8 +736,6 @@
         }
     }
     
-    // --- Main Data Handling Functions ---
-
     async function loadCards() {
       try {
         let query = supabase.from('erotic_videos').select('*').order('created_at', { ascending: false });
@@ -771,7 +761,6 @@
       }
     }
 
-    // THIS FUNCTION IS NOW FIXED
     function addCardToPage(card) {
       const cardElem = document.createElement('div');
       cardElem.className = 'card';
@@ -785,7 +774,6 @@
         </div>
         <video preload="metadata">
           <source src="${card.main_video_url}" type="video/mp4">
-          Your browser does not support the video tag.
         </video>
         <div class="card-info">
           <h4>${card.title || ''}</h4>
@@ -805,18 +793,17 @@
         videoElem.pause();
         videoElem.currentTime = 0;
       });
-      // THIS LINE IS NOW RESTORED
       cardElem.addEventListener('click', () => openVideoViewer(card));
       document.getElementById('gallery').appendChild(cardElem);
     }
     
+    // The validation check for girlName has been removed from this function
     async function addCard() {
       try {
         const title = document.getElementById('title').value.trim();
         const girlName = document.getElementById('girlNameSelect').value;
         const videoUrlsText = document.getElementById('videoUrl').value.trim();
         
-        if (!girlName) throw new Error("You must select a girl.");
         if (!videoUrlsText) throw new Error("At least one Video URL is required");
 
         const urls = videoUrlsText.split(',').map(url => url.trim()).filter(url => url);
@@ -843,7 +830,6 @@
       }
     }
 
-    // --- Video Viewer Functions ---
     function openVideoViewer(card) {
       currentViewingCard = card;
       const cardIndex = allLoadedCards.findIndex(c => c.id === card.id);
@@ -858,7 +844,7 @@
     function closeVideoViewer() {
         const viewerVideo = document.getElementById('viewerVideo');
         viewerVideo.pause();
-        viewerVideo.src = ""; // Stop video loading
+        viewerVideo.src = "";
         document.getElementById('videoViewer').style.display = 'none';
         currentViewingCard = null;
     }
@@ -877,7 +863,6 @@
       openVideoViewer(allLoadedCards[nextIndex]);
     }
 
-    // --- Other Helper Functions ---
     function updateTagDisplays() {
       const availableTagsSelect = document.getElementById('availableTags');
       availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
@@ -906,7 +891,7 @@
       selectedTags.forEach(tag => {
         const tagElem = document.createElement('div');
         tagElem.className = 'selected-tag';
-        tagElem.innerHTML = `${tag} <button onclick="removeSelectedTag('${tag}')">×</button>`;
+        tagElem.innerHTML = `${tag} <button type="button" onclick="removeSelectedTag('${tag}')">×</button>`;
         container.appendChild(tagElem);
       });
     }
