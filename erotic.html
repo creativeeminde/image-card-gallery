@@ -536,8 +536,8 @@
       <form id="cardForm">
         <input id="title" placeholder="Title (applies to all videos)" />
         
-        <select id="girlNameSelect">
-            <option value="">-- Select a Girl (Optional) --</option>
+        <label for="girlNameSelect" style="display: block; margin-bottom: 5px; color: #555;">Select one or more girls (optional):</label>
+        <select id="girlNameSelect" multiple style="height: 100px; margin-bottom: 10px;">
         </select>
 
         <textarea id="videoUrl" rows="4" placeholder="Enter video URLs, separated by commas" required></textarea>
@@ -621,14 +621,13 @@
         allGirls = girls.map(g => g.name);
         
         const girlSelect = document.getElementById('girlNameSelect');
-        girlSelect.innerHTML = '<option value="">-- Select a Girl (Optional) --</option>';
+        girlSelect.innerHTML = ''; // Clear previous options
         allGirls.forEach(girl => {
             const option = document.createElement('option');
             option.value = girl;
             option.textContent = girl;
             girlSelect.appendChild(option);
         });
-
       } catch (error) {
         console.error("Error loading girls:", error);
       }
@@ -640,8 +639,8 @@
             if (error) throw error;
             const uniqueGirls = data.map(item => item.girl_name).filter(Boolean).sort();
             const filterContainer = document.getElementById('filterGirls');
-            filterContainer.innerHTML = ''; 
-
+            filterContainer.innerHTML = '';
+            
             const allButton = document.createElement('button');
             allButton.textContent = 'All';
             allButton.className = !currentFilterGirl ? 'active' : '';
@@ -707,7 +706,7 @@
             const uniqueTags = data.map(item => item.distinct_tags).filter(Boolean).sort();
             const filterContainer = document.getElementById('filterTags');
             filterContainer.innerHTML = '';
-            
+
             const allButton = document.createElement('button');
             allButton.textContent = 'All';
             allButton.className = !currentFilterTag ? 'active' : '';
@@ -739,10 +738,9 @@
     async function loadCards() {
       try {
         let query = supabase.from('erotic_videos').select('*').order('created_at', { ascending: false });
-
         if (currentFilterGirl) query = query.eq('girl_name', currentFilterGirl);
         if (currentFilterTag) query = query.ilike('tags', `%${currentFilterTag}%`);
-
+        
         const { data: cards, error } = await query;
         if (error) throw error;
 
@@ -767,6 +765,7 @@
       cardElem.dataset.cardId = card.id;
       
       const tags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+      
       cardElem.innerHTML = `
         <div class="card-actions">
           <button class="edit-btn" onclick="event.stopPropagation(); startEditCard('${card.id}')">✏️</button>
@@ -785,7 +784,7 @@
           ` : ''}
         </div>
       `;
-
+      
       const videoElem = cardElem.querySelector('video');
       videoElem.addEventListener('loadeddata', () => { videoElem.currentTime = 0.1; });
       cardElem.addEventListener('mouseenter', () => videoElem.play());
@@ -797,29 +796,53 @@
       document.getElementById('gallery').appendChild(cardElem);
     }
     
-    // The validation check for girlName has been removed from this function
     async function addCard() {
       try {
         const title = document.getElementById('title').value.trim();
-        const girlName = document.getElementById('girlNameSelect').value;
         const videoUrlsText = document.getElementById('videoUrl').value.trim();
         
-        if (!videoUrlsText) throw new Error("At least one Video URL is required");
+        const girlSelect = document.getElementById('girlNameSelect');
+        const selectedGirls = [...girlSelect.options]
+                                .filter(option => option.selected)
+                                .map(option => option.value);
 
+        if (!videoUrlsText) throw new Error("At least one Video URL is required");
+        
         const urls = videoUrlsText.split(',').map(url => url.trim()).filter(url => url);
         if (urls.length === 0) throw new Error("Please provide valid, comma-separated video URLs.");
 
-        const newCards = urls.map(url => ({
-          title: title,
-          girl_name: girlName,
-          tags: selectedTags.join(', '),
-          main_video_url: url,
-          related_videos: [],
-          related_videos_with_tags: []
-        }));
+        let newCards = [];
 
-        const { error } = await supabase.from('erotic_videos').insert(newCards);
-        if (error) throw error;
+        if (selectedGirls.length > 0) {
+            urls.forEach(url => {
+                selectedGirls.forEach(girlName => {
+                    newCards.push({
+                      title: title,
+                      girl_name: girlName,
+                      tags: selectedTags.join(', '),
+                      main_video_url: url,
+                      related_videos: [],
+                      related_videos_with_tags: []
+                    });
+                });
+            });
+        } else {
+            urls.forEach(url => {
+                newCards.push({
+                  title: title,
+                  girl_name: null,
+                  tags: selectedTags.join(', '),
+                  main_video_url: url,
+                  related_videos: [],
+                  related_videos_with_tags: []
+                });
+            });
+        }
+
+        if (newCards.length > 0) {
+            const { error } = await supabase.from('erotic_videos').insert(newCards);
+            if (error) throw error;
+        }
 
         closePopup();
         await loadCards();
@@ -830,12 +853,69 @@
       }
     }
 
+    async function startEditCard(cardId) {
+        const cardToEdit = allLoadedCards.find(c => c.id == cardId);
+        if (!cardToEdit) {
+            alert("Could not find video to edit.");
+            return;
+        }
+
+        currentlyEditingCardId = cardId;
+        document.getElementById('title').value = cardToEdit.title || '';
+        document.getElementById('videoUrl').value = cardToEdit.main_video_url;
+        document.getElementById('videoUrl').disabled = true;
+
+        selectedTags = cardToEdit.tags ? cardToEdit.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+        updateSelectedTagsDisplay();
+        updateTagDisplays();
+
+        const girlSelect = document.getElementById('girlNameSelect');
+        [...girlSelect.options].forEach(opt => {
+            opt.selected = (opt.value === cardToEdit.girl_name);
+        });
+
+        document.querySelector('.popup-content h3').textContent = 'Edit Video';
+        document.getElementById('popup').style.display = 'flex';
+    }
+
+    async function updateCard() {
+        try {
+            const title = document.getElementById('title').value.trim();
+            const girlSelect = document.getElementById('girlNameSelect');
+            const selectedGirls = [...girlSelect.options].filter(opt => opt.selected).map(opt => opt.value);
+
+            if (selectedGirls.length > 1) {
+                throw new Error("You can only assign one girl when editing a video.");
+            }
+
+            const girlName = selectedGirls.length === 1 ? selectedGirls[0] : null;
+
+            const updateData = {
+                title: title,
+                girl_name: girlName,
+                tags: selectedTags.join(', ')
+            };
+
+            const { error } = await supabase.from('erotic_videos').update(updateData).eq('id', currentlyEditingCardId);
+            if (error) throw error;
+            
+            closePopup();
+            await loadCards();
+            await loadFilterGirls();
+
+        } catch (error) {
+            console.error("Error updating card:", error);
+            document.getElementById('errorMessage').textContent = error.message;
+        }
+    }
+
     function openVideoViewer(card) {
       currentViewingCard = card;
       const cardIndex = allLoadedCards.findIndex(c => c.id === card.id);
       document.getElementById('videoViewer').style.display = 'flex';
       const viewerVideo = document.getElementById('viewerVideo');
       const videoCounter = document.getElementById('videoCounter');
+      
       viewerVideo.src = card.main_video_url;
       videoCounter.textContent = `${cardIndex + 1} / ${allLoadedCards.length}`;
       viewerVideo.play();
@@ -916,6 +996,7 @@
 
     function resetForm() {
       document.getElementById('cardForm').reset();
+      document.getElementById('videoUrl').disabled = false;
       selectedTags = [];
       currentlyEditingCardId = null;
       document.querySelector('.popup-content h3').textContent = 'Add New Video';
