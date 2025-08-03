@@ -30,14 +30,32 @@
       border-bottom: 1px solid #eee;
       padding-bottom: 10px;
     }
+    
+    .sidebar .favorites-section h3 {
+        cursor: pointer;
+        border-radius: 4px;
+        padding: 5px 10px;
+        transition: background-color 0.2s;
+        border-bottom: 1px solid #eee;
+        margin: 0;
+    }
+    
+    .sidebar .favorites-section h3:hover {
+        background-color: #f0f0f0;
+    }
+    
+    .sidebar .favorites-section h3.active {
+        background: #4caf50 !important;
+        color: white !important;
+        border-color: #4caf50 !important;
+    }
 
-    .filter-section, .upload-section, .tags-section {
+    .filter-section, .upload-section, .tags-section, .favorites-section {
       margin-bottom: 20px;
     }
     
     .favorites-section {
         display: none; /* Initially hidden */
-        margin-bottom: 20px;
     }
 
     .filter-options {
@@ -589,10 +607,7 @@
     </div>
     
      <div class="favorites-section" id="favoritesSection">
-      <h3>Favorites</h3>
-      <div class="filter-options" id="favoriteModels">
-        <!-- Favorite models will be dynamically added here -->
-      </div>
+        <h3 id="favoritesBtn" onclick="showFavorites()">Favorites</h3>
     </div>
 
     <div class="upload-section">
@@ -718,6 +733,7 @@ class="zoom-btn" onclick="zoomOut()">-</button>
     let selectedTags = [];
     let allTags = [];
     let currentFilterTag = null;
+    let isFavoritesViewActive = false;
     let currentlyEditingCardId = null;
     let currentViewingCard = null;
     let currentModelIndex = 0;
@@ -774,7 +790,7 @@ class="zoom-btn" onclick="zoomOut()">-</button>
       await loadTags();
       await loadFilterTags();
       await loadCards();
-      await loadFavorites();
+      await checkFavorites();
     };
 
     async function loadTags() {
@@ -829,25 +845,24 @@ class="zoom-btn" onclick="zoomOut()">-</button>
         filterContainer.innerHTML = '';
         const allButton = document.createElement('button');
         allButton.textContent = 'All';
-        allButton.className = !currentFilterTag ? 'active' : '';
         allButton.onclick = () => {
           currentFilterTag = null;
+          isFavoritesViewActive = false;
           loadCards();
-          loadFilterTags();
         };
         filterContainer.appendChild(allButton);
 
         uniqueTags.forEach(tag => {
           const tagButton = document.createElement('button');
           tagButton.textContent = tag;
-          tagButton.className = currentFilterTag === tag ? 'active' : '';
           tagButton.onclick = () => {
             currentFilterTag = currentFilterTag === tag ? null : tag;
+            isFavoritesViewActive = false;
             loadCards();
-            loadFilterTags();
           };
           filterContainer.appendChild(tagButton);
         });
+        updateActiveFiltersUI();
       } catch (error) {
         console.error("Error loading filter tags:", error);
       }
@@ -887,100 +902,111 @@ class="zoom-btn" onclick="zoomOut()">-</button>
       document.getElementById('gallery').appendChild(cardElem);
     }
 
-    async function loadCards(showFavorited = false) {
+    async function loadCards() {
       try {
-        let query = supabase.from('models').select('*').order('created_at', { ascending: false });
-        if (showFavorited) {
-          query = query.eq('favorited', true);
+        let query = supabase.from('models').select('*');
+
+        if (isFavoritesViewActive) {
+            query = query.eq('favorited', true);
+        } else if (currentFilterTag) {
+            query = query.like('tags', `%${currentFilterTag}%`);
         }
-        
+
+        query = query.order('created_at', { ascending: false });
+
         let { data: cards, error } = await query;
         if (error) throw error;
 
         document.getElementById('gallery').innerHTML = '';
         
-        const cardsToDisplay = currentFilterTag 
-          ? cards.filter(card => {
-              const mainTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
-              return mainTags.includes(currentFilterTag);
-            })
-          : cards;
-
-        if (cardsToDisplay.length === 0) {
-          document.getElementById('gallery').innerHTML = '<p>No models found with this tag</p>';
+        if (cards.length === 0) {
+          document.getElementById('gallery').innerHTML = '<p>No models found.</p>';
           return;
         }
 
-        displayedCards = cardsToDisplay;
+        displayedCards = cards;
         displayedCards.forEach(card => addCardToPage(card));
+        updateActiveFiltersUI();
       } catch (error) {
         console.error("Error loading cards:", error);
       }
     }
     
-    async function loadFavorites() {
+    async function checkFavorites() {
       try {
-        const { data: favoritedCards, error } = await supabase
+        const { data, error, count } = await supabase
           .from('models')
-          .select('*')
-          .eq('favorited', true)
-          .order('created_at', { ascending: false });
+          .select('*', { count: 'exact', head: true })
+          .eq('favorited', true);
 
         if (error) throw error;
 
         const favoritesSection = document.getElementById('favoritesSection');
-        const favoriteModelsContainer = document.getElementById('favoriteModels');
-        favoriteModelsContainer.innerHTML = '';
-
-        if (favoritedCards.length > 0) {
+        if (count > 0) {
           favoritesSection.style.display = 'block';
-          favoritedCards.forEach(card => {
-            const favoriteButton = document.createElement('button');
-            favoriteButton.textContent = card.main_model_url.split('/').pop(); // Display a short name
-            favoriteButton.onclick = () => {
-              // Clicking a favorite opens it in the main view
-              currentFilterTag = null; 
-              loadCards().then(() => {
-                const cardElement = document.querySelector(`.card[data-card-id='${card.id}']`);
-                if (cardElement) {
-                  cardElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  openModelViewer(card);
-                }
-              });
-            };
-            favoriteModelsContainer.appendChild(favoriteButton);
-          });
         } else {
           favoritesSection.style.display = 'none';
         }
       } catch (error) {
-        console.error("Error loading favorites:", error);
+        console.error("Error checking for favorites:", error);
       }
     }
     
     async function toggleFavorite(cardId, isFavorited) {
       try {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('models')
           .update({ favorited: !isFavorited })
-          .eq('id', cardId);
+          .eq('id', cardId)
+          .select()
+          .single();
 
         if (error) throw error;
 
-        // Update the button's visual state
+        // Update the button's visual state on the card
         const button = document.querySelector(`.card[data-card-id='${cardId}'] .favorite-btn`);
         if (button) {
-          button.classList.toggle('favorited');
-          // Update the onclick event to reflect the new state
-          button.setAttribute('onclick', `event.stopPropagation(); toggleFavorite('${cardId}', ${!isFavorited})`);
+          button.classList.toggle('favorited', data.favorited);
+          button.setAttribute('onclick', `event.stopPropagation(); toggleFavorite('${cardId}', ${data.favorited})`);
         }
         
-        // Reload the favorites list
-        await loadFavorites();
+        // If we are currently viewing favorites, reload the list
+        if (isFavoritesViewActive) {
+            await loadCards();
+        }
+
+        // Check if the favorites section in the sidebar should be shown or hidden
+        await checkFavorites();
       } catch (error) {
         console.error("Error toggling favorite:", error);
         alert("Failed to update favorite status.");
       }
+    }
+    
+    function showFavorites() {
+        isFavoritesViewActive = true;
+        currentFilterTag = null;
+        loadCards();
+    }
+    
+    function updateActiveFiltersUI() {
+        // Handle tag filters
+        const tagButtons = document.querySelectorAll('#filterTags button');
+        tagButtons.forEach(button => {
+            if ((!currentFilterTag && !isFavoritesViewActive && button.textContent === 'All') || (button.textContent === currentFilterTag)) {
+                button.classList.add('active');
+            } else {
+                button.classList.remove('active');
+            }
+        });
+
+        // Handle favorites filter
+        const favoritesBtn = document.getElementById('favoritesBtn');
+        if (isFavoritesViewActive) {
+            favoritesBtn.classList.add('active');
+        } else {
+            favoritesBtn.classList.remove('active');
+        }
     }
     
     async function loadRelatedModels(tag = null) {
@@ -1073,6 +1099,7 @@ class="related-tag-bubble" onclick="event.stopPropagation(); filterAllByRelatedT
 
     function filterAllByRelatedTag(tag) {
       currentFilterTag = tag;
+      isFavoritesViewActive = false;
       closeModelViewer();
       loadCards();
       loadFilterTags();
@@ -1539,7 +1566,8 @@ class="related-tag-bubble" onclick="event.stopPropagation(); filterAllByRelatedT
           tags: selectedTags.join(', '),
           main_model_url: url,
           related_models: [],
-          related_models_with_tags: []
+          related_models_with_tags: [],
+          favorited: false
         }));
 
         // Insert the new records into the database
