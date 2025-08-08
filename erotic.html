@@ -175,6 +175,12 @@
     .card:hover {
       transform: scale(1.02);
     }
+    
+    .video-container {
+        position: relative;
+        width: 100%;
+        height: 420px;
+    }
 
     .card-actions {
       position: absolute;
@@ -182,7 +188,7 @@
       right: 10px;
       display: flex;
       gap: 5px;
-      z-index: 1;
+      z-index: 10;
     }
 
     .card-actions button {
@@ -214,7 +220,7 @@
 
     .card video {
       width: 100%;
-      height: 420px;
+      height: 100%;
       object-fit: cover;
       background-color: #000;
     }
@@ -242,6 +248,59 @@
       font-size: 0.8rem;
       color: #666;
     }
+    
+    /* --- NEW: Seek Bar Styles --- */
+    .seek-bar-container {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 25px; /* Taller for easier touch/click */
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        opacity: 0; /* Hidden by default */
+        transition: opacity 0.2s ease-in-out;
+        background-image: linear-gradient(to top, rgba(0,0,0,0.5), transparent); /* Gradient for better visibility */
+        z-index: 5;
+    }
+
+    .card:hover .seek-bar-container {
+        opacity: 1; /* Show on card hover */
+    }
+
+    .seek-bar {
+        position: relative;
+        width: calc(100% - 20px);
+        height: 5px;
+        background-color: rgba(255, 255, 255, 0.5);
+        margin: 0 10px;
+        border-radius: 3px;
+    }
+
+    .seek-progress {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 0%; /* Updated by JS */
+        background-color: #FF5722;
+        border-radius: 3px;
+    }
+
+    .seek-handle {
+        position: absolute;
+        top: 50%;
+        left: 0%; /* Updated by JS */
+        width: 14px;
+        height: 14px;
+        background-color: white;
+        border-radius: 50%;
+        transform: translate(-50%, -50%); /* Center the handle on the progress line */
+        pointer-events: none; /* Let clicks pass through to the container */
+        box-shadow: 0 0 4px rgba(0,0,0,0.5);
+    }
+    /* --- End of Seek Bar Styles --- */
 
     .add-btn {
       position: fixed;
@@ -771,9 +830,17 @@
           <button class="edit-btn" onclick="event.stopPropagation(); startEditCard('${card.id}')">✏️</button>
           <button class="delete-btn" onclick="event.stopPropagation(); deleteCard('${card.id}')">🗑️</button>
         </div>
-        <video preload="metadata">
-          <source src="${card.main_video_url}" type="video/mp4">
-        </video>
+        <div class="video-container">
+            <video preload="metadata" muted loop>
+              <source src="${card.main_video_url}" type="video/mp4">
+            </video>
+            <div class="seek-bar-container">
+                <div class="seek-bar">
+                    <div class="seek-progress"></div>
+                    <div class="seek-handle"></div>
+                </div>
+            </div>
+        </div>
         <div class="card-info">
           <h4>${card.title || ''}</h4>
           <p style="margin: 5px 0; color: #555; font-weight: bold;">${card.girl_name || ''}</p>
@@ -785,14 +852,76 @@
         </div>
       `;
       
+      // Get elements for this card
       const videoElem = cardElem.querySelector('video');
-      videoElem.addEventListener('loadeddata', () => { videoElem.currentTime = 0.1; });
-      cardElem.addEventListener('mouseenter', () => videoElem.play());
-      cardElem.addEventListener('mouseleave', () => {
-        videoElem.pause();
-        videoElem.currentTime = 0;
+      const seekBarContainer = cardElem.querySelector('.seek-bar-container');
+      const seekBar = cardElem.querySelector('.seek-bar');
+      const seekProgress = cardElem.querySelector('.seek-progress');
+      const seekHandle = cardElem.querySelector('.seek-handle');
+
+      // Set a start time slightly after 0 to ensure thumbnail loads
+      videoElem.addEventListener('loadeddata', () => { 
+          if (videoElem.duration > 0.1) {
+              videoElem.currentTime = 0.1;
+          }
       });
+
+      // Play/pause on hover
+      cardElem.addEventListener('mouseenter', () => videoElem.play());
+      cardElem.addEventListener('mouseleave', () => videoElem.pause());
+      
+      // Open full viewer on click
       cardElem.addEventListener('click', () => openVideoViewer(card));
+
+      // --- Seek Bar Logic ---
+      // Update progress bar as video plays
+      videoElem.addEventListener('timeupdate', () => {
+          if (videoElem.duration) {
+              const progressPercent = (videoElem.currentTime / videoElem.duration) * 100;
+              seekProgress.style.width = `${progressPercent}%`;
+              seekHandle.style.left = `${progressPercent}%`;
+          }
+      });
+
+      // Handle seeking by clicking and dragging
+      seekBarContainer.addEventListener('mousedown', (e) => {
+          e.stopPropagation(); // Prevent card click and other events
+
+          const wasPlaying = !videoElem.paused;
+          videoElem.pause();
+
+          const seek = (event) => {
+              const rect = seekBar.getBoundingClientRect();
+              if (rect.width > 0) {
+                  let offsetX = event.clientX - rect.left;
+                  // Clamp the offset to be within the bar's bounds
+                  offsetX = Math.max(0, Math.min(offsetX, rect.width));
+                  const newTime = (offsetX / rect.width) * videoElem.duration;
+                  if (isFinite(newTime)) {
+                      videoElem.currentTime = newTime;
+                  }
+              }
+          };
+
+          seek(e); // Seek on initial click
+
+          const onMouseMove = (moveEvent) => {
+              seek(moveEvent);
+          };
+
+          const onMouseUp = () => {
+              document.removeEventListener('mousemove', onMouseMove);
+              document.removeEventListener('mouseup', onMouseUp);
+              // Resume playing if it was playing before scrubbing
+              if (wasPlaying) {
+                  videoElem.play();
+              }
+          };
+
+          document.addEventListener('mousemove', onMouseMove);
+          document.addEventListener('mouseup', onMouseUp);
+      });
+
       document.getElementById('gallery').appendChild(cardElem);
     }
     
