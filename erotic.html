@@ -204,6 +204,10 @@
       font-size: 14px;
       transition: all 0.2s;
     }
+    
+    .play-pause-btn {
+      color: #4CAF50; /* Green for play */
+    }
 
     .card-actions button:hover {
       background: white;
@@ -249,24 +253,23 @@
       color: #666;
     }
     
-    /* --- NEW: Seek Bar Styles --- */
     .seek-bar-container {
         position: absolute;
         bottom: 0;
         left: 0;
         width: 100%;
-        height: 25px; /* Taller for easier touch/click */
+        height: 25px; 
         display: flex;
         align-items: center;
         cursor: pointer;
-        opacity: 0; /* Hidden by default */
+        opacity: 0; 
         transition: opacity 0.2s ease-in-out;
-        background-image: linear-gradient(to top, rgba(0,0,0,0.5), transparent); /* Gradient for better visibility */
+        background-image: linear-gradient(to top, rgba(0,0,0,0.5), transparent);
         z-index: 5;
     }
 
     .card:hover .seek-bar-container {
-        opacity: 1; /* Show on card hover */
+        opacity: 1;
     }
 
     .seek-bar {
@@ -283,7 +286,7 @@
         top: 0;
         left: 0;
         height: 100%;
-        width: 0%; /* Updated by JS */
+        width: 0%;
         background-color: #FF5722;
         border-radius: 3px;
     }
@@ -291,16 +294,15 @@
     .seek-handle {
         position: absolute;
         top: 50%;
-        left: 0%; /* Updated by JS */
+        left: 0%;
         width: 14px;
         height: 14px;
         background-color: white;
         border-radius: 50%;
-        transform: translate(-50%, -50%); /* Center the handle on the progress line */
-        pointer-events: none; /* Let clicks pass through to the container */
+        transform: translate(-50%, -50%);
+        pointer-events: none;
         box-shadow: 0 0 4px rgba(0,0,0,0.5);
     }
-    /* --- End of Seek Bar Styles --- */
 
     .add-btn {
       position: fixed;
@@ -330,7 +332,6 @@
       box-shadow: 0 4px 10px rgba(0,0,0,0.3);
     }
 
-    /* Video Viewer Styles */
     .video-viewer {
       display: none;
       position: fixed;
@@ -424,7 +425,6 @@
       background: #E64A19;
     }
 
-    /* Popup Styles */
     .popup {
       display: none;
       position: fixed;
@@ -514,7 +514,6 @@
       padding: 0;
     }
 
-    /* Responsive adjustments */
     @media (max-width: 1200px) {
       .gallery {
         grid-template-columns: repeat(2, 1fr);
@@ -524,10 +523,28 @@
     @media (max-width: 768px) {
       body {
         grid-template-columns: 1fr;
-        grid-template-areas: "main";
+        grid-template-rows: auto 1fr; /* Let sidebar have its own height */
+        grid-template-areas: 
+          "sidebar"
+          "main";
+        height: auto;
       }
       .sidebar {
-          display: none;
+          display: block; /* Show the sidebar */
+          position: relative;
+          width: 100%;
+          border-right: none;
+          border-bottom: 1px solid #ddd;
+          height: auto;
+          overflow-y: visible;
+          box-sizing: border-box;
+      }
+      .main-content {
+        padding-top: 20px;
+        height: 100%; /* Allow main content to scroll independently */
+      }
+      .gallery {
+        grid-template-columns: 1fr; /* Display one video per row on mobile */
       }
     }
   </style>
@@ -607,7 +624,7 @@
           <option value="">Select tags to add</option>
         </select>
         <button type="button" onclick="addTagToSelection()">Add Tag</button>
-        
+      
         <div id="errorMessage" class="error-message"></div>
        
         <div>
@@ -632,8 +649,6 @@
     let currentFilterGirl = null;
     let currentlyEditingCardId = null;
     let currentViewingCard = null;
-
-    // --- NEW: State variables for Infinite Scroll ---
     let currentPage = 1;
     let isLoading = false;
     let hasMore = true;
@@ -641,7 +656,6 @@
 
     window.onload = async function () {
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-      
       document.getElementById('cardForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         if (currentlyEditingCardId) {
@@ -650,27 +664,22 @@
           await addCard();
         }
       });
-      
       await Promise.all([
         loadTags(),
         loadGirls(),
         loadFilterTags(),
         loadFilterGirls()
       ]);
-      
-      await loadCards(); // Load the initial set of cards
+      await loadCards();
 
-      // --- NEW: Infinite Scroll Event Listener ---
       const mainContent = document.querySelector('.main-content');
       mainContent.addEventListener('scroll', () => {
-        // If we are already loading or there are no more cards, do nothing
         if (isLoading || !hasMore) return;
 
-        // Check if the user has scrolled to the bottom (with a 100px buffer)
         if (mainContent.scrollTop + mainContent.clientHeight >= mainContent.scrollHeight - 100) {
           currentPage++;
           loadCards();
-        }
+         }
       });
     };
 
@@ -706,7 +715,7 @@
         allGirls = girls.map(g => g.name);
         
         const girlSelect = document.getElementById('girlNameSelect');
-        girlSelect.innerHTML = ''; // Clear previous options
+        girlSelect.innerHTML = '';
         allGirls.forEach(girl => {
             const option = document.createElement('option');
             option.value = girl;
@@ -725,7 +734,6 @@
             const uniqueGirls = data.map(item => item.girl_name).filter(Boolean).sort();
             const filterContainer = document.getElementById('filterGirls');
             filterContainer.innerHTML = '';
-            
             const allButton = document.createElement('button');
             allButton.textContent = 'All';
             allButton.className = !currentFilterGirl ? 'active' : '';
@@ -733,7 +741,6 @@
                 document.querySelectorAll('#filterGirls button').forEach(btn => btn.classList.remove('active'));
                 allButton.classList.add('active');
                 currentFilterGirl = null;
-                // --- MODIFIED: Reset and load for filter change ---
                 resetToFirstPage();
                 loadCards();
             };
@@ -747,7 +754,6 @@
                     document.querySelectorAll('#filterGirls button').forEach(btn => btn.classList.remove('active'));
                     girlButton.classList.add('active');
                     currentFilterGirl = name;
-                    // --- MODIFIED: Reset and load for filter change ---
                     resetToFirstPage();
                     loadCards();
                 };
@@ -795,7 +801,6 @@
             const uniqueTags = data.map(item => item.distinct_tags).filter(Boolean).sort();
             const filterContainer = document.getElementById('filterTags');
             filterContainer.innerHTML = '';
-
             const allButton = document.createElement('button');
             allButton.textContent = 'All';
             allButton.className = !currentFilterTag ? 'active' : '';
@@ -803,7 +808,6 @@
                 document.querySelectorAll('#filterTags button').forEach(btn => btn.classList.remove('active'));
                 allButton.classList.add('active');
                 currentFilterTag = null;
-                // --- MODIFIED: Reset and load for filter change ---
                 resetToFirstPage();
                 loadCards();
             };
@@ -817,7 +821,6 @@
                     document.querySelectorAll('#filterTags button').forEach(btn => btn.classList.remove('active'));
                     tagButton.classList.add('active');
                     currentFilterTag = tag;
-                    // --- MODIFIED: Reset and load for filter change ---
                     resetToFirstPage();
                     loadCards();
                 };
@@ -828,7 +831,6 @@
         }
     }
     
-    // --- MODIFIED: `loadCards` function for pagination ---
     async function loadCards() {
       if (isLoading) return;
       isLoading = true;
@@ -841,14 +843,10 @@
             .select('*')
             .order('created_at', { ascending: false })
             .range(from, to);
-
         if (currentFilterGirl) query = query.eq('girl_name', currentFilterGirl);
         if (currentFilterTag) query = query.ilike('tags', `%${currentFilterTag}%`);
-        
         const { data: cards, error } = await query;
         if (error) throw error;
-
-        // If fewer cards are returned than requested, we've reached the end
         if (cards.length < cardsPerPage) {
           hasMore = false;
         }
@@ -858,19 +856,31 @@
             cards.forEach(card => addCardToPage(card));
         }
 
-        // If it's the first page and no cards are found, show a message
         if (currentPage === 1 && cards.length === 0) {
             document.getElementById('gallery').innerHTML = '<p>No videos found with the selected filters.</p>';
         }
       } catch (error) {
         console.error("Error loading cards:", error);
-        // Only show error message on the initial load
         if (currentPage === 1) {
             document.getElementById('gallery').innerHTML = '<p>Error loading videos.</p>';
         }
       } finally {
         isLoading = false;
       }
+    }
+    
+    function togglePlayPause(btn, cardId) {
+        const cardElem = document.querySelector(`[data-card-id='${cardId}']`);
+        if (!cardElem) return;
+
+        const videoElem = cardElem.querySelector('video');
+        if (videoElem.paused) {
+            videoElem.play();
+            btn.innerHTML = '⏸️';
+        } else {
+            videoElem.pause();
+            btn.innerHTML = '▶️';
+        }
     }
 
     function addCardToPage(card) {
@@ -882,6 +892,7 @@
       cardElem.innerHTML = `
         <div class="card-actions">
           <button class="edit-btn" onclick="event.stopPropagation(); startEditCard('${card.id}')">✏️</button>
+          <button class="play-pause-btn" onclick="event.stopPropagation(); togglePlayPause(this, '${card.id}')">▶️</button>
           <button class="delete-btn" onclick="event.stopPropagation(); deleteCard('${card.id}')">🗑️</button>
         </div>
         <div class="video-container">
@@ -916,15 +927,12 @@
               videoElem.currentTime = 0.1;
           }
       });
-      
       cardElem.addEventListener('mouseenter', () => videoElem.play());
       cardElem.addEventListener('mouseleave', () => videoElem.pause());
       cardElem.addEventListener('click', () => openVideoViewer(card));
-      
       seekBarContainer.addEventListener('click', (e) => {
           e.stopPropagation();
       });
-      
       videoElem.addEventListener('timeupdate', () => {
           if (videoElem.duration) {
               const progressPercent = (videoElem.currentTime / videoElem.duration) * 100;
@@ -932,7 +940,6 @@
               seekHandle.style.left = `${progressPercent}%`;
           }
       });
-      
       seekBarContainer.addEventListener('mousedown', (e) => {
           e.stopPropagation(); 
           const wasPlaying = !videoElem.paused;
@@ -941,7 +948,7 @@
           const seek = (event) => {
               const rect = seekBar.getBoundingClientRect();
               if (rect.width > 0) {
-                  let offsetX = event.clientX - rect.left;
+                 let offsetX = event.clientX - rect.left;
                   offsetX = Math.max(0, Math.min(offsetX, rect.width));
                   const newTime = (offsetX / rect.width) * videoElem.duration;
                   if (isFinite(newTime)) {
@@ -956,7 +963,7 @@
               seek(moveEvent);
           };
 
-          const onMouseUp = () => {
+           const onMouseUp = () => {
               document.removeEventListener('mousemove', onMouseMove);
               document.removeEventListener('mouseup', onMouseUp);
               if (wasPlaying) {
@@ -979,7 +986,6 @@
         const selectedGirls = [...girlSelect.options]
                                 .filter(option => option.selected)
                                 .map(option => option.value);
-
         if (!videoUrlsText) throw new Error("At least one Video URL is required");
         
         const urls = videoUrlsText.split(',').map(url => url.trim()).filter(url => url);
@@ -1018,7 +1024,6 @@
         }
 
         closePopup();
-        // --- MODIFIED: Reset and reload after action ---
         resetToFirstPage();
         await loadCards();
         await loadFilterGirls();
@@ -1072,7 +1077,6 @@
             if (error) throw error;
             
             closePopup();
-            // --- MODIFIED: Reset and reload after action ---
             resetToFirstPage();
             await loadCards();
             await loadFilterGirls();
@@ -1089,7 +1093,7 @@
       const viewerVideo = document.getElementById('viewerVideo');
       const videoCounter = document.getElementById('videoCounter');
       viewerVideo.src = card.main_video_url;
-      // Make sure we have cards loaded before showing index
+
       if(allLoadedCards.length > 0 && cardIndex !== -1) {
         videoCounter.textContent = `${cardIndex + 1} / ${allLoadedCards.length}`;
       } else {
@@ -1164,7 +1168,6 @@
       try {
         const { error } = await supabase.from('erotic_videos').delete().eq('id', cardId);
         if (error) throw error;
-        // --- MODIFIED: Reset and reload after action ---
         resetToFirstPage();
         await loadCards();
       } catch (error) {
