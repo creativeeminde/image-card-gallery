@@ -513,6 +513,25 @@
       cursor: pointer;
       padding: 0;
     }
+    
+    .load-more-btn {
+      display: none; /* Hidden by default on desktop */
+      width: 50%;
+      padding: 12px 20px;
+      margin: 20px auto;
+      background-color: #FF5722;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .load-more-btn.hidden {
+      display: none !important;
+    }
 
     @media (max-width: 1200px) {
       .gallery {
@@ -523,14 +542,14 @@
     @media (max-width: 768px) {
       body {
         grid-template-columns: 1fr;
-        grid-template-rows: auto 1fr; /* Let sidebar have its own height */
+        grid-template-rows: auto 1fr;
         grid-template-areas: 
           "sidebar"
           "main";
         height: auto;
       }
       .sidebar {
-          display: block; /* Show the sidebar */
+          display: block;
           position: relative;
           width: 100%;
           border-right: none;
@@ -541,10 +560,13 @@
       }
       .main-content {
         padding-top: 20px;
-        height: 100%; /* Allow main content to scroll independently */
+        height: 100%;
       }
       .gallery {
-        grid-template-columns: 1fr; /* Display one video per row on mobile */
+        grid-template-columns: 1fr;
+      }
+      .load-more-btn {
+        display: block; /* Show on mobile */
       }
     }
   </style>
@@ -587,6 +609,7 @@
 
   <main class="main-content">
     <div class="gallery" id="gallery"></div>
+    <button id="loadMoreBtn" class="load-more-btn hidden">Load More</button>
   </main>
 
   <button class="videos-btn" onclick="window.location.href='videos.html'">📷</button>
@@ -656,6 +679,7 @@
 
     window.onload = async function () {
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      
       document.getElementById('cardForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         if (currentlyEditingCardId) {
@@ -664,6 +688,7 @@
           await addCard();
         }
       });
+      
       await Promise.all([
         loadTags(),
         loadGirls(),
@@ -674,12 +699,21 @@
 
       const mainContent = document.querySelector('.main-content');
       mainContent.addEventListener('scroll', () => {
-        if (isLoading || !hasMore) return;
+        // Only trigger infinite scroll on non-mobile (desktop) views
+        if (window.innerWidth > 768) {
+            if (isLoading || !hasMore) return;
+            if (mainContent.scrollTop + mainContent.clientHeight >= mainContent.scrollHeight - 100) {
+              currentPage++;
+              loadCards();
+            }
+        }
+      });
 
-        if (mainContent.scrollTop + mainContent.clientHeight >= mainContent.scrollHeight - 100) {
-          currentPage++;
-          loadCards();
-         }
+      // Add click listener for the "Load More" button
+      document.getElementById('loadMoreBtn').addEventListener('click', () => {
+        if (isLoading || !hasMore) return;
+        currentPage++;
+        loadCards();
       });
     };
 
@@ -834,6 +868,12 @@
     async function loadCards() {
       if (isLoading) return;
       isLoading = true;
+      const loadMoreBtn = document.getElementById('loadMoreBtn');
+      
+      // Hide button while loading new cards on mobile
+      if (window.innerWidth <= 768) {
+          loadMoreBtn.classList.add('hidden');
+      }
 
       try {
         const from = (currentPage - 1) * cardsPerPage;
@@ -847,6 +887,7 @@
         if (currentFilterTag) query = query.ilike('tags', `%${currentFilterTag}%`);
         const { data: cards, error } = await query;
         if (error) throw error;
+        
         if (cards.length < cardsPerPage) {
           hasMore = false;
         }
@@ -866,6 +907,12 @@
         }
       } finally {
         isLoading = false;
+        // Show or hide the "Load More" button based on whether there's more content
+        if (hasMore) {
+            loadMoreBtn.classList.remove('hidden');
+        } else {
+            loadMoreBtn.classList.add('hidden');
+        }
       }
     }
     
