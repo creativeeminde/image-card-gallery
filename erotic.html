@@ -618,13 +618,12 @@
     </div>
   </div>
   
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js"></script>
 
   <script>
     let supabase;
     const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
-
     let selectedTags = [];
     let allTags = [];
     let allGirls = [];
@@ -633,6 +632,12 @@
     let currentFilterGirl = null;
     let currentlyEditingCardId = null;
     let currentViewingCard = null;
+
+    // --- NEW: State variables for Infinite Scroll ---
+    let currentPage = 1;
+    let isLoading = false;
+    let hasMore = true;
+    const cardsPerPage = 9;
 
     window.onload = async function () {
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -652,8 +657,29 @@
         loadFilterTags(),
         loadFilterGirls()
       ]);
-      await loadCards();
+      
+      await loadCards(); // Load the initial set of cards
+
+      // --- NEW: Infinite Scroll Event Listener ---
+      const mainContent = document.querySelector('.main-content');
+      mainContent.addEventListener('scroll', () => {
+        // If we are already loading or there are no more cards, do nothing
+        if (isLoading || !hasMore) return;
+
+        // Check if the user has scrolled to the bottom (with a 100px buffer)
+        if (mainContent.scrollTop + mainContent.clientHeight >= mainContent.scrollHeight - 100) {
+          currentPage++;
+          loadCards();
+        }
+      });
     };
+
+    function resetToFirstPage() {
+        document.getElementById('gallery').innerHTML = '';
+        allLoadedCards = [];
+        currentPage = 1;
+        hasMore = true;
+    }
 
     async function addNewGirl() {
       const newGirlInput = document.getElementById('newGirlInput');
@@ -707,6 +733,8 @@
                 document.querySelectorAll('#filterGirls button').forEach(btn => btn.classList.remove('active'));
                 allButton.classList.add('active');
                 currentFilterGirl = null;
+                // --- MODIFIED: Reset and load for filter change ---
+                resetToFirstPage();
                 loadCards();
             };
             filterContainer.appendChild(allButton);
@@ -719,6 +747,8 @@
                     document.querySelectorAll('#filterGirls button').forEach(btn => btn.classList.remove('active'));
                     girlButton.classList.add('active');
                     currentFilterGirl = name;
+                    // --- MODIFIED: Reset and load for filter change ---
+                    resetToFirstPage();
                     loadCards();
                 };
                 filterContainer.appendChild(girlButton);
@@ -773,6 +803,8 @@
                 document.querySelectorAll('#filterTags button').forEach(btn => btn.classList.remove('active'));
                 allButton.classList.add('active');
                 currentFilterTag = null;
+                // --- MODIFIED: Reset and load for filter change ---
+                resetToFirstPage();
                 loadCards();
             };
             filterContainer.appendChild(allButton);
@@ -785,6 +817,8 @@
                     document.querySelectorAll('#filterTags button').forEach(btn => btn.classList.remove('active'));
                     tagButton.classList.add('active');
                     currentFilterTag = tag;
+                    // --- MODIFIED: Reset and load for filter change ---
+                    resetToFirstPage();
                     loadCards();
                 };
                 filterContainer.appendChild(tagButton);
@@ -794,27 +828,48 @@
         }
     }
     
+    // --- MODIFIED: `loadCards` function for pagination ---
     async function loadCards() {
+      if (isLoading) return;
+      isLoading = true;
+
       try {
-        let query = supabase.from('erotic_videos').select('*').order('created_at', { ascending: false });
+        const from = (currentPage - 1) * cardsPerPage;
+        const to = from + cardsPerPage - 1;
+
+        let query = supabase.from('erotic_videos')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .range(from, to);
+
         if (currentFilterGirl) query = query.eq('girl_name', currentFilterGirl);
         if (currentFilterTag) query = query.ilike('tags', `%${currentFilterTag}%`);
         
         const { data: cards, error } = await query;
         if (error) throw error;
 
-        allLoadedCards = cards;
-        const gallery = document.getElementById('gallery');
-        gallery.innerHTML = ''; 
-
-        if (cards.length === 0) {
-            gallery.innerHTML = '<p>No videos found with the selected filters.</p>';
-            return;
+        // If fewer cards are returned than requested, we've reached the end
+        if (cards.length < cardsPerPage) {
+          hasMore = false;
         }
-        cards.forEach(card => addCardToPage(card));
+
+        if (cards.length > 0) {
+            allLoadedCards.push(...cards);
+            cards.forEach(card => addCardToPage(card));
+        }
+
+        // If it's the first page and no cards are found, show a message
+        if (currentPage === 1 && cards.length === 0) {
+            document.getElementById('gallery').innerHTML = '<p>No videos found with the selected filters.</p>';
+        }
       } catch (error) {
         console.error("Error loading cards:", error);
-        document.getElementById('gallery').innerHTML = '<p>Error loading videos.</p>';
+        // Only show error message on the initial load
+        if (currentPage === 1) {
+            document.getElementById('gallery').innerHTML = '<p>Error loading videos.</p>';
+        }
+      } finally {
+        isLoading = false;
       }
     }
 
@@ -824,7 +879,6 @@
       cardElem.dataset.cardId = card.id;
       
       const tags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
-      
       cardElem.innerHTML = `
         <div class="card-actions">
           <button class="edit-btn" onclick="event.stopPropagation(); startEditCard('${card.id}')">✏️</button>
@@ -851,36 +905,26 @@
           ` : ''}
         </div>
       `;
-      
-      // Get elements for this card
       const videoElem = cardElem.querySelector('video');
       const seekBarContainer = cardElem.querySelector('.seek-bar-container');
       const seekBar = cardElem.querySelector('.seek-bar');
       const seekProgress = cardElem.querySelector('.seek-progress');
       const seekHandle = cardElem.querySelector('.seek-handle');
-
-      // Set a start time slightly after 0 to ensure thumbnail loads
+      
       videoElem.addEventListener('loadeddata', () => { 
           if (videoElem.duration > 0.1) {
               videoElem.currentTime = 0.1;
           }
       });
-
-      // Play/pause on hover
+      
       cardElem.addEventListener('mouseenter', () => videoElem.play());
       cardElem.addEventListener('mouseleave', () => videoElem.pause());
-      
-      // Open full viewer on click
       cardElem.addEventListener('click', () => openVideoViewer(card));
-
-      // --- Seek Bar Logic ---
       
-      // **FIX**: Stop click on seek bar from opening the video viewer
       seekBarContainer.addEventListener('click', (e) => {
           e.stopPropagation();
       });
-
-      // Update progress bar as video plays
+      
       videoElem.addEventListener('timeupdate', () => {
           if (videoElem.duration) {
               const progressPercent = (videoElem.currentTime / videoElem.duration) * 100;
@@ -888,11 +932,9 @@
               seekHandle.style.left = `${progressPercent}%`;
           }
       });
-
-      // Handle seeking by clicking and dragging
+      
       seekBarContainer.addEventListener('mousedown', (e) => {
-          e.stopPropagation(); // Prevent card click and other events
-
+          e.stopPropagation(); 
           const wasPlaying = !videoElem.paused;
           videoElem.pause();
 
@@ -900,7 +942,6 @@
               const rect = seekBar.getBoundingClientRect();
               if (rect.width > 0) {
                   let offsetX = event.clientX - rect.left;
-                  // Clamp the offset to be within the bar's bounds
                   offsetX = Math.max(0, Math.min(offsetX, rect.width));
                   const newTime = (offsetX / rect.width) * videoElem.duration;
                   if (isFinite(newTime)) {
@@ -909,7 +950,7 @@
               }
           };
 
-          seek(e); // Seek on initial click
+          seek(e); 
 
           const onMouseMove = (moveEvent) => {
               seek(moveEvent);
@@ -918,7 +959,6 @@
           const onMouseUp = () => {
               document.removeEventListener('mousemove', onMouseMove);
               document.removeEventListener('mouseup', onMouseUp);
-              // Resume playing if it was playing before scrubbing
               if (wasPlaying) {
                   videoElem.play();
               }
@@ -935,7 +975,6 @@
       try {
         const title = document.getElementById('title').value.trim();
         const videoUrlsText = document.getElementById('videoUrl').value.trim();
-        
         const girlSelect = document.getElementById('girlNameSelect');
         const selectedGirls = [...girlSelect.options]
                                 .filter(option => option.selected)
@@ -947,7 +986,6 @@
         if (urls.length === 0) throw new Error("Please provide valid, comma-separated video URLs.");
 
         let newCards = [];
-
         if (selectedGirls.length > 0) {
             urls.forEach(url => {
                 selectedGirls.forEach(girlName => {
@@ -980,6 +1018,8 @@
         }
 
         closePopup();
+        // --- MODIFIED: Reset and reload after action ---
+        resetToFirstPage();
         await loadCards();
         await loadFilterGirls();
       } catch (error) {
@@ -1008,7 +1048,6 @@
         [...girlSelect.options].forEach(opt => {
             opt.selected = (opt.value === cardToEdit.girl_name);
         });
-
         document.querySelector('.popup-content h3').textContent = 'Edit Video';
         document.getElementById('popup').style.display = 'flex';
     }
@@ -1018,7 +1057,6 @@
             const title = document.getElementById('title').value.trim();
             const girlSelect = document.getElementById('girlNameSelect');
             const selectedGirls = [...girlSelect.options].filter(opt => opt.selected).map(opt => opt.value);
-
             if (selectedGirls.length > 1) {
                 throw new Error("You can only assign one girl when editing a video.");
             }
@@ -1030,14 +1068,14 @@
                 girl_name: girlName,
                 tags: selectedTags.join(', ')
             };
-
             const { error } = await supabase.from('erotic_videos').update(updateData).eq('id', currentlyEditingCardId);
             if (error) throw error;
             
             closePopup();
+            // --- MODIFIED: Reset and reload after action ---
+            resetToFirstPage();
             await loadCards();
             await loadFilterGirls();
-
         } catch (error) {
             console.error("Error updating card:", error);
             document.getElementById('errorMessage').textContent = error.message;
@@ -1050,9 +1088,13 @@
       document.getElementById('videoViewer').style.display = 'flex';
       const viewerVideo = document.getElementById('viewerVideo');
       const videoCounter = document.getElementById('videoCounter');
-      
       viewerVideo.src = card.main_video_url;
-      videoCounter.textContent = `${cardIndex + 1} / ${allLoadedCards.length}`;
+      // Make sure we have cards loaded before showing index
+      if(allLoadedCards.length > 0 && cardIndex !== -1) {
+        videoCounter.textContent = `${cardIndex + 1} / ${allLoadedCards.length}`;
+      } else {
+        videoCounter.textContent = "";
+      }
       viewerVideo.play();
     }
 
@@ -1065,14 +1107,14 @@
     }
 
     function prevVideo() {
-      if (!currentViewingCard) return;
+      if (!currentViewingCard || allLoadedCards.length === 0) return;
       let currentIndex = allLoadedCards.findIndex(c => c.id === currentViewingCard.id);
       let prevIndex = (currentIndex - 1 + allLoadedCards.length) % allLoadedCards.length;
       openVideoViewer(allLoadedCards[prevIndex]);
     }
 
     function nextVideo() {
-      if (!currentViewingCard) return;
+      if (!currentViewingCard || allLoadedCards.length === 0) return;
       let currentIndex = allLoadedCards.findIndex(c => c.id === currentViewingCard.id);
       let nextIndex = (currentIndex + 1) % allLoadedCards.length;
       openVideoViewer(allLoadedCards[nextIndex]);
@@ -1122,6 +1164,8 @@
       try {
         const { error } = await supabase.from('erotic_videos').delete().eq('id', cardId);
         if (error) throw error;
+        // --- MODIFIED: Reset and reload after action ---
+        resetToFirstPage();
         await loadCards();
       } catch (error) {
         console.error("Error deleting card:", error);
@@ -1134,7 +1178,7 @@
       document.getElementById('videoUrl').disabled = false;
       selectedTags = [];
       currentlyEditingCardId = null;
-      document.querySelector('.popup-content h3').textContent = 'Add New Video';
+      document.querySelector('.popup-content h3').textContent = 'Upload New Video';
       updateSelectedTagsDisplay();
       updateTagDisplays();
       document.getElementById('errorMessage').textContent = '';
