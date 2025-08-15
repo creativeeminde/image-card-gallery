@@ -268,7 +268,8 @@
         z-index: 5;
     }
 
-    .card:hover .seek-bar-container {
+    .card:hover .seek-bar-container,
+    .card:hover .speed-controls {
         opacity: 1;
     }
 
@@ -303,6 +304,51 @@
         pointer-events: none;
         box-shadow: 0 0 4px rgba(0,0,0,0.5);
     }
+    
+    /* New Styles for Speed Controls */
+    .speed-controls {
+      position: absolute;
+      bottom: 5px;
+      left: 10px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      z-index: 10;
+      opacity: 0;
+      transition: opacity 0.2s ease-in-out;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 2px 8px;
+      border-radius: 15px;
+    }
+
+    .speed-btn {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 20px;
+      font-weight: bold;
+      cursor: pointer;
+      width: 22px;
+      height: 22px;
+      line-height: 22px;
+      text-align: center;
+      padding: 0;
+      transition: transform 0.1s;
+    }
+    
+    .speed-btn:active {
+        transform: scale(0.9);
+    }
+
+    .speed-display {
+      color: white;
+      font-size: 0.8rem;
+      font-weight: bold;
+      min-width: 28px;
+      text-align: center;
+      user-select: none; /* Prevent text selection */
+    }
+
 
     .add-btn {
       position: fixed;
@@ -946,6 +992,12 @@
             <video preload="metadata" loop>
               <source src="${card.main_video_url}" type="video/mp4">
             </video>
+            <!-- New Speed Controls -->
+            <div class="speed-controls">
+                <button class="speed-btn minus-btn">-</button>
+                <span class="speed-display">1x</span>
+                <button class="speed-btn plus-btn">+</button>
+            </div>
             <div class="seek-bar-container">
                 <div class="seek-bar">
                     <div class="seek-progress"></div>
@@ -963,12 +1015,20 @@
           ` : ''}
         </div>
       `;
+      // Get references to elements
       const videoElem = cardElem.querySelector('video');
       const seekBarContainer = cardElem.querySelector('.seek-bar-container');
       const seekBar = cardElem.querySelector('.seek-bar');
       const seekProgress = cardElem.querySelector('.seek-progress');
       const seekHandle = cardElem.querySelector('.seek-handle');
       
+      // New Speed control elements
+      const speedControls = cardElem.querySelector('.speed-controls');
+      const minusBtn = cardElem.querySelector('.minus-btn');
+      const plusBtn = cardElem.querySelector('.plus-btn');
+      const speedDisplay = cardElem.querySelector('.speed-display');
+
+      // Video loading and hover playback
       videoElem.addEventListener('loadeddata', () => { 
           if (videoElem.duration > 0.1) {
               videoElem.currentTime = 0.1;
@@ -977,9 +1037,9 @@
       cardElem.addEventListener('mouseenter', () => videoElem.play());
       cardElem.addEventListener('mouseleave', () => videoElem.pause());
       cardElem.addEventListener('click', () => openVideoViewer(card));
-      seekBarContainer.addEventListener('click', (e) => {
-          e.stopPropagation();
-      });
+
+      // Seek bar logic
+      seekBarContainer.addEventListener('click', (e) => e.stopPropagation());
       videoElem.addEventListener('timeupdate', () => {
           if (videoElem.duration) {
               const progressPercent = (videoElem.currentTime / videoElem.duration) * 100;
@@ -1006,21 +1066,45 @@
 
           seek(e); 
 
-          const onMouseMove = (moveEvent) => {
-              seek(moveEvent);
-          };
-
-           const onMouseUp = () => {
+          const onMouseMove = (moveEvent) => seek(moveEvent);
+          const onMouseUp = () => {
               document.removeEventListener('mousemove', onMouseMove);
               document.removeEventListener('mouseup', onMouseUp);
-              if (wasPlaying) {
-                  videoElem.play();
-              }
+              if (wasPlaying) videoElem.play();
           };
 
           document.addEventListener('mousemove', onMouseMove);
           document.addEventListener('mouseup', onMouseUp);
       });
+
+      // New Speed Control Logic
+      const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
+      let currentSpeedIndex = 2; // Corresponds to 1x
+
+      const updateSpeed = () => {
+          const newSpeed = speeds[currentSpeedIndex];
+          videoElem.playbackRate = newSpeed;
+          speedDisplay.textContent = `${newSpeed}x`;
+      };
+
+      minusBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (currentSpeedIndex > 0) {
+              currentSpeedIndex--;
+              updateSpeed();
+          }
+      });
+
+      plusBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (currentSpeedIndex < speeds.length - 1) {
+              currentSpeedIndex++;
+              updateSpeed();
+          }
+      });
+      
+      // Stop propagation on the container as well
+      speedControls.addEventListener('click', (e) => e.stopPropagation());
 
       document.getElementById('gallery').appendChild(cardElem);
     }
