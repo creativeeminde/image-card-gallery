@@ -922,25 +922,33 @@
     let query = supabase.from('models').select('*');
 
     if (isFavoritesViewActive) {
-      query = query.eq('favorited', true);
+      // Show only favorited cards
+      query = query.eq('favorited', true).eq('nsfw', false);
     } else if (currentFilterTag) {
-      // Match the tag as a whole item in a comma+space list: start, middle, end, or only tag
-      const t = currentFilterTag.trim().replace(/"/g, '""'); // escape quotes for PostgREST
-      const orExpr =
-        `tags.eq."${t}",` +                // only tag
-        `tags.ilike."${t}, %",` +          // at start: "art, ... "
-        `tags.ilike."%, ${t}",` +          // at end:   "... , art"
-        `tags.ilike."%, ${t}, %"`;         // in middle: "... , art, ..."
-
-      query = query.or(orExpr);
+      if (currentFilterTag.toLowerCase() === "nsfw") {
+        // Only show NSFW images if user explicitly clicks the NSFW tag
+        query = query.eq('nsfw', true);
+      } else {
+        // Show safe images with the selected tag
+        const t = currentFilterTag.trim().replace(/"/g, '""'); // escape quotes for PostgREST
+        const orExpr =
+          `tags.eq."${t}",` +                // only tag
+          `tags.ilike."${t}, %",` +          // at start
+          `tags.ilike."%, ${t}",` +          // at end
+          `tags.ilike."%, ${t}, %"`;         // in middle
+        query = query.or(orExpr).eq('nsfw', false);
+      }
+    } else {
+      // Homepage: show only safe images
+      query = query.eq('nsfw', false);
     }
 
     query = query.order('created_at', { ascending: false });
     let { data: cards, error } = await query;
     if (error) throw error;
 
-    // Final safety: enforce whole-tag match on the client too (case-insensitive)
-    if (currentFilterTag) {
+    // Final safety: if filtering by tag, enforce whole-tag check client-side
+    if (currentFilterTag && currentFilterTag.toLowerCase() !== "nsfw") {
       const needle = currentFilterTag.toLowerCase();
       cards = (cards || []).filter(c =>
         (c.tags || '')
@@ -966,6 +974,7 @@
     alert("A critical error occurred while loading models. Check the console for details.");
   }
 }
+
 
     
     async function checkFavorites() {
