@@ -918,36 +918,55 @@
     
     // UPDATED AND CORRECTED FUNCTION
     async function loadCards() {
-      try {
-        let query = supabase.from('models').select('*');
+  try {
+    let query = supabase.from('models').select('*');
 
-        if (isFavoritesViewActive) {
-            query = query.eq('favorited', true);
-        } else if (currentFilterTag) {
-            // This creates a filter to find an exact tag match by checking for the tag
-            // as a whole word at the beginning, middle, or end of the tags list.
-            const filterString = `tags.eq.${currentFilterTag},tags.like.${currentFilterTag}, %,tags.like.%, ${currentFilterTag},tags.like.%, ${currentFilterTag}, %`;
-            query = query.or(filterString);
-        }
+    if (isFavoritesViewActive) {
+      query = query.eq('favorited', true);
+    } else if (currentFilterTag) {
+      // Match the tag as a whole item in a comma+space list: start, middle, end, or only tag
+      const t = currentFilterTag.trim().replace(/"/g, '""'); // escape quotes for PostgREST
+      const orExpr =
+        `tags.eq."${t}",` +                // only tag
+        `tags.ilike."${t}, %",` +          // at start: "art, ... "
+        `tags.ilike."%, ${t}",` +          // at end:   "... , art"
+        `tags.ilike."%, ${t}, %"`;         // in middle: "... , art, ..."
 
-        query = query.order('created_at', { ascending: false });
-        let { data: cards, error } = await query;
-        if (error) throw error;
-
-        document.getElementById('gallery').innerHTML = '';
-        if (cards.length === 0) {
-          document.getElementById('gallery').innerHTML = '<p>No models found.</p>';
-          return;
-        }
-
-        displayedCards = cards;
-        displayedCards.forEach(card => addCardToPage(card));
-        updateActiveFiltersUI();
-      } catch (error) {
-        console.error("Error loading cards:", error);
-        alert("A critical error occurred while loading models. Check the console for details.");
-      }
+      query = query.or(orExpr);
     }
+
+    query = query.order('created_at', { ascending: false });
+    let { data: cards, error } = await query;
+    if (error) throw error;
+
+    // Final safety: enforce whole-tag match on the client too (case-insensitive)
+    if (currentFilterTag) {
+      const needle = currentFilterTag.toLowerCase();
+      cards = (cards || []).filter(c =>
+        (c.tags || '')
+          .split(',')
+          .map(s => s.trim().toLowerCase())
+          .includes(needle)
+      );
+    }
+
+    const gallery = document.getElementById('gallery');
+    gallery.innerHTML = '';
+
+    if (!cards || cards.length === 0) {
+      gallery.innerHTML = '<p>No models found.</p>';
+      return;
+    }
+
+    displayedCards = cards;
+    displayedCards.forEach(card => addCardToPage(card));
+    updateActiveFiltersUI();
+  } catch (error) {
+    console.error("Error loading cards:", error);
+    alert("A critical error occurred while loading models. Check the console for details.");
+  }
+}
+
     
     async function checkFavorites() {
       try {
