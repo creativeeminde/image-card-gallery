@@ -915,32 +915,37 @@
       document.getElementById('gallery').appendChild(cardElem);
     }
 
-    async function loadCards() {
+   async function loadCards() {
       try {
-        let query = supabase.from('models').select('*'); [cite: 144]
+        let query = supabase.from('models').select('*');
 
         if (isFavoritesViewActive) {
-            query = query.eq('favorited', true); [cite: 145]
+            query = query.eq('favorited', true);
         } else if (currentFilterTag) {
-            // FIX: This replaces the broad substring search with an exact tag match.
-            // It checks for the tag as a whole word, whether it's the only tag,
-            // at the beginning, middle, or end of the string.
-            const exactMatch = `tags.eq.${currentFilterTag}`;
-            const startsWith = `tags.like.${currentFilterTag}, %`;
-            const endsWith = `tags.like.%, ${currentFilterTag}`;
-            const contains = `tags.like.%, ${currentFilterTag}, %`;
-            query = query.or(`${exactMatch},${startsWith},${endsWith},${contains}`);
+            // This creates a filter to find an exact tag match by checking for the tag
+            // as a whole word at the beginning, middle, or end of the tags list.
+            const filterString = `tags.eq.${currentFilterTag},tags.like.${currentFilterTag}, %,tags.like.%, ${currentFilterTag},tags.like.%, ${currentFilterTag}, %`;
+            query = query.or(filterString);
         }
 
-        query = query.order('created_at', { ascending: false }); [cite: 147]
+        query = query.order('created_at', { ascending: false });
         let { data: cards, error } = await query;
         if (error) throw error;
 
-        document.getElementById('gallery').innerHTML = ''; [cite: 148]
+        document.getElementById('gallery').innerHTML = '';
         if (cards.length === 0) {
           document.getElementById('gallery').innerHTML = '<p>No models found.</p>';
-          return; [cite: 149]
+          return;
         }
+
+        displayedCards = cards;
+        displayedCards.forEach(card => addCardToPage(card));
+        updateActiveFiltersUI();
+      } catch (error) {
+        console.error("Error loading cards:", error);
+        alert("A critical error occurred while loading models. Check the console for details.");
+      }
+    }
 
         displayedCards = cards;
         displayedCards.forEach(card => addCardToPage(card));
