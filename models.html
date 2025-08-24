@@ -687,7 +687,7 @@
         <textarea id="modelUrl" rows="3" placeholder="Enter one or more model URLs, separated by commas" required></textarea>
         
         <div id="selectedTagsContainer" class="selected-tags"></div>
-        
+         
         <select id="availableTags">
           <option value="">Select tags to add</option>
           </select>
@@ -777,8 +777,7 @@
             <div style="padding: 20px; background-color: #ffebee; border: 1px solid #c62828; border-radius: 8px; color: #c62828; margin: 20px;">
               <h3 style="margin-top: 0;">Setup Required</h3>
               <p>The <strong>models</strong> table does not exist in your Supabase database.</p>
-              <p>Please go to your Supabase project dashboard, open the 'Table Editor', and create a new table named 'models'.
-              You can remove the 'title' column if it exists.</p>
+              <p>Please go to your Supabase project dashboard, open the 'Table Editor', and create a new table named 'models'. You can remove the 'title' column if it exists.</p>
               <p>After creating the table, refresh this page.</p>
             </div>
           `;
@@ -851,6 +850,7 @@
             });
           }
         });
+
         const allTags = [...allMainTags, ...allRelatedTags];
         const uniqueTags = [...new Set(allTags)].sort();
 
@@ -872,7 +872,7 @@
             currentFilterTag = currentFilterTag === tag ? null : tag;
             isFavoritesViewActive = false;
             loadCards();
-           };
+          };
           filterContainer.appendChild(tagButton);
         });
         updateActiveFiltersUI();
@@ -908,53 +908,44 @@
           <button class="delete-btn" onclick="event.stopPropagation(); deleteCard('${card.id}')">🗑️</button>
          </div>
       `;
+
       cardElem.addEventListener('click', () => {
         currentModelIndex = 0;
         openModelViewer(card);
       });
       document.getElementById('gallery').appendChild(cardElem);
     }
+    
+    // UPDATED AND CORRECTED FUNCTION
+    async function loadCards() {
+      try {
+        let query = supabase.from('models').select('*');
 
-  async function loadCards() {
-  try {
-    let query = supabase.from('models').select('*');
+        if (isFavoritesViewActive) {
+            query = query.eq('favorited', true);
+        } else if (currentFilterTag) {
+            // This creates a filter to find an exact tag match by checking for the tag
+            // as a whole word at the beginning, middle, or end of the tags list.
+            const filterString = `tags.eq.${currentFilterTag},tags.like.${currentFilterTag}, %,tags.like.%, ${currentFilterTag},tags.like.%, ${currentFilterTag}, %`;
+            query = query.or(filterString);
+        }
 
-    if (isFavoritesViewActive) {
-      // Show only favorited cards
-      query = query.eq('favorited', true);
-    } else if (currentFilterTag) {
-      // Match either exact tag or if the tag is contained in the tags string
-      query = query.or(
-        `tags.eq."${currentFilterTag}",tags.ilike."%${currentFilterTag}%"`
-      );
-    }
+        query = query.order('created_at', { ascending: false });
+        let { data: cards, error } = await query;
+        if (error) throw error;
 
-    query = query.order('created_at', { ascending: false });
-    let { data: cards, error } = await query;
-    if (error) throw error;
-
-    const gallery = document.getElementById('gallery');
-    gallery.innerHTML = '';
-
-    if (!cards || cards.length === 0) {
-      gallery.innerHTML = '<p>No models found.</p>';
-      return;
-    }
-
-    displayedCards = cards;
-    displayedCards.forEach(card => addCardToPage(card));
-    updateActiveFiltersUI();
-  } catch (error) {
-    console.error("Error loading cards:", error);
-    alert("A critical error occurred while loading models. Check the console for details.");
-  }
-}
+        document.getElementById('gallery').innerHTML = '';
+        if (cards.length === 0) {
+          document.getElementById('gallery').innerHTML = '<p>No models found.</p>';
+          return;
+        }
 
         displayedCards = cards;
         displayedCards.forEach(card => addCardToPage(card));
-        updateActiveFiltersUI(); [cite: 150]
+        updateActiveFiltersUI();
       } catch (error) {
-        console.error("Error loading cards:", error); [cite: 151]
+        console.error("Error loading cards:", error);
+        alert("A critical error occurred while loading models. Check the console for details.");
       }
     }
     
@@ -1055,6 +1046,7 @@
             });
           }
         });
+
         const filterContainer = document.getElementById('relatedModelFilterTags');
         filterContainer.innerHTML = '';
         
@@ -1077,9 +1069,11 @@
           };
           filterContainer.appendChild(tagButton);
         });
+
         const filteredModels = tag 
           ? relatedModelsWithTags.filter(img => img.tags && img.tags.split(',').map(t => t.trim()).includes(tag))
           : relatedModelsWithTags;
+
         if (filteredModels.length === 0) {
           gallery.innerHTML = '<p>No models found with this tag.</p>';
           return;
@@ -1105,7 +1099,7 @@
           
           imgElem.addEventListener('click', () => {
             const fullIndex = currentViewingCard.related_models.indexOf(img.url);
-             if(fullIndex !== -1) {
+            if(fullIndex !== -1) {
                 currentModelIndex = fullIndex + 1;
                 openModelViewer(currentViewingCard);
                 updateViewerModel();
@@ -1460,8 +1454,7 @@
         modelUrlInput.value = card.main_model_url;
         modelUrlInput.placeholder = "Model URL";
         // Set placeholder for single URL edit
-        selectedTags = card.tags ?
-        card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+        selectedTags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
         updateSelectedTagsDisplay();
         document.querySelector('.popup-content h3').textContent = 'Edit Card';
         openPopup();
@@ -1511,7 +1504,6 @@
     function reportBrokenImage(imageElement, cardId, brokenUrl) {
       // 1. Set the image source to the placeholder
       imageElement.src = 'https://via.placeholder.com/300?text=Model+Not+Found';
-
       // 2. Show the "Broken Images" section in the sidebar
       const brokenSection = document.getElementById('brokenImagesSection');
       brokenSection.style.display = 'block';
@@ -1529,7 +1521,6 @@
       button.id = 'broken-btn-' + cardId;
       button.textContent = `Fix Card (ID: ...${cardId.slice(-6)})`;
       button.title = `Original URL: ${brokenUrl}`;
-      
       // 5. When clicked, it will open the edit popup for that specific card
       button.onclick = () => {
         startEditCard(cardId);
@@ -1653,6 +1644,8 @@
       updateTagDisplays();
       document.getElementById('errorMessage').textContent = '';
     }
+
+
 
     function openPopup() {
       document.getElementById('popup').style.display = 'flex';
