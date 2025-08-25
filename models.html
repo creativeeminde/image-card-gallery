@@ -935,20 +935,25 @@
         let query = supabase.from('models').select('*');
 
         if (isFavoritesViewActive) {
+          // Favorites view remains SFW
           query = query.eq('favorited', true).eq('nsfw', false);
         } else if (currentFilterTag) {
           if (currentFilterTag.toLowerCase() === "nsfw") {
+            // NSFW view shows only NSFW
             query = query.eq('nsfw', true);
           } else {
+            // A specific tag is selected. Show ALL models with this tag (SFW and NSFW).
             const t = currentFilterTag.trim().replace(/"/g, '""');
             const orExpr =
               `tags.eq."${t}",` +
               `tags.ilike."${t}, %",` +
               `tags.ilike."%, ${t}",` +
               `tags.ilike."%, ${t}, %"`;
-            query = query.or(orExpr).eq('nsfw', false);
+            // CHANGED LINE: The `.eq('nsfw', false)` has been removed from this line
+            query = query.or(orExpr); 
           }
         } else {
+          // Default home page view shows only SFW
           query = query.eq('nsfw', false);
         }
 
@@ -956,6 +961,7 @@
         let { data: cards, error } = await query;
         if (error) throw error;
 
+        // This client-side check is still useful for ensuring exact tag matches
         if (currentFilterTag && currentFilterTag.toLowerCase() !== "nsfw") {
           const needle = currentFilterTag.toLowerCase();
           cards = (cards || []).filter(c =>
@@ -1503,7 +1509,6 @@
         modelUrlInput.placeholder = "Model URL";
         selectedTags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
         
-        // NEW -> Set the checkbox state based on the card's data
         document.getElementById('modelNsfw').checked = card.nsfw;
         
         updateSelectedTagsDisplay();
@@ -1523,10 +1528,8 @@
             throw new Error("Only one URL is allowed when editing a card.");
         }
 
-        // NEW -> Get the value from the NSFW checkbox
         const isNsfw = document.getElementById('modelNsfw').checked;
 
-        // NEW -> Include the nsfw status in the update
         const updateData = { 
             tags: selectedTags.join(', '), 
             main_model_url: modelUrl,
@@ -1661,7 +1664,6 @@
           throw new Error("Please provide at least one valid model URL.");
         }
         
-        // NEW -> Get the value from the checkbox for new uploads
         const isNsfw = document.getElementById('modelNsfw').checked;
 
         const newCards = urls.map(url => ({
@@ -1670,7 +1672,7 @@
           related_models: [],
           related_models_with_tags: [],
           favorited: false,
-          nsfw: isNsfw // NEW -> Apply the NSFW status to all new cards
+          nsfw: isNsfw
         }));
 
         const { error } = await supabase.from('models').insert(newCards);
@@ -1694,7 +1696,6 @@
       currentlyEditingCardId = null;
       document.querySelector('.popup-content h3').textContent = 'Add New Model(s)';
       document.getElementById('modelUrl').placeholder = "Enter one or more model URLs, separated by commas";
-      // NEW -> Reset the NSFW checkbox
       document.getElementById('modelNsfw').checked = false;
       updateSelectedTagsDisplay();
       updateTagDisplays();
