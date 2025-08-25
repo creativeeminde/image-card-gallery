@@ -31,7 +31,8 @@
       padding-bottom: 10px;
     }
     
-    .sidebar .favorites-section h3 {
+    .sidebar .favorites-section h3,
+    .sidebar .nsfw-section h3 {
         cursor: pointer;
         border-radius: 4px;
         padding: 5px 10px;
@@ -40,7 +41,8 @@
         margin: 0;
     }
     
-    .sidebar .favorites-section h3:hover {
+    .sidebar .favorites-section h3:hover,
+    .sidebar .nsfw-section h3:hover {
         background-color: #f0f0f0;
     }
     
@@ -49,14 +51,19 @@
         color: white !important;
         border-color: #4caf50 !important;
     }
+    
+    .sidebar .nsfw-section h3.active {
+        background: #f44336 !important; /* Red for NSFW */
+        color: white !important;
+        border-color: #f44336 !important;
+    }
 
-    .filter-section, .upload-section, .tags-section, .favorites-section {
+    .filter-section, .upload-section, .tags-section, .favorites-section, .nsfw-section {
       margin-bottom: 20px;
     }
     
     .favorites-section {
-        display: none;
-        /* Initially hidden */
+        display: none; /* Initially hidden */
     }
 
     .filter-options {
@@ -225,13 +232,11 @@
     }
     
     .favorite-btn {
-      color: #ccc;
-      /* Default star color */
+      color: #ccc; /* Default star color */
     }
 
     .favorite-btn.favorited {
-      color: #ffc107;
-      /* Favorited star color */
+      color: #ffc107; /* Favorited star color */
     }
 
     .delete-btn {
@@ -619,6 +624,10 @@
         <h3 id="favoritesBtn" onclick="showFavorites()">Favorites</h3>
     </div>
 
+    <div class="nsfw-section">
+      <h3 id="nsfwBtn" onclick="showNsfw()">Show NSFW</h3>
+    </div>
+
     <div class="filter-section" id="brokenImagesSection" style="display: none;">
       <h3 style="color: #c62828;">Broken Images</h3>
       <p style="font-size: 0.8rem; color: #666;">Click a button to edit the card with the broken image.</p>
@@ -687,7 +696,7 @@
         <textarea id="modelUrl" rows="3" placeholder="Enter one or more model URLs, separated by commas" required></textarea>
         
         <div id="selectedTagsContainer" class="selected-tags"></div>
-         
+          
         <select id="availableTags">
           <option value="">Select tags to add</option>
           </select>
@@ -711,7 +720,7 @@
         <div id="relatedModelsErrorMessage" class="error-message"></div>
         <div>
           <button type="button" onclick="addRelatedModels()">Upload</button>
-          <button type="button" onclick="closeRelatedModelsPopup()">Cancel</button>
+           <button type="button" onclick="closeRelatedModelsPopup()">Cancel</button>
         </div>
       </form>
     </div>
@@ -872,7 +881,7 @@
             currentFilterTag = currentFilterTag === tag ? null : tag;
             isFavoritesViewActive = false;
             loadCards();
-          };
+           };
           filterContainer.appendChild(tagButton);
         });
         updateActiveFiltersUI();
@@ -918,65 +927,62 @@
     
     // UPDATED AND CORRECTED FUNCTION
     async function loadCards() {
-  try {
-    let query = supabase.from('models').select('*');
+      try {
+        let query = supabase.from('models').select('*');
 
-    if (isFavoritesViewActive) {
-      // Show only favorited cards
-      query = query.eq('favorited', true).eq('nsfw', false);
-    } else if (currentFilterTag) {
-      if (currentFilterTag.toLowerCase() === "nsfw") {
-        // Only show NSFW images if user explicitly clicks the NSFW tag
-        query = query.eq('nsfw', true);
-      } else {
-        // Show safe images with the selected tag
-        const t = currentFilterTag.trim().replace(/"/g, '""'); // escape quotes for PostgREST
-        const orExpr =
-          `tags.eq."${t}",` +                // only tag
-          `tags.ilike."${t}, %",` +          // at start
-          `tags.ilike."%, ${t}",` +          // at end
-          `tags.ilike."%, ${t}, %"`;         // in middle
-        query = query.or(orExpr).eq('nsfw', false);
+        if (isFavoritesViewActive) {
+          // Show only favorited cards
+          query = query.eq('favorited', true).eq('nsfw', false);
+        } else if (currentFilterTag) {
+          if (currentFilterTag.toLowerCase() === "nsfw") {
+            // Only show NSFW images if user explicitly clicks the NSFW tag
+            query = query.eq('nsfw', true);
+          } else {
+            // Show safe images with the selected tag
+            const t = currentFilterTag.trim().replace(/"/g, '""'); // escape quotes for PostgREST
+            const orExpr =
+              `tags.eq."${t}",` +                // only tag
+              `tags.ilike."${t}, %",` +          // at start
+              `tags.ilike."%, ${t}",` +          // at end
+              `tags.ilike."%, ${t}, %"`;         // in middle
+            query = query.or(orExpr).eq('nsfw', false);
+          }
+        } else {
+          // Homepage: show only safe images
+          query = query.eq('nsfw', false);
+        }
+
+        query = query.order('created_at', { ascending: false });
+        let { data: cards, error } = await query;
+        if (error) throw error;
+
+        // Final safety: if filtering by tag, enforce whole-tag check client-side
+        if (currentFilterTag && currentFilterTag.toLowerCase() !== "nsfw") {
+          const needle = currentFilterTag.toLowerCase();
+          cards = (cards || []).filter(c =>
+            (c.tags || '')
+              .split(',')
+              .map(s => s.trim().toLowerCase())
+              .includes(needle)
+          );
+        }
+
+        const gallery = document.getElementById('gallery');
+        gallery.innerHTML = '';
+        if (!cards || cards.length === 0) {
+          gallery.innerHTML = '<p>No models found.</p>';
+          return;
+        }
+
+        displayedCards = cards;
+        displayedCards.forEach(card => addCardToPage(card));
+        updateActiveFiltersUI();
+      } catch (error) {
+        console.error("Error loading cards:", error);
+        alert("A critical error occurred while loading models. Check the console for details.");
       }
-    } else {
-      // Homepage: show only safe images
-      query = query.eq('nsfw', false);
     }
 
-    query = query.order('created_at', { ascending: false });
-    let { data: cards, error } = await query;
-    if (error) throw error;
-
-    // Final safety: if filtering by tag, enforce whole-tag check client-side
-    if (currentFilterTag && currentFilterTag.toLowerCase() !== "nsfw") {
-      const needle = currentFilterTag.toLowerCase();
-      cards = (cards || []).filter(c =>
-        (c.tags || '')
-          .split(',')
-          .map(s => s.trim().toLowerCase())
-          .includes(needle)
-      );
-    }
-
-    const gallery = document.getElementById('gallery');
-    gallery.innerHTML = '';
-
-    if (!cards || cards.length === 0) {
-      gallery.innerHTML = '<p>No models found.</p>';
-      return;
-    }
-
-    displayedCards = cards;
-    displayedCards.forEach(card => addCardToPage(card));
-    updateActiveFiltersUI();
-  } catch (error) {
-    console.error("Error loading cards:", error);
-    alert("A critical error occurred while loading models. Check the console for details.");
-  }
-}
-
-
-    
     async function checkFavorites() {
       try {
         const { data, error, count } = await supabase
@@ -1032,25 +1038,46 @@
         loadCards();
     }
     
-    function updateActiveFiltersUI() {
-        // Handle tag filters
-        const tagButtons = document.querySelectorAll('#filterTags button');
-        tagButtons.forEach(button => {
-            if ((!currentFilterTag && !isFavoritesViewActive && button.textContent === 'All') || (button.textContent === currentFilterTag)) {
-                button.classList.add('active');
-            } else {
-                button.classList.remove('active');
-            }
-        });
-        // Handle favorites filter
-        const favoritesBtn = document.getElementById('favoritesBtn');
-        if (isFavoritesViewActive) {
-            favoritesBtn.classList.add('active');
-        } else {
-            favoritesBtn.classList.remove('active');
-        }
+    function showNsfw() {
+        isFavoritesViewActive = false;
+        currentFilterTag = "nsfw";
+        loadCards();
     }
     
+    function updateActiveFiltersUI() {
+        // Deactivate everything first to prevent multiple active states
+        document.querySelectorAll('#filterTags button').forEach(b => b.classList.remove('active'));
+        document.getElementById('favoritesBtn').classList.remove('active');
+        const nsfwBtn = document.getElementById('nsfwBtn');
+        if (nsfwBtn) nsfwBtn.classList.remove('active');
+
+        if (isFavoritesViewActive) {
+            // Activate Favorites
+            document.getElementById('favoritesBtn').classList.add('active');
+        } else if (currentFilterTag && currentFilterTag.toLowerCase() === 'nsfw') {
+            // Activate NSFW
+            if (nsfwBtn) nsfwBtn.classList.add('active');
+        } else if (currentFilterTag) {
+            // Activate the specific tag button
+            let tagFound = false;
+            document.querySelectorAll('#filterTags button').forEach(button => {
+                if (button.textContent === currentFilterTag) {
+                    button.classList.add('active');
+                    tagFound = true;
+                }
+            });
+            // Fallback to "All" if the tag doesn't exist (e.g., from a related tag click)
+            if (!tagFound) {
+                 const allButton = document.querySelector('#filterTags button');
+                 if (allButton) allButton.classList.add('active');
+            }
+        } else {
+            // Activate "All"
+            const allButton = document.querySelector('#filterTags button');
+            if (allButton) allButton.classList.add('active');
+        }
+    }
+
     async function loadRelatedModels(tag = null) {
       if (!currentViewingCard) return;
       try {
@@ -1181,6 +1208,7 @@
       const models = [currentViewingCard.main_model_url, ...(currentViewingCard.related_models || [])];
       const viewerModel = document.getElementById('viewerModel');
       const modelCounter = document.getElementById('modelCounter');
+
       if (models.length > 0 && currentModelIndex >= 0 && currentModelIndex < models.length) {
         const modelUrl = models[currentModelIndex];
         const displayUrl = modelUrl && modelUrl.includes('ik.imagekit.io') ? `${modelUrl}?tr=q-90` : modelUrl;
@@ -1350,10 +1378,12 @@
       if (currentRelatedModelIndex >= models.length) currentRelatedModelIndex = 0;
       const currentModel = models[currentRelatedModelIndex];
       const currentModelData = relatedModelsWithTags.find(img => img.url === currentModel) || { url: currentModel, tags: '' };
+
       document.getElementById('currentRelatedModelInfo').innerHTML = `
         <img src="${currentModel}" style="max-width: 100%; max-height: 150px; object-fit: contain; margin-bottom: 10px;">
         <p>Model ${currentRelatedModelIndex + 1} of ${models.length}</p>
       `;
+
       currentRelatedModelTags = currentModelData.tags ? currentModelData.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
       updateSelectedRelatedTagsDisplay();
       updateAvailableRelatedTags();
@@ -1480,8 +1510,7 @@
         currentlyEditingCardId = cardId;
         const modelUrlInput = document.getElementById('modelUrl');
         modelUrlInput.value = card.main_model_url;
-        modelUrlInput.placeholder = "Model URL";
-        // Set placeholder for single URL edit
+        modelUrlInput.placeholder = "Model URL"; // Set placeholder for single URL edit
         selectedTags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
         updateSelectedTagsDisplay();
         document.querySelector('.popup-content h3').textContent = 'Edit Card';
@@ -1652,8 +1681,7 @@
         // This is the most reliable way to ensure the UI reflects the database.
         // It's less performant than adding just the new elements, but much more robust.
         await loadCards();
-        await loadFilterTags();
-        // Also reload filters to include any new tags used
+        await loadFilterTags(); // Also reload filters to include any new tags used
 
         closePopup();
       } catch (error) {
@@ -1672,8 +1700,6 @@
       updateTagDisplays();
       document.getElementById('errorMessage').textContent = '';
     }
-
-
 
     function openPopup() {
       document.getElementById('popup').style.display = 'flex';
