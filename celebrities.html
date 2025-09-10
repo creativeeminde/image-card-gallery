@@ -281,6 +281,33 @@
       z-index: 100;
     }
 
+    /* --- NEW: Alphabetical Navigation Bar Styles --- */
+    .alpha-nav {
+      background-color: black;
+      padding: 12px;
+      text-align: center;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      font-size: 1rem;
+    }
+    .alpha-nav span {
+      color: #00bcd4; /* Teal */
+      margin-right: 15px;
+      font-weight: bold;
+    }
+    .alpha-nav a {
+      color: #00bcd4; /* Teal */
+      margin: 0 7px;
+      text-decoration: none;
+      font-weight: bold;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .alpha-nav a:hover {
+      color: #80deea; /* Lighter teal */
+    }
+    /* --- End New Styles --- */
+
     .celebrity-viewer {
       display: none;
       position: fixed;
@@ -568,10 +595,30 @@
   </aside>
 
   <main class="main-content">
+    <div class="alpha-nav">
+      <span>BROWSE BY NAME</span>
+      <a onclick="scrollToLetter('ALL')">ALL</a>
+      <a onclick="scrollToLetter('A')">A</a> <a onclick="scrollToLetter('B')">B</a> <a onclick="scrollToLetter('C')">C</a> <a onclick="scrollToLetter('D')">D</a>
+      <a onclick="scrollToLetter('E')">E</a> <a onclick="scrollToLetter('F')">F</a> <a onclick="scrollToLetter('G')">G</a> <a onclick="scrollToLetter('H')">H</a>
+      <a onclick="scrollToLetter('I')">I</a> <a onclick="scrollToLetter('J')">J</a> <a onclick="scrollToLetter('K')">K</a> <a onclick="scrollToLetter('L')">L</a>
+      <a onclick="scrollToLetter('M')">M</a> <a onclick="scrollToLetter('N')">N</a> <a onclick="scrollToLetter('O')">O</a> <a onclick="scrollToLetter('P')">P</a>
+      <a onclick="scrollToLetter('Q')">Q</a> <a onclick="scrollToLetter('R')">R</a> <a onclick="scrollToLetter('S')">S</a> <a onclick="scrollToLetter('T')">T</a>
+      <a onclick="scrollToLetter('U')">U</a> <a onclick="scrollToLetter('V')">V</a> <a onclick="scrollToLetter('W')">W</a> <a onclick="scrollToLetter('X')">X</a>
+      <a onclick="scrollToLetter('Y')">Y</a> <a onclick="scrollToLetter('Z')">Z</a>
+    </div>
+
+    <div class="toolbar" style="margin-bottom: 20px; display: flex; align-items: center; justify-content: flex-end;">
+        <label for="sort-select" style="margin-right: 10px; font-size: 0.9rem; color: #555;">Sort by:</label>
+        <select id="sort-select" style="padding: 8px; border-radius: 6px; border: 1px solid #ddd; background-color: white; font-size: 0.9rem;">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="az">A–Z</option>
+        </select>
+    </div>
+      
     <div class="gallery" id="gallery"></div>
     <div id="loader">Loading...</div>
   </main>
-<!-- Navigation and Add Buttons -->
 <button class="add-btn" onclick="openPopup()">＋</button>
 <button class="videos-btn" onclick="window.location.href='videos.html'">🎬</button>
 <button class="home-btn" onclick="window.location.href='index.html'">🏠</button>
@@ -683,10 +730,47 @@
           await addCard();
         }
       });
+      
+      // NEW: Add event listener for the sort dropdown
+      document.getElementById('sort-select').addEventListener('change', loadCards);
 
       await loadAllTags();
       await loadCards();
     };
+
+    // --- NEW: Function to scroll to the first card starting with a letter ---
+    async function scrollToLetter(letter) {
+      const sortSelect = document.getElementById('sort-select');
+      if (sortSelect.value !== 'az') {
+          sortSelect.value = 'az';
+          await loadCards();
+      }
+
+      if (letter === 'ALL') {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return;
+      }
+
+      const cards = document.querySelectorAll('#gallery .card');
+      let targetCard = null;
+
+      for (const card of cards) {
+          const titleElement = card.querySelector('h4');
+          if (titleElement) {
+              const title = titleElement.textContent.trim().toUpperCase();
+              if (title.startsWith(letter)) {
+                  targetCard = card;
+                  break; 
+              }
+          }
+      }
+
+      if (targetCard) {
+          targetCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+          alert(`No entries found starting with the letter "${letter}".`);
+      }
+    }
 
     async function loadAllTags() {
         try {
@@ -763,10 +847,30 @@
       document.getElementById('gallery').appendChild(cardElem);
     }
 
+    // UPDATED: This function now handles sorting
     async function loadCards() {
         const gallery = document.getElementById('gallery');
         gallery.innerHTML = '';
         document.getElementById('loader').style.display = 'block';
+
+        const sortBy = document.getElementById('sort-select').value;
+        let orderColumn = 'created_at';
+        let orderAscending = false;
+        
+        switch (sortBy) {
+            case 'newest':
+                orderColumn = 'created_at';
+                orderAscending = false;
+                break;
+            case 'oldest':
+                orderColumn = 'created_at';
+                orderAscending = true;
+                break;
+            case 'az':
+                orderColumn = 'title';
+                orderAscending = true;
+                break;
+        }
 
         try {
             let query = supabase.from('celebrities').select('*');
@@ -775,7 +879,7 @@
                 query = query.ilike('tags', `%${currentFilterTag}%`);
             }
             
-            const { data: cards, error } = await query.order('created_at', { ascending: false });
+            const { data: cards, error } = await query.order(orderColumn, { ascending: orderAscending });
             
             if (error) throw error;
             
