@@ -59,6 +59,11 @@
     #preview-image {
         transition: transform 0.2s ease-out;
     }
+    /* Style for disabled button */
+    button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
   </style>
 </head>
 <body class="antialiased">
@@ -282,11 +287,8 @@
     const detailsRelatedImages = document.getElementById('details-related-images');
     const detailsRelatedImagesContainer = document.getElementById('details-related-images-container');
     const addRelatedBtn = document.getElementById('addRelatedBtn');
-    const manageRelatedBtn = document.getElementById('manageRelatedBtn');
-
-    // MODIFICATION: Add constant for upload button
     const uploadRelatedBtn = document.getElementById('uploadRelatedBtn');
-    // END MODIFICATION
+    const manageRelatedBtn = document.getElementById('manageRelatedBtn');
 
     // Add Related Popup
     const relatedImagePopup = document.getElementById('related-image-popup');
@@ -479,6 +481,7 @@
     cardForm.addEventListener('submit', saveCard);
     closeDetailsBtn.addEventListener('click', closeDetailsView);
     addRelatedBtn.addEventListener('click', openRelatedImagePopup);
+    uploadRelatedBtn.addEventListener('click', openRelatedImagePopup); // MODIFICATION
     closeRelatedPopupBtn.addEventListener('click', closeRelatedImagePopup);
     relatedImagesForm.addEventListener('submit', saveRelatedImages);
     manageRelatedBtn.addEventListener('click', toggleManageRelatedMode);
@@ -493,10 +496,6 @@
     closeEditRelatedTagsPopupBtn.addEventListener('click', closeEditRelatedTagsPopup);
     editRelatedTagsForm.addEventListener('submit', saveRelatedImageTags);
     editRelatedTagsPopup.addEventListener('click', (e) => { if (e.target === editRelatedTagsPopup) closeEditRelatedTagsPopup(); });
-
-    // MODIFICATION: Add event listener for the new upload button
-    uploadRelatedBtn.addEventListener('click', openRelatedImagePopup);
-    // END MODIFICATION
 
     // --- Dropdown Toggles ---
     function setupDropdown(button, dropdown) {
@@ -614,12 +613,15 @@
         document.body.style.overflow = 'hidden';
     }
 
+    // MODIFICATION: Updated function to always show controls
     function renderRelatedImages() {
         const card = currentCardForDetails;
-        detailsRelatedImages.innerHTML = '';
-        const relatedImages = card.related_images_with_tags || (card.related_images ? card.related_images.map(url => ({url})) : []);
-        if(relatedImages.length > 0) {
-            detailsRelatedImagesContainer.classList.remove('hidden');
+        const relatedImages = card.related_images_with_tags || [];
+        
+        detailsRelatedImages.innerHTML = ''; // Clear the grid
+        
+        if (relatedImages.length > 0) {
+            manageRelatedBtn.disabled = false;
             relatedImages.forEach((img, index) => {
                 const imgContainer = document.createElement('div');
                 imgContainer.className = "relative group aspect-square bg-gray-800 rounded-md overflow-hidden cursor-pointer";
@@ -651,7 +653,8 @@
                 detailsRelatedImages.appendChild(imgContainer);
             });
         } else {
-             detailsRelatedImagesContainer.classList.add('hidden');
+            manageRelatedBtn.disabled = true;
+            detailsRelatedImages.innerHTML = `<p class="text-gray-500 text-sm md:col-span-full italic">No related images yet. Click 'Add' or 'Upload' to begin.</p>`;
         }
     }
     
@@ -711,6 +714,10 @@
     }
 
     function toggleManageRelatedMode() {
+        // MODIFICATION: Prevent entering manage mode if there are no images
+        if ((currentCardForDetails.related_images_with_tags || []).length === 0) {
+            return;
+        }
         isManageRelatedMode = !isManageRelatedMode;
         manageRelatedBtn.classList.toggle('bg-red-600', isManageRelatedMode);
         manageRelatedBtn.classList.toggle('bg-gray-600', !isManageRelatedMode);
