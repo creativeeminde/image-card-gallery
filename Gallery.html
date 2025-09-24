@@ -160,10 +160,14 @@
               <div id="details-related-images-container" class="mt-8">
                    <div class="flex items-center justify-between mb-3">
                         <h3 class="text-gray-300 text-lg font-semibold">Related Images</h3>
-                        <div class="flex gap-2">
+                        <div id="details-controls" class="flex gap-2">
                             <button id="addRelatedBtn" class="bg-blue-600 text-white font-semibold rounded-lg px-3 py-1 text-sm flex items-center gap-1 hover:bg-blue-700 transition">
                                 <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
                                 Add
+                            </button>
+                            <button id="uploadRelatedBtn" class="bg-green-600 text-white font-semibold rounded-lg px-3 py-1 text-sm flex items-center gap-1 hover:bg-green-700 transition">
+                                <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M9.25 13.25a.75.75 0 001.5 0V4.636l2.955 3.129a.75.75 0 001.09-1.03l-4.25-4.5a.75.75 0 00-1.09 0l-4.25 4.5a.75.75 0 101.09 1.03L9.25 4.636v8.614z" /><path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" /></svg>
+                                Upload
                             </button>
                             <button id="manageRelatedBtn" class="bg-gray-600 text-white font-semibold rounded-lg px-3 py-1 text-sm flex items-center gap-1 hover:bg-gray-700 transition">
                                 <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" /><path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" /></svg>
@@ -219,6 +223,7 @@
         </form>
     </div>
   </div>
+
   <div id="image-preview-view" class="hidden fixed inset-0 bg-black/90 z-[200] flex items-center justify-center p-4">
       <div class="relative w-full h-full flex items-center justify-center">
         <img id="preview-image" src="" class="max-w-full max-h-full object-contain">
@@ -242,6 +247,8 @@
         </div>
       </div>
   </div>
+
+  <input type="file" id="relatedImageUploadInput" class="hidden" multiple accept="image/*">
 
 
   <script>
@@ -279,18 +286,22 @@
     const addRelatedBtn = document.getElementById('addRelatedBtn');
     const manageRelatedBtn = document.getElementById('manageRelatedBtn');
 
+    // MODIFICATION: Add constants for upload functionality
+    const uploadRelatedBtn = document.getElementById('uploadRelatedBtn');
+    const relatedImageUploadInput = document.getElementById('relatedImageUploadInput');
+    // END MODIFICATION
+
     // Add Related Popup
     const relatedImagePopup = document.getElementById('related-image-popup');
     const closeRelatedPopupBtn = document.getElementById('closeRelatedPopupBtn');
     const relatedImagesForm = document.getElementById('relatedImagesForm');
     const relatedTagPool = document.getElementById('relatedTagPool');
 
-    // MODIFICATION: Add constants for the new Edit Related Tags popup
+    // Edit Related Tags Popup
     const editRelatedTagsPopup = document.getElementById('edit-related-tags-popup');
     const closeEditRelatedTagsPopupBtn = document.getElementById('closeEditRelatedTagsPopupBtn');
     const editRelatedTagsForm = document.getElementById('editRelatedTagsForm');
     const editRelatedPreviewImage = document.getElementById('edit-related-preview-image');
-    // END MODIFICATION
 
     // Image Preview
     const imagePreviewView = document.getElementById('image-preview-view');
@@ -315,15 +326,15 @@
     let isManageRelatedMode = false;
     let filteredItemsForPreview = [];
 
-    // MODIFICATION: Add state variables for the new edit popup
+    // Edit Related Tags Popup State
     let currentlyEditingRelatedImage = null; // Will hold the {url, tags} object
     let selectedTagsForEdit = [];
-    // END MODIFICATION
 
     // Preview State
     let previewImages = [];
     let currentPreviewIndex = 0;
     let currentZoom = 1;
+    
     // --- Data Fetching and Display ---
     async function fetchAllTags() {
         const { data, error } = await supabase.from('cards').select('tags, related_images_with_tags');
@@ -481,12 +492,15 @@
     zoomOutBtn.addEventListener('click', zoomOutPreview);
     resetZoomBtn.addEventListener('click', resetZoomBtn);
 
-    // MODIFICATION: Add event listeners for the new popup
+    // Edit Related Tags Popup Listeners
     closeEditRelatedTagsPopupBtn.addEventListener('click', closeEditRelatedTagsPopup);
     editRelatedTagsForm.addEventListener('submit', saveRelatedImageTags);
     editRelatedTagsPopup.addEventListener('click', (e) => { if (e.target === editRelatedTagsPopup) closeEditRelatedTagsPopup(); });
-    // END MODIFICATION
 
+    // MODIFICATION: Add event listeners for the new upload functionality
+    uploadRelatedBtn.addEventListener('click', () => relatedImageUploadInput.click());
+    relatedImageUploadInput.addEventListener('change', handleImageUpload);
+    // END MODIFICATION
 
     // --- Dropdown Toggles ---
     function setupDropdown(button, dropdown) {
@@ -504,6 +518,7 @@
     document.addEventListener('click', () => closeAllDropdowns(null));
     setupDropdown(sortButton, sortDropdown);
     setupDropdown(filterButton, filterDropdown);
+
     // --- Sorting & Filtering ---
     sortDropdown.addEventListener('click', (e) => {
         if (e.target.classList.contains('sort-option')) {
@@ -539,13 +554,14 @@
             }
         }
     });
+
     // --- Card Actions (Add, Edit, Delete) ---
     async function editCard(id) {
         const { data: card, error } = await supabase.from('cards').select('*').eq('id', id).single();
         if (error) return console.error("Error fetching card for edit:", error);
         resetForm();
         currentlyEditingCardId = id;
-        document.querySelector('.popup-content h3').textContent = 'Edit Character';
+        document.querySelector('#popup .popup-content h3').textContent = 'Edit Character';
         document.getElementById('title').value = card.title;
         document.getElementById('imageUrl').value = card.main_image_url;
         selectedTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
@@ -611,7 +627,6 @@
             relatedImages.forEach((img, index) => {
                 const imgContainer = document.createElement('div');
                 imgContainer.className = "relative group aspect-square bg-gray-800 rounded-md overflow-hidden cursor-pointer";
-                // MODIFICATION: Add an edit button next to the delete button in manage mode
                 imgContainer.innerHTML = `
                     <img src="${img.url}" alt="Related Image" class="w-full h-full object-cover group-hover:opacity-60 transition">
                     ${isManageRelatedMode ? `
@@ -625,8 +640,6 @@
                     </div>
                     ` : ''}
                 `;
-                // END MODIFICATION
-                // MODIFICATION: Add logic for the new edit button
                 imgContainer.addEventListener('click', (e) => {
                     const deleteBtn = e.target.closest('.delete-related-btn');
                     const editBtn = e.target.closest('.edit-related-btn');
@@ -639,7 +652,6 @@
                         openImagePreview(allRelated, index);
                     }
                 });
-                // END MODIFICATION
                 detailsRelatedImages.appendChild(imgContainer);
             });
         } else {
@@ -672,30 +684,10 @@
         const urlsText = document.getElementById('relatedImageUrls').value.trim();
         if (!urlsText) return;
         const urls = urlsText.split('\n').map(url => url.trim()).filter(url => url);
-        
-        const currentRelatedImages = currentCardForDetails.related_images || [];
-        const currentRelatedWithTags = currentCardForDetails.related_images_with_tags || [];
-        
-        const newUrls = urls.filter(url => !currentRelatedImages.includes(url));
-        if (newUrls.length === 0) return closeRelatedImagePopup();
-        const tagsString = selectedRelatedTags.join(', ');
-        
-        const updatedRelatedImages = [...currentRelatedImages, ...newUrls];
-        const updatedRelatedWithTags = [...currentRelatedWithTags, ...newUrls.map(url => ({ url, tags: tagsString }))];
-        const { data, error } = await supabase
-            .from('cards')
-            .update({ related_images: updatedRelatedImages, related_images_with_tags: updatedRelatedWithTags })
-            .eq('id', currentCardForDetails.id)
-            .select()
-            .single();
-        if (error) {
-            document.getElementById('relatedErrorMessage').textContent = 'Error saving images.';
-            return console.error(error);
-        }
+        if (urls.length === 0) return closeRelatedImagePopup();
 
-        currentCardForDetails = data;
-        await fetchAllTags(); // Refresh all tags in case new ones were added implicitly
-        renderRelatedImages();
+        const tagsString = selectedRelatedTags.join(', ');
+        await addUrlsToCharacter(urls, tagsString);
         closeRelatedImagePopup();
     }
 
@@ -722,7 +714,7 @@
         renderRelatedImages();
     }
 
-    // MODIFICATION: Add functions to manage the new edit tags popup
+    // Edit Related Tags Popup
     function openEditRelatedTagsPopup(url) {
         currentlyEditingRelatedImage = currentCardForDetails.related_images_with_tags.find(img => img.url === url);
         if (!currentlyEditingRelatedImage) return;
@@ -772,6 +764,76 @@
         renderRelatedImages();
         closeEditRelatedTagsPopup();
     }
+
+    // MODIFICATION: Add new functions for image upload
+    async function handleImageUpload(e) {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        const uploadButton = document.getElementById('uploadRelatedBtn');
+        const originalButtonHtml = uploadButton.innerHTML;
+        uploadButton.disabled = true;
+        uploadButton.innerHTML = 'Uploading...';
+
+        const BUCKET_NAME = 'related-images';
+        const characterId = currentCardForDetails.id;
+        
+        const uploadPromises = Array.from(files).map(file => {
+            const filePath = `${characterId}/${Date.now()}-${file.name}`;
+            return supabase.storage.from(BUCKET_NAME).upload(filePath, file);
+        });
+
+        try {
+            const results = await Promise.all(uploadPromises);
+            
+            const newUrls = [];
+            for (const result of results) {
+                if (result.error) throw result.error;
+                const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(result.data.path);
+                newUrls.push(data.publicUrl);
+            }
+            
+            if(newUrls.length > 0) {
+                await addUrlsToCharacter(newUrls, ''); // Uploaded images have no tags by default
+            }
+
+        } catch(error) {
+            console.error("Error uploading files:", error);
+            alert("An error occurred during upload. Please check the console.");
+        } finally {
+            uploadButton.disabled = false;
+            uploadButton.innerHTML = originalButtonHtml;
+            relatedImageUploadInput.value = ''; // Reset input
+        }
+    }
+
+    async function addUrlsToCharacter(urls, tagsString) {
+        const currentRelatedImages = currentCardForDetails.related_images || [];
+        const currentRelatedWithTags = currentCardForDetails.related_images_with_tags || [];
+        
+        const newUrls = urls.filter(url => !currentRelatedImages.includes(url));
+        if (newUrls.length === 0) return;
+        
+        const updatedRelatedImages = [...currentRelatedImages, ...newUrls];
+        const updatedRelatedWithTags = [...currentRelatedWithTags, ...newUrls.map(url => ({ url, tags: tagsString }))];
+        
+        const { data, error } = await supabase
+            .from('cards')
+            .update({ related_images: updatedRelatedImages, related_images_with_tags: updatedRelatedWithTags })
+            .eq('id', currentCardForDetails.id)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error adding URLs to character:', error);
+            alert('Could not save the new images. Check the console.');
+            return;
+        }
+
+        currentCardForDetails = data;
+        await fetchAllTags(); // Refresh tags
+        renderRelatedImages();
+    }
     // END MODIFICATION
 
     // --- Image Preview ---
@@ -818,7 +880,7 @@
       cardForm.reset();
       currentlyEditingCardId = null;
       selectedTags = [];
-      document.querySelector('.popup-content h3').textContent = 'Add New Character';
+      document.querySelector('#popup .popup-content h3').textContent = 'Add New Character';
       document.getElementById('errorMessage').textContent = '';
       updateSelectedTagsDisplay();
       updateTagPoolSelection();
@@ -861,7 +923,7 @@
         });
         // Related images tag pool
         updateRelatedTagDisplays();
-        // MODIFICATION: Update the new edit tags pool as well
+        // Edit tags pool
         updateEditRelatedTagDisplays();
     }
 
@@ -904,7 +966,6 @@
         });
     }
 
-    // MODIFICATION: Add display logic for the new edit tags popup
     function updateEditRelatedTagDisplays() {
         const sortedTags = Array.from(allTags).sort();
         const selectedContainer = document.getElementById('editRelatedSelectedTags');
@@ -925,8 +986,8 @@
             selectedContainer.innerHTML += `<span class="bg-blue-600 text-white text-xs font-medium px-2 py-1 rounded-full flex items-center gap-1">${tag}<button type="button" class="remove-edit-tag font-bold" data-tag="${tag}">&times;</button></span>`;
         });
     }
-    // END MODIFICATION
     
+    // Event delegation for tag popups
     document.getElementById('popup').addEventListener('click', (e) => {
         if(e.target.classList.contains('tag')) {
             const tag = e.target.dataset.tag;
@@ -963,7 +1024,6 @@
         }
     });
 
-    // MODIFICATION: Add event listener for the new edit tags popup
     editRelatedTagsPopup.addEventListener('click', (e) => {
         if (e.target.classList.contains('tag')) {
             const tag = e.target.dataset.tag;
@@ -980,7 +1040,6 @@
             updateEditRelatedTagDisplays();
         }
     });
-    // END MODIFICATION
 
     // --- Utilities ---
     let debounceTimer;
