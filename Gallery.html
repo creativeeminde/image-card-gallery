@@ -55,9 +55,12 @@
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
     }
-    /* Ensure the preview image can be transformed for zooming */
+    /* Ensure the preview image can be transformed for zooming and panning */
     #preview-image {
         transition: transform 0.2s ease-out;
+        /* Prevent default browser drag behavior on the image */
+        -webkit-user-drag: none;
+        user-select: none;
     }
     /* Style for disabled button */
     button:disabled {
@@ -245,7 +248,7 @@
     </div>
   </div>
 
-  <div id="image-preview-view" class="hidden fixed inset-0 bg-black/90 z-[200] flex items-center justify-center p-4">
+  <div id="image-preview-view" class="hidden fixed inset-0 bg-black/90 z-[200] flex items-center justify-center p-4 overflow-hidden">
       <div class="relative w-full h-full flex items-center justify-center">
    
            <img id="preview-image" src="" class="max-w-full max-h-full object-contain">
@@ -349,10 +352,17 @@
     let currentlyEditingRelatedImage = null;
     // Will hold the {url, tags} object
     let selectedTagsForEdit = [];
+    
     // Preview State
     let previewImages = [];
     let currentPreviewIndex = 0;
     let currentZoom = 1;
+    let isPanning = false;
+    let startPanX = 0;
+    let startPanY = 0;
+    let panX = 0;
+    let panY = 0;
+
 
     // --- Data Fetching and Display ---
     async function fetchAllTags() {
@@ -522,7 +532,7 @@
     prevPreviewBtn.addEventListener('click', prevPreviewImage);
     zoomInBtn.addEventListener('click', zoomInPreview);
     zoomOutBtn.addEventListener('click', zoomOutPreview);
-    resetZoomBtn.addEventListener('click', resetZoomBtn);
+    resetZoomBtn.addEventListener('click', resetZoomPreview);
     // Edit Related Tags Popup Listeners
     closeEditRelatedTagsPopupBtn.addEventListener('click', closeEditRelatedTagsPopup);
     editRelatedTagsForm.addEventListener('submit', saveRelatedImageTags);
@@ -850,20 +860,65 @@
         currentPreviewIndex = (currentPreviewIndex - 1 + previewImages.length) % previewImages.length;
         updatePreviewImage();
     }
+    
+    function updateImageTransform() {
+        previewImage.style.transform = `translate(${panX}px, ${panY}px) scale(${currentZoom})`;
+        if (currentZoom > 1) {
+            previewImage.style.cursor = 'grab';
+        } else {
+            previewImage.style.cursor = 'default';
+        }
+    }
+
     function zoomInPreview() {
-        currentZoom = Math.min(currentZoom + 0.2, 3);
-        // Max zoom 3x
-        previewImage.style.transform = `scale(${currentZoom})`;
+        currentZoom = Math.min(currentZoom + 0.2, 3); // Max zoom 3x
+        updateImageTransform();
     }
     function zoomOutPreview() {
-        currentZoom = Math.max(currentZoom - 0.2, 0.5);
-        // Min zoom 0.5x
-        previewImage.style.transform = `scale(${currentZoom})`;
+        currentZoom = Math.max(currentZoom - 0.2, 0.5); // Min zoom 0.5x
+        updateImageTransform();
     }
     function resetZoomPreview() {
         currentZoom = 1;
-        previewImage.style.transform = 'scale(1)';
+        panX = 0;
+        panY = 0;
+        updateImageTransform();
     }
+    
+    // Panning Event Listeners
+    previewImage.addEventListener('mousedown', (e) => {
+        if (currentZoom > 1) {
+            e.preventDefault(); // Prevent default image drag
+            isPanning = true;
+            startPanX = e.clientX - panX;
+            startPanY = e.clientY - panY;
+            previewImage.style.cursor = 'grabbing';
+        }
+    });
+
+    previewImage.addEventListener('mousemove', (e) => {
+        if (isPanning) {
+            e.preventDefault();
+            panX = e.clientX - startPanX;
+            panY = e.clientY - startPanY;
+            updateImageTransform();
+        }
+    });
+
+    previewImage.addEventListener('mouseup', () => {
+        isPanning = false;
+        if (currentZoom > 1) {
+            previewImage.style.cursor = 'grab';
+        }
+    });
+
+    previewImage.addEventListener('mouseleave', () => {
+        isPanning = false;
+        if (currentZoom > 1) {
+            previewImage.style.cursor = 'grab';
+        }
+    });
+
 
     // --- Popup and Form Management ---
     function resetForm() {
