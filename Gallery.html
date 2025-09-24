@@ -248,8 +248,6 @@
       </div>
   </div>
 
-  <input type="file" id="relatedImageUploadInput" class="hidden" multiple accept="image/*">
-
 
   <script>
     const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
@@ -286,9 +284,8 @@
     const addRelatedBtn = document.getElementById('addRelatedBtn');
     const manageRelatedBtn = document.getElementById('manageRelatedBtn');
 
-    // MODIFICATION: Add constants for upload functionality
+    // MODIFICATION: Add constant for upload button
     const uploadRelatedBtn = document.getElementById('uploadRelatedBtn');
-    const relatedImageUploadInput = document.getElementById('relatedImageUploadInput');
     // END MODIFICATION
 
     // Add Related Popup
@@ -497,9 +494,8 @@
     editRelatedTagsForm.addEventListener('submit', saveRelatedImageTags);
     editRelatedTagsPopup.addEventListener('click', (e) => { if (e.target === editRelatedTagsPopup) closeEditRelatedTagsPopup(); });
 
-    // MODIFICATION: Add event listeners for the new upload functionality
-    uploadRelatedBtn.addEventListener('click', () => relatedImageUploadInput.click());
-    relatedImageUploadInput.addEventListener('change', handleImageUpload);
+    // MODIFICATION: Add event listener for the new upload button
+    uploadRelatedBtn.addEventListener('click', openRelatedImagePopup);
     // END MODIFICATION
 
     // --- Dropdown Toggles ---
@@ -684,10 +680,33 @@
         const urlsText = document.getElementById('relatedImageUrls').value.trim();
         if (!urlsText) return;
         const urls = urlsText.split('\n').map(url => url.trim()).filter(url => url);
-        if (urls.length === 0) return closeRelatedImagePopup();
+        
+        const currentRelatedImages = currentCardForDetails.related_images || [];
+        const currentRelatedWithTags = currentCardForDetails.related_images_with_tags || [];
+        
+        const newUrls = urls.filter(url => !currentRelatedImages.includes(url));
+        if (newUrls.length === 0) return closeRelatedImagePopup();
 
         const tagsString = selectedRelatedTags.join(', ');
-        await addUrlsToCharacter(urls, tagsString);
+        
+        const updatedRelatedImages = [...currentRelatedImages, ...newUrls];
+        const updatedRelatedWithTags = [...currentRelatedWithTags, ...newUrls.map(url => ({ url, tags: tagsString }))];
+        
+        const { data, error } = await supabase
+            .from('cards')
+            .update({ related_images: updatedRelatedImages, related_images_with_tags: updatedRelatedWithTags })
+            .eq('id', currentCardForDetails.id)
+            .select()
+            .single();
+
+        if (error) {
+            document.getElementById('relatedErrorMessage').textContent = 'Error saving images.';
+            return console.error('Error saving related images:', error);
+        }
+
+        currentCardForDetails = data;
+        await fetchAllTags(); // Refresh all tags
+        renderRelatedImages();
         closeRelatedImagePopup();
     }
 
@@ -764,77 +783,6 @@
         renderRelatedImages();
         closeEditRelatedTagsPopup();
     }
-
-    // MODIFICATION: Add new functions for image upload
-    async function handleImageUpload(e) {
-        const files = e.target.files;
-        if (!files || files.length === 0) return;
-
-        const uploadButton = document.getElementById('uploadRelatedBtn');
-        const originalButtonHtml = uploadButton.innerHTML;
-        uploadButton.disabled = true;
-        uploadButton.innerHTML = 'Uploading...';
-
-        const BUCKET_NAME = 'related-images';
-        const characterId = currentCardForDetails.id;
-        
-        const uploadPromises = Array.from(files).map(file => {
-            const filePath = `${characterId}/${Date.now()}-${file.name}`;
-            return supabase.storage.from(BUCKET_NAME).upload(filePath, file);
-        });
-
-        try {
-            const results = await Promise.all(uploadPromises);
-            
-            const newUrls = [];
-            for (const result of results) {
-                if (result.error) throw result.error;
-                const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(result.data.path);
-                newUrls.push(data.publicUrl);
-            }
-            
-            if(newUrls.length > 0) {
-                await addUrlsToCharacter(newUrls, ''); // Uploaded images have no tags by default
-            }
-
-        } catch(error) {
-            console.error("Error uploading files:", error);
-            alert("An error occurred during upload. Please check the console.");
-        } finally {
-            uploadButton.disabled = false;
-            uploadButton.innerHTML = originalButtonHtml;
-            relatedImageUploadInput.value = ''; // Reset input
-        }
-    }
-
-    async function addUrlsToCharacter(urls, tagsString) {
-        const currentRelatedImages = currentCardForDetails.related_images || [];
-        const currentRelatedWithTags = currentCardForDetails.related_images_with_tags || [];
-        
-        const newUrls = urls.filter(url => !currentRelatedImages.includes(url));
-        if (newUrls.length === 0) return;
-        
-        const updatedRelatedImages = [...currentRelatedImages, ...newUrls];
-        const updatedRelatedWithTags = [...currentRelatedWithTags, ...newUrls.map(url => ({ url, tags: tagsString }))];
-        
-        const { data, error } = await supabase
-            .from('cards')
-            .update({ related_images: updatedRelatedImages, related_images_with_tags: updatedRelatedWithTags })
-            .eq('id', currentCardForDetails.id)
-            .select()
-            .single();
-
-        if (error) {
-            console.error('Error adding URLs to character:', error);
-            alert('Could not save the new images. Check the console.');
-            return;
-        }
-
-        currentCardForDetails = data;
-        await fetchAllTags(); // Refresh tags
-        renderRelatedImages();
-    }
-    // END MODIFICATION
 
     // --- Image Preview ---
     function openImagePreview(images, index) {
