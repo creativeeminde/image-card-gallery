@@ -58,6 +58,10 @@
     /* Ensure the preview image can be transformed for zooming */
     #preview-image {
         transition: transform 0.2s ease-out;
+        cursor: grab;
+    }
+     #preview-image.is-panning {
+        cursor: grabbing;
     }
     /* Style for disabled button */
     button:disabled {
@@ -353,6 +357,11 @@
     let previewImages = [];
     let currentPreviewIndex = 0;
     let currentZoom = 1;
+    let lastScrollPosition = 0; // To store scroll position
+    // Panning State
+    let isPanning = false;
+    let panStart = { x: 0, y: 0 };
+    let panOffset = { x: 0, y: 0 };
 
     // --- Data Fetching and Display ---
     async function fetchAllTags() {
@@ -522,11 +531,19 @@
     prevPreviewBtn.addEventListener('click', prevPreviewImage);
     zoomInBtn.addEventListener('click', zoomInPreview);
     zoomOutBtn.addEventListener('click', zoomOutPreview);
-    resetZoomBtn.addEventListener('click', resetZoomBtn);
+    resetZoomBtn.addEventListener('click', resetZoomPreview);
     // Edit Related Tags Popup Listeners
     closeEditRelatedTagsPopupBtn.addEventListener('click', closeEditRelatedTagsPopup);
     editRelatedTagsForm.addEventListener('submit', saveRelatedImageTags);
     editRelatedTagsPopup.addEventListener('click', (e) => { if (e.target === editRelatedTagsPopup) closeEditRelatedTagsPopup(); });
+    
+    // --- Panning Event Listeners ---
+    previewImage.addEventListener('mousedown', startPan);
+    window.addEventListener('mousemove', pan);
+    window.addEventListener('mouseup', endPan);
+    previewImage.addEventListener('touchstart', startPan, { passive: true });
+    window.addEventListener('touchmove', pan);
+    window.addEventListener('touchend', endPan);
 
     // --- Dropdown Toggles ---
     function setupDropdown(button, dropdown) {
@@ -624,6 +641,8 @@
 
     // --- Details View ---
     async function openDetailsView(cardId) {
+        lastScrollPosition = window.scrollY; // Store current scroll position
+
         const { data: card, error } = await supabase.from('cards').select('*').eq('id', cardId).single();
         if (error || !card) return console.error("Could not fetch card details");
         currentCardForDetails = card;
@@ -700,6 +719,10 @@
         document.querySelector('.container').classList.remove('hidden');
         detailsView.classList.add('hidden');
         document.body.style.overflow = 'auto';
+
+        // Restore scroll position instantly
+        window.scrollTo(0, lastScrollPosition);
+
         isManageRelatedMode = false;
         manageRelatedBtn.classList.remove('bg-red-600');
         manageRelatedBtn.classList.add('bg-gray-600');
@@ -850,19 +873,60 @@
         currentPreviewIndex = (currentPreviewIndex - 1 + previewImages.length) % previewImages.length;
         updatePreviewImage();
     }
+    function applyTransform() {
+        previewImage.style.transform = `translate(${panOffset.x}px, ${panOffset.y}px) scale(${currentZoom})`;
+    }
+
     function zoomInPreview() {
         currentZoom = Math.min(currentZoom + 0.2, 3);
-        // Max zoom 3x
-        previewImage.style.transform = `scale(${currentZoom})`;
+        applyTransform();
     }
+
     function zoomOutPreview() {
         currentZoom = Math.max(currentZoom - 0.2, 0.5);
-        // Min zoom 0.5x
-        previewImage.style.transform = `scale(${currentZoom})`;
+        if (currentZoom === 1) { // Reset pan when zooming back to normal
+            panOffset = { x: 0, y: 0 };
+        }
+        applyTransform();
     }
+
     function resetZoomPreview() {
         currentZoom = 1;
-        previewImage.style.transform = 'scale(1)';
+        panOffset = { x: 0, y: 0 };
+        isPanning = false;
+        previewImage.classList.remove('is-panning');
+        applyTransform();
+    }
+
+     // --- Panning Logic ---
+    function getEventCoords(e) {
+        return e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
+    }
+
+    function startPan(e) {
+        if (currentZoom <= 1) return; // Only pan if zoomed
+        e.preventDefault();
+        isPanning = true;
+        const coords = getEventCoords(e);
+        panStart.x = coords.x - panOffset.x;
+        panStart.y = coords.y - panOffset.y;
+        previewImage.classList.add('is-panning');
+        previewImage.style.transition = 'none'; // Disable transition for smooth panning
+    }
+
+    function pan(e) {
+        if (!isPanning) return;
+        const coords = getEventCoords(e);
+        panOffset.x = coords.x - panStart.x;
+        panOffset.y = coords.y - panStart.y;
+        applyTransform();
+    }
+
+    function endPan() {
+        if (!isPanning) return;
+        isPanning = false;
+        previewImage.classList.remove('is-panning');
+        previewImage.style.transition = 'transform 0.2s ease-out'; // Re-enable transition
     }
 
     // --- Popup and Form Management ---
@@ -1089,3 +1153,4 @@
   </script>
 </body>
 </html>
+
