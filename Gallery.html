@@ -7,6 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
   <style>
     body {
       font-family: 'Inter', sans-serif;
@@ -67,6 +68,18 @@
     button:disabled {
         opacity: 0.5;
         cursor: not-allowed;
+    }
+    /* MODIFICATION: Added styles for drag-and-drop functionality */
+    .sortable-ghost {
+        opacity: 0.4;
+        background-color: #4a4e69;
+        border-radius: 0.375rem; /* rounded-md */
+    }
+    .cursor-grab {
+        cursor: grab;
+    }
+    .cursor-grab:active {
+        cursor: grabbing;
     }
   </style>
 </head>
@@ -362,6 +375,8 @@
     let isPanning = false;
     let panStart = { x: 0, y: 0 };
     let panOffset = { x: 0, y: 0 };
+    // MODIFICATION: State for SortableJS instance
+    let sortable = null;
 
     // --- Data Fetching and Display ---
     async function fetchAllTags() {
@@ -522,7 +537,7 @@
     cardForm.addEventListener('submit', saveCard);
     closeDetailsBtn.addEventListener('click', closeDetailsView);
     addRelatedBtn.addEventListener('click', openRelatedImagePopup);
-    uploadRelatedBtn.addEventListener('click', openRelatedImagePopup); // MODIFICATION
+    uploadRelatedBtn.addEventListener('click', openRelatedImagePopup);
     closeRelatedPopupBtn.addEventListener('click', closeRelatedImagePopup);
     relatedImagesForm.addEventListener('submit', saveRelatedImages);
     manageRelatedBtn.addEventListener('click', toggleManageRelatedMode);
@@ -665,19 +680,20 @@
         detailsView.classList.remove('hidden');
         document.body.style.overflow = 'hidden';
     }
-
-    // MODIFICATION: Updated function to always show controls
+    
     function renderRelatedImages() {
         const card = currentCardForDetails;
         const relatedImages = card.related_images_with_tags || [];
         
-        detailsRelatedImages.innerHTML = ''; // Clear the grid
+        detailsRelatedImages.innerHTML = '';
         
         if (relatedImages.length > 0) {
             manageRelatedBtn.disabled = false;
             relatedImages.forEach((img, index) => {
                 const imgContainer = document.createElement('div');
-                imgContainer.className = "relative group aspect-square bg-gray-800 rounded-md overflow-hidden cursor-pointer";
+                // MODIFICATION: Add cursor style based on manage mode
+                const cursorClass = isManageRelatedMode ? 'cursor-grab' : 'cursor-pointer';
+                imgContainer.className = `relative group aspect-square bg-gray-800 rounded-md overflow-hidden ${cursorClass}`;
                 imgContainer.innerHTML = `
                     <img src="${img.url}" alt="Related Image" class="w-full h-full object-cover group-hover:opacity-60 transition">
         
@@ -694,6 +710,7 @@
                     ` : ''}
                 `;
                 imgContainer.addEventListener('click', (e) => {
+                    if (isManageRelatedMode) return; // Prevent click actions while in manage/drag mode
                     const deleteBtn = e.target.closest('.delete-related-btn');
                     const editBtn = e.target.closest('.edit-related-btn');
                     if (deleteBtn) {
@@ -720,15 +737,71 @@
         detailsView.classList.add('hidden');
         document.body.style.overflow = 'auto';
 
-        // Restore scroll position instantly
         window.scrollTo(0, lastScrollPosition);
 
         isManageRelatedMode = false;
         manageRelatedBtn.classList.remove('bg-red-600');
         manageRelatedBtn.classList.add('bg-gray-600');
+        
+        // MODIFICATION: Destroy Sortable instance when closing the view
+        if (sortable) {
+            sortable.destroy();
+            sortable = null;
+        }
     }
 
     // --- Related Images Management ---
+
+    // MODIFICATION: New function to initialize drag-and-drop
+    function initializeSortable() {
+        if (sortable) {
+            sortable.destroy();
+        }
+        sortable = new Sortable(detailsRelatedImages, {
+            animation: 150,
+            delay: 200, // For "press and hold" effect
+            delayOnTouchOnly: true, // Only for touch devices
+            ghostClass: 'sortable-ghost',
+            onEnd: (evt) => {
+                // evt.oldIndex and evt.newIndex are the original and new positions
+                updateRelatedImagesOrder(evt.oldIndex, evt.newIndex);
+            }
+        });
+    }
+
+    // MODIFICATION: New function to handle the reordering and save to DB
+    async function updateRelatedImagesOrder(oldIndex, newIndex) {
+        if (!currentCardForDetails || !currentCardForDetails.related_images_with_tags) return;
+
+        let images = currentCardForDetails.related_images_with_tags;
+        
+        // Reorder the array based on the drag event
+        const [movedItem] = images.splice(oldIndex, 1);
+        images.splice(newIndex, 0, movedItem);
+
+        // Also update the legacy `related_images` array to keep it in sync
+        const updatedImageUrls = images.map(img => img.url);
+
+        const { data, error } = await supabase
+            .from('cards')
+            .update({ 
+                related_images_with_tags: images,
+                related_images: updatedImageUrls 
+            })
+            .eq('id', currentCardForDetails.id)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error updating image order:', error);
+            // Re-render to revert to the original order on failure
+            renderRelatedImages(); 
+            return;
+        }
+        // Update local state with the newly saved data
+        currentCardForDetails = data;
+    }
+
     function openRelatedImagePopup() {
         selectedRelatedTags = [];
         updateRelatedTagDisplays();
@@ -767,13 +840,11 @@
 
         currentCardForDetails = data;
         await fetchAllTags();
-        // Refresh all tags
         renderRelatedImages();
         closeRelatedImagePopup();
     }
 
     function toggleManageRelatedMode() {
-        // MODIFICATION: Prevent entering manage mode if there are no images
         if ((currentCardForDetails.related_images_with_tags || []).length === 0) {
             return;
         }
@@ -781,6 +852,14 @@
         manageRelatedBtn.classList.toggle('bg-red-600', isManageRelatedMode);
         manageRelatedBtn.classList.toggle('bg-gray-600', !isManageRelatedMode);
         renderRelatedImages();
+
+        // MODIFICATION: Initialize or destroy SortableJS based on mode
+        if (isManageRelatedMode) {
+            initializeSortable();
+        } else if (sortable) {
+            sortable.destroy();
+            sortable = null;
+        }
     }
 
     async function deleteRelatedImage(urlToDelete) {
@@ -1153,4 +1232,3 @@
   </script>
 </body>
 </html>
-
