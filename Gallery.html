@@ -362,1566 +362,1288 @@
       </div>
   </div>
 
-  <button id="scrollToTopBtn" class="hidden fixed bottom-8 right-8 bg-blue-600 text-white rounded-full p-3 shadow-lg hover:bg-blue-700 transition z-50">
-      <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg>
+  <button id="scrollToTopBtn" class="hidden fixed bottom-8 right-8 bg-blue-600 text-white rounded-full p-3 shadow-lg hover:bg-blue-700 transition-all duration-300 hover:scale-110 z-50">
+    <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+    </svg>
   </button>
 
+
   <script>
-    // Supabase configuration
     const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
 
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-
-    // Global variables
-    let characters = [];
-    let filteredCharacters = [];
-    let currentSort = 'created_at_desc';
-    let currentCharacterId = null;
-    let currentRelatedImages = [];
-    let currentRelatedVideos = [];
-    let currentPreviewIndex = 0;
-    let currentScale = 1;
-    let currentTranslateX = 0;
-    let currentTranslateY = 0;
-    let isPanning = false;
-    let startX, startY;
-    let initialPinchDistance = null;
-    let allTags = [];
-    let selectedTags = [];
-    let isManageMode = false;
-    let isVideoManageMode = false;
-    let isDragging = false;
-    let dragImageIndex = null;
-    let dragVideoIndex = null;
-
-    // DOM elements
+    // Main gallery elements
     const cardGallery = document.getElementById('card-gallery');
-    const loadingElement = document.getElementById('loading');
-    const noResultsElement = document.getElementById('no-results');
-    const characterCounter = document.getElementById('character-counter');
     const searchInput = document.getElementById('searchInput');
-    const filterButton = document.getElementById('filterButton');
-    const filterDropdown = document.getElementById('filterDropdown');
-    const sortButton = document.getElementById('sortButton');
-    const sortDropdown = document.getElementById('sortDropdown');
+    const loadingIndicator = document.getElementById('loading');
+    const noResultsMessage = document.getElementById('no-results');
+    // Popup elements
     const addCardBtn = document.getElementById('addCardBtn');
     const popup = document.getElementById('popup');
     const closePopupBtn = document.getElementById('closePopupBtn');
     const cardForm = document.getElementById('cardForm');
-    const titleInput = document.getElementById('title');
-    const imageUrlInput = document.getElementById('imageUrl');
-    const errorMessage = document.getElementById('errorMessage');
+    const addTagBtn = document.getElementById('addTagBtn');
+    const tagInput = document.getElementById('tagInput');
+    // Filter & Sort elements
+    const sortButton = document.getElementById('sortButton');
+    const sortDropdown = document.getElementById('sortDropdown');
+    const filterButton = document.getElementById('filterButton');
+    const filterDropdown = document.getElementById('filterDropdown');
+    
+    // Details View elements
     const detailsView = document.getElementById('details-view');
     const closeDetailsBtn = document.getElementById('closeDetailsBtn');
-    const detailsTitle = document.getElementById('details-title');
     const detailsMainImage = document.getElementById('details-main-image');
+    const detailsTitle = document.getElementById('details-title');
     const detailsTags = document.getElementById('details-tags');
     const detailsRelatedImages = document.getElementById('details-related-images');
-    const detailsRelatedVideos = document.getElementById('details-related-videos');
+    const detailsRelatedImagesContainer = document.getElementById('details-related-images-container');
     const addRelatedBtn = document.getElementById('addRelatedBtn');
     const uploadRelatedBtn = document.getElementById('uploadRelatedBtn');
     const manageRelatedBtn = document.getElementById('manageRelatedBtn');
+    // Add Related Popup
     const relatedImagePopup = document.getElementById('related-image-popup');
     const closeRelatedPopupBtn = document.getElementById('closeRelatedPopupBtn');
     const relatedImagesForm = document.getElementById('relatedImagesForm');
-    const relatedImageUrls = document.getElementById('relatedImageUrls');
-    const relatedErrorMessage = document.getElementById('relatedErrorMessage');
+    const relatedTagPool = document.getElementById('relatedTagPool');
+
+    // Edit Related Tags Popup
+    const editRelatedTagsPopup = document.getElementById('edit-related-tags-popup');
+    const closeEditRelatedTagsPopupBtn = document.getElementById('closeEditRelatedTagsPopupBtn');
+    const editRelatedTagsForm = document.getElementById('editRelatedTagsForm');
+    const editRelatedPreviewImage = document.getElementById('edit-related-preview-image');
+
+    // Image Preview
     const imagePreviewView = document.getElementById('image-preview-view');
-    const previewImage = document.getElementById('preview-image');
     const closePreviewBtn = document.getElementById('closePreviewBtn');
+    const previewImage = document.getElementById('preview-image');
     const prevPreviewBtn = document.getElementById('prevPreviewBtn');
     const nextPreviewBtn = document.getElementById('nextPreviewBtn');
     const previewCounter = document.getElementById('previewCounter');
     const zoomInBtn = document.getElementById('zoomInBtn');
     const zoomOutBtn = document.getElementById('zoomOutBtn');
     const resetZoomBtn = document.getElementById('resetZoomBtn');
-    const scrollToTopBtn = document.getElementById('scrollToTopBtn');
-    const tagInput = document.getElementById('tagInput');
-    const addTagBtn = document.getElementById('addTagBtn');
-    const selectedTagsContainer = document.getElementById('selectedTags');
-    const tagPool = document.getElementById('tagPool');
-    const relatedSelectedTags = document.getElementById('relatedSelectedTags');
-    const relatedTagPool = document.getElementById('relatedTagPool');
-    const editRelatedTagsPopup = document.getElementById('edit-related-tags-popup');
-    const closeEditRelatedTagsPopupBtn = document.getElementById('closeEditRelatedTagsPopupBtn');
-    const editRelatedTagsForm = document.getElementById('editRelatedTagsForm');
-    const editRelatedSelectedTags = document.getElementById('editRelatedSelectedTags');
-    const editRelatedTagPool = document.getElementById('editRelatedTagPool');
-    const editRelatedPreviewImage = document.getElementById('edit-related-preview-image');
-    const editRelatedTagsErrorMessage = document.getElementById('editRelatedTagsErrorMessage');
+    
+    // Video Elements
+    const detailsRelatedVideos = document.getElementById('details-related-videos');
+    const addRelatedVideoBtn = document.getElementById('addRelatedVideoBtn');
+    const manageRelatedVideosBtn = document.getElementById('manageRelatedVideosBtn');
     const relatedVideoPopup = document.getElementById('related-video-popup');
     const closeRelatedVideoPopupBtn = document.getElementById('closeRelatedVideoPopupBtn');
     const relatedVideosForm = document.getElementById('relatedVideosForm');
-    const relatedVideoUrls = document.getElementById('relatedVideoUrls');
-    const relatedVideoErrorMessage = document.getElementById('relatedVideoErrorMessage');
-    const relatedVideoSelectedTags = document.getElementById('relatedVideoSelectedTags');
-    const relatedVideoTagPool = document.getElementById('relatedVideoTagPool');
-    const addRelatedVideoBtn = document.getElementById('addRelatedVideoBtn');
-    const manageRelatedVideosBtn = document.getElementById('manageRelatedVideosBtn');
+    const videoPreviewView = document.getElementById('video-preview-view');
+    const closeVideoPreviewBtn = document.getElementById('closeVideoPreviewBtn');
+    const videoPlayerContainer = document.getElementById('video-player-container');
     const editRelatedVideoTagsPopup = document.getElementById('edit-related-video-tags-popup');
     const closeEditRelatedVideoTagsPopupBtn = document.getElementById('closeEditRelatedVideoTagsPopupBtn');
     const editRelatedVideoTagsForm = document.getElementById('editRelatedVideoTagsForm');
-    const editRelatedVideoSelectedTags = document.getElementById('editRelatedVideoSelectedTags');
-    const editRelatedVideoTagPool = document.getElementById('editRelatedVideoTagPool');
     const editRelatedPreviewVideo = document.getElementById('edit-related-preview-video');
-    const editRelatedVideoTagsErrorMessage = document.getElementById('editRelatedVideoTagsErrorMessage');
-    const videoPreviewView = document.getElementById('video-preview-view');
-    const videoPlayerContainer = document.getElementById('video-player-container');
-    const closeVideoPreviewBtn = document.getElementById('closeVideoPreviewBtn');
 
-    // Initialize the application
-    document.addEventListener('DOMContentLoaded', function() {
-      fetchCharacters();
-      setupEventListeners();
+    // State variables
+    let currentlyEditingCardId = null;
+    let currentCardForDetails = null;
+    let currentSort = { column: 'created_at', ascending: false }; 
+    let selectedFilterTag = '';
+    let allTags = new Set();
+    let selectedTags = [];
+    let selectedRelatedTags = [];
+    let selectedRelatedVideoTags = [];
+    let isManageRelatedMode = false;
+    let isManageRelatedVideosMode = false; // New state for video manage mode
+    let filteredItemsForPreview = [];
+    // Edit Related Tags Popup State
+    let currentlyEditingRelatedImage = null;
+    let selectedTagsForEdit = [];
+    // Edit Related Video Tags Popup State
+    let currentlyEditingRelatedVideo = null;
+    let selectedVideoTagsForEdit = [];
+    // Preview State
+    let previewImages = [];
+    let currentPreviewIndex = 0;
+    let currentZoom = 1;
+    let lastScrollPosition = 0;
+    // Panning State
+    let isPanning = false;
+    let panStart = { x: 0, y: 0 };
+    let panOffset = { x: 0, y: 0 };
+    let sortable = null;
+
+    // --- Data Fetching and Display ---
+    async function fetchAllTags() {
+        const { data, error } = await supabase.from('cards').select('tags, related_images_with_tags, related_videos_with_tags');
+        if (error) return console.error('Error fetching tags:', error);
+        
+        allTags.clear();
+        data.forEach(card => {
+            if (card.tags) {
+                card.tags.split(',').forEach(tag => {
+                    if(tag.trim()) allTags.add(tag.trim());
+                });
+            }
+         
+           if(card.related_images_with_tags) {
+                card.related_images_with_tags.forEach(img => {
+                    if (img.tags) {
+                        img.tags.split(',').forEach(tag => {
+                            if(tag.trim()) allTags.add(tag.trim());
+                        });
+                    }
+                });
+            }
+            if(card.related_videos_with_tags) {
+                card.related_videos_with_tags.forEach(video => {
+                    if (video.tags) {
+                        video.tags.split(',').forEach(tag => {
+                            if(tag.trim()) allTags.add(tag.trim());
+                        });
+                    }
+                });
+            }
+        });
+        updateTagDisplays();
+    }
+
+    async function loadCards() {
+        document.getElementById('character-counter').textContent = 'Loading...';
+        loadingIndicator.classList.remove('hidden');
+        cardGallery.innerHTML = '';
+        noResultsMessage.classList.add('hidden');
+        await fetchAllTags();
+        try {
+            let query = supabase.from('cards').select('*');
+            const searchTerm = searchInput.value.trim();
+            if (searchTerm) query = query.ilike('title', `%${searchTerm}%`);
+            
+            query = query.order(currentSort.column, { ascending: currentSort.ascending });
+            const { data: cards, error } = await query;
+            if (error) throw error;
+            
+            let displayItems = [];
+            if(selectedFilterTag) {
+                cards.forEach(card => {
+                    const mainTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
+                    if(mainTags.includes(selectedFilterTag)) {
+                        displayItems.push({ ...card, isMain: true }); 
+                    }
+
+                    const relatedImages = card.related_images_with_tags || [];
+                    relatedImages.forEach(img => {
+                         const relatedTags = img.tags ? img.tags.split(',').map(t => t.trim()) : [];
+                         if(relatedTags.includes(selectedFilterTag)) {
+                            displayItems.push({
+                                isRelated: true,
+                                url: img.url,
+                                tags: img.tags,
+                                parentCard: card
+                             });
+                         }
+                    });
+                    
+                    const relatedVideos = card.related_videos_with_tags || [];
+                    relatedVideos.forEach(video => {
+                        const videoTags = video.tags ? video.tags.split(',').map(t => t.trim()) : [];
+                        if(videoTags.includes(selectedFilterTag)) {
+                            displayItems.push({
+                                isVideo: true,
+                                url: video.url,
+                                tags: video.tags,
+                                parentCard: card
+                            });
+                        }
+                    });
+                });
+            } else {
+                displayItems = cards.map(c => ({...c, isMain: true}));
+            }
+            
+            filteredItemsForPreview = displayItems
+                .filter(item => item.isRelated || item.isMain)
+                .map(item => item.isRelated ? item.url : item.main_image_url);
+
+            displayCards(displayItems);
+        } catch (error) {
+            console.error("Error loading cards:", error);
+            cardGallery.innerHTML = `<p class="text-red-400 col-span-full text-center">Failed to load characters.</p>`;
+            displayCards([]);
+        } finally {
+            loadingIndicator.classList.add('hidden');
+        }
+    }
+    
+    function displayCards(items) {
+        document.getElementById('character-counter').textContent = `${items.length} Found`;
+        cardGallery.innerHTML = '';
+        if (items.length === 0) {
+            noResultsMessage.classList.remove('hidden');
+        } else {
+            noResultsMessage.classList.add('hidden');
+        }
+
+        items.forEach((item, index) => {
+            const cardElement = document.createElement('div');
+            cardElement.className = 'card-container relative group';
+
+            if (item.isRelated) {
+                const card = item.parentCard;
+                const tagsHtml = item.tags ? item.tags.split(',').map(tag => `<span class="bg-purple-600 text-white text-xs font-medium px-2 py-0.5 rounded-full">${tag.trim()}</span>`).join(' ') : '';
+                
+                cardElement.innerHTML = `
+                    <div class="bg-white rounded-xl shadow-lg overflow-hidden transform group-hover:scale-105 group-hover:-translate-y-1 transition-all duration-300 ease-in-out cursor-pointer">
+                        <div class="w-full h-80 bg-gray-200">
+                            <img src="${item.url}" alt="Related to ${card.title}" class="w-full h-full object-contain" onerror="this.onerror=null;this.src='https://placehold.co/400x400/1a1b26/ffffff?text=Image+Not+Found';">
+                        </div>
+                    </div>
+                    
+                    <h3 class="font-bold text-lg text-white truncate text-center mt-3 cursor-pointer">From: ${card.title}</h3>
+                    <div class="mt-2 flex flex-wrap gap-1 justify-center">
+                        ${tagsHtml}
+                    </div>
+                `;
+            } else if (item.isVideo) {
+                const card = item.parentCard;
+                const tagsHtml = item.tags ? item.tags.split(',').map(tag => `<span class="bg-teal-600 text-white text-xs font-medium px-2 py-0.5 rounded-full">${tag.trim()}</span>`).join(' ') : '';
+                const ytThumbUrl = getYoutubeThumbnail(item.url);
+
+                cardElement.innerHTML = `
+                    <div class="bg-white rounded-xl shadow-lg overflow-hidden transform group-hover:scale-105 group-hover:-translate-y-1 transition-all duration-300 ease-in-out cursor-pointer relative">
+                        <div class="w-full h-80 bg-black flex items-center justify-center">
+                            <img class="w-full h-full object-cover" ${ytThumbUrl ? `src="${ytThumbUrl}"` : ''} alt="Video from ${card.title}">
+                        </div>
+                        <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <svg class="w-16 h-16 text-white/80" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M2 10a8 8 0 1116 0 8 8 0 01-16 0zm6.39-2.908a.75.75 0 01.766.027l3.5 2.25a.75.75 0 010 1.262l-3.5 2.25A.75.75 0 018 12.25v-4.5a.75.75 0 01.39-.658z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                    </div>
+                    <h3 class="font-bold text-lg text-white truncate text-center mt-3 cursor-pointer">From: ${card.title}</h3>
+                    <div class="mt-2 flex flex-wrap gap-1 justify-center">
+                        ${tagsHtml}
+                    </div>
+                `;
+                
+                if (!ytThumbUrl) {
+                    const imgEl = cardElement.querySelector('img');
+                    generateVideoThumbnail(imgEl, item.url);
+                }
+
+            } else { // isMain
+                const card = item;
+                const tagsHtml = card.tags ? card.tags.split(',').map(tag => `<span class="bg-gray-700 text-gray-300 text-xs font-medium px-2 py-0.5 rounded-full">${tag.trim()}</span>`).join(' ') : '';
+                cardElement.innerHTML = `
+                    <div class="bg-white rounded-xl shadow-lg overflow-hidden transform group-hover:scale-105 group-hover:-translate-y-1 transition-all duration-300 ease-in-out cursor-pointer">
+                         <div class="w-full h-80 bg-gray-200">
+                            <img src="${card.main_image_url}" alt="${card.title}" class="w-full h-full object-contain" onerror="this.onerror=null;this.src='https://placehold.co/400x400/1a1b26/ffffff?text=Image+Not+Found';">
+                         </div>
+                    </div>
+                    <h3 class="font-bold text-lg text-white truncate text-center mt-3 cursor-pointer">${card.title}</h3>
+                    <div class="mt-2 flex flex-wrap gap-1 justify-center">
+                         ${tagsHtml}
+                    </div>
+                    <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button class="edit-btn p-1.5 bg-blue-600 rounded-full text-white hover:bg-blue-700" data-id="${card.id}">
+                               <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z"></path><path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd"></path></svg>
+                        </button>
+                         <button class="delete-btn p-1.5 bg-red-600 rounded-full text-white hover:bg-red-700 ml-1" data-id="${card.id}">
+                            <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
+                        </button>
+                    </div>
+                `;
+            }
+
+            cardElement.addEventListener('click', (e) => {
+                if (e.target.closest('.edit-btn') || e.target.closest('.delete-btn')) return;
+                
+                if (selectedFilterTag) {
+                    if (item.isVideo) {
+                        openVideoPreview(item.url);
+                    } else {
+                        const imageIndex = filteredItemsForPreview.indexOf(item.url);
+                        if (imageIndex > -1) {
+                            openImagePreview(filteredItemsForPreview, imageIndex);
+                        }
+                    }
+               } else {
+                    const cardId = item.isRelated || item.isVideo ? item.parentCard.id : item.id;
+                    openDetailsView(cardId);
+                }
+            });
+            cardGallery.appendChild(cardElement);
+        });
+    }
+
+
+    // --- Event Listeners ---
+    document.addEventListener('DOMContentLoaded', loadCards);
+    searchInput.addEventListener('input', () => debounce(loadCards, 300));
+    addCardBtn.addEventListener('click', openPopup);
+    closePopupBtn.addEventListener('click', closePopup);
+    popup.addEventListener('click', (e) => { if (e.target === popup) closePopup(); });
+    cardForm.addEventListener('submit', saveCard);
+    closeDetailsBtn.addEventListener('click', closeDetailsView);
+    addRelatedBtn.addEventListener('click', openRelatedImagePopup);
+    uploadRelatedBtn.addEventListener('click', openRelatedImagePopup);
+    closeRelatedPopupBtn.addEventListener('click', closeRelatedImagePopup);
+    relatedImagesForm.addEventListener('submit', saveRelatedImages);
+    manageRelatedBtn.addEventListener('click', toggleManageRelatedMode);
+    closePreviewBtn.addEventListener('click', closeImagePreview);
+    nextPreviewBtn.addEventListener('click', nextPreviewImage);
+    prevPreviewBtn.addEventListener('click', prevPreviewImage);
+    zoomInBtn.addEventListener('click', zoomInPreview);
+    zoomOutBtn.addEventListener('click', zoomOutPreview);
+    resetZoomBtn.addEventListener('click', resetZoomPreview);
+    // Edit Related Tags Popup Listeners
+    closeEditRelatedTagsPopupBtn.addEventListener('click', closeEditRelatedTagsPopup);
+    editRelatedTagsForm.addEventListener('submit', saveRelatedImageTags);
+    editRelatedTagsPopup.addEventListener('click', (e) => { if (e.target === editRelatedTagsPopup) closeEditRelatedTagsPopup(); });
+    // Video Event Listeners
+    addRelatedVideoBtn.addEventListener('click', openRelatedVideoPopup);
+    manageRelatedVideosBtn.addEventListener('click', toggleManageRelatedVideosMode);
+    closeRelatedVideoPopupBtn.addEventListener('click', closeRelatedVideoPopup);
+    relatedVideosForm.addEventListener('submit', saveRelatedVideos);
+    closeVideoPreviewBtn.addEventListener('click', closeVideoPreview);
+    videoPreviewView.addEventListener('click', (e) => { if (e.target === videoPreviewView) closeVideoPreview(); });
+    closeEditRelatedVideoTagsPopupBtn.addEventListener('click', closeEditRelatedVideoTagsPopup);
+    editRelatedVideoTagsForm.addEventListener('submit', saveRelatedVideoTags);
+    editRelatedVideoTagsPopup.addEventListener('click', (e) => { if (e.target === editRelatedVideoTagsPopup) closeEditRelatedVideoTagsPopup(); });
+
+    // --- Panning Event Listeners ---
+    previewImage.addEventListener('mousedown', startPan);
+    window.addEventListener('mousemove', pan);
+    window.addEventListener('mouseup', endPan);
+    previewImage.addEventListener('touchstart', startPan, { passive: true });
+    window.addEventListener('touchmove', pan);
+    window.addEventListener('touchend', endPan);
+
+    // --- Dropdown Toggles ---
+    function setupDropdown(button, dropdown) {
+        button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeAllDropdowns(dropdown);
+            dropdown.classList.toggle('hidden');
+        });
+    }
+    function closeAllDropdowns(exclude) {
+        [sortDropdown, filterDropdown].forEach(d => {
+            if (d !== exclude) d.classList.add('hidden');
+        });
+    }
+    document.addEventListener('click', () => closeAllDropdowns(null));
+    setupDropdown(sortButton, sortDropdown);
+    setupDropdown(filterButton, filterDropdown);
+
+    // --- Sorting & Filtering ---
+    sortDropdown.addEventListener('click', (e) => {
+        if (e.target.classList.contains('sort-option')) {
+            e.preventDefault();
+            const sortValue = e.target.dataset.sort.split('_');
+            currentSort.column = sortValue[0] === 'created' ? 'created_at' : 'title';
+            currentSort.ascending = sortValue.pop() === 'asc';
+            loadCards();
+             sortDropdown.classList.add('hidden');
+        }
+    });
+    filterDropdown.addEventListener('click', (e) => {
+        if(e.target.classList.contains('filter-option')) {
+            e.preventDefault();
+            selectedFilterTag = e.target.dataset.tag;
+            const filterButtonText = document.querySelector('#filterButton');
+            if (selectedFilterTag) {
+                filterButtonText.innerHTML = `<svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" /></svg> ${selectedFilterTag}`;
+            } else {
+                 filterButtonText.innerHTML = `<svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg> Filter`;
+            }
+            loadCards();
+            filterDropdown.classList.add('hidden');
+        }
+    });
+    cardGallery.addEventListener('click', async (e) => {
+        const editBtn = e.target.closest('.edit-btn');
+        const deleteBtn = e.target.closest('.delete-btn');
+        if (editBtn) await editCard(editBtn.dataset.id);
+        if (deleteBtn) {
+            if (await customConfirm('Are you sure you want to delete this character?')) {
+                await deleteCard(deleteBtn.dataset.id);
+            }
+           }
     });
 
-    // Set up event listeners
-    function setupEventListeners() {
-      searchInput.addEventListener('input', debounce(handleSearch, 300));
-      filterButton.addEventListener('click', toggleFilterDropdown);
-      sortButton.addEventListener('click', toggleSortDropdown);
-      addCardBtn.addEventListener('click', openPopup);
-      closePopupBtn.addEventListener('click', closePopup);
-      cardForm.addEventListener('submit', handleFormSubmit);
-      closeDetailsBtn.addEventListener('click', closeDetailsView);
-      addRelatedBtn.addEventListener('click', openRelatedImagePopup);
-      uploadRelatedBtn.addEventListener('click', handleUploadRelated);
-      manageRelatedBtn.addEventListener('click', toggleManageMode);
-      closeRelatedPopupBtn.addEventListener('click', closeRelatedImagePopup);
-      relatedImagesForm.addEventListener('submit', handleRelatedImagesSubmit);
-      closePreviewBtn.addEventListener('click', closeImagePreview);
-      prevPreviewBtn.addEventListener('click', showPrevImage);
-      nextPreviewBtn.addEventListener('click', showNextImage);
-      zoomInBtn.addEventListener('click', zoomIn);
-      zoomOutBtn.addEventListener('click', zoomOut);
-      resetZoomBtn.addEventListener('click', resetZoom);
-      scrollToTopBtn.addEventListener('click', scrollToTop);
-      window.addEventListener('scroll', toggleScrollToTopButton);
-      addTagBtn.addEventListener('click', addNewTag);
-      tagInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          addNewTag();
-        }
-      });
-      closeEditRelatedTagsPopupBtn.addEventListener('click', closeEditRelatedTagsPopup);
-      editRelatedTagsForm.addEventListener('submit', handleEditRelatedTagsSubmit);
-      addRelatedVideoBtn.addEventListener('click', openRelatedVideoPopup);
-      manageRelatedVideosBtn.addEventListener('click', toggleVideoManageMode);
-      closeRelatedVideoPopupBtn.addEventListener('click', closeRelatedVideoPopup);
-      relatedVideosForm.addEventListener('submit', handleRelatedVideosSubmit);
-      closeEditRelatedVideoTagsPopupBtn.addEventListener('click', closeEditRelatedVideoTagsPopup);
-      editRelatedVideoTagsForm.addEventListener('submit', handleEditRelatedVideoTagsSubmit);
-      closeVideoPreviewBtn.addEventListener('click', closeVideoPreview);
-
-      // Close dropdowns when clicking outside
-      document.addEventListener('click', function(event) {
-        if (!filterButton.contains(event.target) && !filterDropdown.contains(event.target)) {
-          filterDropdown.classList.add('hidden');
-        }
-        if (!sortButton.contains(event.target) && !sortDropdown.contains(event.target)) {
-          sortDropdown.classList.add('hidden');
-        }
-      });
-
-      // Image preview panning and zooming
-      previewImage.addEventListener('mousedown', startPanning);
-      previewImage.addEventListener('touchstart', handleTouchStart, { passive: false });
-      previewImage.addEventListener('touchmove', handleTouchMove, { passive: false });
-      previewImage.addEventListener('touchend', handleTouchEnd);
-      
-      window.addEventListener('mousemove', doPanning);
-      window.addEventListener('mouseup', stopPanning);
-      
-      // Keyboard navigation for image preview
-      document.addEventListener('keydown', handleKeydown);
+    // --- Card Actions (Add, Edit, Delete) ---
+    async function editCard(id) {
+        const { data: card, error } = await supabase.from('cards').select('*').eq('id', id).single();
+        if (error) return console.error("Error fetching card for edit:", error);
+        resetForm();
+        currentlyEditingCardId = id;
+        document.querySelector('#popup .popup-content h3').textContent = 'Edit Character';
+        document.getElementById('title').value = card.title;
+        document.getElementById('imageUrl').value = card.main_image_url;
+        selectedTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
+        updateSelectedTagsDisplay();
+        updateTagPoolSelection();
+        openPopup();
     }
 
-    // Fetch characters from Supabase
-    async function fetchCharacters() {
-      try {
-        loadingElement.classList.remove('hidden');
-        noResultsElement.classList.add('hidden');
-        
-        let query = supabase
-          .from('characters')
-          .select('*');
-          
-        // Apply sorting
-        if (currentSort === 'title_asc') {
-          query = query.order('title', { ascending: true });
-        } else if (currentSort === 'title_desc') {
-          query = query.order('title', { ascending: false });
-        } else if (currentSort === 'created_at_asc') {
-          query = query.order('created_at', { ascending: true });
-        } else {
-          query = query.order('created_at', { ascending: false });
-        }
-        
-        const { data, error } = await query;
-        
-        if (error) throw error;
-        
-        characters = data || [];
-        filteredCharacters = [...characters];
-        
-        // Fetch all tags
-        await fetchAllTags();
-        
-        renderCharacters();
-        updateCharacterCounter();
-        
-        loadingElement.classList.add('hidden');
-        
-        if (characters.length === 0) {
-          noResultsElement.classList.remove('hidden');
-        }
-      } catch (error) {
-        console.error('Error fetching characters:', error);
-        loadingElement.classList.add('hidden');
-        noResultsElement.classList.remove('hidden');
-      }
+    async function deleteCard(id) {
+        const { error } = await supabase.from('cards').delete().eq('id', id);
+        if (error) return console.error("Error deleting card:", error);
+        await loadCards();
     }
 
-    // Fetch all tags from all characters
-    async function fetchAllTags() {
-      try {
-        allTags = [];
-        const characterTags = characters.map(character => character.tags || []);
-        
-        characterTags.forEach(tags => {
-          tags.forEach(tag => {
-            if (!allTags.includes(tag)) {
-              allTags.push(tag);
-            }
-          });
-        });
-        
-        allTags.sort();
-        renderFilterDropdown();
-      } catch (error) {
-        console.error('Error fetching tags:', error);
-      }
-    }
-
-    // Render characters in the gallery
-    function renderCharacters() {
-      if (filteredCharacters.length === 0) {
-        cardGallery.innerHTML = '';
-        noResultsElement.classList.remove('hidden');
-        return;
-      }
-      
-      noResultsElement.classList.add('hidden');
-      
-      cardGallery.innerHTML = filteredCharacters.map(character => `
-        <div class="card group relative bg-[#2a2d3d] rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer" data-id="${character.id}">
-          <div class="aspect-[3/4] relative overflow-hidden">
-            <img src="${character.image_url}" alt="${character.title}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105">
-            <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
-              <h3 class="text-white text-xl font-bold truncate">${character.title}</h3>
-            </div>
-          </div>
-          <div class="p-4">
-            <div class="flex flex-wrap gap-1">
-              ${(character.tags || []).slice(0, 3).map(tag => `
-                <span class="text-xs bg-blue-900/30 text-blue-300 px-2 py-1 rounded-full">${tag}</span>
-              `).join('')}
-              ${(character.tags || []).length > 3 ? `<span class="text-xs bg-gray-700 text-gray-300 px-2 py-1 rounded-full">+${(character.tags || []).length - 3}</span>` : ''}
-            </div>
-          </div>
-        </div>
-      `).join('');
-      
-      // Add click event to each card
-      document.querySelectorAll('.card').forEach(card => {
-        card.addEventListener('click', function() {
-          const characterId = this.getAttribute('data-id');
-          openDetailsView(characterId);
-        });
-      });
-    }
-
-    // Update character counter
-    function updateCharacterCounter() {
-      const total = characters.length;
-      const showing = filteredCharacters.length;
-      
-      if (total === showing) {
-        characterCounter.textContent = `${total} Characters`;
-      } else {
-        characterCounter.textContent = `${showing} of ${total} Characters`;
-      }
-    }
-
-    // Handle search
-    function handleSearch() {
-      const searchTerm = searchInput.value.toLowerCase().trim();
-      
-      if (searchTerm === '') {
-        filteredCharacters = [...characters];
-      } else {
-        filteredCharacters = characters.filter(character => 
-          character.title.toLowerCase().includes(searchTerm) ||
-          (character.tags || []).some(tag => tag.toLowerCase().includes(searchTerm))
-        );
-      }
-      
-      applyCurrentSort();
-      renderCharacters();
-      updateCharacterCounter();
-    }
-
-    // Toggle filter dropdown
-    function toggleFilterDropdown() {
-      filterDropdown.classList.toggle('hidden');
-      sortDropdown.classList.add('hidden');
-    }
-
-    // Toggle sort dropdown
-    function toggleSortDropdown() {
-      sortDropdown.classList.toggle('hidden');
-      filterDropdown.classList.add('hidden');
-      
-      // Set up sort options
-      document.querySelectorAll('.sort-option').forEach(option => {
-        option.addEventListener('click', function(e) {
-          e.preventDefault();
-          currentSort = this.getAttribute('data-sort');
-          applyCurrentSort();
-          renderCharacters();
-          sortDropdown.classList.add('hidden');
-        });
-      });
-    }
-
-    // Apply current sort to filtered characters
-    function applyCurrentSort() {
-      if (currentSort === 'title_asc') {
-        filteredCharacters.sort((a, b) => a.title.localeCompare(b.title));
-      } else if (currentSort === 'title_desc') {
-        filteredCharacters.sort((a, b) => b.title.localeCompare(a.title));
-      } else if (currentSort === 'created_at_asc') {
-        filteredCharacters.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-      } else {
-        filteredCharacters.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-      }
-    }
-
-    // Render filter dropdown with tags
-    function renderFilterDropdown() {
-      filterDropdown.innerHTML = '';
-      
-      if (allTags.length === 0) {
-        filterDropdown.innerHTML = '<div class="px-4 py-2 text-sm text-gray-400">No tags available</div>';
-        return;
-      }
-      
-      allTags.forEach(tag => {
-        const isSelected = selectedTags.includes(tag);
-        const tagElement = document.createElement('div');
-        tagElement.className = `tag px-4 py-2 text-sm ${isSelected ? 'selected text-white' : 'text-gray-300 hover:bg-blue-600 hover:text-white'}`;
-        tagElement.textContent = tag;
-        tagElement.addEventListener('click', () => toggleTagFilter(tag));
-        filterDropdown.appendChild(tagElement);
-      });
-      
-      // Add clear filters option
-      if (selectedTags.length > 0) {
-        const clearElement = document.createElement('div');
-        clearElement.className = 'px-4 py-2 text-sm text-red-400 hover:bg-red-600 hover:text-white border-t border-gray-600 mt-2';
-        clearElement.textContent = 'Clear Filters';
-        clearElement.addEventListener('click', clearTagFilters);
-        filterDropdown.appendChild(clearElement);
-      }
-    }
-
-    // Toggle tag filter
-    function toggleTagFilter(tag) {
-      if (selectedTags.includes(tag)) {
-        selectedTags = selectedTags.filter(t => t !== tag);
-      } else {
-        selectedTags.push(tag);
-      }
-      
-      applyTagFilters();
-      renderFilterDropdown();
-    }
-
-    // Apply tag filters
-    function applyTagFilters() {
-      if (selectedTags.length === 0) {
-        filteredCharacters = [...characters];
-      } else {
-        filteredCharacters = characters.filter(character => 
-          selectedTags.every(tag => (character.tags || []).includes(tag))
-        );
-      }
-      
-      applyCurrentSort();
-      renderCharacters();
-      updateCharacterCounter();
-    }
-
-    // Clear all tag filters
-    function clearTagFilters() {
-      selectedTags = [];
-      applyTagFilters();
-      renderFilterDropdown();
-    }
-
-    // Open add character popup
-    function openPopup() {
-      popup.style.display = 'flex';
-      renderTagPool(tagPool, [], true);
-      selectedTagsContainer.innerHTML = '';
-    }
-
-    // Close add character popup
-    function closePopup() {
-      popup.style.display = 'none';
-      cardForm.reset();
-      errorMessage.textContent = '';
-      selectedTags = [];
-    }
-
-    // Handle form submission for new character
-    async function handleFormSubmit(e) {
+    async function saveCard(e) {
       e.preventDefault();
-      
-      const title = titleInput.value.trim();
-      const imageUrl = imageUrlInput.value.trim();
-      
-      if (!title) {
-        errorMessage.textContent = 'Please enter a character name';
-        return;
-      }
-      
-      if (!imageUrl) {
-        errorMessage.textContent = 'Please enter an image URL';
-        return;
-      }
-      
       try {
-        errorMessage.textContent = 'Saving...';
-        
-        const { data, error } = await supabase
-          .from('characters')
-          .insert([
-            {
-              title: title,
-              image_url: imageUrl,
-              tags: selectedTags
-            }
-          ])
-          .select();
-        
+        const title = document.getElementById('title').value.trim();
+        const imageUrl = document.getElementById('imageUrl').value.trim();
+        if (!title || !imageUrl) throw new Error("Character name and Image URL are required.");
+        const cardData = { title, main_image_url: imageUrl, tags: selectedTags.join(', ') };
+        const { error } = currentlyEditingCardId ?
+            await supabase.from('cards').update(cardData).eq('id', currentlyEditingCardId) : await supabase.from('cards').insert([cardData]);
         if (error) throw error;
-        
         closePopup();
-        fetchCharacters();
+        await loadCards();
       } catch (error) {
-        console.error('Error creating character:', error);
-        errorMessage.textContent = 'Error creating character. Please try again.';
+        console.error("Error saving card:", error);
+        document.getElementById('errorMessage').textContent = error.message;
       }
     }
 
-    // Open character details view
-    async function openDetailsView(characterId) {
-      try {
-        const { data, error } = await supabase
-          .from('characters')
-          .select('*')
-          .eq('id', characterId)
-          .single();
-        
-        if (error) throw error;
-        
-        currentCharacterId = characterId;
-        detailsTitle.textContent = data.title;
-        detailsMainImage.src = data.image_url;
-        detailsMainImage.alt = data.title;
-        
-        // Render tags
+    // --- Details View ---
+    async function openDetailsView(cardId) {
+        lastScrollPosition = window.scrollY; // Store current scroll position
+
+        const { data: card, error } = await supabase.from('cards').select('*').eq('id', cardId).single();
+        if (error || !card) return console.error("Could not fetch card details");
+        currentCardForDetails = card;
+
+        detailsMainImage.src = card.main_image_url;
+        detailsTitle.textContent = card.title;
         detailsTags.innerHTML = '';
-        if (data.tags && data.tags.length > 0) {
-          data.tags.forEach(tag => {
-            const tagElement = document.createElement('span');
-            tagElement.className = 'tag bg-blue-900/30 text-blue-300 px-3 py-1 rounded-full text-sm';
-            tagElement.textContent = tag;
-            detailsTags.appendChild(tagElement);
-          });
-        } else {
-          detailsTags.innerHTML = '<span class="text-gray-500">No tags</span>';
+        if (card.tags) {
+            card.tags.split(',').forEach(tag => {
+                if(!tag.trim()) return;
+                const tagEl = document.createElement('span');
+                tagEl.className = 'bg-gray-700 text-gray-200 text-sm font-medium px-3 py-1 rounded-full';
+                tagEl.textContent = tag.trim();
+                 detailsTags.appendChild(tagEl);
+            });
         }
-        
-        // Fetch related images
-        await fetchRelatedImages(characterId);
-        
-        // Fetch related videos
-        await fetchRelatedVideos(characterId);
-        
-        // Show details view
+        renderRelatedImages();
+        renderRelatedVideos();
+        document.querySelector('.container').classList.add('hidden');
         detailsView.classList.remove('hidden');
         document.body.style.overflow = 'hidden';
-      } catch (error) {
-        console.error('Error fetching character details:', error);
-      }
     }
-
-    // Close character details view
+    
     function closeDetailsView() {
-      detailsView.classList.add('hidden');
-      document.body.style.overflow = 'auto';
-      currentCharacterId = null;
-      currentRelatedImages = [];
-      currentRelatedVideos = [];
-      isManageMode = false;
-      isVideoManageMode = false;
-      updateManageButtonState();
-    }
+        document.querySelector('.container').classList.remove('hidden');
+        detailsView.classList.add('hidden');
+        document.body.style.overflow = 'auto';
 
-    // Fetch related images for a character
-    async function fetchRelatedImages(characterId) {
-      try {
-        const { data, error } = await supabase
-          .from('related_images')
-          .select('*')
-          .eq('character_id', characterId)
-          .order('sort_order', { ascending: true });
-        
-        if (error) throw error;
-        
-        currentRelatedImages = data || [];
-        renderRelatedImages();
-      } catch (error) {
-        console.error('Error fetching related images:', error);
-        currentRelatedImages = [];
-      }
-    }
+        window.scrollTo(0, lastScrollPosition);
 
-    // Fetch related videos for a character
-    async function fetchRelatedVideos(characterId) {
-      try {
-        const { data, error } = await supabase
-          .from('related_videos')
-          .select('*')
-          .eq('character_id', characterId)
-          .order('sort_order', { ascending: true });
-        
-        if (error) throw error;
-        
-        currentRelatedVideos = data || [];
-        renderRelatedVideos();
-      } catch (error) {
-        console.error('Error fetching related videos:', error);
-        currentRelatedVideos = [];
-      }
-    }
-
-    // Render related images
-    function renderRelatedImages() {
-      detailsRelatedImages.innerHTML = '';
-      
-      if (currentRelatedImages.length === 0) {
-        detailsRelatedImages.innerHTML = '<div class="col-span-full text-center text-gray-500 py-8">No related images</div>';
-        return;
-      }
-      
-      currentRelatedImages.forEach((image, index) => {
-        const imageElement = document.createElement('div');
-        imageElement.className = `relative aspect-square rounded-lg overflow-hidden cursor-pointer ${isManageMode ? 'cursor-grab' : ''}`;
-        imageElement.setAttribute('data-id', image.id);
-        imageElement.setAttribute('data-index', index);
-        
-        imageElement.innerHTML = `
-          <img src="${image.image_url}" alt="Related image" class="w-full h-full object-cover">
-          ${isManageMode ? `
-            <div class="absolute inset-0 bg-black/50 flex items-center justify-center gap-2 opacity-0 hover:opacity-100 transition-opacity">
-              <button class="edit-image-btn bg-blue-600 text-white p-1.5 rounded-full hover:bg-blue-700 transition">
-                <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" /><path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" /></svg>
-              </button>
-              <button class="delete-image-btn bg-red-600 text-white p-1.5 rounded-full hover:bg-red-700 transition">
-                <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" /></svg>
-              </button>
-            </div>
-          ` : ''}
-        `;
-        
-        detailsRelatedImages.appendChild(imageElement);
-        
-        // Add click event for preview (only when not in manage mode)
-        if (!isManageMode) {
-          imageElement.addEventListener('click', () => {
-            openImagePreview(index);
-          });
-        }
-        
-        // Add event listeners for edit and delete buttons (only in manage mode)
-        if (isManageMode) {
-          const editBtn = imageElement.querySelector('.edit-image-btn');
-          const deleteBtn = imageElement.querySelector('.delete-image-btn');
-          
-          editBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openEditRelatedTagsPopup(image);
-          });
-          
-          deleteBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            deleteRelatedImage(image.id);
-          });
-        }
-      });
-      
-      // Initialize Sortable for drag and drop reordering (only in manage mode)
-      if (isManageMode) {
-        initImageSortable();
-      }
-    }
-
-    // Render related videos
-    function renderRelatedVideos() {
-      detailsRelatedVideos.innerHTML = '';
-      
-      if (currentRelatedVideos.length === 0) {
-        detailsRelatedVideos.innerHTML = '<div class="col-span-full text-center text-gray-500 py-8">No related videos</div>';
-        return;
-      }
-      
-      currentRelatedVideos.forEach((video, index) => {
-        const videoElement = document.createElement('div');
-        videoElement.className = `relative aspect-video rounded-lg overflow-hidden cursor-pointer ${isVideoManageMode ? 'cursor-grab' : ''}`;
-        videoElement.setAttribute('data-id', video.id);
-        videoElement.setAttribute('data-index', index);
-        
-        // Generate thumbnail for video
-        const thumbnailUrl = generateVideoThumbnail(video.video_url);
-        
-        videoElement.innerHTML = `
-          <img src="${thumbnailUrl}" alt="Video thumbnail" class="w-full h-full object-cover">
-          <div class="absolute inset-0 flex items-center justify-center">
-            <div class="bg-black/50 rounded-full p-2">
-              <svg class="h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-            </div>
-          </div>
-          ${isVideoManageMode ? `
-            <div class="absolute inset-0 bg-black/50 flex items-center justify-center gap-2 opacity-0 hover:opacity-100 transition-opacity">
-              <button class="edit-video-btn bg-blue-600 text-white p-1.5 rounded-full hover:bg-blue-700 transition">
-                <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" /><path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" /></svg>
-              </button>
-              <button class="delete-video-btn bg-red-600 text-white p-1.5 rounded-full hover:bg-red-700 transition">
-                <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" /></svg>
-              </button>
-            </div>
-          ` : ''}
-        `;
-        
-        detailsRelatedVideos.appendChild(videoElement);
-        
-        // Add click event for video preview (only when not in manage mode)
-        if (!isVideoManageMode) {
-          videoElement.addEventListener('click', () => {
-            openVideoPreview(video.video_url);
-          });
-        }
-        
-        // Add event listeners for edit and delete buttons (only in manage mode)
-        if (isVideoManageMode) {
-          const editBtn = videoElement.querySelector('.edit-video-btn');
-          const deleteBtn = videoElement.querySelector('.delete-video-btn');
-          
-          editBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openEditRelatedVideoTagsPopup(video);
-          });
-          
-          deleteBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            deleteRelatedVideo(video.id);
-          });
-        }
-      });
-      
-      // Initialize Sortable for drag and drop reordering (only in manage mode)
-      if (isVideoManageMode) {
-        initVideoSortable();
-      }
-    }
-
-    // Generate video thumbnail
-    function generateVideoThumbnail(videoUrl) {
-      // For YouTube videos
-      if (videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be')) {
-        let videoId = '';
-        
-        if (videoUrl.includes('youtube.com')) {
-          const urlParams = new URLSearchParams(new URL(videoUrl).search);
-          videoId = urlParams.get('v');
-        } else if (videoUrl.includes('youtu.be')) {
-          videoId = videoUrl.split('/').pop().split('?')[0];
-        }
-        
-        if (videoId) {
-          return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-        }
-      }
-      
-      // For other video URLs, we'll use a generic video thumbnail
-      // In a real application, you might want to generate a thumbnail from the video
-      return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjExMiIgdmlld0JveD0iMCAwIDIwMCAxMTIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMTEyIiBmaWxsPSIjMkEyRDNkIi8+CjxwYXRoIGQ9Ik04MCA1NkM4MCA1NC44OTU0IDgwLjg5NTQgNTQgODIgNTRIMTExQzExMi4xMDUgNTQgMTEzIDU0Ljg5NTQgMTEzIDU2Vjc4QzExMyA3OS4xMDQ2IDExMi4xMDUgODAgMTExIDgwSDgyQzgwLjg5NTQgODAgODAgNzkuMTA0NiA4MCA3OFY1NloiIGZpbGw9IiM0YTZlZmYiLz4KPC9zdmc+';
-    }
-
-    // Open related image popup
-    function openRelatedImagePopup() {
-      relatedImagePopup.style.display = 'flex';
-      relatedImageUrls.value = '';
-      relatedErrorMessage.textContent = '';
-      renderTagPool(relatedTagPool, [], true);
-      relatedSelectedTags.innerHTML = '';
-    }
-
-    // Close related image popup
-    function closeRelatedImagePopup() {
-      relatedImagePopup.style.display = 'none';
-      relatedImagesForm.reset();
-      relatedErrorMessage.textContent = '';
-    }
-
-    // Handle related images form submission
-    async function handleRelatedImagesSubmit(e) {
-      e.preventDefault();
-      
-      const imageUrlsText = relatedImageUrls.value.trim();
-      
-      if (!imageUrlsText) {
-        relatedErrorMessage.textContent = 'Please enter at least one image URL';
-        return;
-      }
-      
-      const imageUrls = imageUrlsText.split('\n').filter(url => url.trim() !== '');
-      
-      if (imageUrls.length === 0) {
-        relatedErrorMessage.textContent = 'Please enter at least one valid image URL';
-        return;
-      }
-      
-      try {
-        relatedErrorMessage.textContent = 'Adding images...';
-        
-        // Get the current maximum sort_order for this character
-        const { data: existingImages, error: existingError } = await supabase
-          .from('related_images')
-          .select('sort_order')
-          .eq('character_id', currentCharacterId)
-          .order('sort_order', { ascending: false })
-          .limit(1);
-        
-        if (existingError) throw existingError;
-        
-        let nextSortOrder = 0;
-        if (existingImages && existingImages.length > 0) {
-          nextSortOrder = existingImages[0].sort_order + 1;
-        }
-        
-        // Prepare the images to insert
-        const imagesToInsert = imageUrls.map((url, index) => ({
-          character_id: currentCharacterId,
-          image_url: url.trim(),
-          tags: [],
-          sort_order: nextSortOrder + index
-        }));
-        
-        const { error } = await supabase
-          .from('related_images')
-          .insert(imagesToInsert);
-        
-        if (error) throw error;
-        
-        closeRelatedImagePopup();
-        fetchRelatedImages(currentCharacterId);
-      } catch (error) {
-        console.error('Error adding related images:', error);
-        relatedErrorMessage.textContent = 'Error adding images. Please try again.';
-      }
-    }
-
-    // Handle upload related images (placeholder)
-    function handleUploadRelated() {
-      alert('Upload functionality would be implemented here. This is a placeholder.');
-    }
-
-    // Toggle manage mode for images
-    function toggleManageMode() {
-      isManageMode = !isManageMode;
-      updateManageButtonState();
-      renderRelatedImages();
-    }
-
-    // Toggle manage mode for videos
-    function toggleVideoManageMode() {
-      isVideoManageMode = !isVideoManageMode;
-      updateManageButtonState();
-      renderRelatedVideos();
-    }
-
-    // Update manage button state
-    function updateManageButtonState() {
-      if (isManageMode) {
-        manageRelatedBtn.classList.remove('bg-gray-600');
-        manageRelatedBtn.classList.add('bg-blue-600');
-        manageRelatedBtn.innerHTML = `
-          <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" /></svg>
-          Done
-        `;
-      } else {
-        manageRelatedBtn.classList.remove('bg-blue-600');
+        isManageRelatedMode = false;
+        manageRelatedBtn.classList.remove('bg-red-600');
         manageRelatedBtn.classList.add('bg-gray-600');
-        manageRelatedBtn.innerHTML = `
-          <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" /><path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" /></svg>
-          Manage
-        `;
-      }
-      
-      if (isVideoManageMode) {
-        manageRelatedVideosBtn.classList.remove('bg-gray-600');
-        manageRelatedVideosBtn.classList.add('bg-blue-600');
-        manageRelatedVideosBtn.innerHTML = `
-          <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" /></svg>
-          Done
-        `;
-      } else {
-        manageRelatedVideosBtn.classList.remove('bg-blue-600');
+        
+        isManageRelatedVideosMode = false;
+        manageRelatedVideosBtn.classList.remove('bg-red-600');
         manageRelatedVideosBtn.classList.add('bg-gray-600');
-        manageRelatedVideosBtn.innerHTML = `
-          <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" /><path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" /></svg>
-          Manage
-        `;
-      }
-    }
-
-    // Initialize Sortable for image reordering
-    function initImageSortable() {
-      if (!isManageMode) return;
-      
-      new Sortable(detailsRelatedImages, {
-        animation: 150,
-        ghostClass: 'sortable-ghost',
-        onEnd: async function(evt) {
-          const fromIndex = evt.oldIndex;
-          const toIndex = evt.newIndex;
-          
-          if (fromIndex === toIndex) return;
-          
-          // Update the sort_order for all affected images
-          const updatedImages = [...currentRelatedImages];
-          const [movedImage] = updatedImages.splice(fromIndex, 1);
-          updatedImages.splice(toIndex, 0, movedImage);
-          
-          // Update sort_order for all images
-          const updatePromises = updatedImages.map((image, index) => {
-            return supabase
-              .from('related_images')
-              .update({ sort_order: index })
-              .eq('id', image.id);
-          });
-          
-          try {
-            await Promise.all(updatePromises);
-            await fetchRelatedImages(currentCharacterId);
-          } catch (error) {
-            console.error('Error reordering images:', error);
-          }
+        
+        if (sortable) {
+            sortable.destroy();
+            sortable = null;
         }
-      });
     }
 
-    // Initialize Sortable for video reordering
-    function initVideoSortable() {
-      if (!isVideoManageMode) return;
-      
-      new Sortable(detailsRelatedVideos, {
-        animation: 150,
-        ghostClass: 'sortable-ghost',
-        onEnd: async function(evt) {
-          const fromIndex = evt.oldIndex;
-          const toIndex = evt.newIndex;
-          
-          if (fromIndex === toIndex) return;
-          
-          // Update the sort_order for all affected videos
-          const updatedVideos = [...currentRelatedVideos];
-          const [movedVideo] = updatedVideos.splice(fromIndex, 1);
-          updatedVideos.splice(toIndex, 0, movedVideo);
-          
-          // Update sort_order for all videos
-          const updatePromises = updatedVideos.map((video, index) => {
-            return supabase
-              .from('related_videos')
-              .update({ sort_order: index })
-              .eq('id', video.id);
-          });
-          
-          try {
-            await Promise.all(updatePromises);
-            await fetchRelatedVideos(currentCharacterId);
-          } catch (error) {
-            console.error('Error reordering videos:', error);
-          }
+    // --- Related Images Management ---
+    function renderRelatedImages() {
+        const card = currentCardForDetails;
+        const relatedImages = card.related_images_with_tags || [];
+        
+        detailsRelatedImages.innerHTML = '';
+        
+        if (relatedImages.length > 0) {
+            manageRelatedBtn.disabled = false;
+            relatedImages.forEach((img, index) => {
+                const imgContainer = document.createElement('div');
+                const cursorClass = isManageRelatedMode ? 'cursor-grab' : 'cursor-pointer';
+                imgContainer.className = `relative group aspect-square bg-gray-800 rounded-md overflow-hidden ${cursorClass}`;
+                imgContainer.innerHTML = `
+                    <img src="${img.url}" alt="Related Image" class="w-full h-full object-cover group-hover:opacity-60 transition">
+                     ${isManageRelatedMode ? `
+                    <div class="absolute top-1 right-1 flex flex-col gap-1">
+                        <button class="edit-related-btn p-1 bg-blue-600/80 rounded-full text-white hover:bg-blue-600" data-url="${img.url}">
+                            <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z"></path><path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z"></path></svg>
+                        </button>
+                        <button class="delete-related-btn p-1 bg-red-600/80 rounded-full text-white hover:bg-red-600" data-url="${img.url}">
+                            <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                 </button>
+                    </div>
+                    ` : ''}
+                `;
+                imgContainer.addEventListener('click', (e) => {
+                    if (isManageRelatedMode) return;
+                    const deleteBtn = e.target.closest('.delete-related-btn');
+                    const editBtn = e.target.closest('.edit-related-btn');
+                    if (deleteBtn) {
+                        deleteRelatedImage(deleteBtn.dataset.url);
+                   } else if (editBtn) {
+                        openEditRelatedTagsPopup(editBtn.dataset.url);
+                    } else {
+                        const allRelated = card.related_images_with_tags.map(i => i.url);
+                         openImagePreview(allRelated, index);
+                    }
+                });
+                detailsRelatedImages.appendChild(imgContainer);
+            });
+        } else {
+            manageRelatedBtn.disabled = true;
+            detailsRelatedImages.innerHTML = `<p class="text-gray-500 text-sm md:col-span-full italic">No related images yet. Click 'Add' or 'Upload' to begin.</p>`;
         }
-      });
     }
-
-    // Delete related image
-    async function deleteRelatedImage(imageId) {
-      if (!confirm('Are you sure you want to delete this image?')) {
-        return;
-      }
-      
-      try {
-        const { error } = await supabase
-          .from('related_images')
-          .delete()
-          .eq('id', imageId);
-        
-        if (error) throw error;
-        
-        fetchRelatedImages(currentCharacterId);
-      } catch (error) {
-        console.error('Error deleting related image:', error);
-        alert('Error deleting image. Please try again.');
-      }
-    }
-
-    // Delete related video
-    async function deleteRelatedVideo(videoId) {
-      if (!confirm('Are you sure you want to delete this video?')) {
-        return;
-      }
-      
-      try {
-        const { error } = await supabase
-          .from('related_videos')
-          .delete()
-          .eq('id', videoId);
-        
-        if (error) throw error;
-        
-        fetchRelatedVideos(currentCharacterId);
-      } catch (error) {
-        console.error('Error deleting related video:', error);
-        alert('Error deleting video. Please try again.');
-      }
-    }
-
-    // Open edit related tags popup
-    function openEditRelatedTagsPopup(image) {
-      editRelatedTagsPopup.style.display = 'flex';
-      editRelatedPreviewImage.src = image.image_url;
-      editRelatedPreviewImage.alt = 'Image to edit';
-      renderTagPool(editRelatedTagPool, image.tags || [], false);
-      editRelatedSelectedTags.innerHTML = '';
-      
-      // Store the current image being edited
-      editRelatedTagsPopup.setAttribute('data-image-id', image.id);
-      
-      // Render selected tags
-      if (image.tags && image.tags.length > 0) {
-        image.tags.forEach(tag => {
-          addTagToSelected(tag, editRelatedSelectedTags, editRelatedTagPool, false);
+    
+    function initializeSortable() {
+        if (sortable) sortable.destroy();
+        sortable = new Sortable(detailsRelatedImages, {
+            animation: 150,
+            delay: 200,
+            delayOnTouchOnly: true,
+            ghostClass: 'sortable-ghost',
+            onEnd: (evt) => updateRelatedImagesOrder(evt.oldIndex, evt.newIndex)
         });
-      }
     }
 
-    // Close edit related tags popup
+    async function updateRelatedImagesOrder(oldIndex, newIndex) {
+        if (!currentCardForDetails || !currentCardForDetails.related_images_with_tags) return;
+        let images = currentCardForDetails.related_images_with_tags;
+        const [movedItem] = images.splice(oldIndex, 1);
+        images.splice(newIndex, 0, movedItem);
+        const updatedImageUrls = images.map(img => img.url);
+
+        const { data, error } = await supabase
+            .from('cards')
+            .update({ related_images_with_tags: images, related_images: updatedImageUrls })
+            .eq('id', currentCardForDetails.id)
+            .select().single();
+
+        if (error) {
+            console.error('Error updating image order:', error);
+            renderRelatedImages(); 
+            return;
+        }
+        currentCardForDetails = data;
+    }
+
+    function openRelatedImagePopup() {
+        selectedRelatedTags = [];
+        updateRelatedTagDisplays();
+        relatedImagePopup.style.display = 'flex';
+    }
+    function closeRelatedImagePopup() {
+        relatedImagePopup.style.display = 'none';
+        relatedImagesForm.reset();
+        selectedRelatedTags = [];
+    }
+    async function saveRelatedImages(e) {
+        e.preventDefault();
+        const urlsText = document.getElementById('relatedImageUrls').value.trim();
+        if (!urlsText) return;
+        const urls = urlsText.split('\n').map(url => url.trim()).filter(url => url);
+        
+        const currentRelatedImages = currentCardForDetails.related_images || [];
+        const currentRelatedWithTags = currentCardForDetails.related_images_with_tags || [];
+        
+        const newUrls = urls.filter(url => !currentRelatedImages.includes(url));
+        if (newUrls.length === 0) return closeRelatedImagePopup();
+        const tagsString = selectedRelatedTags.join(', ');
+        
+        const updatedRelatedImages = [...currentRelatedImages, ...newUrls];
+        const updatedRelatedWithTags = [...currentRelatedWithTags, ...newUrls.map(url => ({ url, tags: tagsString }))];
+        const { data, error } = await supabase
+            .from('cards')
+            .update({ related_images: updatedRelatedImages, related_images_with_tags: updatedRelatedWithTags })
+            .eq('id', currentCardForDetails.id)
+            .select().single();
+        if (error) {
+            document.getElementById('relatedErrorMessage').textContent = 'Error saving images.';
+            return console.error('Error saving related images:', error);
+        }
+
+        currentCardForDetails = data;
+        await fetchAllTags();
+        renderRelatedImages();
+        closeRelatedImagePopup();
+    }
+
+    function toggleManageRelatedMode() {
+        if ((currentCardForDetails.related_images_with_tags || []).length === 0) return;
+        isManageRelatedMode = !isManageRelatedMode;
+        manageRelatedBtn.classList.toggle('bg-red-600', isManageRelatedMode);
+        manageRelatedBtn.classList.toggle('bg-gray-600', !isManageRelatedMode);
+        renderRelatedImages();
+
+        if (isManageRelatedMode) initializeSortable();
+        else if (sortable) {
+            sortable.destroy();
+            sortable = null;
+        }
+    }
+
+    async function deleteRelatedImage(urlToDelete) {
+        if (!await customConfirm('Are you sure you want to delete this related image?')) return;
+        const updatedRelatedImages = currentCardForDetails.related_images.filter(url => url !== urlToDelete);
+        const updatedRelatedWithTags = currentCardForDetails.related_images_with_tags.filter(img => img.url !== urlToDelete);
+        const { data, error } = await supabase
+            .from('cards')
+            .update({ related_images: updatedRelatedImages, related_images_with_tags: updatedRelatedWithTags })
+            .eq('id', currentCardForDetails.id)
+            .select().single();
+        if (error) return console.error('Error deleting image:', error);
+
+        currentCardForDetails = data;
+        renderRelatedImages();
+    }
+
+    function openEditRelatedTagsPopup(url) {
+        currentlyEditingRelatedImage = currentCardForDetails.related_images_with_tags.find(img => img.url === url);
+        if (!currentlyEditingRelatedImage) return;
+
+        editRelatedPreviewImage.src = currentlyEditingRelatedImage.url;
+        const currentTags = currentlyEditingRelatedImage.tags || '';
+        selectedTagsForEdit = currentTags ? currentTags.split(',').map(t => t.trim()) : [];
+        
+        updateEditRelatedTagDisplays();
+        editRelatedTagsPopup.style.display = 'flex';
+    }
+
     function closeEditRelatedTagsPopup() {
-      editRelatedTagsPopup.style.display = 'none';
-      editRelatedTagsForm.reset();
-      editRelatedTagsErrorMessage.textContent = '';
+        editRelatedTagsPopup.style.display = 'none';
+        editRelatedTagsForm.reset();
+        currentlyEditingRelatedImage = null;
+        selectedTagsForEdit = [];
+        document.getElementById('editRelatedTagsErrorMessage').textContent = '';
     }
 
-    // Handle edit related tags form submission
-    async function handleEditRelatedTagsSubmit(e) {
-      e.preventDefault();
-      
-      const imageId = editRelatedTagsPopup.getAttribute('data-image-id');
-      const selectedTags = Array.from(editRelatedSelectedTags.querySelectorAll('.tag'))
-        .map(tag => tag.getAttribute('data-tag'));
-      
-      try {
-        editRelatedTagsErrorMessage.textContent = 'Saving...';
-        
-        const { error } = await supabase
-          .from('related_images')
-          .update({ tags: selectedTags })
-          .eq('id', imageId);
-        
-        if (error) throw error;
-        
+    async function saveRelatedImageTags(e) {
+        e.preventDefault();
+        if (!currentlyEditingRelatedImage) return;
+        const updatedTagsString = selectedTagsForEdit.join(', ');
+
+        const updatedRelatedWithTags = currentCardForDetails.related_images_with_tags.map(img => {
+            if (img.url === currentlyEditingRelatedImage.url) {
+                return { ...img, tags: updatedTagsString };
+            }
+            return img;
+        });
+        const { data, error } = await supabase
+            .from('cards')
+            .update({ related_images_with_tags: updatedRelatedWithTags })
+            .eq('id', currentCardForDetails.id)
+            .select().single();
+        if (error) {
+            document.getElementById('editRelatedTagsErrorMessage').textContent = 'Error saving tags.';
+            return console.error('Error saving related image tags:', error);
+        }
+
+        currentCardForDetails = data;
+        renderRelatedImages();
         closeEditRelatedTagsPopup();
-        fetchRelatedImages(currentCharacterId);
-      } catch (error) {
-        console.error('Error updating image tags:', error);
-        editRelatedTagsErrorMessage.textContent = 'Error updating tags. Please try again.';
-      }
     }
 
-    // Open related video popup
-    function openRelatedVideoPopup() {
-      relatedVideoPopup.style.display = 'flex';
-      relatedVideoUrls.value = '';
-      relatedVideoErrorMessage.textContent = '';
-      renderTagPool(relatedVideoTagPool, [], true);
-      relatedVideoSelectedTags.innerHTML = '';
-    }
+    // --- Related Videos Management ---
+    function renderRelatedVideos() {
+        const card = currentCardForDetails;
+        const relatedVideos = card.related_videos_with_tags || [];
+        
+        detailsRelatedVideos.innerHTML = '';
+        manageRelatedVideosBtn.disabled = relatedVideos.length === 0;
+        
+        if (relatedVideos.length > 0) {
+            relatedVideos.forEach((video) => {
+                const videoContainer = document.createElement('div');
+                const cursorClass = isManageRelatedVideosMode ? '' : 'cursor-pointer';
+                videoContainer.className = `relative group aspect-square bg-black rounded-md overflow-hidden ${cursorClass}`;
+                
+                const ytThumbUrl = getYoutubeThumbnail(video.url);
+                videoContainer.innerHTML = `
+                    <img class="w-full h-full object-cover group-hover:opacity-60 transition" ${ytThumbUrl ? `src="${ytThumbUrl}"` : ''} alt="Video Thumbnail">
+                    ${!isManageRelatedVideosMode ? `
+                    <div class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                         <svg class="w-10 h-10 text-white/90" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M2 10a8 8 0 1116 0 8 8 0 01-16 0zm6.39-2.908a.75.75 0 01.766.027l3.5 2.25a.75.75 0 010 1.262l-3.5 2.25A.75.75 0 018 12.25v-4.5a.75.75 0 01.39-.658z" clip-rule="evenodd" /></svg>
+                    </div>` : ''}
+                     ${isManageRelatedVideosMode ? `
+                    <div class="absolute top-1 right-1 flex flex-col gap-1">
+                        <button class="edit-related-video-btn p-1 bg-blue-600/80 rounded-full text-white hover:bg-blue-600" data-url="${video.url}">
+                            <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z"></path><path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z"></path></svg>
+                        </button>
+                        <button class="delete-related-video-btn p-1 bg-red-600/80 rounded-full text-white hover:bg-red-600" data-url="${video.url}">
+                            <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                        </button>
+                    </div>
+                    ` : ''}
+                `;
 
-    // Close related video popup
-    function closeRelatedVideoPopup() {
-      relatedVideoPopup.style.display = 'none';
-      relatedVideosForm.reset();
-      relatedVideoErrorMessage.textContent = '';
-    }
+                const imgEl = videoContainer.querySelector('img');
+                if (!ytThumbUrl) {
+                    generateVideoThumbnail(imgEl, video.url);
+                }
 
-    // Handle related videos form submission
-    async function handleRelatedVideosSubmit(e) {
-      e.preventDefault();
-      
-      const videoUrlsText = relatedVideoUrls.value.trim();
-      
-      if (!videoUrlsText) {
-        relatedVideoErrorMessage.textContent = 'Please enter at least one video URL';
-        return;
-      }
-      
-      const videoUrls = videoUrlsText.split('\n').filter(url => url.trim() !== '');
-      
-      if (videoUrls.length === 0) {
-        relatedVideoErrorMessage.textContent = 'Please enter at least one valid video URL';
-        return;
-      }
-      
-      try {
-        relatedVideoErrorMessage.textContent = 'Adding videos...';
-        
-        // Get the current maximum sort_order for this character
-        const { data: existingVideos, error: existingError } = await supabase
-          .from('related_videos')
-          .select('sort_order')
-          .eq('character_id', currentCharacterId)
-          .order('sort_order', { ascending: false })
-          .limit(1);
-        
-        if (existingError) throw existingError;
-        
-        let nextSortOrder = 0;
-        if (existingVideos && existingVideos.length > 0) {
-          nextSortOrder = existingVideos[0].sort_order + 1;
+                videoContainer.addEventListener('click', (e) => {
+                    if (isManageRelatedVideosMode) {
+                        const deleteBtn = e.target.closest('.delete-related-video-btn');
+                        const editBtn = e.target.closest('.edit-related-video-btn');
+                        if (deleteBtn) deleteRelatedVideo(deleteBtn.dataset.url);
+                        if (editBtn) openEditRelatedVideoTagsPopup(editBtn.dataset.url);
+                        return;
+                    }
+                    openVideoPreview(video.url);
+                });
+                detailsRelatedVideos.appendChild(videoContainer);
+            });
+        } else {
+            detailsRelatedVideos.innerHTML = `<p class="text-gray-500 text-sm md:col-span-full italic">No related videos yet. Click 'Add' to begin.</p>`;
         }
-        
-        // Prepare the videos to insert
-        const videosToInsert = videoUrls.map((url, index) => ({
-          character_id: currentCharacterId,
-          video_url: url.trim(),
-          tags: [],
-          sort_order: nextSortOrder + index
-        }));
-        
-        const { error } = await supabase
-          .from('related_videos')
-          .insert(videosToInsert);
-        
-        if (error) throw error;
-        
-        closeRelatedVideoPopup();
-        fetchRelatedVideos(currentCharacterId);
-      } catch (error) {
-        console.error('Error adding related videos:', error);
-        relatedVideoErrorMessage.textContent = 'Error adding videos. Please try again.';
-      }
     }
 
-    // Open edit related video tags popup
-    function openEditRelatedVideoTagsPopup(video) {
-      editRelatedVideoTagsPopup.style.display = 'flex';
-      
-      // Create video thumbnail preview
-      const thumbnailUrl = generateVideoThumbnail(video.video_url);
-      editRelatedPreviewVideo.innerHTML = `
-        <img src="${thumbnailUrl}" alt="Video thumbnail" class="w-full h-full object-cover">
-        <div class="absolute inset-0 flex items-center justify-center">
-          <div class="bg-black/50 rounded-full p-2">
-            <svg class="h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          </div>
-        </div>
-      `;
-      
-      renderTagPool(editRelatedVideoTagPool, video.tags || [], false);
-      editRelatedVideoSelectedTags.innerHTML = '';
-      
-      // Store the current video being edited
-      editRelatedVideoTagsPopup.setAttribute('data-video-id', video.id);
-      
-      // Render selected tags
-      if (video.tags && video.tags.length > 0) {
-        video.tags.forEach(tag => {
-          addTagToSelected(tag, editRelatedVideoSelectedTags, editRelatedVideoTagPool, false);
-        });
-      }
+    function toggleManageRelatedVideosMode() {
+        if ((currentCardForDetails.related_videos_with_tags || []).length === 0) return;
+        isManageRelatedVideosMode = !isManageRelatedVideosMode;
+        manageRelatedVideosBtn.classList.toggle('bg-red-600', isManageRelatedVideosMode);
+        manageRelatedVideosBtn.classList.toggle('bg-gray-600', !isManageRelatedVideosMode);
+        renderRelatedVideos();
+    }
+    
+    async function deleteRelatedVideo(urlToDelete) {
+        if (!await customConfirm('Are you sure you want to delete this related video?')) return;
+        
+        const updatedRelatedVideos = currentCardForDetails.related_videos_with_tags.filter(video => video.url !== urlToDelete);
+        const { data, error } = await supabase
+            .from('cards')
+            .update({ related_videos_with_tags: updatedRelatedVideos })
+            .eq('id', currentCardForDetails.id)
+            .select().single();
+            
+        if (error) return console.error('Error deleting video:', error);
+        currentCardForDetails = data;
+        renderRelatedVideos();
+    }
+    
+    function openEditRelatedVideoTagsPopup(url) {
+        currentlyEditingRelatedVideo = currentCardForDetails.related_videos_with_tags.find(video => video.url === url);
+        if (!currentlyEditingRelatedVideo) return;
+        
+        const ytThumbUrl = getYoutubeThumbnail(currentlyEditingRelatedVideo.url);
+        editRelatedPreviewVideo.innerHTML = `<img class="w-full h-full object-contain" ${ytThumbUrl ? `src="${ytThumbUrl}"` : ''} alt="Video Thumbnail">`;
+        if (!ytThumbUrl) {
+            generateVideoThumbnail(editRelatedPreviewVideo.querySelector('img'), currentlyEditingRelatedVideo.url, true);
+        }
+
+        const currentTags = currentlyEditingRelatedVideo.tags || '';
+        selectedVideoTagsForEdit = currentTags ? currentTags.split(',').map(t => t.trim()) : [];
+        
+        updateEditRelatedVideoTagDisplays();
+        editRelatedVideoTagsPopup.style.display = 'flex';
     }
 
-    // Close edit related video tags popup
     function closeEditRelatedVideoTagsPopup() {
-      editRelatedVideoTagsPopup.style.display = 'none';
-      editRelatedVideoTagsForm.reset();
-      editRelatedVideoTagsErrorMessage.textContent = '';
+        editRelatedVideoTagsPopup.style.display = 'none';
+        editRelatedVideoTagsForm.reset();
+        currentlyEditingRelatedVideo = null;
+        selectedVideoTagsForEdit = [];
+        document.getElementById('editRelatedVideoTagsErrorMessage').textContent = '';
     }
 
-    // Handle edit related video tags form submission
-    async function handleEditRelatedVideoTagsSubmit(e) {
-      e.preventDefault();
-      
-      const videoId = editRelatedVideoTagsPopup.getAttribute('data-video-id');
-      const selectedTags = Array.from(editRelatedVideoSelectedTags.querySelectorAll('.tag'))
-        .map(tag => tag.getAttribute('data-tag'));
-      
-      try {
-        editRelatedVideoTagsErrorMessage.textContent = 'Saving...';
+    async function saveRelatedVideoTags(e) {
+        e.preventDefault();
+        if (!currentlyEditingRelatedVideo) return;
         
-        const { error } = await supabase
-          .from('related_videos')
-          .update({ tags: selectedTags })
-          .eq('id', videoId);
-        
-        if (error) throw error;
-        
+        const updatedTagsString = selectedVideoTagsForEdit.join(', ');
+        const updatedRelatedVideos = currentCardForDetails.related_videos_with_tags.map(video => {
+            if (video.url === currentlyEditingRelatedVideo.url) {
+                return { ...video, tags: updatedTagsString };
+            }
+            return video;
+        });
+
+        const { data, error } = await supabase
+            .from('cards')
+            .update({ related_videos_with_tags: updatedRelatedVideos })
+            .eq('id', currentCardForDetails.id)
+            .select().single();
+
+        if (error) {
+            document.getElementById('editRelatedVideoTagsErrorMessage').textContent = 'Error saving tags.';
+            return console.error('Error saving related video tags:', error);
+        }
+
+        currentCardForDetails = data;
+        renderRelatedVideos();
         closeEditRelatedVideoTagsPopup();
-        fetchRelatedVideos(currentCharacterId);
-      } catch (error) {
-        console.error('Error updating video tags:', error);
-        editRelatedVideoTagsErrorMessage.textContent = 'Error updating tags. Please try again.';
-      }
     }
 
-    // Open image preview
-    function openImagePreview(index) {
-      currentPreviewIndex = index;
-      currentScale = 1;
-      currentTranslateX = 0;
-      currentTranslateY = 0;
-      updatePreviewImage();
-      imagePreviewView.classList.remove('hidden');
-      document.body.style.overflow = 'hidden';
+    function openRelatedVideoPopup() {
+        selectedRelatedVideoTags = [];
+        updateRelatedVideoTagDisplays();
+        relatedVideoPopup.style.display = 'flex';
     }
 
-    // Close image preview
+    function closeRelatedVideoPopup() {
+        relatedVideoPopup.style.display = 'none';
+        relatedVideosForm.reset();
+        selectedRelatedVideoTags = [];
+    }
+
+    async function saveRelatedVideos(e) {
+        e.preventDefault();
+        const urlsText = document.getElementById('relatedVideoUrls').value.trim();
+        if (!urlsText) return;
+        const urls = urlsText.split('\n').map(url => url.trim()).filter(url => url);
+        
+        const currentRelatedVideos = currentCardForDetails.related_videos_with_tags || [];
+        const currentUrls = currentRelatedVideos.map(v => v.url);
+        
+        const newVideos = urls.filter(url => !currentUrls.includes(url));
+        if (newVideos.length === 0) return closeRelatedVideoPopup();
+        
+        const tagsString = selectedRelatedVideoTags.join(', ');
+        const updatedRelatedVideos = [...currentRelatedVideos, ...newVideos.map(url => ({ url, tags: tagsString }))];
+        
+        const { data, error } = await supabase
+            .from('cards')
+            .update({ related_videos_with_tags: updatedRelatedVideos })
+            .eq('id', currentCardForDetails.id)
+            .select().single();
+            
+        if (error) {
+            document.getElementById('relatedVideoErrorMessage').textContent = 'Error saving videos.';
+            return console.error('Error saving related videos:', error);
+        }
+
+        currentCardForDetails = data;
+        await fetchAllTags();
+        renderRelatedVideos();
+        closeRelatedVideoPopup();
+    }
+
+    // --- Image Preview ---
+    function openImagePreview(images, index) {
+        previewImages = images;
+        currentPreviewIndex = index;
+        updatePreviewImage();
+        imagePreviewView.classList.remove('hidden');
+    }
     function closeImagePreview() {
-      imagePreviewView.classList.add('hidden');
-      document.body.style.overflow = 'auto';
-      resetZoom();
+        imagePreviewView.classList.add('hidden');
+        resetZoomPreview();
     }
-
-    // Update preview image
     function updatePreviewImage() {
-      if (currentRelatedImages.length === 0) return;
-      
-      const image = currentRelatedImages[currentPreviewIndex];
-      previewImage.src = image.image_url;
-      previewImage.alt = 'Preview image';
-      previewCounter.textContent = `${currentPreviewIndex + 1} / ${currentRelatedImages.length}`;
-      
-      // Reset transform
-      previewImage.style.transform = `scale(1) translate(0px, 0px)`;
-      previewImage.classList.remove('is-panning');
+        previewImage.src = previewImages[currentPreviewIndex];
+        previewCounter.textContent = `${currentPreviewIndex + 1} / ${previewImages.length}`;
+        prevPreviewBtn.style.display = previewImages.length > 1 ? 'block' : 'none';
+        nextPreviewBtn.style.display = previewImages.length > 1 ? 'block' : 'none';
+        resetZoomPreview();
     }
-
-    // Show previous image in preview
-    function showPrevImage() {
-      if (currentPreviewIndex > 0) {
-        currentPreviewIndex--;
+    function nextPreviewImage() {
+        currentPreviewIndex = (currentPreviewIndex + 1) % previewImages.length;
         updatePreviewImage();
-      }
     }
-
-    // Show next image in preview
-    function showNextImage() {
-      if (currentPreviewIndex < currentRelatedImages.length - 1) {
-        currentPreviewIndex++;
+    function prevPreviewImage() {
+        currentPreviewIndex = (currentPreviewIndex - 1 + previewImages.length) % previewImages.length;
         updatePreviewImage();
-      }
+    }
+    function applyTransform() {
+        previewImage.style.transform = `translate(${panOffset.x}px, ${panOffset.y}px) scale(${currentZoom})`;
     }
 
-    // Zoom in
-    function zoomIn() {
-      currentScale += 0.25;
-      updateImageTransform();
+    function zoomInPreview() {
+        currentZoom = Math.min(currentZoom + 0.2, 3);
+        applyTransform();
     }
 
-    // Zoom out
-    function zoomOut() {
-      if (currentScale > 0.5) {
-        currentScale -= 0.25;
-        updateImageTransform();
-      }
+    function zoomOutPreview() {
+        currentZoom = Math.max(currentZoom - 0.2, 0.5);
+        if (currentZoom === 1) { // Reset pan when zooming back to normal
+            panOffset = { x: 0, y: 0 };
+        }
+        applyTransform();
     }
 
-    // Reset zoom
-    function resetZoom() {
-      currentScale = 1;
-      currentTranslateX = 0;
-      currentTranslateY = 0;
-      updateImageTransform();
-    }
-
-    // Update image transform
-    function updateImageTransform() {
-      previewImage.style.transform = `scale(${currentScale}) translate(${currentTranslateX}px, ${currentTranslateY}px)`;
-    }
-
-    // Start panning
-    function startPanning(e) {
-      if (currentScale <= 1) return;
-      
-      isPanning = true;
-      startX = e.clientX - currentTranslateX;
-      startY = e.clientY - currentTranslateY;
-      previewImage.classList.add('is-panning');
-    }
-
-    // Do panning
-    function doPanning(e) {
-      if (!isPanning) return;
-      
-      currentTranslateX = e.clientX - startX;
-      currentTranslateY = e.clientY - startY;
-      updateImageTransform();
-    }
-
-    // Stop panning
-    function stopPanning() {
-      isPanning = false;
-      previewImage.classList.remove('is-panning');
-    }
-
-    // Handle touch events for mobile
-    function handleTouchStart(e) {
-      if (e.touches.length === 1) {
-        // Single touch - panning
-        if (currentScale <= 1) return;
-        
-        isPanning = true;
-        startX = e.touches[0].clientX - currentTranslateX;
-        startY = e.touches[0].clientY - currentTranslateY;
-        previewImage.classList.add('is-panning');
-      } else if (e.touches.length === 2) {
-        // Multi-touch - pinch to zoom
-        e.preventDefault();
-        const touch1 = e.touches[0];
-        const touch2 = e.touches[1];
-        initialPinchDistance = Math.hypot(
-          touch2.clientX - touch1.clientX,
-          touch2.clientY - touch1.clientY
-        );
-      }
-    }
-
-    function handleTouchMove(e) {
-      if (e.touches.length === 1 && isPanning) {
-        // Single touch - panning
-        currentTranslateX = e.touches[0].clientX - startX;
-        currentTranslateY = e.touches[0].clientY - startY;
-        updateImageTransform();
-      } else if (e.touches.length === 2 && initialPinchDistance !== null) {
-        // Multi-touch - pinch to zoom
-        e.preventDefault();
-        const touch1 = e.touches[0];
-        const touch2 = e.touches[1];
-        const currentDistance = Math.hypot(
-          touch2.clientX - touch1.clientX,
-          touch2.clientY - touch1.clientY
-        );
-        
-        const scaleChange = currentDistance / initialPinchDistance;
-        currentScale = Math.max(0.5, Math.min(3, currentScale * scaleChange));
-        
-        initialPinchDistance = currentDistance;
-        updateImageTransform();
-      }
-    }
-
-    function handleTouchEnd(e) {
-      if (e.touches.length === 0) {
+    function resetZoomPreview() {
+        currentZoom = 1;
+        panOffset = { x: 0, y: 0 };
         isPanning = false;
-        initialPinchDistance = null;
         previewImage.classList.remove('is-panning');
-      }
+        applyTransform();
     }
 
-    // Open video preview
-    function openVideoPreview(videoUrl) {
-      videoPlayerContainer.innerHTML = '';
-      
-      // Create video element based on URL type
-      if (videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be')) {
-        // YouTube video
-        let videoId = '';
-        
-        if (videoUrl.includes('youtube.com')) {
-          const urlParams = new URLSearchParams(new URL(videoUrl).search);
-          videoId = urlParams.get('v');
-        } else if (videoUrl.includes('youtu.be')) {
-          videoId = videoUrl.split('/').pop().split('?')[0];
-        }
-        
+     // --- Panning Logic ---
+    function getEventCoords(e) {
+        return e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
+    }
+
+    function startPan(e) {
+        if (currentZoom <= 1) return; // Only pan if zoomed
+        e.preventDefault();
+        isPanning = true;
+        const coords = getEventCoords(e);
+        panStart.x = coords.x - panOffset.x;
+        panStart.y = coords.y - panOffset.y;
+        previewImage.classList.add('is-panning');
+        previewImage.style.transition = 'none'; // Disable transition for smooth panning
+    }
+
+    function pan(e) {
+        if (!isPanning) return;
+        const coords = getEventCoords(e);
+        panOffset.x = coords.x - panStart.x;
+        panOffset.y = coords.y - panStart.y;
+        applyTransform();
+    }
+
+    function endPan() {
+        if (!isPanning) return;
+        isPanning = false;
+        previewImage.classList.remove('is-panning');
+        previewImage.style.transition = 'transform 0.2s ease-out'; // Re-enable transition
+    }
+
+    // --- Video Preview ---
+    function openVideoPreview(url) {
+        videoPlayerContainer.innerHTML = ''; // Clear previous video
+        const videoId = getYoutubeVideoId(url);
+
         if (videoId) {
-          const iframe = document.createElement('iframe');
-          iframe.src = `https://www.youtube.com/embed/${videoId}`;
-          iframe.allowFullscreen = true;
-          iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
-          iframe.style.width = '100%';
-          iframe.style.height = '100%';
-          videoPlayerContainer.appendChild(iframe);
+            const iframe = document.createElement('iframe');
+            iframe.className = 'w-full h-full';
+            iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
+            iframe.title = "YouTube video player";
+            iframe.frameborder = "0";
+            iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+            iframe.allowfullscreen = true;
+            videoPlayerContainer.appendChild(iframe);
+        } else {
+            const videoEl = document.createElement('video');
+            videoEl.className = 'w-full h-full';
+            videoEl.src = url;
+            videoEl.controls = true;
+            videoEl.autoplay = true;
+            videoPlayerContainer.appendChild(videoEl);
         }
-      } else {
-        // Direct video URL
-        const video = document.createElement('video');
-        video.src = videoUrl;
-        video.controls = true;
-        video.autoplay = true;
-        video.style.width = '100%';
-        video.style.height = '100%';
-        videoPlayerContainer.appendChild(video);
-      }
-      
-      videoPreviewView.classList.remove('hidden');
-      document.body.style.overflow = 'hidden';
+        videoPreviewView.classList.remove('hidden');
     }
 
-    // Close video preview
     function closeVideoPreview() {
-      videoPreviewView.classList.add('hidden');
-      document.body.style.overflow = 'auto';
-      
-      // Stop any playing video
-      const video = videoPlayerContainer.querySelector('video');
-      if (video) {
-        video.pause();
-      }
-      
-      const iframe = videoPlayerContainer.querySelector('iframe');
-      if (iframe) {
-        iframe.src = '';
-      }
+        videoPlayerContainer.innerHTML = '';
+        videoPreviewView.classList.add('hidden');
     }
 
-    // Handle keyboard navigation
-    function handleKeydown(e) {
-      // Only handle keys when preview is open
-      if (imagePreviewView.classList.contains('hidden') && 
-          videoPreviewView.classList.contains('hidden')) {
-        return;
-      }
-      
-      switch(e.key) {
-        case 'Escape':
-          if (!imagePreviewView.classList.contains('hidden')) {
-            closeImagePreview();
-          } else if (!videoPreviewView.classList.contains('hidden')) {
-            closeVideoPreview();
-          }
-          break;
-        case 'ArrowLeft':
-          if (!imagePreviewView.classList.contains('hidden')) {
-            showPrevImage();
-          }
-          break;
-        case 'ArrowRight':
-          if (!imagePreviewView.classList.contains('hidden')) {
-            showNextImage();
-          }
-          break;
-        case '+':
-        case '=':
-          if (!imagePreviewView.classList.contains('hidden')) {
-            e.preventDefault();
-            zoomIn();
-          }
-          break;
-        case '-':
-          if (!imagePreviewView.classList.contains('hidden')) {
-            e.preventDefault();
-            zoomOut();
-          }
-          break;
-        case '0':
-          if (!imagePreviewView.classList.contains('hidden')) {
-            resetZoom();
-          }
-          break;
-      }
+    // --- Popup and Form Management ---
+    function resetForm() {
+      cardForm.reset();
+      currentlyEditingCardId = null;
+      selectedTags = [];
+      document.querySelector('#popup .popup-content h3').textContent = 'Add New Character';
+      document.getElementById('errorMessage').textContent = '';
+      updateSelectedTagsDisplay();
+      updateTagPoolSelection();
     }
 
-    // Toggle scroll to top button
-    function toggleScrollToTopButton() {
-      if (window.pageYOffset > 300) {
-        scrollToTopBtn.classList.remove('hidden');
-      } else {
-        scrollToTopBtn.classList.add('hidden');
-      }
+    function openPopup() { popup.style.display = 'flex'; }
+    function closePopup() { popup.style.display = 'none';
+      resetForm(); 
     }
-
-    // Scroll to top
-    function scrollToTop() {
-      window.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-      });
-    }
-
-    // Add new tag
-    function addNewTag() {
-      const tagText = tagInput.value.trim();
-      
-      if (!tagText) return;
-      
-      if (!allTags.includes(tagText)) {
-        allTags.push(tagText);
-        allTags.sort();
-      }
-      
-      if (!selectedTags.includes(tagText)) {
-        selectedTags.push(tagText);
-        renderSelectedTags(selectedTagsContainer, selectedTags, true);
-      }
-      
-      tagInput.value = '';
-      renderTagPool(tagPool, selectedTags, true);
-    }
-
-    // Render tag pool
-    function renderTagPool(container, selectedTags, isMainForm) {
-      container.innerHTML = '';
-      
-      allTags.forEach(tag => {
-        if (selectedTags.includes(tag)) return;
-        
-        const tagElement = document.createElement('span');
-        tagElement.className = 'tag bg-gray-700 text-gray-300 px-2 py-1 rounded-full text-xs cursor-pointer hover:bg-gray-600 transition';
-        tagElement.textContent = tag;
-        tagElement.setAttribute('data-tag', tag);
-        
-        tagElement.addEventListener('click', () => {
-          if (isMainForm) {
-            if (!selectedTags.includes(tag)) {
-              selectedTags.push(tag);
-              renderSelectedTags(selectedTagsContainer, selectedTags, true);
+    
+    // --- Tag Management ---
+    addTagBtn.addEventListener('click', () => {
+        const newTag = tagInput.value.trim();
+        if (newTag && !selectedTags.includes(newTag)) {
+            selectedTags.push(newTag);
+            if (!allTags.has(newTag)) {
+                allTags.add(newTag);
+                 updateTagDisplays();
             }
-          } else {
-            // For related images/videos forms, we need to determine which selected tags container to use
-            let targetSelectedTagsContainer;
-            
-            if (container === relatedTagPool) {
-              targetSelectedTagsContainer = relatedSelectedTags;
-            } else if (container === editRelatedTagPool) {
-              targetSelectedTagsContainer = editRelatedSelectedTags;
-            } else if (container === relatedVideoTagPool) {
-              targetSelectedTagsContainer = relatedVideoSelectedTags;
-            } else if (container === editRelatedVideoTagPool) {
-              targetSelectedTagsContainer = editRelatedVideoSelectedTags;
-            }
-            
-            if (targetSelectedTagsContainer) {
-              addTagToSelected(tag, targetSelectedTagsContainer, container, false);
-            }
-          }
-          
-          renderTagPool(container, selectedTags, isMainForm);
+            updateSelectedTagsDisplay();
+            updateTagPoolSelection();
+        }
+        tagInput.value = '';
+        tagInput.focus();
+    });
+    function updateTagDisplays() {
+        const sortedTags = Array.from(allTags).sort();
+        filterDropdown.innerHTML = `<a href="#" class="filter-option block px-4 py-2 text-sm text-gray-300 hover:bg-blue-600 hover:text-white" data-tag="">All Characters</a>`;
+        sortedTags.forEach(tag => {
+            filterDropdown.innerHTML += `<a href="#" class="filter-option block px-4 py-2 text-sm text-gray-300 hover:bg-blue-600 hover:text-white" data-tag="${tag}">${tag}</a>`;
         });
-        
-        container.appendChild(tagElement);
-      });
-    }
-
-    // Render selected tags
-    function renderSelectedTags(container, tags, isMainForm) {
-      container.innerHTML = '';
-      
-      tags.forEach(tag => {
-        const tagElement = document.createElement('span');
-        tagElement.className = 'tag bg-blue-600 text-white px-2 py-1 rounded-full text-xs flex items-center gap-1';
-        tagElement.innerHTML = `
-          ${tag}
-          <button type="button" class="remove-tag text-white hover:text-gray-200 transition" data-tag="${tag}">
-            <svg class="h-3 w-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
-          </button>
-        `;
-        
-        container.appendChild(tagElement);
-        
-        // Add event listener to remove button
-        const removeBtn = tagElement.querySelector('.remove-tag');
-        removeBtn.addEventListener('click', () => {
-          if (isMainForm) {
-            selectedTags = selectedTags.filter(t => t !== tag);
-            renderSelectedTags(container, selectedTags, isMainForm);
-            renderTagPool(tagPool, selectedTags, true);
-          } else {
-            // For related images/videos forms, we need to determine which tag pool to update
-            let targetTagPool;
-            
-            if (container === relatedSelectedTags) {
-              targetTagPool = relatedTagPool;
-            } else if (container === editRelatedSelectedTags) {
-              targetTagPool = editRelatedTagPool;
-            } else if (container === relatedVideoSelectedTags) {
-              targetTagPool = relatedVideoTagPool;
-            } else if (container === editRelatedVideoSelectedTags) {
-              targetTagPool = editRelatedVideoTagPool;
-            }
-            
-            if (targetTagPool) {
-              removeTagFromSelected(tag, container, targetTagPool, false);
-            }
-          }
+        const tagPool = document.getElementById('tagPool');
+        tagPool.innerHTML = '';
+        sortedTags.forEach(tag => {
+            const tagEl = document.createElement('span');
+            tagEl.className = 'tag bg-gray-600 text-gray-200 text-xs font-medium px-2 py-1 rounded-full';
+            tagEl.textContent = tag;
+            tagEl.dataset.tag = tag;
+            tagPool.appendChild(tagEl);
         });
-      });
+        updateRelatedTagDisplays();
+        updateEditRelatedTagDisplays();
+        updateRelatedVideoTagDisplays();
+        updateEditRelatedVideoTagDisplays();
     }
 
-    // Add tag to selected (for non-main forms)
-    function addTagToSelected(tag, selectedContainer, tagPool, isMainForm) {
-      const selectedTags = Array.from(selectedContainer.querySelectorAll('.tag'))
-        .map(tagEl => tagEl.getAttribute('data-tag'));
-      
-      if (!selectedTags.includes(tag)) {
-        selectedTags.push(tag);
-        renderSelectedTags(selectedContainer, selectedTags, isMainForm);
-        renderTagPool(tagPool, selectedTags, isMainForm);
-      }
+    function updateSelectedTagsDisplay() {
+        const container = document.getElementById('selectedTags');
+        container.innerHTML = '';
+        selectedTags.forEach(tag => {
+            container.innerHTML += `<span class="bg-blue-600 text-white text-xs font-medium px-2 py-1 rounded-full flex items-center gap-1">${tag}<button type="button" class="remove-tag font-bold" data-tag="${tag}">&times;</button></span>`;
+        });
     }
 
-    // Remove tag from selected (for non-main forms)
-    function removeTagFromSelected(tag, selectedContainer, tagPool, isMainForm) {
-      const selectedTags = Array.from(selectedContainer.querySelectorAll('.tag'))
-        .map(tagEl => tagEl.getAttribute('data-tag'))
-        .filter(t => t !== tag);
-      
-      renderSelectedTags(selectedContainer, selectedTags, isMainForm);
-      renderTagPool(tagPool, selectedTags, isMainForm);
+    function updateTagPoolSelection() {
+        document.querySelectorAll('#tagPool .tag').forEach(tagEl => {
+            if (selectedTags.includes(tagEl.dataset.tag)) {
+                tagEl.classList.add('selected');
+            } else {
+                tagEl.classList.remove('selected');
+            }
+        });
     }
 
-    // Utility function for debouncing
-    function debounce(func, wait) {
-      let timeout;
-      return function executedFunction(...args) {
-        const later = () => {
-          clearTimeout(timeout);
-          func(...args);
+    function updateRelatedTagDisplays() {
+        const sortedTags = Array.from(allTags).sort();
+        const relatedSelectedContainer = document.getElementById('relatedSelectedTags');
+        const relatedPoolContainer = document.getElementById('relatedTagPool');
+        
+        relatedPoolContainer.innerHTML = '';
+        sortedTags.forEach(tag => {
+             const tagEl = document.createElement('span');
+            tagEl.className = 'tag bg-gray-600 text-gray-200 text-xs font-medium px-2 py-1 rounded-full';
+            tagEl.textContent = tag;
+            tagEl.dataset.tag = tag;
+            if(selectedRelatedTags.includes(tag)) tagEl.classList.add('selected');
+            relatedPoolContainer.appendChild(tagEl);
+        
+        });
+
+        relatedSelectedContainer.innerHTML = '';
+        selectedRelatedTags.forEach(tag => {
+            relatedSelectedContainer.innerHTML += `<span class="bg-blue-600 text-white text-xs font-medium px-2 py-1 rounded-full flex items-center gap-1">${tag}<button type="button" class="remove-related-tag font-bold" data-tag="${tag}">&times;</button></span>`;
+        });
+    }
+
+    function updateRelatedVideoTagDisplays() {
+        const sortedTags = Array.from(allTags).sort();
+        const selectedContainer = document.getElementById('relatedVideoSelectedTags');
+        const poolContainer = document.getElementById('relatedVideoTagPool');
+        
+        poolContainer.innerHTML = '';
+        sortedTags.forEach(tag => {
+            const tagEl = document.createElement('span');
+            tagEl.className = 'tag bg-gray-600 text-gray-200 text-xs font-medium px-2 py-1 rounded-full';
+            tagEl.textContent = tag;
+            tagEl.dataset.tag = tag;
+            if (selectedRelatedVideoTags.includes(tag)) tagEl.classList.add('selected');
+            poolContainer.appendChild(tagEl);
+        });
+
+        selectedContainer.innerHTML = '';
+        selectedRelatedVideoTags.forEach(tag => {
+            selectedContainer.innerHTML += `<span class="bg-blue-600 text-white text-xs font-medium px-2 py-1 rounded-full flex items-center gap-1">${tag}<button type="button" class="remove-related-video-tag font-bold" data-tag="${tag}">&times;</button></span>`;
+        });
+    }
+
+    function updateEditRelatedTagDisplays() {
+        const sortedTags = Array.from(allTags).sort();
+        const selectedContainer = document.getElementById('editRelatedSelectedTags');
+        const poolContainer = document.getElementById('editRelatedTagPool');
+        
+        poolContainer.innerHTML = '';
+        sortedTags.forEach(tag => {
+            const tagEl = document.createElement('span');
+            tagEl.className = 'tag bg-gray-600 text-gray-200 text-xs font-medium px-2 py-1 rounded-full';
+            tagEl.textContent = tag;
+            tagEl.dataset.tag = tag;
+            if (selectedTagsForEdit.includes(tag)) tagEl.classList.add('selected');
+            poolContainer.appendChild(tagEl);
+        
+        });
+
+        selectedContainer.innerHTML = '';
+        selectedTagsForEdit.forEach(tag => {
+            selectedContainer.innerHTML += `<span class="bg-blue-600 text-white text-xs font-medium px-2 py-1 rounded-full flex items-center gap-1">${tag}<button type="button" class="remove-edit-tag font-bold" data-tag="${tag}">&times;</button></span>`;
+        });
+    }
+    
+    function updateEditRelatedVideoTagDisplays() {
+        const sortedTags = Array.from(allTags).sort();
+        const selectedContainer = document.getElementById('editRelatedVideoSelectedTags');
+        const poolContainer = document.getElementById('editRelatedVideoTagPool');
+        
+        poolContainer.innerHTML = '';
+        sortedTags.forEach(tag => {
+            const tagEl = document.createElement('span');
+            tagEl.className = 'tag bg-gray-600 text-gray-200 text-xs font-medium px-2 py-1 rounded-full';
+            tagEl.textContent = tag;
+            tagEl.dataset.tag = tag;
+            if (selectedVideoTagsForEdit.includes(tag)) tagEl.classList.add('selected');
+            poolContainer.appendChild(tagEl);
+        });
+
+        selectedContainer.innerHTML = '';
+        selectedVideoTagsForEdit.forEach(tag => {
+            selectedContainer.innerHTML += `<span class="bg-blue-600 text-white text-xs font-medium px-2 py-1 rounded-full flex items-center gap-1">${tag}<button type="button" class="remove-edit-video-tag font-bold" data-tag="${tag}">&times;</button></span>`;
+        });
+    }
+
+    // Event delegation for tag popups
+    document.getElementById('popup').addEventListener('click', (e) => {
+        if(e.target.classList.contains('tag')) {
+            const tag = e.target.dataset.tag;
+            if(selectedTags.includes(tag)) selectedTags = selectedTags.filter(t => t !== tag);
+            else selectedTags.push(tag);
+            updateSelectedTagsDisplay();
+            updateTagPoolSelection();
+        }
+        if(e.target.classList.contains('remove-tag')) {
+            selectedTags = selectedTags.filter(t => t !== e.target.dataset.tag);
+            updateSelectedTagsDisplay();
+            updateTagPoolSelection();
+        }
+    });
+    relatedImagePopup.addEventListener('click', (e) => {
+        if(e.target.classList.contains('tag')) {
+            const tag = e.target.dataset.tag;
+            if(selectedRelatedTags.includes(tag)) selectedRelatedTags = selectedRelatedTags.filter(t => t !== tag);
+            else selectedRelatedTags.push(tag);
+            updateRelatedTagDisplays();
+        }
+        if(e.target.classList.contains('remove-related-tag')) {
+            selectedRelatedTags = selectedRelatedTags.filter(t => t !== e.target.dataset.tag);
+            updateRelatedTagDisplays();
+        }
+    });
+    editRelatedTagsPopup.addEventListener('click', (e) => {
+        if (e.target.classList.contains('tag')) {
+            const tag = e.target.dataset.tag;
+            if (selectedTagsForEdit.includes(tag)) selectedTagsForEdit = selectedTagsForEdit.filter(t => t !== tag);
+            else selectedTagsForEdit.push(tag);
+            updateEditRelatedTagDisplays();
+        }
+        if (e.target.classList.contains('remove-edit-tag')) {
+            selectedTagsForEdit = selectedTagsForEdit.filter(t => t !== e.target.dataset.tag);
+            updateEditRelatedTagDisplays();
+        }
+    });
+    relatedVideoPopup.addEventListener('click', (e) => {
+        if (e.target.classList.contains('tag')) {
+            const tag = e.target.dataset.tag;
+            if (selectedRelatedVideoTags.includes(tag)) selectedRelatedVideoTags = selectedRelatedVideoTags.filter(t => t !== tag);
+            else selectedRelatedVideoTags.push(tag);
+            updateRelatedVideoTagDisplays();
+        }
+        if (e.target.classList.contains('remove-related-video-tag')) {
+            selectedRelatedVideoTags = selectedRelatedVideoTags.filter(t => t !== e.target.dataset.tag);
+            updateRelatedVideoTagDisplays();
+        }
+    });
+    editRelatedVideoTagsPopup.addEventListener('click', (e) => {
+        if (e.target.classList.contains('tag')) {
+            const tag = e.target.dataset.tag;
+            if (selectedVideoTagsForEdit.includes(tag)) selectedVideoTagsForEdit = selectedVideoTagsForEdit.filter(t => t !== tag);
+            else selectedVideoTagsForEdit.push(tag);
+            updateEditRelatedVideoTagDisplays();
+        }
+        if (e.target.classList.contains('remove-edit-video-tag')) {
+            selectedVideoTagsForEdit = selectedVideoTagsForEdit.filter(t => t !== e.target.dataset.tag);
+            updateEditRelatedVideoTagDisplays();
+        }
+    });
+
+
+    // --- Utilities ---
+    let debounceTimer;
+    function debounce(func, delay) { clearTimeout(debounceTimer); debounceTimer = setTimeout(func, delay);
+    }
+    function customConfirm(message) { return new Promise(resolve => resolve(confirm(message))); }
+
+    function getYoutubeVideoId(url) {
+        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+        const match = url.match(regExp);
+        return (match && match[2].length === 11) ? match[2] : null;
+    }
+
+    function getYoutubeThumbnail(url) {
+        const videoId = getYoutubeVideoId(url);
+        return videoId ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` : null;
+    }
+
+    function generateVideoThumbnail(imgElement, videoUrl, isObjectFitContain = false) {
+        const video = document.createElement('video');
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        
+        video.style.display = 'none';
+        video.crossOrigin = "anonymous"; // Handle CORS issues
+        video.preload = 'metadata';
+        
+        video.onloadeddata = () => {
+            video.currentTime = 0.1; // Seek to a very early frame
         };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-      };
+        
+        video.onseeked = () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+            imgElement.src = canvas.toDataURL();
+            if (isObjectFitContain) imgElement.style.objectFit = 'contain';
+            
+            // Cleanup
+            video.remove();
+            canvas.remove();
+        };
+
+        video.onerror = () => {
+            // If video fails to load, show a generic icon
+            const parent = imgElement.parentElement;
+            if (parent) {
+                parent.innerHTML = `<div class="w-full h-full flex items-center justify-center text-white">
+                    <svg class="w-12 h-12 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9A2.25 2.25 0 0 0 13.5 5.25h-9A2.25 2.25 0 0 0 2.25 7.5v9A2.25 2.25 0 0 0 4.5 18.75Z" /></svg>
+                </div>`;
+            }
+             // Cleanup
+            video.remove();
+            canvas.remove();
+        };
+
+        video.src = videoUrl;
+        document.body.appendChild(video); // Needs to be in DOM for some browsers
     }
+
+    // --- Scroll to Top Button Logic ---
+    const scrollToTopBtn = document.getElementById('scrollToTopBtn');
+    const checkScroll = () => {
+      const isDetailsVisible = !detailsView.classList.contains('hidden');
+      const currentScrollTop = isDetailsVisible ? detailsView.scrollTop : window.scrollY;
+      scrollToTopBtn.classList.toggle('hidden', currentScrollTop <= 300);
+    };
+    const scrollToTop = () => {
+      const container = detailsView.classList.contains('hidden') ? window : detailsView;
+      container.scrollTo({ top: 0, behavior: 'auto' });
+    };
+    window.addEventListener('scroll', checkScroll);
+    detailsView.addEventListener('scroll', checkScroll);
+    scrollToTopBtn.addEventListener('click', scrollToTop);
+    const originalOpenDetails = openDetailsView;
+    openDetailsView = async (...args) => {
+      await originalOpenDetails(...args);
+      checkScroll();
+    };
+    const originalCloseDetails = closeDetailsView;
+    closeDetailsView = (...args) => {
+      originalCloseDetails(...args);
+      checkScroll();
+    };
+
   </script>
 </body>
 </html>
