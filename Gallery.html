@@ -167,6 +167,39 @@
       text-align: center;
       user-select: none;
     }
+    
+    /* Styles for resizable/draggable image */
+    #details-image-transform-box:active {
+        cursor: grabbing;
+    }
+    .resize-handle {
+        position: absolute;
+        width: 12px;
+        height: 12px;
+        background: rgba(255, 255, 255, 0.8);
+        border: 1px solid #333;
+        border-radius: 2px;
+        z-index: 10;
+        opacity: 0;
+        transition: opacity 0.2s ease-in-out;
+        pointer-events: none;
+    }
+    .resize-handle[data-direction="n"] { top: -6px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+    .resize-handle[data-direction="ne"] { top: -6px; right: -6px; cursor: nesw-resize; }
+    .resize-handle[data-direction="e"] { top: 50%; right: -6px; transform: translateY(-50%); cursor: ew-resize; }
+    .resize-handle[data-direction="se"] { bottom: -6px; right: -6px; cursor: nwse-resize; }
+    .resize-handle[data-direction="s"] { bottom: -6px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+    .resize-handle[data-direction="sw"] { bottom: -6px; left: -6px; cursor: nesw-resize; }
+    .resize-handle[data-direction="w"] { top: 50%; left: -6px; transform: translateY(-50%); cursor: ew-resize; }
+    .resize-handle[data-direction="nw"] { top: -6px; left: -6px; cursor: nwse-resize; }
+    
+    #details-image-transform-box.is-selected {
+        outline: 2px dashed rgba(255, 255, 255, 0.5);
+    }
+    #details-image-transform-box.is-selected .resize-handle {
+        opacity: 1;
+        pointer-events: auto;
+    }
   </style>
 </head>
 <body class="antialiased">
@@ -208,6 +241,10 @@
                 <a href="#" class="sort-option block px-4 py-2 text-sm text-gray-300 hover:bg-blue-600 hover:text-white" data-sort="created_at_asc">Oldest</a>
             </div>
         </div>
+        <button id="newTagButton" class="bg-[#2a2d3d] text-white rounded-lg px-4 py-2 flex items-center gap-2 hover:bg-[#3a3d4d] transition">
+            <svg class="h-5 w-5 pointer-events-none" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" /><path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6z" /></svg>
+            New Tag
+        </button>
         <button id="addCardBtn" class="bg-blue-600 text-white font-semibold rounded-lg px-4 py-2 flex items-center gap-2 hover:bg-blue-700 transition shadow-lg shadow-blue-600/20">
           <svg class="h-5 w-5 pointer-events-none" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
           New Character
@@ -257,6 +294,24 @@
     </div>
   </div>
 
+  <div id="new-tag-popup" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-[300]" style="display: none;">
+    <div class="popup-content bg-[#2a2d3d] rounded-xl shadow-2xl w-full max-w-sm p-6 relative">
+      <button id="closeNewTagPopupBtn" class="absolute top-4 right-4 text-gray-400 hover:text-white transition">
+        <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+      </button>
+      <h3 class="text-xl font-bold mb-6">Create a New Tag</h3>
+      <form id="newTagForm">
+        <div class="mb-4">
+          <label for="newTagName" class="block text-sm font-medium text-gray-300 mb-1">Tag Name</label>
+          <input type="text" id="newTagName" class="w-full bg-[#1a1b26] text-white border border-gray-600 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+        </div>
+        <p id="newTagErrorMessage" class="text-red-400 text-sm mb-4 h-5"></p>
+        <button type="submit" class="w-full bg-blue-600 text-white font-semibold rounded-lg p-2.5 hover:bg-blue-700 transition">Create Tag</button>
+      </form>
+    </div>
+  </div>
+
+
   <div id="details-view" class="hidden fixed inset-0 bg-[#1a1b26] z-[100] p-4 md:p-8 overflow-y-auto">
       <button id="closeDetailsBtn" class="absolute top-6 right-6 text-gray-400 hover:text-white transition z-10">
           <svg class="h-8 w-8" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -265,9 +320,19 @@
           </svg>
       </button>
       <div class="container mx-auto grid grid-cols-1 md:grid-cols-12 gap-4 items-center h-full">
-          <div class="md:col-span-7 flex items-center justify-end h-full pt-10 md:pt-0">
-              <img id="details-main-image" src="" alt="Character Image" class="max-w-full object-contain rounded-lg">
-          </div>
+            <div id="details-image-container" class="md:col-span-7 flex items-center justify-center h-full pt-10 md:pt-0 relative overflow-hidden bg-black/10 rounded-lg">
+                <div id="details-image-transform-box" style="position: absolute; cursor: grab;">
+                    <img id="details-main-image" src="" alt="Character Image" class="w-full h-full object-contain pointer-events-none select-none">
+                    <div class="resize-handle" data-direction="n"></div>
+                    <div class="resize-handle" data-direction="ne"></div>
+                    <div class="resize-handle" data-direction="e"></div>
+                    <div class="resize-handle" data-direction="se"></div>
+                    <div class="resize-handle" data-direction="s"></div>
+                    <div class="resize-handle" data-direction="sw"></div>
+                    <div class="resize-handle" data-direction="w"></div>
+                    <div class="resize-handle" data-direction="nw"></div>
+                </div>
+            </div>
 
       
          <div class="md:col-span-5 pt-10 md:pt-20">
@@ -481,6 +546,12 @@
     const filterButton = document.getElementById('filterButton');
     const filterDropdown = document.getElementById('filterDropdown');
     
+    // New Tag elements
+    const newTagButton = document.getElementById('newTagButton');
+    const newTagPopup = document.getElementById('new-tag-popup');
+    const closeNewTagPopupBtn = document.getElementById('closeNewTagPopupBtn');
+    const newTagForm = document.getElementById('newTagForm');
+
     // Details View elements
     const detailsView = document.getElementById('details-view');
     const closeDetailsBtn = document.getElementById('closeDetailsBtn');
@@ -492,6 +563,11 @@
     const addRelatedBtn = document.getElementById('addRelatedBtn');
     const uploadRelatedBtn = document.getElementById('uploadRelatedBtn');
     const manageRelatedBtn = document.getElementById('manageRelatedBtn');
+    
+    // Image transform elements
+    const detailsImageContainer = document.getElementById('details-image-container');
+    const detailsImageTransformBox = document.getElementById('details-image-transform-box');
+
     // Add Related Popup
     const relatedImagePopup = document.getElementById('related-image-popup');
     const closeRelatedPopupBtn = document.getElementById('closeRelatedPopupBtn');
@@ -559,12 +635,26 @@
     let panOffset = { x: 0, y: 0 };
     let sortable = null;
 
+    // Image transform state
+    let imageTransform = {
+        isDragging: false,
+        isResizing: false,
+        direction: null,
+        startX: 0,
+        startY: 0,
+        startLeft: 0,
+        startTop: 0,
+        startWidth: 0,
+        startHeight: 0,
+        containerRect: null,
+    };
+
     // --- Data Fetching and Display ---
     async function fetchAllTags() {
         const { data, error } = await supabase.from('cards').select('tags, related_images_with_tags, related_videos_with_tags');
         if (error) return console.error('Error fetching tags:', error);
         
-        allTags.clear();
+        // Keep existing tags in the set, only add new ones
         data.forEach(card => {
             if (card.tags) {
                 card.tags.split(',').forEach(tag => {
@@ -842,7 +932,10 @@
 
 
     // --- Event Listeners ---
-    document.addEventListener('DOMContentLoaded', loadCards);
+    document.addEventListener('DOMContentLoaded', () => {
+        loadCards();
+        setupDetailsViewListeners();
+    });
     searchInput.addEventListener('input', () => debounce(loadCards, 300));
     addCardBtn.addEventListener('click', openPopup);
     closePopupBtn.addEventListener('click', closePopup);
@@ -859,7 +952,12 @@
     prevPreviewBtn.addEventListener('click', prevPreviewImage);
     zoomInBtn.addEventListener('click', zoomInPreview);
     zoomOutBtn.addEventListener('click', zoomOutPreview);
-    resetZoomBtn.addEventListener('click', resetZoomPreview);
+    resetZoomBtn.addEventListener('click', resetZoomBtn);
+    // New Tag Listeners
+    newTagButton.addEventListener('click', () => newTagPopup.style.display = 'flex');
+    closeNewTagPopupBtn.addEventListener('click', () => newTagPopup.style.display = 'none');
+    newTagPopup.addEventListener('click', (e) => { if (e.target === newTagPopup) newTagPopup.style.display = 'none'; });
+    newTagForm.addEventListener('submit', handleNewTagSubmit);
     // Edit Related Tags Popup Listeners
     closeEditRelatedTagsPopupBtn.addEventListener('click', closeEditRelatedTagsPopup);
     editRelatedTagsForm.addEventListener('submit', saveRelatedImageTags);
@@ -983,6 +1081,8 @@
         if (error || !card) return console.error("Could not fetch card details");
         currentCardForDetails = card;
 
+        detailsImageTransformBox.classList.remove('is-selected');
+
         detailsMainImage.src = card.main_image_url;
         detailsTitle.textContent = card.title;
         detailsTags.innerHTML = '';
@@ -995,6 +1095,22 @@
                  detailsTags.appendChild(tagEl);
             });
         }
+        
+        // Apply or reset main image position and size from the database
+        if (card.main_image_style && typeof card.main_image_style === 'object' && card.main_image_style.width) {
+            detailsImageTransformBox.style.width = card.main_image_style.width;
+            detailsImageTransformBox.style.height = card.main_image_style.height;
+            detailsImageTransformBox.style.top = card.main_image_style.top;
+            detailsImageTransformBox.style.left = card.main_image_style.left;
+        } else {
+            // Default position if no style is saved in the database
+            detailsImageTransformBox.style.width = '80%';
+            detailsImageTransformBox.style.height = '80%';
+            detailsImageTransformBox.style.top = '10%';
+            detailsImageTransformBox.style.left = '10%';
+        }
+
+
         renderRelatedImages();
         renderRelatedVideos();
         document.querySelector('.container').classList.add('hidden');
@@ -1003,6 +1119,7 @@
     }
     
     function closeDetailsView() {
+        detailsImageTransformBox.classList.remove('is-selected');
         document.querySelector('.container').classList.remove('hidden');
         detailsView.classList.add('hidden');
         document.body.style.overflow = 'auto';
@@ -1506,6 +1623,28 @@
     }
     
     // --- Tag Management ---
+    function handleNewTagSubmit(e) {
+        e.preventDefault();
+        const errorMsg = document.getElementById('newTagErrorMessage');
+        errorMsg.textContent = '';
+        const newTagNameInput = document.getElementById('newTagName');
+        const newTag = newTagNameInput.value.trim();
+
+        if (!newTag) {
+            errorMsg.textContent = 'Tag name cannot be empty.';
+            return;
+        }
+        if (allTags.has(newTag)) {
+            errorMsg.textContent = 'This tag already exists.';
+            return;
+        }
+
+        allTags.add(newTag);
+        updateTagDisplays(); // This will refresh all tag pools and filter dropdown
+        newTagPopup.style.display = 'none';
+        newTagNameInput.value = '';
+    }
+
     addTagBtn.addEventListener('click', () => {
         const newTag = tagInput.value.trim();
         if (newTag && !selectedTags.includes(newTag)) {
@@ -1709,10 +1848,156 @@
         }
     });
 
+    // --- Image Transform Logic ---
+    const debouncedSaveMainImageStyle = debounce(saveMainImageStyle, 1000);
+
+    function setupDetailsViewListeners() {
+        detailsImageTransformBox.addEventListener('mousedown', startDrag);
+        document.querySelectorAll('.resize-handle').forEach(handle => {
+            handle.addEventListener('mousedown', startResize);
+        });
+        
+        detailsImageTransformBox.addEventListener('click', (e) => {
+            e.stopPropagation();
+            detailsImageTransformBox.classList.add('is-selected');
+        });
+
+        detailsView.addEventListener('click', (e) => {
+            if (!detailsImageTransformBox.contains(e.target)) {
+                detailsImageTransformBox.classList.remove('is-selected');
+            }
+        });
+    }
+
+    function startDrag(e) {
+        // Prevent dragging if a resize handle was clicked
+        if (e.target.classList.contains('resize-handle')) return;
+        e.preventDefault();
+        imageTransform.isDragging = true;
+        imageTransform.containerRect = detailsImageContainer.getBoundingClientRect();
+        imageTransform.startX = e.clientX;
+        imageTransform.startY = e.clientY;
+        imageTransform.startLeft = detailsImageTransformBox.offsetLeft;
+        imageTransform.startTop = detailsImageTransformBox.offsetTop;
+        window.addEventListener('mousemove', drag);
+        window.addEventListener('mouseup', endDrag);
+    }
+
+    function drag(e) {
+        if (!imageTransform.isDragging) return;
+        e.preventDefault();
+        const dx = e.clientX - imageTransform.startX;
+        const dy = e.clientY - imageTransform.startY;
+        let newLeft = imageTransform.startLeft + dx;
+        let newTop = imageTransform.startTop + dy;
+        
+        // Constrain within the container
+        newLeft = Math.max(0, Math.min(newLeft, imageTransform.containerRect.width - detailsImageTransformBox.offsetWidth));
+        newTop = Math.max(0, Math.min(newTop, imageTransform.containerRect.height - detailsImageTransformBox.offsetHeight));
+        
+        detailsImageTransformBox.style.left = `${(newLeft / imageTransform.containerRect.width) * 100}%`;
+        detailsImageTransformBox.style.top = `${(newTop / imageTransform.containerRect.height) * 100}%`;
+    }
+
+    function endDrag() {
+        if (!imageTransform.isDragging) return;
+        imageTransform.isDragging = false;
+        window.removeEventListener('mousemove', drag);
+        window.removeEventListener('mouseup', endDrag);
+        debouncedSaveMainImageStyle();
+    }
+
+    function startResize(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        imageTransform.isResizing = true;
+        imageTransform.direction = e.target.dataset.direction;
+        imageTransform.containerRect = detailsImageContainer.getBoundingClientRect();
+        imageTransform.startX = e.clientX;
+        imageTransform.startY = e.clientY;
+        imageTransform.startLeft = detailsImageTransformBox.offsetLeft;
+        imageTransform.startTop = detailsImageTransformBox.offsetTop;
+        imageTransform.startWidth = detailsImageTransformBox.offsetWidth;
+        imageTransform.startHeight = detailsImageTransformBox.offsetHeight;
+        window.addEventListener('mousemove', resize);
+        window.addEventListener('mouseup', endResize);
+    }
+
+    function resize(e) {
+        if (!imageTransform.isResizing) return;
+        e.preventDefault();
+        const dx = e.clientX - imageTransform.startX;
+        const dy = e.clientY - imageTransform.startY;
+        let newWidth = imageTransform.startWidth;
+        let newHeight = imageTransform.startHeight;
+        let newTop = imageTransform.startTop;
+        let newLeft = imageTransform.startLeft;
+
+        if (imageTransform.direction.includes('e')) newWidth = imageTransform.startWidth + dx;
+        if (imageTransform.direction.includes('w')) {
+            newWidth = imageTransform.startWidth - dx;
+            newLeft = imageTransform.startLeft + dx;
+        }
+        if (imageTransform.direction.includes('s')) newHeight = imageTransform.startHeight + dy;
+        if (imageTransform.direction.includes('n')) {
+            newHeight = imageTransform.startHeight - dy;
+            newTop = imageTransform.startTop + dy;
+        }
+        
+        // Prevent negative dimensions
+        if (newWidth < 50) {
+            newWidth = 50;
+            if(imageTransform.direction.includes('w')) newLeft = detailsImageTransformBox.offsetLeft;
+        }
+        if (newHeight < 50) {
+             newHeight = 50;
+             if(imageTransform.direction.includes('n')) newTop = detailsImageTransformBox.offsetTop;
+        }
+
+        detailsImageTransformBox.style.width = `${(newWidth / imageTransform.containerRect.width) * 100}%`;
+        detailsImageTransformBox.style.height = `${(newHeight / imageTransform.containerRect.height) * 100}%`;
+        detailsImageTransformBox.style.top = `${(newTop / imageTransform.containerRect.height) * 100}%`;
+        detailsImageTransformBox.style.left = `${(newLeft / imageTransform.containerRect.width) * 100}%`;
+    }
+
+    function endResize() {
+        if (!imageTransform.isResizing) return;
+        imageTransform.isResizing = false;
+        window.removeEventListener('mousemove', resize);
+        window.removeEventListener('mouseup', endResize);
+        debouncedSaveMainImageStyle();
+    }
+
+    async function saveMainImageStyle() {
+        if (!currentCardForDetails) return;
+        const styleData = {
+            width: detailsImageTransformBox.style.width,
+            height: detailsImageTransformBox.style.height,
+            top: detailsImageTransformBox.style.top,
+            left: detailsImageTransformBox.style.left,
+        };
+        const { data, error } = await supabase
+            .from('cards')
+            .update({ main_image_style: styleData })
+            .eq('id', currentCardForDetails.id)
+            .select()
+            .single();
+
+        if (error) {
+            console.error("Error saving image style:", error);
+            return;
+        }
+        currentCardForDetails.main_image_style = data.main_image_style;
+    }
+
 
     // --- Utilities ---
     let debounceTimer;
-    function debounce(func, delay) { clearTimeout(debounceTimer); debounceTimer = setTimeout(func, delay);
+    function debounce(func, delay) {
+        return function(...args) {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => func.apply(this, args), delay);
+        }
     }
     function customConfirm(message) { return new Promise(resolve => resolve(confirm(message))); }
 
