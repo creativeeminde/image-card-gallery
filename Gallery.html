@@ -200,6 +200,27 @@
         opacity: 1;
         pointer-events: auto;
     }
+
+    /* ===== MOBILE FIXES ===== */
+    @media (max-width: 767px) {
+        #details-image-transform-box {
+            /* Override inline styles to fix position and size to fill its container */
+            width: 100% !important;
+            height: 100% !important;
+            top: 0 !important;
+            left: 0 !important;
+            position: relative !important; /* Changing to relative makes it fill the flex container naturally */
+            cursor: default !important;
+        }
+
+        #details-image-transform-box.is-selected {
+            outline: none !important;
+        }
+
+        #details-image-transform-box .resize-handle {
+            display: none !important;
+        }
+    }
   </style>
 </head>
 <body class="antialiased">
@@ -648,6 +669,19 @@
         startHeight: 0,
         containerRect: null,
     };
+    
+    // --- Utilities ---
+    let debounceTimer;
+    function debounce(func, delay) {
+        return function(...args) {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => func.apply(this, args), delay);
+        }
+    }
+    function customConfirm(message) { return new Promise(resolve => resolve(confirm(message))); }
+
+    const debouncedSaveMainImageStyle = debounce(saveMainImageStyle, 1000);
+
 
     // --- Data Fetching and Display ---
     async function fetchAllTags() {
@@ -927,7 +961,54 @@
             cardGallery.appendChild(cardElement);
         });
     }
-
+    
+    // --- Image Preview Functions ---
+    function openImagePreview(images, index) {
+        previewImages = images;
+        currentPreviewIndex = index;
+        updatePreviewImage();
+        imagePreviewView.classList.remove('hidden');
+    }
+    function closeImagePreview() {
+        imagePreviewView.classList.add('hidden');
+        resetZoomPreview();
+    }
+    function updatePreviewImage() {
+        previewImage.src = previewImages[currentPreviewIndex];
+        previewCounter.textContent = `${currentPreviewIndex + 1} / ${previewImages.length}`;
+        prevPreviewBtn.style.display = previewImages.length > 1 ? 'block' : 'none';
+        nextPreviewBtn.style.display = previewImages.length > 1 ? 'block' : 'none';
+        resetZoomPreview();
+    }
+    function nextPreviewImage() {
+        currentPreviewIndex = (currentPreviewIndex + 1) % previewImages.length;
+        updatePreviewImage();
+    }
+    function prevPreviewImage() {
+        currentPreviewIndex = (currentPreviewIndex - 1 + previewImages.length) % previewImages.length;
+        updatePreviewImage();
+    }
+    function applyTransform() {
+        previewImage.style.transform = `translate(${panOffset.x}px, ${panOffset.y}px) scale(${currentZoom})`;
+    }
+    function zoomInPreview() {
+        currentZoom = Math.min(currentZoom + 0.2, 3);
+        applyTransform();
+    }
+    function zoomOutPreview() {
+        currentZoom = Math.max(currentZoom - 0.2, 0.5);
+        if (currentZoom === 1) { // Reset pan when zooming back to normal
+            panOffset = { x: 0, y: 0 };
+        }
+        applyTransform();
+    }
+    function resetZoomPreview() {
+        currentZoom = 1;
+        panOffset = { x: 0, y: 0 };
+        isPanning = false;
+        previewImage.classList.remove('is-panning');
+        applyTransform();
+    }
 
     // --- Event Listeners ---
     document.addEventListener('DOMContentLoaded', () => {
@@ -950,7 +1031,7 @@
     prevPreviewBtn.addEventListener('click', prevPreviewImage);
     zoomInBtn.addEventListener('click', zoomInPreview);
     zoomOutBtn.addEventListener('click', zoomOutPreview);
-    resetZoomBtn.addEventListener('click', resetZoomBtn);
+    resetZoomBtn.addEventListener('click', resetZoomPreview);
     // New Tag Listeners
     newTagButton.addEventListener('click', () => newTagPopup.style.display = 'flex');
     closeNewTagPopupBtn.addEventListener('click', () => newTagPopup.style.display = 'none');
@@ -1505,58 +1586,7 @@
         closeRelatedVideoPopup();
     }
 
-    // --- Image Preview ---
-    function openImagePreview(images, index) {
-        previewImages = images;
-        currentPreviewIndex = index;
-        updatePreviewImage();
-        imagePreviewView.classList.remove('hidden');
-    }
-    function closeImagePreview() {
-        imagePreviewView.classList.add('hidden');
-        resetZoomPreview();
-    }
-    function updatePreviewImage() {
-        previewImage.src = previewImages[currentPreviewIndex];
-        previewCounter.textContent = `${currentPreviewIndex + 1} / ${previewImages.length}`;
-        prevPreviewBtn.style.display = previewImages.length > 1 ? 'block' : 'none';
-        nextPreviewBtn.style.display = previewImages.length > 1 ? 'block' : 'none';
-        resetZoomPreview();
-    }
-    function nextPreviewImage() {
-        currentPreviewIndex = (currentPreviewIndex + 1) % previewImages.length;
-        updatePreviewImage();
-    }
-    function prevPreviewImage() {
-        currentPreviewIndex = (currentPreviewIndex - 1 + previewImages.length) % previewImages.length;
-        updatePreviewImage();
-    }
-    function applyTransform() {
-        previewImage.style.transform = `translate(${panOffset.x}px, ${panOffset.y}px) scale(${currentZoom})`;
-    }
-
-    function zoomInPreview() {
-        currentZoom = Math.min(currentZoom + 0.2, 3);
-        applyTransform();
-    }
-
-    function zoomOutPreview() {
-        currentZoom = Math.max(currentZoom - 0.2, 0.5);
-        if (currentZoom === 1) { // Reset pan when zooming back to normal
-            panOffset = { x: 0, y: 0 };
-        }
-        applyTransform();
-    }
-
-    function resetZoomPreview() {
-        currentZoom = 1;
-        panOffset = { x: 0, y: 0 };
-        isPanning = false;
-        previewImage.classList.remove('is-panning');
-        applyTransform();
-    }
-
-     // --- Panning Logic ---
+    // --- Panning Logic ---
     function getEventCoords(e) {
         return e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
     }
@@ -1847,8 +1877,6 @@
     });
 
     // --- Image Transform Logic ---
-    const debouncedSaveMainImageStyle = debounce(saveMainImageStyle, 1000);
-
     function setupDetailsViewListeners() {
         detailsImageTransformBox.addEventListener('mousedown', startDrag);
         document.querySelectorAll('.resize-handle').forEach(handle => {
@@ -1868,6 +1896,7 @@
     }
 
     function startDrag(e) {
+        if (window.innerWidth < 768) return; // Disable drag on mobile
         // Prevent dragging if a resize handle was clicked
         if (e.target.classList.contains('resize-handle')) return;
         e.preventDefault();
@@ -1906,6 +1935,7 @@
     }
 
     function startResize(e) {
+        if (window.innerWidth < 768) return; // Disable resize on mobile
         e.preventDefault();
         e.stopPropagation();
         imageTransform.isResizing = true;
@@ -1988,17 +2018,6 @@
         currentCardForDetails.main_image_style = data.main_image_style;
     }
 
-
-    // --- Utilities ---
-    let debounceTimer;
-    function debounce(func, delay) {
-        return function(...args) {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => func.apply(this, args), delay);
-        }
-    }
-    function customConfirm(message) { return new Promise(resolve => resolve(confirm(message))); }
-
     // --- Scroll to Top Button Logic ---
     const scrollToTopBtn = document.getElementById('scrollToTopBtn');
     const checkScroll = () => {
@@ -2027,3 +2046,4 @@
   </script>
 </body>
 </html>
+
