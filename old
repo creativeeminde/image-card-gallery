@@ -1,1243 +1,1715 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8" />
-    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
-    <title>TaskMaster</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="https://ik.imagekit.io/xfifcyvcg/P_icon.ico?updatedAt=1748049193174" type="image/x-icon">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Modeld Gallery</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      background: #f5f5f5;
+      display: grid;
+      grid-template-columns: 250px 1fr;
+    }
 
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#101922"/>
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="TaskMaster">
-    <link rel="apple-touch-icon" href="icons/icon-180x180.png">
-    
-    <link id="favicon" rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%23137fec'/%3E%3C/svg%3E">
+    .sidebar {
+      background: white;
+      padding: 20px;
+      border-right: 1px solid #ddd;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    .sidebar h3 {
+      margin-top: 0;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
+    }
     
-    <link href="https://fonts.googleapis.com" rel="preconnect" />
-    <link crossorigin href="https://fonts.gstatic.com" rel="preconnect" />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet" />
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+    .sidebar .favorites-section h3,
+    .sidebar .nsfw-section h3 {
+        cursor: pointer;
+        border-radius: 4px;
+        padding: 5px 10px;
+        transition: background-color 0.2s;
+        border-bottom: 1px solid #eee;
+        margin: 0;
+    }
     
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    .sidebar .favorites-section h3:hover,
+    .sidebar .nsfw-section h3:hover {
+        background-color: #f0f0f0;
+    }
+    
+    .sidebar .favorites-section h3.active {
+        background: #4caf50 !important;
+        color: white !important;
+        border-color: #4caf50 !important;
+    }
+    
+    .sidebar .nsfw-section h3.active {
+        background: #f44336 !important; /* Red for NSFW */
+        color: white !important;
+        border-color: #f44336 !important;
+    }
 
-    <script>
-        // Tailwind Config & Dark Mode Setup
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    colors: {
-                        "primary": "#137fec",
-                        "background-light": "#f6f7f8",
-                        "background-dark": "#101922",
-                    },
-                    fontFamily: { "display": ["Inter"] },
-                },
-            },
-        }
-
-        // Apply theme from localStorage on initial load to prevent flashing
-        function applyTheme(theme) {
-            const htmlTag = document.documentElement;
-            localStorage.setItem('theme', theme);
-            if (theme === 'dark') {
-                htmlTag.classList.add('dark');
-            } else if (theme === 'light') {
-                htmlTag.classList.remove('dark');
-            } else { // System default
-                if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-                    htmlTag.classList.add('dark');
-                } else {
-                    htmlTag.classList.remove('dark');
-                }
-            }
-        }
-        
-        // Initial theme application
-        const savedTheme = localStorage.getItem('theme') || 'system';
-        applyTheme(savedTheme);
-    </script>
+    .filter-section, .upload-section, .tags-section, .favorites-section, .nsfw-section {
+      margin-bottom: 20px;
+    }
     
-    <style>
-        /* Ensures tap feedback on iOS */
-        [onclick], [data-view] {
-          cursor: pointer;
-        }
-    </style>
+    .favorites-section {
+        display: none; /* Initially hidden */
+    }
+
+    .filter-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .related-model-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+      background-color: #fff8e1;
+      padding: 8px;
+      border-radius: 8px;
+    }
+
+    .tag-bubble {
+      background-color: #e0f7fa;
+      color: #00796b;
+      padding: 4px 10px;
+      border-radius: 16px;
+      font-size: 0.8rem;
+      display: inline-block;
+      white-space: nowrap;
+    }
+
+    .related-tag-bubble {
+      background-color: #ffecb3;
+      color: #5d4037;
+      padding: 4px 10px;
+      border-radius: 16px;
+      font-size: 0.8rem;
+      display: inline-block;
+      white-space: nowrap;
+    }
+
+    .card-info h4 {
+      margin: 10px 0 5px 0;
+      font-size: 1.1rem;
+      color: #333;
+    }
+
+    .filter-options button {
+      background: #f0f0f0;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 5px 10px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    .filter-options button:hover {
+      background: #e0e0e0;
+    }
+
+    .filter-options button.active {
+      background: #4caf50 !important;
+      color: white !important;
+      border-color: #4caf50 !important;
+    }
+
+    #brokenImagesContainer button {
+      background-color: #ffebee;
+      border-color: #c62828;
+      color: #c62828;
+    }
+
+    .tag-input {
+      display: flex;
+      margin-bottom: 10px;
+    }
+
+    .tag-input input {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px 0 0 4px;
+    }
+
+    .tag-input button {
+      background: #4caf50;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 0 4px 4px 0;
+      cursor: pointer;
+    }
+
+    .common-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .common-tags button {
+      background: #f0f0f0;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 5px 10px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    .main-content {
+      padding: 20px;
+    }
+
+    .gallery {
+      column-count: 3;
+      column-gap: 20px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+      display: inline-block;
+      width: 100%;
+      break-inside: avoid;
+      position: relative;
+      cursor: pointer;
+    }
+    
+    .card:hover .card-actions {
+      opacity: 1;
+    }
+
+    .card-actions {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      display: flex;
+      gap: 5px;
+      z-index: 1;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .card-actions button {
+      background: rgba(255, 255, 255, 0.8);
+      border: none;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .card-actions button:hover {
+      background: white;
+      transform: scale(1.1);
+    }
+    
+    .favorite-btn {
+      color: #ccc; /* Default star color */
+    }
+
+    .favorite-btn.favorited {
+      color: #ffc107; /* Favorited star color */
+    }
+
+    .delete-btn {
+      color: #f44336;
+    }
+
+    .edit-btn {
+      color: #2196F3;
+    }
+
+    .card img {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 8px 8px 0 0;
+    }
+
+    .card-info {
+      padding: 15px;
+    }
+
+    .card-info h4 {
+      margin: 0 0 10px 0;
+      font-size: 1.2rem;
+    }
+    
+    .add-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #4caf50;
+      color: white;
+      border: none;
+      padding: 14px 18px;
+      border-radius: 50%;
+      font-size: 20px;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      z-index: 100;
+    }
+
+    .home-btn {
+      position: fixed;
+      bottom: 200px;
+      right: 20px;
+      background: #2196F3;
+      color: white;
+      border: none;
+      padding: 14px 18px;
+      border-radius: 50%;
+      font-size: 20px;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      z-index: 100;
+    }
+
+    .videos-btn {
+      position: fixed;
+      bottom: 140px;
+      right: 20px;
+      background: #FF5722;
+      color: white;
+      border: none;
+      padding: 14px 18px;
+      border-radius: 50%;
+      font-size: 20px;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      z-index: 100;
+    }
+    
+    .celebrities-btn {
+      position: fixed;
+      bottom: 80px;
+      right: 20px;
+      background: #FFC107;
+      color: white;
+      border: none;
+      padding: 14px 18px;
+      border-radius: 50%;
+      font-size: 20px;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      z-index: 100;
+    }
+
+
+    /* Model Viewer Styles */
+    .model-viewer {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.9);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+
+    .model-viewer-content {
+      position: relative;
+      width: 90%;
+      height: 80%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    .model-viewer img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      transition: transform 0.1s ease;
+      transform-origin: 0 0;
+      cursor: grab;
+    }
+
+    .model-viewer img.grabbing {
+      cursor: grabbing;
+    }
+
+    .model-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 20px;
+    }
+
+    .nav-btn {
+      background: rgba(255, 255, 255, 0.3);
+      border: none;
+      color: white;
+      font-size: 2rem;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .nav-btn:hover {
+      background: rgba(255, 255, 255, 0.5);
+    }
+
+    .model-counter {
+      color: white;
+      text-align: center;
+      margin-top: 10px;
+    }
+
+    .model-viewer-close {
+      position: absolute;
+      top: 20px;
+      right: 30px;
+      color: white;
+      font-size: 2rem;
+      cursor: pointer;
+    }
+
+    .model-viewer-footer {
+      position: absolute;
+      bottom: 20px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .upload-related-btn {
+      background: #4caf50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+
+    .upload-related-btn:hover {
+      background: #45a049;
+    }
+
+    /* Zoom Controls */
+    .zoom-controls {
+      position: absolute;
+      bottom: 80px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 10;
+    }
+
+    .zoom-btn {
+      background: rgba(0, 0, 0, 0.6);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      font-size: 1.2rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .zoom-btn:hover {
+      background: rgba(0, 0, 0, 0.8);
+    }
+
+    .reset-zoom {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.6);
+      color: white;
+      border: none;
+      border-radius: 20px;
+      padding: 8px 16px;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+
+    .reset-zoom:hover {
+      background: rgba(0, 0, 0, 0.8);
+    }
+
+    /* Related Model Tags Popup */
+    .related-tags-popup {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0,0,0,0.5);
+      align-items: center;
+      justify-content: center;
+      z-index: 3000;
+    }
+
+    .related-tags-content {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      width: 400px;
+      max-width: 90%;
+    }
+
+    /* Popup Styles */
+    .popup {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0,0,0,0.5);
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    #relatedModelsPopup {
+      z-index: 3000;
+    }
+
+    .popup-content {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      width: 400px;
+      max-width: 90%;
+      position: relative;
+    }
+
+    .popup-content h3 {
+      margin-top: 0;
+    }
+
+    .popup-content input, 
+    .popup-content textarea,
+    .popup-content select {
+      width: 100%;
+      margin-bottom: 10px;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      box-sizing: border-box;
+    }
+
+    .popup-content button {
+      margin-right: 8px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .popup-content button[type="submit"] {
+      background: #4caf50;
+      color: white;
+    }
+
+    .popup-content button[type="button"] {
+      background: #f0f0f0;
+    }
+
+    .error-message {
+      color: red;
+      font-size: 0.8rem;
+      margin-bottom: 10px;
+    }
+
+    .selected-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+
+    .selected-tag {
+      background: #e0f7fa;
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+    }
+
+    .selected-tag button {
+      background: none;
+      border: none;
+      color: #666;
+      margin-left: 5px;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 1200px) {
+      .gallery {
+        column-count: 2;
+      }
+    }
+
+    @media (max-width: 768px) {
+      body {
+        grid-template-columns: 1fr;
+      }
+      /* FIX: Adjust sidebar for mobile */
+      .sidebar {
+        position: static;
+        height: auto;
+        overflow-y: visible;
+        border-right: none;
+        border-bottom: 1px solid #ddd;
+      }
+      .gallery {
+        column-count: 1;
+      }
+    }
+  </style>
 </head>
+<body>
 
-<body class="bg-background-light dark:bg-background-dark font-display text-slate-800 dark:text-slate-200 pb-16 md:pb-0">
-
-    <header class="flex items-center justify-between px-6 py-3 border-b border-slate-200 dark:border-slate-800 sticky top-0 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-sm z-50">
-        <div class="flex items-center gap-4">
-            <div id="online-status" class="size-3 rounded-full bg-green-500" title="Online"></div>
-            <div class="text-primary size-7"><svg fill="currentColor" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M6 6H42L36 24L42 42H6L12 24L6 6Z"></path></svg></div>
-            <h1 class="text-xl font-bold text-slate-900 dark:text-white">TaskMaster</h1>
-        </div>
-        <nav class="hidden md:flex items-center gap-8">
-            <a data-view="#schedule-view" class="nav-link text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary cursor-pointer">Today</a>
-            <a data-view="#calendar-view" class="nav-link text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary cursor-pointer">Calendar</a>
-            <a data-view="#todo-view" class="nav-link text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary cursor-pointer">To-Do</a>
-            <a data-view="#projects-view" class="nav-link text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary cursor-pointer">Projects</a>
-            <a data-view="#pomodoro-view" class="nav-link text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary cursor-pointer">Pomodoro Timer</a>
-        </nav>
-        <div class="flex items-center gap-4">
-            <button class="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800"><span class="material-symbols-outlined text-slate-600 dark:text-slate-300">search</span></button>
-            <button class="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800"><span class="material-symbols-outlined text-slate-600 dark:text-slate-300">notifications</span></button>
-            <img alt="User avatar" class="size-10 rounded-full cursor-pointer" id="profile-pic" src="https://i.pravatar.cc/150?u=a042581f4e29026704d"/>
-        </div>
-    </header>
-
-    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-background-light dark:bg-background-dark border-t border-slate-200 dark:border-slate-800 z-50 flex justify-around">
-        <a data-view="#schedule-view" class="nav-link flex flex-col items-center text-center p-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary cursor-pointer">
-            <span class="material-symbols-outlined">today</span>
-            <span>Today</span>
-        </a>
-        <a data-view="#calendar-view" class="nav-link flex flex-col items-center text-center p-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary cursor-pointer">
-            <span class="material-symbols-outlined">calendar_month</span>
-            <span>Calendar</span>
-        </a>
-        <a data-view="#todo-view" class="nav-link flex flex-col items-center text-center p-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary cursor-pointer">
-            <span class="material-symbols-outlined">checklist</span>
-            <span>To-Do</span>
-        </a>
-        <a data-view="#projects-view" class="nav-link flex flex-col items-center text-center p-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary cursor-pointer">
-            <span class="material-symbols-outlined">view_kanban</span>
-            <span>Projects</span>
-        </a>
-        <a data-view="#pomodoro-view" class="nav-link flex flex-col items-center text-center p-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary cursor-pointer">
-            <span class="material-symbols-outlined">timer</span>
-            <span>Pomodoro</span>
-        </a>
-    </nav>
-    <div id="load-template-modal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
-        <div class="bg-background-light dark:bg-background-dark rounded-lg shadow-xl w-full max-w-md">
-            <div class="flex items-center justify-between p-4 border-b dark:border-slate-800">
-                <h3 class="text-lg font-bold">Load a Template</h3>
-                <button id="close-template-modal-btn" class="p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700">
-                    <span class="material-symbols-outlined">close</span>
-                </button>
-            </div>
-            <div id="template-list" class="p-4 max-h-80 overflow-y-auto">
-                </div>
+  <aside class="sidebar">
+    <div class="filter-section">
+      <h3>Filter by Tags</h3>
+      <div class="filter-options" id="filterTags">
         </div>
     </div>
-    <div id="views-container">
-        <div id="schedule-view" class="hidden"><main class="flex-1 px-10 py-8"><div class="mx-auto max-w-5xl"><div class="flex items-center justify-between mb-8"><div><h1 id="schedule-title" class="text-3xl font-bold"></h1><p id="current-date" class="text-slate-500"></p></div>
-        <div class="flex items-center gap-2">
-            <button id="schedule-tomorrow-btn" class="px-4 py-2 text-sm font-semibold rounded-lg border bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700">Schedule for Tomorrow &rarr;</button>
-            <button id="save-template-btn" class="px-4 py-2 text-sm font-semibold rounded-lg border bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700">Save Template</button>
-            <button id="load-template-btn" class="px-4 py-2 text-sm font-semibold rounded-lg border bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700">Load Template</button>
-        </div>
-        </div><div class="relative"><div id="hour-grid" class="grid grid-cols-[auto_1fr] gap-x-4"></div><div id="events-container" class="absolute top-0 left-[60px] right-0 bottom-0"></div></div></div></main><div class="fixed bottom-10 right-10 md:bottom-10"><button id="add-event-btn" class="flex items-center justify-center rounded-full size-14 bg-primary text-white shadow-lg"><span class="material-symbols-outlined">add</span></button></div></div>
-        
-        <div id="form-view" class="hidden"><main class="w-full max-w-2xl px-4 py-8 mx-auto"><div class="space-y-8"><div><h2 class="text-3xl font-bold">New Event</h2><p class="mt-2 text-slate-500">Create a new event for your schedule.</p></div><form id="event-form" class="space-y-6">
-            <div><label class="block text-sm font-medium" for="title">Title</label><input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="title" name="title" type="text" /></div>
-            <div>
-                <label class="block text-sm font-medium" for="category">Category</label>
-                <select required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="category" name="category">
-                    <option>Work</option>
-                    <option>Personal</option>
-                    <option>Spiritual</option>
-                    <option>Education</option>
-                    <option>Entertainment</option>
-                </select>
-            </div>
-            <div><label class="block text-sm font-medium" for="date">Date</label><input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="date" name="date" type="text" readonly /></div>
-            <div class="grid grid-cols-2 gap-6"><div><label class="block text-sm font-medium" for="start-time">Start Time</label><input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 [color-scheme:dark]" id="start-time" name="start_time" type="time" /></div><div><label class="block text-sm font-medium" for="end-time">End Time</label><input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 [color-scheme:dark]" id="end-time" name="end_time" type="time" /></div></div>
-            <div class="flex justify-between items-center pt-4">
-                <button id="delete-event-btn" class="px-6 py-3 rounded-lg text-red-500 hover:bg-red-500/10 hidden" type="button">Delete Event</button>
-                <div class="flex gap-3">
-                    <button id="cancel-btn" class="px-6 py-3 rounded-lg border bg-white dark:bg-slate-800" type="button">Cancel</button>
-                    <button class="px-6 py-3 rounded-lg text-white bg-primary" type="submit">Create Event</button>
-                </div>
-            </div>
-        </form></div></main></div>
-        <div id="calendar-view" class="hidden"><main class="container mx-auto px-4 py-8"><div class="flex flex-col lg:flex-row justify-center gap-8"><div class="w-full lg:max-w-md bg-white dark:bg-slate-900/50 p-4 rounded-lg"><div class="flex items-center justify-between mb-4"><button id="cal1-prev-btn" class="p-2 rounded-full"><span class="material-symbols-outlined">chevron_left</span></button><h2 id="cal1-month-year" class="text-lg font-semibold"></h2><button class="opacity-0 p-2"><span class="material-symbols-outlined">chevron_right</span></button></div><div class="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-500 py-2"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div><div id="cal1-body" class="grid grid-cols-7 gap-1 text-center"></div></div><div class="w-full lg:max-w-md bg-white dark:bg-slate-900/50 p-4 rounded-lg"><div class="flex items-center justify-between mb-4"><button class="opacity-0 p-2"><span class="material-symbols-outlined">chevron_left</span></button><h2 id="cal2-month-year" class="text-lg font-semibold"></h2><button id="cal2-next-btn" class="p-2 rounded-full"><span class="material-symbols-outlined">chevron_right</span></button></div><div class="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-500 py-2"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div><div id="cal2-body" class="grid grid-cols-7 gap-1 text-center"></div></div></div></main></div>
-        
-        <div id="todo-view" class="hidden"><main class="container mx-auto px-4 py-8"><div class="max-w-4xl mx-auto"><div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-bold">My To-Do List</h2><button id="new-task-btn" class="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg font-semibold"><span class="material-symbols-outlined">add_circle</span>New Task</button></div><div class="bg-white/50 dark:bg-white/5 rounded-lg p-6 mb-8"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">Today's Progress</h3><span id="progress-text" class="text-sm font-medium"></span></div><div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5"><div id="progress-bar" class="bg-primary h-2.5 rounded-full" style="width:0%"></div></div><div class="grid grid-cols-3 gap-4 text-center mt-4" id="stats-container"></div></div>
-            <div class="space-y-6">
-                <div>
-                    <h3 class="text-lg font-semibold mb-3 border-b pb-2 text-red-500">Overdue</h3>
-                    <div id="overdue-tasks" class="space-y-2"></div>
-                </div>
-                <div>
-                    <h3 class="text-lg font-semibold mb-3 border-b pb-2">Today</h3>
-                    <div id="today-tasks" class="space-y-2"></div>
-                </div>
-                <div>
-                    <h3 class="text-lg font-semibold mb-3 border-b pb-2">Upcoming</h3>
-                    <div id="upcoming-tasks" class="space-y-2"></div>
-                </div>
-            </div>
-            </div></main></div>
-        <div id="new-task-view" class="hidden"><main class="w-full max-w-2xl px-4 py-8 mx-auto"><div class="space-y-8"><div><h2 class="text-3xl font-bold">New Task</h2><p class="mt-2 text-slate-500">Add a new item to your to-do list.</p></div><form id="new-task-form" class="space-y-6"><div><label class="block text-sm font-medium" for="task-title">Task Title</label><input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="task-title" name="title" placeholder="e.g., Pay electricity bill" type="text" /></div><div><label class="block text-sm font-medium" for="task-due-date">Due Date</label><input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="task-due-date" name="due_date" type="text" readonly /></div><div><label class="block text-sm font-medium" for="task-category">Category</label><select class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="task-category" name="category"><option>Personal</option><option>Work</option><option>Shopping</option><option>Other</option></select></div><div class="flex justify-end pt-4 gap-3"><button id="cancel-task-btn" class="px-6 py-3 rounded-lg border bg-white dark:bg-slate-800" type="button">Cancel</button><button class="px-6 py-3 rounded-lg text-white bg-primary" type="submit">Create Task</button></div></form></div></main></div>
-        <div id="settings-view" class="hidden"><main class="container mx-auto px-4 py-8"><div class="max-w-2xl mx-auto space-y-10"><div><h2 class="text-4xl font-extrabold mb-8 text-slate-900 dark:text-white">Settings</h2></div><section><h3 class="text-xl font-semibold mb-4 text-slate-900 dark:text-white">Notifications</h3><div class="bg-white/50 dark:bg-white/5 rounded-lg p-6 space-y-4"><div class="flex items-center justify-between"><div><p class="font-medium">Event Notifications</p><p class="text-sm text-slate-500 dark:text-slate-400">Enable or disable notifications for upcoming events and reminders.</p></div><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" value="" class="sr-only peer" checked /><div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div></label></div><div class="flex items-center justify-between"><div><p class="font-medium">Task Notifications</p><p class="text-sm text-slate-500 dark:text-slate-400">Receive notifications for task deadlines and updates.</p></div><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" value="" class="sr-only peer" checked /><div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div></label></div></div></section><section><h3 class="text-xl font-semibold mb-4 text-slate-900 dark:text-white">Theme</h3><div id="theme-selector" class="flex rounded-lg bg-white dark:bg-slate-800 p-1 shadow-sm"><button class="flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors" data-theme="light">Light</button><button class="flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors" data-theme="dark">Dark</button><button class="flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors" data-theme="system">System</button></div></section><section><h3 class="text-xl font-semibold mb-4 text-slate-900 dark:text-white">Account</h3><div class="bg-white/50 dark:bg-white/5 rounded-lg divide-y divide-slate-200 dark:divide-slate-800"><a href="#" class="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-t-lg"><p class="font-medium">Manage Account</p><span class="material-symbols-outlined text-slate-400">chevron_right</span></a><a href="#" class="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-b-lg text-red-500"><p class="font-medium">Sign Out</p><span class="material-symbols-outlined text-red-500">chevron_right</span></a></div></section></div></main></div>
-        
-        <div id="projects-view" class="hidden"><main class="flex-grow container mx-auto px-4 sm:px-6 lg:px-8 py-8"><div class="flex flex-col gap-6"><div class="flex justify-between items-center"><div><h2 class="text-3xl font-bold text-slate-900 dark:text-white">Project Tracker</h2><p class="text-slate-500 dark:text-slate-400 mt-1">Manage your projects and tasks efficiently.</p></div><div class="flex gap-4"><button id="new-project-btn" class="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg font-semibold"><span class="material-symbols-outlined">add</span>New Project</button><button id="new-project-task-btn" class="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg font-semibold"><span class="material-symbols-outlined">add_circle</span>New Task</button></div></div><div id="project-selector-container" class="flex gap-4 items-center"><h3 class="text-xl font-bold text-slate-900 dark:text-white">Project:</h3><select id="project-selector" class="rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 px-4 py-2"></select></div><div class="grid grid-cols-1 md:grid-cols-3 gap-6"><div class="bg-slate-100/50 dark:bg-slate-900/50 rounded-lg p-4"><div class="flex items-center justify-between mb-4"><h4 class="font-bold text-slate-800 dark:text-slate-200">To Do</h4><span id="count-todo" class="text-sm font-medium text-slate-500 bg-slate-200 dark:bg-slate-800 px-2 py-1 rounded-full">0</span></div><div id="kanban-todo" class="space-y-4 kanban-column" data-status="To Do"></div></div><div class="bg-slate-100/50 dark:bg-slate-900/50 rounded-lg p-4"><div class="flex items-center justify-between mb-4"><h4 class="font-bold text-slate-800 dark:text-slate-200">In Progress</h4><span id="count-inprogress" class="text-sm font-medium text-slate-500 bg-slate-200 dark:bg-slate-800 px-2 py-1 rounded-full">0</span></div><div id="kanban-inprogress" class="space-y-4 kanban-column" data-status="In Progress"></div></div><div class="bg-slate-100/50 dark:bg-slate-900/50 rounded-lg p-4"><div class="flex items-center justify-between mb-4"><h4 class="font-bold text-slate-800 dark:text-slate-200">Done</h4><span id="count-done" class="text-sm font-medium text-slate-500 bg-slate-200 dark:bg-slate-800 px-2 py-1 rounded-full">0</span></div><div id="kanban-done" class="space-y-4 kanban-column" data-status="Done"></div></div></div></div></main></div>
-        <div id="new-project-view" class="hidden"><main class="w-full max-w-2xl px-4 py-8 mx-auto"><div class="space-y-8"><div><h2 class="text-3xl font-bold">New Project</h2><p class="mt-2 text-slate-500">Create a new project to organize your tasks.</p></div><form id="new-project-form" class="space-y-6"><div><label class="block text-sm font-medium" for="project-name">Project Name</label><input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="project-name" name="name" placeholder="e.g., Marketing Campaign" type="text" /></div><div class="flex justify-end pt-4 gap-3"><button id="cancel-project-btn" class="px-6 py-3 rounded-lg border bg-white dark:bg-slate-800" type="button">Cancel</button><button class="px-6 py-3 rounded-lg text-white bg-primary" type="submit">Create Project</button></div></form></div></main></div>
-        <div id="new-project-task-view" class="hidden"><main class="w-full max-w-2xl px-4 py-8 mx-auto"><div class="space-y-8"><div><h2 class="text-3xl font-bold">New Project Task</h2><p class="mt-2 text-slate-500">Add a new task to your project.</p></div><form id="new-project-task-form" class="space-y-6"><div><label class="block text-sm font-medium" for="project-task-title">Task Title</label><input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="project-task-title" name="title" placeholder="e.g., Design marketing materials" type="text" /></div><div><label class="block text-sm font-medium" for="project-task-due-date">Due Date</label><input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="project-task-due-date" name="due_date" type="text" readonly /></div><div><label class="block text-sm font-medium" for="project-task-assignee">Assignee</label><input class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="project-task-assignee" name="assignee" placeholder="e.g., John Doe" type="text" /></div><div><label class="block text-sm font-medium" for="project-task-status">Status</label><select class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="project-task-status" name="status"><option>To Do</option><option>In Progress</option><option>Done</option></select></div><div class="flex justify-end pt-4 gap-3"><button id="cancel-project-task-btn" class="px-6 py-3 rounded-lg border bg-white dark:bg-slate-800" type="button">Cancel</button><button class="px-6 py-3 rounded-lg text-white bg-primary" type="submit">Create Task</button></div></form></div></main></div>
-        <div id="pomodoro-view" class="hidden"><main class="container mx-auto px-4 py-8"><div class="max-w-2xl mx-auto text-center space-y-10">
-            <h2 class="text-4xl font-extrabold text-primary">Pomodoro Timer</h2>
-            
-            <div class="bg-white/50 dark:bg-white/5 rounded-xl p-8 shadow-lg space-y-8">
-                <div class="flex justify-center gap-4">
-                    <button id="pomodoro-work-btn" class="px-4 py-2 rounded-lg text-sm font-semibold transition-colors timer-session-btn bg-primary text-white" data-session="work">Work</button>
-                    <button id="pomodoro-short-break-btn" class="px-4 py-2 rounded-lg text-sm font-semibold transition-colors timer-session-btn bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600" data-session="shortBreak">Short Break</button>
-                    <button id="pomodoro-long-break-btn" class="px-4 py-2 rounded-lg text-sm font-semibold transition-colors timer-session-btn bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600" data-session="longBreak">Long Break</button>
-                </div>
-                
-                <div id="pomodoro-timer-display" class="text-9xl font-mono font-bold text-slate-900 dark:text-white">25:00</div>
-                
-                <div class="flex justify-center gap-6">
-                    <button id="pomodoro-start-pause-btn" class="flex items-center gap-2 bg-primary text-white px-8 py-3 rounded-full font-bold text-xl shadow-lg hover:bg-primary/90 transition-colors">
-                        <span class="material-symbols-outlined text-3xl">play_arrow</span>
-                        <span id="pomodoro-start-pause-text">Start</span>
-                    </button>
-                    <button id="pomodoro-reset-btn" class="flex items-center justify-center rounded-full size-14 bg-slate-300 dark:bg-slate-700 text-slate-800 dark:text-slate-200 shadow-md hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors">
-                        <span class="material-symbols-outlined">restart_alt</span>
-                    </button>
-                </div>
-                
-                <div class="text-lg font-medium">
-                    <span id="pomodoro-cycle-count">Cycle: 0 / 4</span>
-                </div>
-            </div>
-            <div class="bg-white/50 dark:bg-white/5 rounded-xl p-6 shadow-md text-left space-y-4">
-                <h3 class="text-xl font-semibold mb-4 border-b pb-2">Timer Settings</h3>
-                <div class="grid grid-cols-3 gap-6">
-                    <div>
-                        <label for="work-duration" class="block text-sm font-medium">Work (min)</label>
-                        <input type="number" id="work-duration" value="25" min="1" class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" />
-                    </div>
-                    <div>
-                        <label for="short-break-duration" class="block text-sm font-medium">Short Break (min)</label>
-                        <input type="number" id="short-break-duration" value="5" min="1" class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" />
-                    </div>
-                    <div>
-                        <label for="long-break-duration" class="block text-sm font-medium">Long Break (min)</label>
-                        <input type="number" id="long-break-duration" value="15" min="1" class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" />
-                    </div>
-                </div>
-                <button id="apply-pomodoro-settings-btn" class="w-full mt-4 bg-primary text-white px-4 py-2 rounded-lg font-semibold hover:bg-primary/90">Apply Settings</button>
-            </div>
-        </div></main></div>
-        </div>
-
-    <script>
-        // === SUPABASE & STATE SETUP ===
-        const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
-        const { createClient } = supabase;
-        const db = createClient(SUPABASE_URL, SUPABASE_KEY);
-        let selectedDate = new Date();
-        let calendarDisplayDate = new Date();
-        let currentProjectId = null;
-        let dragTaskId = null;
-        let editingTaskId = null;
-        let editingEventId = null;
-        let editingTodoId = null;
-        
-        // === POMODORO STATE ===
-        let timerInterval = null;
-        let pomodoroTimeLeft = 25 * 60; // Default work time in seconds
-        let pomodoroIsRunning = false;
-        let pomodoroSettings = {
-            work: 25,
-            shortBreak: 5,
-            longBreak: 15,
-            longBreakCycle: 4
-        };
-        let pomodoroCurrentSession = 'work';
-        let pomodoroCycleCount = 0; // The number of completed work sessions
-        
-        // NEW State variables for notifications
-        let originalTitle = document.title;
-        let originalFavicon = document.getElementById('favicon').href;
-        let flashingInterval = null;
-        const alarmSound = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
-        
-        // === HELPERS ===
-        const toYMD = (date) => date.toISOString().split('T')[0];
-        const timeToDecimal = (t) => { const [h, m] = t.split(':'); return parseInt(h, 10) + parseInt(m, 10) / 60; };
-        const formatTime = (t) => new Date(`1970-01-01T${t}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        const getCategoryClasses = (category) => {
-            switch (category) {
-                case 'Work':
-                    return 'bg-green-300 dark:bg-green-900/50 text-black-800 dark:text-slate-200';
-                case 'Personal':
-                    return 'bg-orange-300 dark:bg-orange-900/50 text-black-800 dark:text-slate-200';
-                case 'Education':
-                    return 'bg-purple-300 dark:bg-purple-900/50 text-black-800 dark:text-slate-200';
-                case 'Entertainment':
-                    return 'bg-blue-300 dark:bg-blue-900/50 text-black-800 dark:text-slate-200';
-                case 'spiritual':
-                    return 'bg-orange-700 dark:bg-orange-900/50 text-black-800 dark:text-slate-200';
-                default:
-                    return 'bg-slate-100 dark:bg-slate-900/50 text-slate-700 dark:text-slate-300';
-            }
-        }
-        // === VIEW MANAGEMENT ===
-        function showView(viewId) {
-            document.querySelectorAll('#views-container > div').forEach(v => v.classList.add('hidden'));
-            document.querySelector(viewId).classList.remove('hidden');
-            updateActiveLink(viewId);
-            if (viewId === '#schedule-view') displayEvents(selectedDate);
-            if (viewId === '#calendar-view') initializeCalendarView();
-            if (viewId === '#todo-view') displayTodos();
-            if (viewId === '#settings-view') initializeSettings();
-            if (viewId === '#projects-view') {
-                loadProjects();
-                displayProjects();
-            }
-            if (viewId === '#pomodoro-view') {
-                if (!timerInterval) resetPomodoroTimer();
-            } else {
-                pausePomodoroTimer();
-            }
-        }
-        
-        function updateActiveLink(activeViewId) {
-            document.querySelectorAll('.nav-link').forEach(link => {
-                const isActive = link.dataset.view === activeViewId;
-                
-                // Toggle active classes (text-primary, font-bold)
-                link.classList.toggle('text-primary', isActive);
-                link.classList.toggle('font-bold', isActive);
-                
-                // Toggle inactive classes (text-slate-600, dark:text-slate-300)
-                link.classList.toggle('text-slate-600', !isActive);
-                link.classList.toggle('dark:text-slate-300', !isActive);
-                
-                // This is for the desktop links that have a medium weight when inactive
-                if (link.closest('header nav')) {
-                    link.classList.toggle('font-medium', !isActive);
-                }
-            });
-        }
-        // === SCHEDULE VIEW LOGIC ===
-        function renderHourGrid() {
-            const grid = document.getElementById('hour-grid');
-            if (!grid) return;
-            grid.innerHTML = '';
-            for (let i = 0; i < 24; i++) {
-                const time = new Date(0, 0, 0, i).toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
-                grid.innerHTML += `<div class="text-right text-sm text-slate-500 h-16 pt-2 border-b dark:border-slate-800">${time}</div><div class="border-b dark:border-slate-800"></div>`;
-            }
-        }
-        async function displayEvents(date) {
-            const eventsContainer = document.getElementById('events-container');
-            const scheduleTitle = document.getElementById('schedule-title');
-            const currentDateEl = document.getElementById('current-date');
-            if (!eventsContainer || !scheduleTitle || !currentDateEl) return;
-            
-            const dateString = toYMD(date);
-            const isToday = (toYMD(new Date()) === dateString);
-            scheduleTitle.textContent = isToday ? "Today" : date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-            currentDateEl.textContent = date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-            
-            // Show a loading/offline state immediately
-            eventsContainer.innerHTML = `<p class="text-center text-slate-500 pt-4">Loading events...</p>`;
-
-            const { data: events, error } = await db.from('events').select('*').eq('date', dateString);
-            
-            eventsContainer.innerHTML = '';
-            if (error) { 
-                console.error('Error fetching events:', error); 
-                eventsContainer.innerHTML = `<p class="text-center text-red-500 pt-4">Could not load events. Check your connection.</p>`;
-                return;
-            }
-            if (!events || events.length === 0) { 
-                eventsContainer.innerHTML = `<p class="text-center text-slate-500 pt-4">No events for this day.</p>`; 
-                return;
-            }
-            
-            events.forEach(event => {
-                const start = timeToDecimal(event.start_time);
-                const end = timeToDecimal(event.end_time);
-                const eventEl = document.createElement('div');
-                
-                const colorClasses = getCategoryClasses(event.category);
-                
-                eventEl.className = `absolute p-2 rounded-lg overflow-hidden cursor-pointer ${colorClasses} hover:opacity-80`;
-                eventEl.style.cssText = `top:calc(${start}*4rem);height:calc(${(end-start)}*4rem);left:.5rem;right:.5rem;`;
-                eventEl.innerHTML = `<p class="font-bold text-sm truncate">${event.title}</p><p class="text-xs opacity-80">${formatTime(event.start_time)}</p>`;
-                
-                eventEl.addEventListener('click', () => editEvent(event));
-                eventsContainer.appendChild(eventEl);
-            });
-        }
-        
-        function editEvent(event) {
-            editingEventId = event.id;
-            // Populate form
-            document.getElementById('title').value = event.title;
-            document.getElementById('category').value = event.category;
-            document.getElementById('date')._flatpickr.setDate(event.date);
-            document.getElementById('start-time').value = event.start_time;
-            document.getElementById('end-time').value = event.end_time;
-            
-            // Update UI for editing
-            document.querySelector('#form-view h2').textContent = 'Edit Event';
-            document.querySelector('#event-form button[type="submit"]').textContent = 'Update Event';
-            document.getElementById('delete-event-btn').classList.remove('hidden');
-            
-            showView('#form-view');
-        }
-        async function deleteEvent() {
-            if (!editingEventId || !confirm('Are you sure you want to delete this event?')) {
-                return;
-            }
-            // Lightweight offline handling: just alert the user if offline.
-            if (!navigator.onLine) {
-                alert("You are offline. Please reconnect to delete the event.");
-                return;
-            }
-            const { error } = await db.from('events').delete().eq('id', editingEventId);
-            if (error) {
-                alert('Error deleting event: ' + error.message);
-            } else {
-                showView('#schedule-view');
-            }
-        }
-        // === FORM SUBMISSION LOGIC ===
-        async function handleEventFormSubmit(e) {
-            e.preventDefault();
-            if (!navigator.onLine) {
-                alert("You are offline. Please reconnect to save changes.");
-                return;
-            }
-            const form = e.target;
-            const formData = new FormData(form);
-            const eventData = Object.fromEntries(formData.entries());
-            if (eventData.start_time.length === 5) eventData.start_time += ':00';
-            if (eventData.end_time.length === 5) eventData.end_time += ':00';
-            
-            let response;
-            if (editingEventId) {
-                response = await db.from('events').update(eventData).eq('id', editingEventId);
-            } else {
-                response = await db.from('events').insert([eventData]);
-            }
-            if (response.error) {
-                alert('Error: ' + response.error.message);
-            } else {
-                showView('#schedule-view');
-            }
-        }
-        async function handleTaskFormSubmit(e) {
-            e.preventDefault();
-             if (!navigator.onLine) {
-                alert("You are offline. Please reconnect to save changes.");
-                return;
-            }
-            const form = e.target;
-            const formData = new FormData(form);
-            const taskData = Object.fromEntries(formData.entries());
-            let response;
-            if (editingTodoId) {
-                response = await db.from('todos').update(taskData).eq('id', editingTodoId);
-            } else {
-                taskData.status = 'Pending';
-                response = await db.from('todos').insert([taskData]);
-            }
-            
-            if (response.error) {
-                alert('Error creating task: ' + response.error.message);
-            } else {
-                showView('#todo-view');
-            }
-        }
-        
-        // === CALENDAR VIEW LOGIC ===
-        async function initializeCalendarView() {
-            const date1 = new Date(calendarDisplayDate), date2 = new Date(date1);
-            date2.setMonth(date2.getMonth() + 1);
-            const { data, error } = await db.from('events').select('date').gte('date', toYMD(new Date(date1.getFullYear(), date1.getMonth(), 1))).lte('date', toYMD(new Date(date2.getFullYear(), date2.getMonth() + 1, 0)));
-            const eventDates = error ? new Set() : new Set(data.map(e => e.date));
-            renderMonth(date1.getFullYear(), date1.getMonth(), document.getElementById('cal1-body'), document.getElementById('cal1-month-year'), eventDates);
-            renderMonth(date2.getFullYear(), date2.getMonth(), document.getElementById('cal2-body'), document.getElementById('cal2-month-year'), eventDates);
-        }
-        function renderMonth(year, month, bodyEl, titleEl, eventDates) {
-            bodyEl.innerHTML = '';
-            titleEl.textContent = new Date(year, month).toLocaleString('default', { month: 'long', year: 'numeric' });
-            const firstDay = new Date(year, month, 1).getDay(), daysInMonth = new Date(year, month + 1, 0).getDate();
-            for (let i = 0; i < firstDay; i++) bodyEl.insertAdjacentHTML('beforeend', '<div></div>');
-            for (let day = 1; day <= daysInMonth; day++) {
-                const date = new Date(year, month, day), dateString = toYMD(date);
-                const button = document.createElement('button');
-                button.className = 'relative h-10 w-10 flex items-center justify-center rounded-full ' + (toYMD(selectedDate) === dateString ? 'bg-primary text-white' : 'hover:bg-slate-200 dark:hover:bg-slate-800');
-                button.innerHTML = day + (eventDates.has(dateString) ? '<span class="absolute bottom-1 h-1 w-1 bg-primary rounded-full"></span>' : '');
-                button.onclick = () => { selectedDate = date; showView('#schedule-view'); };
-                bodyEl.appendChild(button);
-            }
-        }
-        // === TO-DO VIEW LOGIC (UPDATED) ===
-        async function displayTodos() {
-            const { data: todos, error } = await db.from('todos').select('*').order('due_date');
-            if (error) { console.error("Error fetching todos:", error); return; }
-            const todayYMD = toYMD(new Date());
-            
-            const overdueTasks = todos.filter(t => t.due_date < todayYMD && t.status !== 'Completed');
-            const todayTasks = todos.filter(t => t.due_date === todayYMD);
-            const upcomingTasks = todos.filter(t => t.due_date > todayYMD);
-            
-            renderTasks(overdueTasks, document.getElementById('overdue-tasks'));
-            renderTasks(todayTasks, document.getElementById('today-tasks'));
-            renderTasks(upcomingTasks, document.getElementById('upcoming-tasks'));
-            updateTodoStats(todos, todayTasks);
-        }
-        function renderTasks(tasks, container) { 
-            container.innerHTML = tasks.length ? tasks.map(renderTask).join('') : '<p class="text-slate-500">No tasks.</p>'; 
-        }
-        function renderTask(task) {
-            const isCompleted = task.status === 'Completed';
-            const statusColors = { 'Pending': 'bg-red-500/20 text-red-500', 'In Progress': 'bg-yellow-500/20 text-yellow-500', 'Completed': 'bg-green-500/20 text-green-500' };
-            const dueDateText = getDueDateText(task.due_date);
-            const todayYMD = toYMD(new Date());
-            const isOverdue = task.due_date < todayYMD && !isCompleted;
-            return `<div class="flex items-center gap-4 p-4 rounded-lg bg-white/50 dark:bg-white/5 ${isCompleted ? 'opacity-60' : ''} ${isOverdue ? 'border border-red-500/50' : ''}">
-                        <input type="checkbox" data-id="${task.id}" class="form-checkbox h-5 w-5 rounded border-slate-300 dark:border-slate-600 bg-transparent text-primary focus:ring-primary/50" ${isCompleted ? 'checked' : ''}>
-                        <div class="flex-grow">
-                            <p class="font-medium ${isCompleted ? 'line-through' : ''}">${task.title}</p>
-                            <p class="text-sm text-slate-500 ${isCompleted ? 'line-through' : ''}">${dueDateText} • ${task.category}</p>
-                        </div>
-                        <span class="text-xs font-semibold px-2 py-1 rounded-full ${statusColors[task.status] || ''}">${task.status}</span>
-                        <button class="todo-options-btn p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700" data-task='${JSON.stringify(task)}'>
-                            <span class="material-symbols-outlined text-slate-400">more_vert</span>
-                        </button>
-                    </div>`;
-        }
-        
-        function getDueDateText(dueDateStr) {
-            const today = new Date(toYMD(new Date()));
-            const dueDate = new Date(dueDateStr + 'T00:00:00');
-            const diffDays = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
-            if (diffDays === 0) return 'Due Today';
-            if (diffDays === 1) return 'Due Tomorrow';
-            if (diffDays > 1) return `Due in ${diffDays} days`;
-            if (diffDays < 0) {
-                const daysOver = Math.abs(diffDays);
-                return `Overdue by ${daysOver} day${daysOver > 1 ? 's' : ''}`;
-            }
-            return `Due ${dueDate.toLocaleDateString()}`;
-        }
-        function updateTodoStats(allTasks, todayTasks) {
-            const completedToday = todayTasks.filter(t => t.status === 'Completed').length;
-            const totalPending = allTasks.filter(t => t.status !== 'Completed').length;
-            const progress = todayTasks.length > 0 ? Math.round((completedToday / todayTasks.length) * 100) : 0;
-            
-            document.getElementById('progress-text').textContent = `${progress}% Complete`;
-            document.getElementById('progress-bar').style.width = `${progress}%`;
-            document.getElementById('stats-container').innerHTML = `<div><p class="text-2xl font-bold">${todayTasks.length}</p><p class="text-sm text-slate-500">Today's Tasks</p></div><div><p class="text-2xl font-bold">${completedToday}</p><p class="text-sm text-slate-500">Completed</p></div><div><p class="text-2xl font-bold">${totalPending}</p><p class="text-sm text-slate-500">Pending</p></div>`;
-        }
-        function showTodoOptionsMenu(task, button) {
-            document.querySelectorAll('.todo-options-menu').forEach(menu => menu.remove());
-            const menu = document.createElement('div');
-            menu.className = 'absolute z-10 right-0 mt-2 w-32 bg-white dark:bg-slate-800 rounded-lg shadow-lg border dark:border-slate-700 todo-options-menu';
-            menu.innerHTML = `<button class="w-full text-left px-4 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 rounded-t-lg edit-todo-btn">Edit</button><button class="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 dark:hover:bg-red-500/20 rounded-b-lg delete-todo-btn">Delete</button>`;
-            button.parentElement.style.position = 'relative';
-            button.parentElement.appendChild(menu);
-            menu.querySelector('.edit-todo-btn').onclick = () => { menu.remove(); editTodo(task); };
-            menu.querySelector('.delete-todo-btn').onclick = () => { menu.remove(); deleteTodo(task.id); };
-            setTimeout(() => {
-                document.addEventListener('click', () => menu.remove(), { once: true });
-            }, 0);
-        }
-        function editTodo(task) {
-            editingTodoId = task.id;
-            document.getElementById('task-title').value = task.title;
-            document.getElementById('task-due-date')._flatpickr.setDate(task.due_date);
-            document.getElementById('task-category').value = task.category;
-            document.querySelector('#new-task-view h2').textContent = 'Edit Task';
-            document.querySelector('#new-task-form button[type="submit"]').textContent = 'Update Task';
-            showView('#new-task-view');
-        }
-        async function deleteTodo(taskId) {
-            if (!navigator.onLine) {
-                alert("You are offline. Please reconnect to delete tasks.");
-                return;
-            }
-            if (!confirm('Are you sure you want to delete this task?')) return;
-            const { error } = await db.from('todos').delete().eq('id', taskId);
-            if (error) {
-                alert('Error deleting task: ' + error.message);
-            } else {
-                displayTodos();
-            }
-        }
-        // === SETTINGS VIEW LOGIC ===
-        function initializeSettings() {
-            const themeSelector = document.getElementById('theme-selector');
-            const savedTheme = localStorage.getItem('theme') || 'system';
-            themeSelector.querySelectorAll('button').forEach(btn => {
-                btn.classList.remove('bg-primary', 'text-white', 'text-slate-700', 'dark:text-slate-300');
-                if (btn.dataset.theme === savedTheme) {
-                    btn.classList.add('bg-primary', 'text-white');
-                } else {
-                    btn.classList.add('text-slate-700', 'dark:text-slate-300');
-                }
-                btn.addEventListener('click', () => {
-                    themeSelector.querySelectorAll('button').forEach(b => {
-                        b.classList.remove('bg-primary', 'text-white');
-                        b.classList.add('text-slate-700', 'dark:text-slate-300');
-                    });
-                    btn.classList.add('bg-primary', 'text-white');
-                    applyTheme(btn.dataset.theme);
-                });
-            });
-        }
-        // === PROJECTS VIEW LOGIC ===
-        async function loadProjects() {
-            const { data: projects, error } = await db.from('projects').select('*').order('created_at');
-            if (error) { console.error("Error fetching projects:", error); return; }
-            
-            const projectSelector = document.getElementById('project-selector');
-            projectSelector.innerHTML = '';
-            
-            projects.forEach(project => {
-                const option = document.createElement('option');
-                option.value = project.id;
-                option.textContent = project.name;
-                projectSelector.appendChild(option);
-            });
-            if (projects.length > 0 && !currentProjectId) {
-                currentProjectId = projects[0].id;
-                projectSelector.value = currentProjectId;
-            }
-            
-            projectSelector.addEventListener('change', () => {
-                currentProjectId = projectSelector.value;
-                displayProjects();
-            });
-        }
-        
-        async function displayProjects() {
-            if (!currentProjectId) return;
-            const { data: tasks, error } = await db
-                .from('project_tasks')
-                .select('*')
-                .eq('project_id', currentProjectId)
-                .order('due_date');
-            if (error) { console.error("Error fetching project tasks:", error); return; }
-            
-            document.getElementById('kanban-todo').innerHTML = '';
-            document.getElementById('kanban-inprogress').innerHTML = '';
-            document.getElementById('kanban-done').innerHTML = '';
-            
-            const todoCount = tasks.filter(t => t.status === 'To Do').length;
-            const inProgressCount = tasks.filter(t => t.status === 'In Progress').length;
-            const doneCount = tasks.filter(t => t.status === 'Done').length;
-            
-            document.getElementById('count-todo').textContent = todoCount;
-            document.getElementById('count-inprogress').textContent = inProgressCount;
-            document.getElementById('count-done').textContent = doneCount;
-            
-            tasks.forEach(task => {
-                const taskElement = createTaskElement(task);
-                const targetColumn = document.getElementById(`kanban-${task.status.toLowerCase().replace(' ', '')}`);
-                if (targetColumn) {
-                    targetColumn.appendChild(taskElement);
-                }
-            });
-        }
-        
-        function createTaskElement(task) {
-            const taskEl = document.createElement('div');
-            taskEl.className = 'bg-white dark:bg-slate-800 rounded-lg p-4 shadow-sm cursor-move';
-            taskEl.draggable = true;
-            taskEl.dataset.id = task.id;
-            
-            const dueDateText = getDueDateText(task.due_date);
-            taskEl.innerHTML = `
-                <div class="flex justify-between items-start">
-                    <div class="flex flex-col gap-2">
-                        <h5 class="font-semibold text-slate-900 dark:text-white">${task.title}</h5>
-                        <p class="text-sm text-slate-500 dark:text-slate-400">${dueDateText}</p>
-                        ${task.assignee ? `<p class="text-sm text-slate-600 dark:text-slate-300">Assignee: ${task.assignee}</p>` : ''}
-                    </div>
-                    <div class="flex-shrink-0 flex gap-1">
-                        <button class="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 edit-project-task-btn">
-                            <span class="material-symbols-outlined text-sm">edit</span>
-                        </button>
-                        <button class="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 delete-project-task-btn">
-                            <span class="material-symbols-outlined text-sm">delete</span>
-                        </button>
-                    </div>
-                </div>
-            `;
-            taskEl.addEventListener('dragstart', (e) => {
-                dragTaskId = task.id;
-                e.dataTransfer.setData('text/plain', task.id);
-                setTimeout(() => taskEl.classList.add('opacity-50'), 0);
-            });
-            taskEl.addEventListener('dragend', () => {
-                taskEl.classList.remove('opacity-50');
-                dragTaskId = null;
-            });
-            taskEl.querySelector('.edit-project-task-btn').addEventListener('click', () => {
-                editProjectTask(task);
-            });
-            taskEl.querySelector('.delete-project-task-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                deleteProjectTask(task.id);
-            });
-            return taskEl;
-        }
-        async function deleteProjectTask(taskId) {
-             if (!navigator.onLine) {
-                alert("You are offline. Please reconnect to delete tasks.");
-                return;
-            }
-            if (!confirm('Are you sure you want to delete this task?')) {
-                return;
-            }
-            const { error } = await db.from('project_tasks').delete().eq('id', taskId);
-            if (error) {
-                console.error('Error deleting task:', error);
-                alert('Error deleting task.');
-            } else {
-                displayProjects();
-            }
-        }
-        function editProjectTask(task) {
-            editingTaskId = task.id;
-            document.getElementById('project-task-title').value = task.title;
-            document.getElementById('project-task-due-date')._flatpickr.setDate(task.due_date);
-            document.getElementById('project-task-assignee').value = task.assignee || '';
-            document.getElementById('project-task-status').value = task.status;
-            document.querySelector('#new-project-task-view h2').textContent = 'Edit Project Task';
-            document.querySelector('#new-project-task-form button[type="submit"]').textContent = 'Update Task';
-            showView('#new-project-task-view');
-        }
-        
-        async function handleProjectFormSubmit(e) {
-            e.preventDefault();
-            if (!navigator.onLine) {
-                alert("You are offline. Please reconnect to create projects.");
-                return;
-            }
-            const form = e.target;
-            const formData = new FormData(form);
-            const newProject = Object.fromEntries(formData.entries());
-            const { error } = await db.from('projects').insert([newProject]).select();
-            if (error) {
-                alert('Error creating project: ' + error.message);
-            } else {
-                form.reset();
-                showView('#projects-view');
-                loadProjects();
-            }
-        }
-        
-        async function handleProjectTaskFormSubmit(e) {
-            e.preventDefault();
-            if (!navigator.onLine) {
-                alert("You are offline. Please reconnect to save tasks.");
-                return;
-            }
-            const form = e.target;
-            const formData = new FormData(form);
-            const taskData = Object.fromEntries(formData.entries());
-            let response;
-            if (editingTaskId) {
-                response = await db.from('project_tasks').update(taskData).eq('id', editingTaskId);
-            } else {
-                if (!currentProjectId) {
-                    alert('Please select a project first');
-                    return;
-                }
-                taskData.project_id = currentProjectId;
-                response = await db.from('project_tasks').insert([taskData]);
-            }
-            if (response.error) {
-                alert('Error saving task: ' + response.error.message);
-            } else {
-                form.reset();
-                editingTaskId = null;
-                document.querySelector('#new-project-task-view h2').textContent = 'New Project Task';
-                document.querySelector('#new-project-task-form button[type="submit"]').textContent = 'Create Task';
-                showView('#projects-view');
-                displayProjects();
-            }
-        }
-        
-        // === DRAG AND DROP LOGIC ===
-        function setupDragAndDrop() {
-            const columns = document.querySelectorAll('.kanban-column');
-            columns.forEach(column => {
-                column.addEventListener('dragover', (e) => {
-                    e.preventDefault();
-                    column.classList.add('bg-slate-200/50', 'dark:bg-slate-800/50');
-                });
-                
-                column.addEventListener('dragleave', () => {
-                    column.classList.remove('bg-slate-200/50', 'dark:bg-slate-800/50');
-                });
-                
-                column.addEventListener('drop', async (e) => {
-                    e.preventDefault();
-                    column.classList.remove('bg-slate-200/50', 'dark:bg-slate-800/50');
-                    if (!dragTaskId) return;
-                    
-                    if (!navigator.onLine) {
-                        alert("You are offline. Please reconnect to update task status.");
-                        // Re-render to snap the card back to its original column
-                        displayProjects();
-                        return;
-                    }
-                    
-                    const newStatus = column.dataset.status;
-                    
-                    const { error } = await db
-                        .from('project_tasks')
-                        .update({ status: newStatus })
-                        .eq('id', dragTaskId);
-                        
-                    if (error) {
-                        console.error('Error updating task status:', error);
-                    } else {
-                        displayProjects();
-                    }
-                });
-            });
-        }
-        // === TEMPLATE FUNCTIONS ===
-        function scheduleForTomorrow() {
-            selectedDate.setDate(selectedDate.getDate() + 1);
-            displayEvents(selectedDate);
-        }
-        async function saveCurrentDayAsTemplate() {
-            if (!navigator.onLine) {
-                alert("You are offline. Please reconnect to save templates.");
-                return;
-            }
-            const templateName = prompt("Please enter a name for this template:");
-            if (!templateName) return;
-            const dateString = toYMD(selectedDate);
-            const { data: events, error: fetchError } = await db.from('events')
-                .select('title, start_time, end_time, category')
-                .eq('date', dateString);
-            
-            if (fetchError) {
-                alert('Error fetching events to save: ' + fetchError.message);
-                return;
-            }
-            if (!events || events.length === 0) {
-                alert('There are no events on this day to save as a template.');
-                return;
-            }
-            const { data: template, error: templateError } = await db.from('schedule_templates')
-                .insert({ name: templateName })
-                .select()
-                .single();
-            if (templateError) {
-                alert('Error creating template: ' + templateError.message);
-                return;
-            }
-            const templateEvents = events.map(event => ({
-                template_id: template.id,
-                title: event.title,
-                start_time: event.start_time,
-                end_time: event.end_time,
-                category: event.category,
-            }));
-            const { error: eventsError } = await db.from('template_events').insert(templateEvents);
-            if (eventsError) {
-                alert('Error saving template events: ' + eventsError.message);
-            } else {
-                alert(`Template "${templateName}" saved successfully!`);
-            }
-        }
-        async function showLoadTemplateModal() {
-            const { data: templates, error } = await db.from('schedule_templates').select('*');
-            if (error) {
-                alert('Error fetching templates: ' + error.message);
-                return;
-            }
-            
-            const templateList = document.getElementById('template-list');
-            templateList.innerHTML = '';
-            if (templates.length === 0) {
-                templateList.innerHTML = '<p class="text-slate-500">No saved templates found.</p>';
-            } else {
-                templates.forEach(template => {
-                    const button = document.createElement('button');
-                    button.className = 'w-full text-left p-3 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 block';
-                    button.textContent = template.name;
-                    button.onclick = () => loadTemplate(template.id);
-                    templateList.appendChild(button);
-                });
-            }
-            document.getElementById('load-template-modal').classList.remove('hidden');
-            document.getElementById('load-template-modal').classList.add('flex');
-        }
-        async function loadTemplate(templateId) {
-            if (!navigator.onLine) {
-                alert("You are offline. Please reconnect to load templates.");
-                return;
-            }
-            if (!confirm('This will add the template events to the current day. Are you sure?')) {
-                return;
-            }
-            
-            const { data: templateEvents, error } = await db.from('template_events')
-                .select('*')
-                .eq('template_id', templateId);
-            if (error) {
-                alert('Error fetching template events: ' + error.message);
-                return;
-            }
-            
-            const dateString = toYMD(selectedDate);
-            const newEvents = templateEvents.map(event => ({
-                date: dateString,
-                title: event.title,
-                start_time: event.start_time,
-                end_time: event.end_time,
-                category: event.category,
-            }));
-            const { error: insertError } = await db.from('events').insert(newEvents);
-            
-            if (insertError) {
-                alert('Error loading template: ' + insertError.message);
-            } else {
-                document.getElementById('load-template-modal').classList.add('hidden');
-                document.getElementById('load-template-modal').classList.remove('flex');
-                displayEvents(selectedDate);
-            }
-        }
-        
-        // === POMODORO TIMER LOGIC (UPDATED) ===
-        function stopAlerts() {
-            if (flashingInterval) {
-                clearInterval(flashingInterval);
-                flashingInterval = null;
-            }
-            // Restore original title and favicon
-            document.title = originalTitle;
-            const faviconEl = document.getElementById('favicon');
-            if (faviconEl) {
-                faviconEl.href = originalFavicon;
-            }
-        }
-        function updatePomodoroTimerDisplay() {
-            const minutes = Math.floor(pomodoroTimeLeft / 60);
-            const seconds = pomodoroTimeLeft % 60;
-            const display = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-            document.getElementById('pomodoro-timer-display').textContent = display;
-            
-            const sessionName = pomodoroCurrentSession.replace(/([A-Z])/g, ' $1');
-            const capitalizedSessionName = sessionName.charAt(0).toUpperCase() + sessionName.slice(1);
-            
-            // Only update the title if the timer is running (not in a "Time's Up" state)
-            if (!flashingInterval) {
-                 const newTitle = `${display} | ${capitalizedSessionName} - TaskMaster`;
-                 document.title = newTitle;
-                 originalTitle = newTitle; // Keep track of the last "normal" title
-            }
-            document.getElementById('pomodoro-cycle-count').textContent = `Cycle: ${pomodoroCycleCount} / ${pomodoroSettings.longBreakCycle}`;
-        }
-        function updatePomodoroButton(isRunning) {
-            const startPauseBtn = document.getElementById('pomodoro-start-pause-btn');
-            const startPauseText = document.getElementById('pomodoro-start-pause-text');
-            const playIcon = startPauseBtn.querySelector('.material-symbols-outlined');
-            if (isRunning) {
-                startPauseText.textContent = 'Pause';
-                playIcon.textContent = 'pause';
-                startPauseBtn.classList.add('bg-orange-500', 'hover:bg-orange-600');
-                startPauseBtn.classList.remove('bg-primary', 'hover:bg-primary/90');
-            } else {
-                startPauseText.textContent = 'Start';
-                playIcon.textContent = 'play_arrow';
-                startPauseBtn.classList.remove('bg-orange-500', 'hover:bg-orange-600');
-                startPauseBtn.classList.add('bg-primary', 'hover:bg-primary/90');
-            }
-        }
-        function setPomodoroSession(session) {
-            pausePomodoroTimer();
-            stopAlerts();
-            pomodoroCurrentSession = session;
-            let durationMinutes = pomodoroSettings[session];
-            pomodoroTimeLeft = durationMinutes * 60;
-            
-            document.querySelectorAll('.timer-session-btn').forEach(btn => {
-                btn.classList.remove('bg-primary', 'text-white');
-                btn.classList.add('bg-slate-200', 'dark:bg-slate-700', 'text-slate-700', 'dark:text-slate-300', 'hover:bg-slate-300', 'dark:hover:bg-slate-600');
-            });
-            document.getElementById(`pomodoro-${session.replace(/([A-Z])/g, '-$1').toLowerCase()}-btn`).classList.remove('bg-slate-200', 'dark:bg-slate-700', 'text-slate-700', 'dark:text-slate-300', 'hover:bg-slate-300', 'dark:hover:bg-slate-600');
-            document.getElementById(`pomodoro-${session.replace(/([A-Z])/g, '-$1').toLowerCase()}-btn`).classList.add('bg-primary', 'text-white');
-            
-            updatePomodoroTimerDisplay();
-        }
-        
-        function requestNotificationPermission() {
-            if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-                Notification.requestPermission();
-            }
-        }
-        function startPomodoroTimer() {
-            if (pomodoroIsRunning) return;
-            
-            requestNotificationPermission();
-            stopAlerts();
-            pomodoroIsRunning = true;
-            updatePomodoroButton(true);
-            timerInterval = setInterval(() => {
-                pomodoroTimeLeft--;
-                if (pomodoroTimeLeft < 0) {
-                    clearInterval(timerInterval);
-                    timerInterval = null;
-                    handleSessionEnd();
-                } else {
-                    updatePomodoroTimerDisplay();
-                }
-            }, 1000);
-        }
-        function pausePomodoroTimer() {
-            if (!pomodoroIsRunning) return;
-            pomodoroIsRunning = false;
-            updatePomodoroButton(false);
-            clearInterval(timerInterval);
-            timerInterval = null;
-        }
-        function resetPomodoroTimer() {
-            pausePomodoroTimer();
-            stopAlerts();
-            pomodoroCurrentSession = 'work';
-            pomodoroTimeLeft = pomodoroSettings.work * 60;
-            pomodoroCycleCount = 0;
-            setPomodoroSession('work'); // This will also call stopAlerts again but it's fine
-            updatePomodoroButton(false);
-            updatePomodoroTimerDisplay();
-        }
-        function handleSessionEnd() {
-            pomodoroIsRunning = false;
-            updatePomodoroButton(false);
-            // 1. Sound Alert
-            alarmSound.play();
-            
-            // 2. Dynamic Favicon Change
-            const faviconEl = document.getElementById('favicon');
-            const bellFavicon = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ef4444'%3E%3Cpath d='M12 22C13.1 22 14 21.1 14 20H10C10 21.1 10.9 22 12 22ZM18 16V11C18 7.93 16.36 5.36 13.5 4.68V4C13.5 3.17 12.83 2.5 12 2.5C11.17 2.5 10.5 3.17 10.5 4V4.68C7.63 5.36 6 7.93 6 11V16L4 18V19H20V18L18 16Z'/%3E%3C/svg%3E";
-            if (faviconEl) {
-                faviconEl.href = bellFavicon;
-            }
-            // 3. Desktop Notification
-            const sessionEndText = pomodoroCurrentSession === 'work' ? 'Work session complete! Time for a break.' : 'Break complete! Time to get back to work.';
-            if ('Notification' in window && Notification.permission === 'granted') {
-                new Notification('TaskMaster Pomodoro', {
-                    body: sessionEndText,
-                    icon: bellFavicon
-                });
-            }
-            
-            // 4. Flashing Tab Title
-            let isTitleToggled = false;
-            flashingInterval = setInterval(() => {
-                document.title = isTitleToggled ? "⏰ Time's up!" : sessionEndText;
-                isTitleToggled = !isTitleToggled;
-            }, 1000);
-            // Set up the next session but don't start it
-            if (pomodoroCurrentSession === 'work') {
-                pomodoroCycleCount++;
-                if (pomodoroCycleCount > 0 && pomodoroCycleCount % pomodoroSettings.longBreakCycle === 0) {
-                    setPomodoroSession('longBreak');
-                } else {
-                    setPomodoroSession('shortBreak');
-                }
-            } else { // Break session end
-                setPomodoroSession('work');
-            }
-            pausePomodoroTimer(); // Ensure timer is paused
-        }
-        function applyPomodoroSettings() {
-            const workDuration = parseInt(document.getElementById('work-duration').value);
-            const shortBreakDuration = parseInt(document.getElementById('short-break-duration').value);
-            const longBreakDuration = parseInt(document.getElementById('long-break-duration').value);
-            if (workDuration > 0 && shortBreakDuration > 0 && longBreakDuration > 0) {
-                pomodoroSettings.work = workDuration;
-                pomodoroSettings.shortBreak = shortBreakDuration;
-                pomodoroSettings.longBreak = longBreakDuration;
-                localStorage.setItem('pomodoroSettings', JSON.stringify(pomodoroSettings));
-                resetPomodoroTimer();
-                // A simple feedback without using alert()
-                const applyBtn = document.getElementById('apply-pomodoro-settings-btn');
-                const originalText = applyBtn.textContent;
-                applyBtn.textContent = 'Settings Applied!';
-                setTimeout(() => { applyBtn.textContent = originalText; }, 2000);
-            } else {
-                // Let's provide feedback without an alert
-                 const applyBtn = document.getElementById('apply-pomodoro-settings-btn');
-                 applyBtn.textContent = 'Please use positive numbers.';
-                 applyBtn.classList.add('bg-red-500');
-                 setTimeout(() => { 
-                    applyBtn.textContent = 'Apply Settings';
-                    applyBtn.classList.remove('bg-red-500');
-                 }, 3000);
-            }
-        }
-        
-        function loadPomodoroSettings() {
-            const savedSettings = localStorage.getItem('pomodoroSettings');
-            if (savedSettings) {
-                pomodoroSettings = JSON.parse(savedSettings);
-                document.getElementById('work-duration').value = pomodoroSettings.work;
-                document.getElementById('short-break-duration').value = pomodoroSettings.shortBreak;
-                document.getElementById('long-break-duration').value = pomodoroSettings.longBreak;
-            }
-            pomodoroTimeLeft = pomodoroSettings.work * 60;
-        }
-
-        // === ONLINE/OFFLINE STATUS HANDLING ===
-        function updateOnlineStatus() {
-            const onlineStatusIndicator = document.getElementById('online-status');
-            if (navigator.onLine) {
-                onlineStatusIndicator.classList.add('bg-green-500');
-                onlineStatusIndicator.classList.remove('bg-red-500');
-                onlineStatusIndicator.title = 'Online';
-            } else {
-                onlineStatusIndicator.classList.add('bg-red-500');
-                onlineStatusIndicator.classList.remove('bg-green-500');
-                onlineStatusIndicator.title = 'Offline - Some features may be unavailable';
-            }
-        }
-        
-        // === INITIALIZATION ===
-        document.addEventListener('DOMContentLoaded', () => {
-            originalTitle = document.title;
-            originalFavicon = document.getElementById('favicon').href;
-            loadPomodoroSettings();
-            
-            flatpickr('#date', { defaultDate: 'today', dateFormat: 'Y-m-d' });
-            flatpickr('#task-due-date', { defaultDate: 'today', dateFormat: 'Y-m-d' });
-            flatpickr('#project-task-due-date', { defaultDate: 'today', dateFormat: 'Y-m-d' });
-            
-            renderHourGrid();
-            
-            // --- NEW NAVIGATION LOGIC ---
-            // This handles both desktop and the new mobile navigation
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const viewId = link.dataset.view;
-                    if (viewId) showView(viewId);
-                });
-            });
-            
-            // The profile pic is not a standard nav link, so it gets its own listener
-            document.getElementById('profile-pic').addEventListener('click', () => showView('#settings-view'));
-            // Pomodoro event listeners
-            document.getElementById('pomodoro-start-pause-btn').addEventListener('click', () => pomodoroIsRunning ? pausePomodoroTimer() : startPomodoroTimer());
-            document.getElementById('pomodoro-reset-btn').addEventListener('click', resetPomodoroTimer);
-            document.getElementById('pomodoro-work-btn').addEventListener('click', () => setPomodoroSession('work'));
-            document.getElementById('pomodoro-short-break-btn').addEventListener('click', () => setPomodoroSession('shortBreak'));
-            document.getElementById('pomodoro-long-break-btn').addEventListener('click', () => setPomodoroSession('longBreak'));
-            document.getElementById('apply-pomodoro-settings-btn').addEventListener('click', applyPomodoroSettings);
-            // Form submissions
-            document.getElementById('event-form').addEventListener('submit', handleEventFormSubmit);
-            document.getElementById('new-task-form').addEventListener('submit', handleTaskFormSubmit);
-            document.getElementById('new-project-form').addEventListener('submit', handleProjectFormSubmit);
-            document.getElementById('new-project-task-form').addEventListener('submit', handleProjectTaskFormSubmit);
-            
-            // Button clicks
-            document.getElementById('delete-event-btn').addEventListener('click', deleteEvent);
-            document.getElementById('add-event-btn').addEventListener('click', () => showView('#form-view'));
-            document.getElementById('cancel-btn').addEventListener('click', () => {
-                editingEventId = null;
-                document.getElementById('event-form').reset();
-                document.querySelector('#form-view h2').textContent = 'New Event';
-                document.querySelector('#event-form button[type="submit"]').textContent = 'Create Event';
-                document.getElementById('delete-event-btn').classList.add('hidden');
-                showView('#schedule-view');
-            });
-            document.getElementById('new-task-btn').addEventListener('click', () => showView('#new-task-view'));
-            document.getElementById('cancel-task-btn').addEventListener('click', () => {
-                editingTodoId = null;
-                document.getElementById('new-task-form').reset();
-                document.querySelector('#new-task-view h2').textContent = 'New Task';
-                document.querySelector('#new-task-form button[type="submit"]').textContent = 'Create Task';
-                showView('#todo-view');
-            });
-            document.getElementById('new-project-btn').addEventListener('click', () => showView('#new-project-view'));
-            document.getElementById('cancel-project-btn').addEventListener('click', () => showView('#projects-view'));
-            document.getElementById('new-project-task-btn').addEventListener('click', () => showView('#new-project-task-view'));
-            document.getElementById('cancel-project-task-btn').addEventListener('click', () => {
-                editingTaskId = null;
-                document.getElementById('new-project-task-form').reset();
-                document.querySelector('#new-project-task-view h2').textContent = 'New Project Task';
-                document.querySelector('#new-project-task-form button[type="submit"]').textContent = 'Create Task';
-                showView('#projects-view');
-            });
-            
-            // Calendar controls
-            document.getElementById('cal1-prev-btn').addEventListener('click', () => { calendarDisplayDate.setMonth(calendarDisplayDate.getMonth() - 1); initializeCalendarView(); });
-            document.getElementById('cal2-next-btn').addEventListener('click', () => { calendarDisplayDate.setMonth(calendarDisplayDate.getMonth() + 1); initializeCalendarView(); });
-            
-            // Template controls
-            document.getElementById('schedule-tomorrow-btn').addEventListener('click', scheduleForTomorrow);
-            document.getElementById('save-template-btn').addEventListener('click', saveCurrentDayAsTemplate);
-            document.getElementById('load-template-btn').addEventListener('click', showLoadTemplateModal);
-            document.getElementById('close-template-modal-btn').addEventListener('click', () => {
-                document.getElementById('load-template-modal').classList.add('hidden');
-                document.getElementById('load-template-modal').classList.remove('flex');
-            });
-            // Global event listeners for dynamic content
-            document.addEventListener('change', async (e) => {
-                if (e.target.matches('#today-tasks input[type="checkbox"], #upcoming-tasks input[type="checkbox"], #overdue-tasks input[type="checkbox"]')) {
-                    if (!navigator.onLine) {
-                        alert("You are offline. Please reconnect to update tasks.");
-                        e.target.checked = !e.target.checked; // Revert the checkbox change
-                        return;
-                    }
-                    const taskId = e.target.dataset.id;
-                    const newStatus = e.target.checked ? 'Completed' : 'Pending';
-                
-                    const { error } = await db.from('todos').update({ status: newStatus }).eq('id', taskId);
-                    if (error) {
-                        console.error('Error updating task:', error);
-                    } else {
-                        displayTodos();
-                    }
-                }
-            });
-            document.addEventListener('click', (e) => {
-                const optionsBtn = e.target.closest('.todo-options-btn');
-                if (optionsBtn) {
-                    e.stopPropagation();
-                    const task = JSON.parse(optionsBtn.dataset.task);
-                    showTodoOptionsMenu(task, optionsBtn);
-                }
-            });
-            setupDragAndDrop();
-
-            // Setup Online/Offline listeners
-            window.addEventListener('online', updateOnlineStatus);
-            window.addEventListener('offline', updateOnlineStatus);
-            updateOnlineStatus(); // Initial check
-            
-            // Initial view
-            showView('#schedule-view');
-        });
-    </script>
     
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/service-worker.js')
-            .then(registration => {
-              console.log('ServiceWorker registration successful with scope: ', registration.scope);
-            })
-            .catch(err => {
-              console.log('ServiceWorker registration failed: ', err);
-            });
-        });
+     <div class="favorites-section" id="favoritesSection">
+        <h3 id="favoritesBtn" onclick="showFavorites()">Favorites</h3>
+    </div>
+
+    <div class="nsfw-section">
+      <h3 id="nsfwBtn" onclick="showNsfw()">Show NSFW</h3>
+    </div>
+
+    <div class="filter-section" id="brokenImagesSection" style="display: none;">
+      <h3 style="color: #c62828;">Broken Images</h3>
+      <p style="font-size: 0.8rem; color: #666;">Click a button to edit the card with the broken image.</p>
+      <div class="filter-options" id="brokenImagesContainer">
+        </div>
+    </div>
+
+    <div class="upload-section">
+      <h3>Upload New Model</h3>
+      <button class="upload-btn" onclick="openPopup()">Upload Model</button>
+    </div>
+
+    <div class="tags-section">
+      <h3>Tags</h3>
+      <div class="tag-input">
+        <input id="newTagInput" placeholder="Add tags">
+        <button onclick="addNewTag()">Add</button>
+      </div>
+      
+      <h4>Common Tags</h4>
+      <div class="common-tags" id="commonTags">
+        </div>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="gallery" id="gallery"></div>
+    
+    <div class="related-models-section" id="relatedModelsSection" style="display: none;">
+      <h2>Related Models</h2>
+      <div class="filter-options" id="relatedModelFilterTags"></div>
+      <div class="gallery" id="relatedModelsGallery"></div>
+    </div>
+  </main>
+
+  <button class="add-btn" onclick="openPopup()">＋</button>
+  <button class="home-btn" onclick="window.location.href='index.html'">🏠</button>
+  <button class="videos-btn" onclick="window.location.href='videos.html'">🎬</button>
+  <button class="celebrities-btn" onclick="window.location.href='celebrities.html'">🌟</button>
+
+  <div class="model-viewer" id="modelViewer">
+    <span class="model-viewer-close" onclick="closeModelViewer()">&times;</span>
+    <div class="model-viewer-content" id="viewerContent">
+      <img id="viewerModel" src="" alt="">
+      <div class="zoom-controls">
+        <button class="zoom-btn" onclick="zoomIn()">+</button>
+        <button class="zoom-btn" onclick="zoomOut()">-</button>
+      </div>
+      <button class="reset-zoom" onclick="resetZoom()">Reset Zoom</button>
+    </div>
+    <div class="model-nav">
+      <button class="nav-btn" onclick="prevModel()">&#10094;</button>
+      <button class="nav-btn" onclick="nextModel()">&#10095;</button>
+    </div>
+    <div class="model-counter" id="modelCounter"></div>
+    <div class="model-viewer-footer">
+      <button class="upload-related-btn" onclick="openRelatedModelsPopup()">Upload Related Models</button>
+      <button class="upload-related-btn" onclick="openRelatedTagsPopup()" style="margin-top: 10px;">Edit Related Model Tags</button>
+    </div>
+  </div>
+
+  <div class="popup" id="popup">
+    <div class="popup-content">
+      <h3>Upload New Model(s)</h3>
+      <form id="cardForm">
+        <textarea id="modelUrl" rows="3" placeholder="Enter one or more model URLs, separated by commas" required></textarea>
+        
+        <div id="selectedTagsContainer" class="selected-tags"></div>
+          
+        <select id="availableTags">
+          <option value="">Select tags to add</option>
+          </select>
+        <button type="button" onclick="addTagToSelection()">Add Tag</button>
+        
+        <div style="margin-top: 15px; margin-bottom: 10px; display: flex; align-items: center;">
+            <input type="checkbox" id="modelNsfw" name="nsfw" style="width: auto; margin-bottom: 0; margin-right: 8px;">
+            <label for="modelNsfw">Mark as NSFW</label>
+        </div>
+        
+        <div id="errorMessage" class="error-message"></div>
+        <div>
+          <button type="submit">Upload</button>
+          <button type="button" onclick="closePopup()">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="popup" id="relatedModelsPopup">
+    <div class="popup-content">
+      <h3>Upload Related Models</h3>
+      <form id="relatedModelsForm">
+        <textarea id="relatedModelUrls" rows="5" placeholder="Enter model URLs, one per line"></textarea>
+        
+        <div id="relatedModelsErrorMessage" class="error-message"></div>
+        <div>
+          <button type="button" onclick="addRelatedModels()">Upload</button>
+           <button type="button" onclick="closeRelatedModelsPopup()">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="related-tags-popup" id="relatedTagsPopup">
+    <div class="related-tags-content">
+      <h3>Edit Related Model Tags</h3>
+      <div id="currentRelatedModelInfo"></div>
+       <div id="selectedRelatedTagsContainer" class="selected-tags"></div>
+      
+      <select id="availableRelatedTags">
+        <option value="">Select tags to add</option>
+        </select>
+      <button type="button" onclick="addTagToRelatedModelSelection()">Add Tag</button>
+     
+      <div id="relatedTagsErrorMessage" class="error-message"></div>
+      <div>
+        <button type="button" onclick="saveRelatedModelTags()">Save</button>
+        <button type="button" onclick="closeRelatedTagsPopup()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js"></script>
+
+  <script>
+    let supabase;
+    const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
+
+    let selectedTags = [];
+    let allTags = [];
+    let currentFilterTag = null;
+    let isFavoritesViewActive = false;
+    let currentlyEditingCardId = null;
+    let currentViewingCard = null;
+    let currentModelIndex = 0;
+    let currentRelatedModelTags = [];
+    let currentRelatedModelIndex = 0;
+    let currentFilterRelatedTag = null;
+    let displayedCards = []; // Holds the currently visible cards for navigation
+
+    // Zoom and pan variables
+    let scale = 1;
+    let posX = 0;
+    let posY = 0;
+    let isDragging = false;
+    let startX, startY;
+    let initialPinchDistance = null;
+    let lastZoom = 1;
+    let pinchCenter = null; 
+    let initialPinchPosX = 0;
+    let initialPinchPosY = 0;
+
+    window.onload = async function () {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      try {
+        const { error } = await supabase.from('models').select('id').limit(1);
+        if (error && error.code === '42P01') {
+          const gallery = document.getElementById('gallery');
+          gallery.innerHTML = `
+            <div style="padding: 20px; background-color: #ffebee; border: 1px solid #c62828; border-radius: 8px; color: #c62828; margin: 20px;">
+              <h3 style="margin-top: 0;">Setup Required</h3>
+              <p>The <strong>models</strong> table does not exist in your Supabase database.</p>
+              <p>Please go to your Supabase project dashboard, open the 'Table Editor', and create a new table named 'models'. You can remove the 'title' column if it exists.</p>
+              <p>After creating the table, refresh this page.</p>
+            </div>
+          `;
+          return;
+        } else if (error) {
+          throw error;
+        }
+      } catch (error) {
+        console.error("Supabase connection failed:", error);
+        alert("Database connection error. Check console for details.");
+        return;
       }
-    </script>
+
+      document.getElementById('cardForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (currentlyEditingCardId) {
+          await updateCard();
+        } else {
+          await addCard();
+        }
+      });
+      await loadTags();
+      await loadFilterTags();
+      await loadCards();
+      await checkFavorites();
+    };
+
+    async function loadTags() {
+      try {
+        const { data: tags, error } = await supabase
+          .from('tags')
+          .select('name')
+          .order('name', { ascending: true });
+        if (error && error.code === '42P01') {
+          console.error("The 'tags' table does not exist.");
+          return;
+        }
+
+        if (error) throw error;
+        allTags = tags.map(tag => tag.name);
+        updateTagDisplays();
+      } catch (error) {
+        console.error("Error loading tags:", error);
+      }
+    }
+
+    async function loadFilterTags() {
+      try {
+        const { data: cards, error: cardsError } = await supabase
+          .from('models')
+          .select('tags, related_models_with_tags');
+        if (cardsError) throw cardsError;
+
+        const allMainTags = new Set();
+        const allRelatedTags = new Set();
+        cards.forEach(card => {
+          if (card.tags) {
+            card.tags.split(',').forEach(tag => {
+              if (tag.trim()) allMainTags.add(tag.trim());
+            });
+          }
+          
+          if (card.related_models_with_tags) {
+            card.related_models_with_tags.forEach(img => {
+              if (img.tags) {
+                img.tags.split(',').forEach(tag => {
+                  if (tag.trim()) allRelatedTags.add(tag.trim());
+                });
+              }
+            });
+          }
+        });
+
+        const allTags = [...allMainTags, ...allRelatedTags];
+        const uniqueTags = [...new Set(allTags)].sort();
+
+        const filterContainer = document.getElementById('filterTags');
+        filterContainer.innerHTML = '';
+        const allButton = document.createElement('button');
+        allButton.textContent = 'All';
+        allButton.onclick = () => {
+          currentFilterTag = null;
+          isFavoritesViewActive = false;
+          loadCards();
+        };
+        filterContainer.appendChild(allButton);
+
+        uniqueTags.forEach(tag => {
+          const tagButton = document.createElement('button');
+          tagButton.textContent = tag;
+          tagButton.onclick = () => {
+            currentFilterTag = currentFilterTag === tag ? null : tag;
+            isFavoritesViewActive = false;
+            loadCards();
+           };
+          filterContainer.appendChild(tagButton);
+        });
+        updateActiveFiltersUI();
+      } catch (error) {
+        console.error("Error loading filter tags:", error);
+      }
+    }
+
+   function addCardToPage(card) {
+      const cardElem = document.createElement('div');
+      cardElem.className = 'card';
+      cardElem.dataset.cardId = card.id;
+      
+      const tags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+      const mainModelUrl = card.main_model_url && card.main_model_url.includes('ik.imagekit.io') ? 
+        `${card.main_model_url}?tr=q-90` :
+        card.main_model_url;
+
+      cardElem.innerHTML = `
+        <img src="${mainModelUrl}" alt="Model Image" 
+             onerror="reportBrokenImage(this, '${card.id}', '${mainModelUrl}')" />
+        <div class="card-info">
+          ${tags.length > 0 ?
+          `
+          <div class="card-tags">
+            ${tags.map(tag => `<span class="tag-bubble">${tag}</span>`).join('')}
+          </div>
+          ` : ''}
+        </div>
+         <div class="card-actions">
+          <button class="favorite-btn ${card.favorited ? 'favorited' : ''}" onclick="event.stopPropagation(); toggleFavorite('${card.id}', ${card.favorited})">★</button>
+          <button class="edit-btn" onclick="event.stopPropagation(); startEditCard('${card.id}')">✏️</button>
+          <button class="delete-btn" onclick="event.stopPropagation(); deleteCard('${card.id}')">🗑️</button>
+         </div>
+      `;
+
+      cardElem.addEventListener('click', () => {
+        currentModelIndex = 0;
+        openModelViewer(card);
+      });
+      document.getElementById('gallery').appendChild(cardElem);
+    }
+    
+    async function loadCards() {
+      try {
+        let query = supabase.from('models').select('*');
+
+        if (isFavoritesViewActive) {
+          // Favorites view remains SFW
+          query = query.eq('favorited', true).eq('nsfw', false);
+        } else if (currentFilterTag) {
+          if (currentFilterTag.toLowerCase() === "nsfw") {
+            // NSFW view shows only NSFW
+            query = query.eq('nsfw', true);
+          } else {
+            // A specific tag is selected. Show ALL models with this tag (SFW and NSFW).
+            const t = currentFilterTag.trim().replace(/"/g, '""');
+            const orExpr =
+              `tags.eq."${t}",` +
+              `tags.ilike."${t}, %",` +
+              `tags.ilike."%, ${t}",` +
+              `tags.ilike."%, ${t}, %"`;
+            // CHANGED LINE: The `.eq('nsfw', false)` has been removed from this line
+            query = query.or(orExpr); 
+          }
+        } else {
+          // Default home page view shows only SFW
+          query = query.eq('nsfw', false);
+        }
+
+        query = query.order('created_at', { ascending: false });
+        let { data: cards, error } = await query;
+        if (error) throw error;
+
+        // This client-side check is still useful for ensuring exact tag matches
+        if (currentFilterTag && currentFilterTag.toLowerCase() !== "nsfw") {
+          const needle = currentFilterTag.toLowerCase();
+          cards = (cards || []).filter(c =>
+            (c.tags || '')
+              .split(',')
+              .map(s => s.trim().toLowerCase())
+              .includes(needle)
+          );
+        }
+
+        const gallery = document.getElementById('gallery');
+        gallery.innerHTML = '';
+        if (!cards || cards.length === 0) {
+          gallery.innerHTML = '<p>No models found.</p>';
+          return;
+        }
+
+        displayedCards = cards;
+        displayedCards.forEach(card => addCardToPage(card));
+        updateActiveFiltersUI();
+      } catch (error) {
+        console.error("Error loading cards:", error);
+        alert("A critical error occurred while loading models. Check the console for details.");
+      }
+    }
+
+    async function checkFavorites() {
+      try {
+        const { data, error, count } = await supabase
+          .from('models')
+          .select('*', { count: 'exact', head: true })
+          .eq('favorited', true);
+        if (error) throw error;
+
+        const favoritesSection = document.getElementById('favoritesSection');
+        if (count > 0) {
+          favoritesSection.style.display = 'block';
+        } else {
+          favoritesSection.style.display = 'none';
+        }
+      } catch (error) {
+        console.error("Error checking for favorites:", error);
+      }
+    }
+    
+    async function toggleFavorite(cardId, isFavorited) {
+      try {
+        const { data, error } = await supabase
+          .from('models')
+          .update({ favorited: !isFavorited })
+          .eq('id', cardId)
+          .select()
+          .single();
+        if (error) throw error;
+
+        const button = document.querySelector(`.card[data-card-id='${cardId}'] .favorite-btn`);
+        if (button) {
+          button.classList.toggle('favorited', data.favorited);
+          button.setAttribute('onclick', `event.stopPropagation(); toggleFavorite('${cardId}', ${data.favorited})`);
+        }
+        
+        if (isFavoritesViewActive) {
+            await loadCards();
+        }
+
+        await checkFavorites();
+      } catch (error) {
+        console.error("Error toggling favorite:", error);
+        alert("Failed to update favorite status.");
+      }
+    }
+    
+    function showFavorites() {
+        isFavoritesViewActive = true;
+        currentFilterTag = null;
+        loadCards();
+    }
+    
+    function showNsfw() {
+        isFavoritesViewActive = false;
+        currentFilterTag = "nsfw";
+        loadCards();
+    }
+    
+    function updateActiveFiltersUI() {
+        document.querySelectorAll('#filterTags button').forEach(b => b.classList.remove('active'));
+        document.getElementById('favoritesBtn').classList.remove('active');
+        const nsfwBtn = document.getElementById('nsfwBtn');
+        if (nsfwBtn) nsfwBtn.classList.remove('active');
+
+        if (isFavoritesViewActive) {
+            document.getElementById('favoritesBtn').classList.add('active');
+        } else if (currentFilterTag && currentFilterTag.toLowerCase() === 'nsfw') {
+            if (nsfwBtn) nsfwBtn.classList.add('active');
+        } else if (currentFilterTag) {
+            let tagFound = false;
+            document.querySelectorAll('#filterTags button').forEach(button => {
+                if (button.textContent === currentFilterTag) {
+                    button.classList.add('active');
+                    tagFound = true;
+                }
+            });
+            if (!tagFound) {
+                 const allButton = document.querySelector('#filterTags button');
+                 if (allButton) allButton.classList.add('active');
+            }
+        } else {
+            const allButton = document.querySelector('#filterTags button');
+            if (allButton) allButton.classList.add('active');
+        }
+    }
+
+    async function loadRelatedModels(tag = null) {
+      if (!currentViewingCard) return;
+      try {
+        const models = currentViewingCard.related_models || [];
+        const relatedModelsWithTags = currentViewingCard.related_models_with_tags || [];
+        
+        const gallery = document.getElementById('relatedModelsGallery');
+        gallery.innerHTML = '';
+        
+        if (models.length === 0) {
+          document.getElementById('relatedModelsSection').style.display = 'none';
+          return;
+        }
+        
+        document.getElementById('relatedModelsSection').style.display = 'block';
+        const allRelatedTags = new Set();
+        relatedModelsWithTags.forEach(img => {
+          if (img.tags) {
+            img.tags.split(',').forEach(tag => {
+              if (tag.trim()) allRelatedTags.add(tag.trim());
+            });
+          }
+        });
+
+        const filterContainer = document.getElementById('relatedModelFilterTags');
+        filterContainer.innerHTML = '';
+        
+        const allButton = document.createElement('button');
+        allButton.textContent = 'All';
+        allButton.className = !tag ? 'active' : '';
+        allButton.onclick = () => {
+          currentFilterRelatedTag = null;
+          loadRelatedModels();
+        };
+        filterContainer.appendChild(allButton);
+        
+        [...allRelatedTags].sort().forEach(tagName => {
+          const tagButton = document.createElement('button');
+          tagButton.textContent = tagName;
+          tagButton.className = tag === tagName ? 'active' : '';
+          tagButton.onclick = () => {
+            currentFilterRelatedTag = currentFilterRelatedTag === tagName ? null : tagName;
+            loadRelatedModels(currentFilterRelatedTag);
+          };
+          filterContainer.appendChild(tagButton);
+        });
+
+        const filteredModels = tag 
+          ? relatedModelsWithTags.filter(img => img.tags && img.tags.split(',').map(t => t.trim()).includes(tag))
+          : relatedModelsWithTags;
+
+        if (filteredModels.length === 0) {
+          gallery.innerHTML = '<p>No models found with this tag.</p>';
+          return;
+        }
+        
+        filteredModels.forEach((img, index) => {
+          const imgElem = document.createElement('div');
+          imgElem.className = 'card';
+          
+          const tags = img.tags ? img.tags.split(',').map(t => t.trim()).filter(t => t) : [];
+          
+          imgElem.innerHTML = `
+            <img src="${img.url}" alt="Related model ${index + 1}" 
+                 onerror="reportBrokenImage(this, '${currentViewingCard.id}', '${img.url}')" />
+            <div class="card-info">
+              ${tags.length > 0 ? `
+              <div class="related-model-tags">
+                ${tags.map(t => `<span class="related-tag-bubble" onclick="event.stopPropagation(); filterAllByRelatedTag('${t}')">${t}</span>`).join('')}
+              </div>
+              ` : ''}
+            </div>
+          `;
+          
+          imgElem.addEventListener('click', () => {
+            const fullIndex = currentViewingCard.related_models.indexOf(img.url);
+            if(fullIndex !== -1) {
+                currentModelIndex = fullIndex + 1;
+                openModelViewer(currentViewingCard);
+                updateViewerModel();
+            }
+          });
+          
+          gallery.appendChild(imgElem);
+        });
+      } catch (error) {
+        console.error("Error loading related models:", error);
+      }
+    }
+
+    function filterAllByRelatedTag(tag) {
+      currentFilterTag = tag;
+      isFavoritesViewActive = false;
+      closeModelViewer();
+      loadCards();
+      loadFilterTags();
+    }
+
+    function openModelViewer(card) {
+      currentViewingCard = card;
+      resetZoom();
+      updateViewerModel();
+      document.getElementById('modelViewer').style.display = 'flex';
+      loadRelatedModels(currentFilterRelatedTag);
+      
+      const viewerModel = document.getElementById('viewerModel');
+      const viewerContent = document.getElementById('viewerContent');
+      
+      viewerModel.addEventListener('mousedown', startDrag);
+      viewerContent.addEventListener('mousemove', dragModel);
+      viewerContent.addEventListener('mouseup', endDrag);
+      viewerContent.addEventListener('mouseleave', endDrag);
+      viewerContent.addEventListener('wheel', handleWheelZoom, { passive: false });
+      
+      viewerModel.addEventListener('touchstart', handleTouchStart, { passive: false });
+      viewerContent.addEventListener('touchmove', handleTouchMove, { passive: false });
+      viewerContent.addEventListener('touchend', handleTouchEnd);
+    }
+
+    function closeModelViewer() {
+      document.getElementById('modelViewer').style.display = 'none';
+      document.getElementById('relatedModelsSection').style.display = 'none';
+      currentViewingCard = null;
+    }
+
+    function updateViewerModel() {
+      if (!currentViewingCard) return;
+      const models = [currentViewingCard.main_model_url, ...(currentViewingCard.related_models || [])];
+      const viewerModel = document.getElementById('viewerModel');
+      const modelCounter = document.getElementById('modelCounter');
+
+      if (models.length > 0 && currentModelIndex >= 0 && currentModelIndex < models.length) {
+        const modelUrl = models[currentModelIndex];
+        const displayUrl = modelUrl && modelUrl.includes('ik.imagekit.io') ? `${modelUrl}?tr=q-90` : modelUrl;
+        viewerModel.src = displayUrl;
+        modelCounter.textContent = `${currentModelIndex + 1} / ${models.length}`;
+      }
+    }
+
+    function prevModel() {
+      if (!currentViewingCard) return;
+      if (currentModelIndex > 0) {
+        currentModelIndex--;
+        resetZoom();
+        updateViewerModel();
+      } else {
+        const currentCardIndexInDisplay = displayedCards.findIndex(card => card.id === currentViewingCard.id);
+        if (currentCardIndexInDisplay > 0) {
+          const prevCard = displayedCards[currentCardIndexInDisplay - 1];
+          const prevCardModels = [prevCard.main_model_url, ...(prevCard.related_models || [])];
+          currentModelIndex = prevCardModels.length - 1; 
+          openModelViewer(prevCard);
+        }
+      }
+    }
+
+    function nextModel() {
+      if (!currentViewingCard) return;
+      const models = [currentViewingCard.main_model_url, ...(currentViewingCard.related_models || [])];
+      
+      if (currentModelIndex < models.length - 1) {
+        currentModelIndex++;
+        resetZoom();
+        updateViewerModel();
+      } else {
+        const currentCardIndexInDisplay = displayedCards.findIndex(card => card.id === currentViewingCard.id);
+        if (currentCardIndexInDisplay !== -1 && currentCardIndexInDisplay < displayedCards.length - 1) {
+          const nextCard = displayedCards[currentCardIndexInDisplay + 1];
+          currentModelIndex = 0;
+          openModelViewer(nextCard);
+        }
+      }
+    }
+
+    function zoomIn() { scale *= 1.2; applyZoom(); }
+    function zoomOut() { scale /= 1.2; if (scale < 1) resetZoom(); else applyZoom(); }
+    function resetZoom() { scale = 1; posX = 0; posY = 0; applyZoom(); }
+    function applyZoom() { document.getElementById('viewerModel').style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`; }
+
+    function startDrag(e) {
+      if (scale <= 1) return;
+      isDragging = true;
+      startX = e.clientX - posX;
+      startY = e.clientY - posY;
+      document.getElementById('viewerModel').classList.add('grabbing');
+      e.preventDefault();
+    }
+
+    function dragModel(e) {
+      if (!isDragging) return;
+      posX = e.clientX - startX;
+      posY = e.clientY - startY;
+      applyZoom();
+      e.preventDefault();
+    }
+
+    function endDrag() {
+      isDragging = false;
+      document.getElementById('viewerModel').classList.remove('grabbing');
+    }
+
+    function handleWheelZoom(e) {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        if (-e.deltaY > 0) zoomIn(); else zoomOut();
+      }
+    }
+    
+    function handleTouchStart(e) {
+      if (e.touches.length === 2) {
+        initialPinchDistance = getDistance(e.touches[0].clientX, e.touches[0].clientY, e.touches[1].clientX, e.touches[1].clientY);
+        lastZoom = scale;
+        pinchCenter = {
+          x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+          y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+        };
+        initialPinchPosX = posX;
+        initialPinchPosY = posY;
+        e.preventDefault();
+      } else if (e.touches.length === 1 && scale > 1) {
+        isDragging = true;
+        startX = e.touches[0].clientX - posX;
+        startY = e.touches[0].clientY - posY;
+        e.preventDefault();
+      }
+    }
+
+    function handleTouchMove(e) {
+      e.preventDefault();
+      if (e.touches.length === 1 && isDragging) {
+        posX = e.touches[0].clientX - startX;
+        posY = e.touches[0].clientY - startY;
+        applyZoom();
+        return;
+      }
+
+      if (e.touches.length === 2 && initialPinchDistance !== null && pinchCenter !== null) {
+        const currentDistance = getDistance(e.touches[0].clientX, e.touches[0].clientY, e.touches[1].clientX, e.touches[1].clientY);
+        let newScale = lastZoom * (currentDistance / initialPinchDistance);
+
+        const currentPinchCenter = {
+          x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+          y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+        };
+        const scaleRatio = newScale / lastZoom;
+
+        posX = currentPinchCenter.x - (pinchCenter.x - initialPinchPosX) * scaleRatio;
+        posY = currentPinchCenter.y - (pinchCenter.y - initialPinchPosY) * scaleRatio;
+        scale = newScale;
+        if (scale < 1) {
+          resetZoom();
+        } else {
+          applyZoom();
+        }
+      }
+    }
+
+    function handleTouchEnd() {
+      initialPinchDistance = null;
+      pinchCenter = null;
+      isDragging = false;
+    }
+
+    function getDistance(x1, y1, x2, y2) { return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)); }
+
+    function openRelatedModelsPopup() {
+      document.getElementById('modelViewer').style.display = 'none';
+      document.getElementById('relatedModelsPopup').style.display = 'flex';
+      document.getElementById('relatedModelUrls').value = '';
+      document.getElementById('relatedModelsErrorMessage').textContent = '';
+    }
+
+    function closeRelatedModelsPopup() {
+      document.getElementById('relatedModelsPopup').style.display = 'none';
+      if (currentViewingCard) document.getElementById('modelViewer').style.display = 'flex';
+    }
+
+    function openRelatedTagsPopup() {
+      if (!currentViewingCard || !currentViewingCard.related_models || currentViewingCard.related_models.length === 0) {
+        alert("No related models to tag");
+        return;
+      }
+      currentRelatedModelIndex = 0;
+      loadRelatedModelForTagging();
+      document.getElementById('relatedTagsPopup').style.display = 'flex';
+    }
+
+    function closeRelatedTagsPopup() {
+      document.getElementById('relatedTagsPopup').style.display = 'none';
+      currentRelatedModelTags = [];
+    }
+
+    function loadRelatedModelForTagging() {
+      if (!currentViewingCard || !currentViewingCard.related_models) return;
+      const models = currentViewingCard.related_models;
+      const relatedModelsWithTags = currentViewingCard.related_models_with_tags || [];
+      
+      if (currentRelatedModelIndex >= models.length) currentRelatedModelIndex = 0;
+      const currentModel = models[currentRelatedModelIndex];
+      const currentModelData = relatedModelsWithTags.find(img => img.url === currentModel) || { url: currentModel, tags: '' };
+
+      document.getElementById('currentRelatedModelInfo').innerHTML = `
+        <img src="${currentModel}" style="max-width: 100%; max-height: 150px; object-fit: contain; margin-bottom: 10px;">
+        <p>Model ${currentRelatedModelIndex + 1} of ${models.length}</p>
+      `;
+
+      currentRelatedModelTags = currentModelData.tags ? currentModelData.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+      updateSelectedRelatedTagsDisplay();
+      updateAvailableRelatedTags();
+    }
+
+    function nextRelatedModelForTagging() {
+      if (!currentViewingCard || !currentViewingCard.related_models) return;
+      currentRelatedModelIndex = (currentRelatedModelIndex + 1) % currentViewingCard.related_models.length;
+      loadRelatedModelForTagging();
+    }
+
+    function prevRelatedModelForTagging() {
+      if (!currentViewingCard || !currentViewingCard.related_models) return;
+      currentRelatedModelIndex = (currentRelatedModelIndex - 1 + currentViewingCard.related_models.length) % currentViewingCard.related_models.length;
+      loadRelatedModelForTagging();
+    }
+
+    function updateSelectedRelatedTagsDisplay() {
+      const container = document.getElementById('selectedRelatedTagsContainer');
+      container.innerHTML = '';
+      currentRelatedModelTags.forEach(tag => {
+        const tagElem = document.createElement('div');
+        tagElem.className = 'selected-tag';
+        tagElem.innerHTML = `${tag} <button onclick="removeSelectedRelatedTag('${tag}')">×</button>`;
+        container.appendChild(tagElem);
+      });
+    }
+
+    function updateAvailableRelatedTags() {
+      const availableTagsSelect = document.getElementById('availableRelatedTags');
+      availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
+      allTags.forEach(tag => {
+        if (!currentRelatedModelTags.includes(tag)) {
+          const option = document.createElement('option');
+          option.value = tag;
+          option.textContent = tag;
+          availableTagsSelect.appendChild(option);
+        }
+      });
+    }
+
+    function addTagToRelatedModelSelection() {
+      const selectedTag = document.getElementById('availableRelatedTags').value;
+      if (!selectedTag || currentRelatedModelTags.includes(selectedTag)) return;
+      currentRelatedModelTags.push(selectedTag);
+      updateSelectedRelatedTagsDisplay();
+      updateAvailableRelatedTags();
+    }
+
+    function removeSelectedRelatedTag(tagToRemove) {
+      currentRelatedModelTags = currentRelatedModelTags.filter(tag => tag !== tagToRemove);
+      updateSelectedRelatedTagsDisplay();
+      updateAvailableRelatedTags();
+    }
+
+    async function saveRelatedModelTags() {
+      if (!currentViewingCard) return;
+      try {
+        const models = currentViewingCard.related_models || [];
+        const currentModel = models[currentRelatedModelIndex];
+        let relatedModelsWithTags = currentViewingCard.related_models_with_tags || [];
+        
+        const existingIndex = relatedModelsWithTags.findIndex(img => img.url === currentModel);
+        if (existingIndex >= 0) {
+          relatedModelsWithTags[existingIndex].tags = currentRelatedModelTags.join(', ');
+        } else {
+          relatedModelsWithTags.push({ url: currentModel, tags: currentRelatedModelTags.join(', ') });
+        }
+        
+        const { error } = await supabase.from('models').update({ related_models_with_tags: relatedModelsWithTags }).eq('id', currentViewingCard.id);
+        if (error) throw error;
+        
+        currentViewingCard.related_models_with_tags = relatedModelsWithTags;
+        
+        if (currentRelatedModelIndex < models.length - 1) {
+          nextRelatedModelForTagging();
+        } else {
+          closeRelatedTagsPopup();
+          loadRelatedModels();
+        }
+      } catch (error) {
+        console.error("Error saving related model tags:", error);
+        document.getElementById('relatedTagsErrorMessage').textContent = "Failed to save tags: " + error.message;
+      }
+    }
+
+    async function addRelatedModels() {
+      if (!currentViewingCard) return;
+      const urlsText = document.getElementById('relatedModelUrls').value.trim();
+      if (!urlsText) return;
+
+      const urls = urlsText.split('\n').map(url => url.trim()).filter(url => url);
+      try {
+        const { data: card, error: fetchError } = await supabase.from('models').select('related_models, related_models_with_tags').eq('id', currentViewingCard.id).single();
+        if (fetchError) throw fetchError;
+
+        const currentRelatedModels = card.related_models || [];
+        const currentRelatedModelsWithTags = card.related_models_with_tags || [];
+        const newUrls = urls.filter(url => !currentRelatedModels.includes(url));
+        if (newUrls.length === 0) return;
+
+        const updatedRelatedModels = [...currentRelatedModels, ...newUrls];
+        const updatedRelatedModelsWithTags = [...currentRelatedModelsWithTags, ...newUrls.map(url => ({ url, tags: '' }))];
+        const { error } = await supabase.from('models').update({ related_models: updatedRelatedModels, related_models_with_tags: updatedRelatedModelsWithTags }).eq('id', currentViewingCard.id);
+        if (error) throw error;
+
+        currentViewingCard.related_models = updatedRelatedModels;
+        currentViewingCard.related_models_with_tags = updatedRelatedModelsWithTags;
+        
+        closeRelatedModelsPopup();
+        updateViewerModel();
+        loadRelatedModels();
+      } catch (error) {
+        console.error("Error adding related models:", error);
+        document.getElementById('relatedModelsErrorMessage').textContent = "Failed to add related models: " + error.message;
+      }
+    }
+
+    async function startEditCard(cardId) {
+      try {
+        const { data: card, error } = await supabase.from('models').select('*').eq('id', cardId).single();
+        if (error) throw error;
+
+        currentlyEditingCardId = cardId;
+        const modelUrlInput = document.getElementById('modelUrl');
+        modelUrlInput.value = card.main_model_url;
+        modelUrlInput.placeholder = "Model URL";
+        selectedTags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+        
+        document.getElementById('modelNsfw').checked = card.nsfw;
+        
+        updateSelectedTagsDisplay();
+        document.querySelector('.popup-content h3').textContent = 'Edit Card';
+        openPopup();
+      } catch (error) {
+        console.error("Error loading card for edit:", error);
+        alert("Failed to load card for editing");
+      }
+    }
+
+    async function updateCard() {
+      try {
+        const modelUrl = document.getElementById('modelUrl').value.trim();
+        if (!modelUrl) throw new Error("Model URL is required");
+        if (modelUrl.includes(',')) {
+            throw new Error("Only one URL is allowed when editing a card.");
+        }
+
+        const isNsfw = document.getElementById('modelNsfw').checked;
+
+        const updateData = { 
+            tags: selectedTags.join(', '), 
+            main_model_url: modelUrl,
+            nsfw: isNsfw 
+        };
+
+        const { error } = await supabase.from('models').update(updateData).eq('id', currentlyEditingCardId);
+        if (error) throw error;
+        
+        await loadCards();
+        await loadFilterTags();
+        closePopup();
+      } catch (error) {
+        console.error("Error updating card:", error);
+        document.getElementById('errorMessage').textContent = error.message;
+      } finally {
+        currentlyEditingCardId = null;
+      }
+    }
+
+    async function deleteCard(cardId) {
+      if (!confirm("Are you sure you want to delete this card?")) return;
+      try {
+        const { error } = await supabase.from('models').delete().eq('id', cardId);
+        if (error) throw error;
+        await loadCards();
+        await loadFilterTags();
+      } catch (error) {
+        console.error("Error deleting card:", error);
+        alert("Failed to delete card");
+      }
+    }
+
+    function reportBrokenImage(imageElement, cardId, brokenUrl) {
+      imageElement.src = 'https://via.placeholder.com/300?text=Model+Not+Found';
+      const brokenSection = document.getElementById('brokenImagesSection');
+      brokenSection.style.display = 'block';
+      
+      const container = document.getElementById('brokenImagesContainer');
+
+      const existingButton = document.getElementById('broken-btn-' + cardId);
+      if (existingButton) {
+        return;
+      }
+
+      const button = document.createElement('button');
+      button.id = 'broken-btn-' + cardId;
+      button.textContent = `Fix Card (ID: ...${cardId.slice(-6)})`;
+      button.title = `Original URL: ${brokenUrl}`;
+      button.onclick = () => {
+        startEditCard(cardId);
+      };
+      
+      container.appendChild(button);
+    }
+
+    async function addNewTag() {
+      const newTagInput = document.getElementById('newTagInput');
+      const newTag = newTagInput.value.trim();
+      if (!newTag || allTags.includes(newTag)) return;
+      
+      try {
+        const { error } = await supabase.from('tags').insert([{ name: newTag }]);
+        if (error) throw error;
+        
+        allTags.push(newTag);
+        allTags.sort();
+        updateTagDisplays();
+        await loadFilterTags();
+        newTagInput.value = '';
+      } catch (error) {
+        console.error("Error adding new tag:", error);
+        alert("Failed to add new tag");
+      }
+    }
+
+    function updateTagDisplays() {
+      const commonTagsContainer = document.getElementById('commonTags');
+      commonTagsContainer.innerHTML = '';
+      allTags.forEach(tag => {
+        const tagButton = document.createElement('button');
+        tagButton.textContent = tag;
+        tagButton.onclick = () => { document.getElementById('newTagInput').value = tag; };
+        commonTagsContainer.appendChild(tagButton);
+      });
+      const availableTagsSelect = document.getElementById('availableTags');
+      availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
+      allTags.forEach(tag => {
+        if (!selectedTags.includes(tag)) {
+          const option = document.createElement('option');
+          option.value = tag;
+          option.textContent = tag;
+          availableTagsSelect.appendChild(option);
+        }
+      });
+    }
+
+    function addTagToSelection() {
+      const selectedTag = document.getElementById('availableTags').value;
+      if (!selectedTag || selectedTags.includes(selectedTag)) return;
+      selectedTags.push(selectedTag);
+      updateSelectedTagsDisplay();
+      updateTagDisplays();
+    }
+
+    function updateSelectedTagsDisplay() {
+      const container = document.getElementById('selectedTagsContainer');
+      container.innerHTML = '';
+      selectedTags.forEach(tag => {
+        const tagElem = document.createElement('div');
+        tagElem.className = 'selected-tag';
+        tagElem.innerHTML = `${tag} <button onclick="removeSelectedTag('${tag}')">×</button>`;
+        container.appendChild(tagElem);
+      });
+    }
+
+    function removeSelectedTag(tagToRemove) {
+      selectedTags = selectedTags.filter(tag => tag !== tagToRemove);
+      updateSelectedTagsDisplay();
+      updateTagDisplays();
+    }
+
+    async function addCard() {
+      try {
+        const modelUrlsText = document.getElementById('modelUrl').value.trim();
+        if (!modelUrlsText) {
+          throw new Error("Model URL(s) are required.");
+        }
+
+        const urls = modelUrlsText.split(',').map(url => url.trim()).filter(url => url.length > 0);
+        if (urls.length === 0) {
+          throw new Error("Please provide at least one valid model URL.");
+        }
+        
+        const isNsfw = document.getElementById('modelNsfw').checked;
+
+        const newCards = urls.map(url => ({
+          tags: selectedTags.join(', '),
+          main_model_url: url,
+          related_models: [],
+          related_models_with_tags: [],
+          favorited: false,
+          nsfw: isNsfw
+        }));
+
+        const { error } = await supabase.from('models').insert(newCards);
+        if (error) {
+          throw error;
+        }
+
+        await loadCards();
+        await loadFilterTags();
+
+        closePopup();
+      } catch (error) {
+        console.error("Error adding card:", error);
+        document.getElementById('errorMessage').textContent = `Failed to add model(s): ${error.message}`;
+      }
+    }
+
+    function resetForm() {
+      document.getElementById('cardForm').reset();
+      selectedTags = [];
+      currentlyEditingCardId = null;
+      document.querySelector('.popup-content h3').textContent = 'Add New Model(s)';
+      document.getElementById('modelUrl').placeholder = "Enter one or more model URLs, separated by commas";
+      document.getElementById('modelNsfw').checked = false;
+      updateSelectedTagsDisplay();
+      updateTagDisplays();
+      document.getElementById('errorMessage').textContent = '';
+    }
+
+    function openPopup() {
+      document.getElementById('popup').style.display = 'flex';
+    }
+
+    function closePopup() {
+      document.getElementById('popup').style.display = 'none';
+      resetForm();
+    }
+  </script>
 </body>
 </html>
