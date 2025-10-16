@@ -4,12 +4,22 @@
 <head>
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
-    <title>DayWise Application</title>
+    <title>TaskMaster</title>
+
+    <!-- PWA & iOS Specific Tags -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#101922"/>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TaskMaster">
+    <link rel="apple-touch-icon" href="icons/icon-180x180.png">
     
+    <!-- NOTE: For a production app, you would add splash screens for all devices. This is a sample. -->
+    <!-- <link rel="apple-touch-startup-image" href="/splash/iphone14.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)"> -->
+
     <link id="favicon" rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%23137fec'/%3E%3C/svg%3E">
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     
     <link href="https://fonts.googleapis.com" rel="preconnect" />
@@ -57,12 +67,22 @@
         const savedTheme = localStorage.getItem('theme') || 'system';
         applyTheme(savedTheme);
     </script>
+    
+    <style>
+        /* Ensures tap feedback on iOS */
+        [onclick], [data-view] {
+          cursor: pointer;
+        }
+    </style>
 </head>
 
 <body class="bg-background-light dark:bg-background-dark font-display text-slate-800 dark:text-slate-200 pb-16 md:pb-0">
 
-    <header class="flex items-center justify-between px-6 py-3 border-b border-slate-200 dark:border-slate-800 sticky top-0 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-sm z-50">
+    <!-- MODIFICATION: Added 'transition-transform' and 'duration-300' for smooth hiding/showing -->
+    <header class="flex items-center justify-between px-6 py-3 border-b border-slate-200 dark:border-slate-800 sticky top-0 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-sm z-50 transition-transform duration-300">
         <div class="flex items-center gap-4">
+            <!-- Online Status Indicator -->
+            <div id="online-status" class="size-3 rounded-full bg-green-500" title="Online"></div>
             <div class="text-primary size-7"><svg fill="currentColor" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M6 6H42L36 24L42 42H6L12 24L6 6Z"></path></svg></div>
             <h1 class="text-xl font-bold text-slate-900 dark:text-white">TaskMaster</h1>
         </div>
@@ -79,6 +99,8 @@
             <img alt="User avatar" class="size-10 rounded-full cursor-pointer" id="profile-pic" src="https://i.pravatar.cc/150?u=a042581f4e29026704d"/>
         </div>
     </header>
+
+    <!-- The rest of your <body> content remains exactly the same... -->
 
     <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-background-light dark:bg-background-dark border-t border-slate-200 dark:border-slate-800 z-50 flex justify-around">
         <a data-view="#schedule-view" class="nav-link flex flex-col items-center text-center p-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary cursor-pointer">
@@ -102,7 +124,6 @@
             <span>Pomodoro</span>
         </a>
     </nav>
-
     <div id="load-template-modal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
         <div class="bg-background-light dark:bg-background-dark rounded-lg shadow-xl w-full max-w-md">
             <div class="flex items-center justify-between p-4 border-b dark:border-slate-800">
@@ -115,8 +136,6 @@
                 </div>
         </div>
     </div>
-
-
     <div id="views-container">
         <div id="schedule-view" class="hidden"><main class="flex-1 px-10 py-8"><div class="mx-auto max-w-5xl"><div class="flex items-center justify-between mb-8"><div><h1 id="schedule-title" class="text-3xl font-bold"></h1><p id="current-date" class="text-slate-500"></p></div>
         <div class="flex items-center gap-2">
@@ -148,7 +167,6 @@
                 </div>
             </div>
         </form></div></main></div>
-
         <div id="calendar-view" class="hidden"><main class="container mx-auto px-4 py-8"><div class="flex flex-col lg:flex-row justify-center gap-8"><div class="w-full lg:max-w-md bg-white dark:bg-slate-900/50 p-4 rounded-lg"><div class="flex items-center justify-between mb-4"><button id="cal1-prev-btn" class="p-2 rounded-full"><span class="material-symbols-outlined">chevron_left</span></button><h2 id="cal1-month-year" class="text-lg font-semibold"></h2><button class="opacity-0 p-2"><span class="material-symbols-outlined">chevron_right</span></button></div><div class="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-500 py-2"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div><div id="cal1-body" class="grid grid-cols-7 gap-1 text-center"></div></div><div class="w-full lg:max-w-md bg-white dark:bg-slate-900/50 p-4 rounded-lg"><div class="flex items-center justify-between mb-4"><button class="opacity-0 p-2"><span class="material-symbols-outlined">chevron_left</span></button><h2 id="cal2-month-year" class="text-lg font-semibold"></h2><button id="cal2-next-btn" class="p-2 rounded-full"><span class="material-symbols-outlined">chevron_right</span></button></div><div class="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-500 py-2"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div><div id="cal2-body" class="grid grid-cols-7 gap-1 text-center"></div></div></div></main></div>
         
         <div id="todo-view" class="hidden"><main class="container mx-auto px-4 py-8"><div class="max-w-4xl mx-auto"><div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-bold">My To-Do List</h2><button id="new-task-btn" class="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg font-semibold"><span class="material-symbols-outlined">add_circle</span>New Task</button></div><div class="bg-white/50 dark:bg-white/5 rounded-lg p-6 mb-8"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">Today's Progress</h3><span id="progress-text" class="text-sm font-medium"></span></div><div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5"><div id="progress-bar" class="bg-primary h-2.5 rounded-full" style="width:0%"></div></div><div class="grid grid-cols-3 gap-4 text-center mt-4" id="stats-container"></div></div>
@@ -167,17 +185,12 @@
                 </div>
             </div>
             </div></main></div>
-
         <div id="new-task-view" class="hidden"><main class="w-full max-w-2xl px-4 py-8 mx-auto"><div class="space-y-8"><div><h2 class="text-3xl font-bold">New Task</h2><p class="mt-2 text-slate-500">Add a new item to your to-do list.</p></div><form id="new-task-form" class="space-y-6"><div><label class="block text-sm font-medium" for="task-title">Task Title</label><input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="task-title" name="title" placeholder="e.g., Pay electricity bill" type="text" /></div><div><label class="block text-sm font-medium" for="task-due-date">Due Date</label><input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="task-due-date" name="due_date" type="text" readonly /></div><div><label class="block text-sm font-medium" for="task-category">Category</label><select class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="task-category" name="category"><option>Personal</option><option>Work</option><option>Shopping</option><option>Other</option></select></div><div class="flex justify-end pt-4 gap-3"><button id="cancel-task-btn" class="px-6 py-3 rounded-lg border bg-white dark:bg-slate-800" type="button">Cancel</button><button class="px-6 py-3 rounded-lg text-white bg-primary" type="submit">Create Task</button></div></form></div></main></div>
-
         <div id="settings-view" class="hidden"><main class="container mx-auto px-4 py-8"><div class="max-w-2xl mx-auto space-y-10"><div><h2 class="text-4xl font-extrabold mb-8 text-slate-900 dark:text-white">Settings</h2></div><section><h3 class="text-xl font-semibold mb-4 text-slate-900 dark:text-white">Notifications</h3><div class="bg-white/50 dark:bg-white/5 rounded-lg p-6 space-y-4"><div class="flex items-center justify-between"><div><p class="font-medium">Event Notifications</p><p class="text-sm text-slate-500 dark:text-slate-400">Enable or disable notifications for upcoming events and reminders.</p></div><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" value="" class="sr-only peer" checked /><div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div></label></div><div class="flex items-center justify-between"><div><p class="font-medium">Task Notifications</p><p class="text-sm text-slate-500 dark:text-slate-400">Receive notifications for task deadlines and updates.</p></div><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" value="" class="sr-only peer" checked /><div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div></label></div></div></section><section><h3 class="text-xl font-semibold mb-4 text-slate-900 dark:text-white">Theme</h3><div id="theme-selector" class="flex rounded-lg bg-white dark:bg-slate-800 p-1 shadow-sm"><button class="flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors" data-theme="light">Light</button><button class="flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors" data-theme="dark">Dark</button><button class="flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors" data-theme="system">System</button></div></section><section><h3 class="text-xl font-semibold mb-4 text-slate-900 dark:text-white">Account</h3><div class="bg-white/50 dark:bg-white/5 rounded-lg divide-y divide-slate-200 dark:divide-slate-800"><a href="#" class="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-t-lg"><p class="font-medium">Manage Account</p><span class="material-symbols-outlined text-slate-400">chevron_right</span></a><a href="#" class="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-b-lg text-red-500"><p class="font-medium">Sign Out</p><span class="material-symbols-outlined text-red-500">chevron_right</span></a></div></section></div></main></div>
         
         <div id="projects-view" class="hidden"><main class="flex-grow container mx-auto px-4 sm:px-6 lg:px-8 py-8"><div class="flex flex-col gap-6"><div class="flex justify-between items-center"><div><h2 class="text-3xl font-bold text-slate-900 dark:text-white">Project Tracker</h2><p class="text-slate-500 dark:text-slate-400 mt-1">Manage your projects and tasks efficiently.</p></div><div class="flex gap-4"><button id="new-project-btn" class="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg font-semibold"><span class="material-symbols-outlined">add</span>New Project</button><button id="new-project-task-btn" class="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg font-semibold"><span class="material-symbols-outlined">add_circle</span>New Task</button></div></div><div id="project-selector-container" class="flex gap-4 items-center"><h3 class="text-xl font-bold text-slate-900 dark:text-white">Project:</h3><select id="project-selector" class="rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 px-4 py-2"></select></div><div class="grid grid-cols-1 md:grid-cols-3 gap-6"><div class="bg-slate-100/50 dark:bg-slate-900/50 rounded-lg p-4"><div class="flex items-center justify-between mb-4"><h4 class="font-bold text-slate-800 dark:text-slate-200">To Do</h4><span id="count-todo" class="text-sm font-medium text-slate-500 bg-slate-200 dark:bg-slate-800 px-2 py-1 rounded-full">0</span></div><div id="kanban-todo" class="space-y-4 kanban-column" data-status="To Do"></div></div><div class="bg-slate-100/50 dark:bg-slate-900/50 rounded-lg p-4"><div class="flex items-center justify-between mb-4"><h4 class="font-bold text-slate-800 dark:text-slate-200">In Progress</h4><span id="count-inprogress" class="text-sm font-medium text-slate-500 bg-slate-200 dark:bg-slate-800 px-2 py-1 rounded-full">0</span></div><div id="kanban-inprogress" class="space-y-4 kanban-column" data-status="In Progress"></div></div><div class="bg-slate-100/50 dark:bg-slate-900/50 rounded-lg p-4"><div class="flex items-center justify-between mb-4"><h4 class="font-bold text-slate-800 dark:text-slate-200">Done</h4><span id="count-done" class="text-sm font-medium text-slate-500 bg-slate-200 dark:bg-slate-800 px-2 py-1 rounded-full">0</span></div><div id="kanban-done" class="space-y-4 kanban-column" data-status="Done"></div></div></div></div></main></div>
-
         <div id="new-project-view" class="hidden"><main class="w-full max-w-2xl px-4 py-8 mx-auto"><div class="space-y-8"><div><h2 class="text-3xl font-bold">New Project</h2><p class="mt-2 text-slate-500">Create a new project to organize your tasks.</p></div><form id="new-project-form" class="space-y-6"><div><label class="block text-sm font-medium" for="project-name">Project Name</label><input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="project-name" name="name" placeholder="e.g., Marketing Campaign" type="text" /></div><div class="flex justify-end pt-4 gap-3"><button id="cancel-project-btn" class="px-6 py-3 rounded-lg border bg-white dark:bg-slate-800" type="button">Cancel</button><button class="px-6 py-3 rounded-lg text-white bg-primary" type="submit">Create Project</button></div></form></div></main></div>
-
         <div id="new-project-task-view" class="hidden"><main class="w-full max-w-2xl px-4 py-8 mx-auto"><div class="space-y-8"><div><h2 class="text-3xl font-bold">New Project Task</h2><p class="mt-2 text-slate-500">Add a new task to your project.</p></div><form id="new-project-task-form" class="space-y-6"><div><label class="block text-sm font-medium" for="project-task-title">Task Title</label><input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="project-task-title" name="title" placeholder="e.g., Design marketing materials" type="text" /></div><div><label class="block text-sm font-medium" for="project-task-due-date">Due Date</label><input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="project-task-due-date" name="due_date" type="text" readonly /></div><div><label class="block text-sm font-medium" for="project-task-assignee">Assignee</label><input class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="project-task-assignee" name="assignee" placeholder="e.g., John Doe" type="text" /></div><div><label class="block text-sm font-medium" for="project-task-status">Status</label><select class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="project-task-status" name="status"><option>To Do</option><option>In Progress</option><option>Done</option></select></div><div class="flex justify-end pt-4 gap-3"><button id="cancel-project-task-btn" class="px-6 py-3 rounded-lg border bg-white dark:bg-slate-800" type="button">Cancel</button><button class="px-6 py-3 rounded-lg text-white bg-primary" type="submit">Create Task</button></div></form></div></main></div>
-
         <div id="pomodoro-view" class="hidden"><main class="container mx-auto px-4 py-8"><div class="max-w-2xl mx-auto text-center space-y-10">
             <h2 class="text-4xl font-extrabold text-primary">Pomodoro Timer</h2>
             
@@ -188,7 +201,8 @@
                     <button id="pomodoro-long-break-btn" class="px-4 py-2 rounded-lg text-sm font-semibold transition-colors timer-session-btn bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600" data-session="longBreak">Long Break</button>
                 </div>
                 
-                <div id="pomodoro-timer-display" class="text-9xl font-mono font-bold text-slate-900 dark:text-white">25:00</div>
+                <!-- MODIFICATION: Replaced 'text-9xl' with responsive classes -->
+                <div id="pomodoro-timer-display" class="text-7xl sm:text-8xl md:text-9xl font-mono font-bold text-slate-900 dark:text-white">25:00</div>
                 
                 <div class="flex justify-center gap-6">
                     <button id="pomodoro-start-pause-btn" class="flex items-center gap-2 bg-primary text-white px-8 py-3 rounded-full font-bold text-xl shadow-lg hover:bg-primary/90 transition-colors">
@@ -204,7 +218,6 @@
                     <span id="pomodoro-cycle-count">Cycle: 0 / 4</span>
                 </div>
             </div>
-
             <div class="bg-white/50 dark:bg-white/5 rounded-xl p-6 shadow-md text-left space-y-4">
                 <h3 class="text-xl font-semibold mb-4 border-b pb-2">Timer Settings</h3>
                 <div class="grid grid-cols-3 gap-6">
@@ -226,6 +239,7 @@
         </div></main></div>
         </div>
 
+    <!-- The entire <script> tag with all your JS logic remains here... -->
     <script>
         // === SUPABASE & STATE SETUP ===
         const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
@@ -279,13 +293,11 @@
                     return 'bg-slate-100 dark:bg-slate-900/50 text-slate-700 dark:text-slate-300';
             }
         }
-
         // === VIEW MANAGEMENT ===
         function showView(viewId) {
             document.querySelectorAll('#views-container > div').forEach(v => v.classList.add('hidden'));
             document.querySelector(viewId).classList.remove('hidden');
             updateActiveLink(viewId);
-
             if (viewId === '#schedule-view') displayEvents(selectedDate);
             if (viewId === '#calendar-view') initializeCalendarView();
             if (viewId === '#todo-view') displayTodos();
@@ -319,7 +331,6 @@
                 }
             });
         }
-
         // === SCHEDULE VIEW LOGIC ===
         function renderHourGrid() {
             const grid = document.getElementById('hour-grid');
@@ -340,10 +351,22 @@
             const isToday = (toYMD(new Date()) === dateString);
             scheduleTitle.textContent = isToday ? "Today" : date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
             currentDateEl.textContent = date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            
+            // Show a loading/offline state immediately
+            eventsContainer.innerHTML = `<p class="text-center text-slate-500 pt-4">Loading events...</p>`;
+
             const { data: events, error } = await db.from('events').select('*').eq('date', dateString);
+            
             eventsContainer.innerHTML = '';
-            if (error) { console.error('Error fetching events:', error); return; }
-            if (!events || events.length === 0) { eventsContainer.innerHTML = `<p class="text-center text-slate-500 pt-4">No events for this day.</p>`; return; }
+            if (error) { 
+                console.error('Error fetching events:', error); 
+                eventsContainer.innerHTML = `<p class="text-center text-red-500 pt-4">Could not load events. Check your connection.</p>`;
+                return;
+            }
+            if (!events || events.length === 0) { 
+                eventsContainer.innerHTML = `<p class="text-center text-slate-500 pt-4">No events for this day.</p>`; 
+                return;
+            }
             
             events.forEach(event => {
                 const start = timeToDecimal(event.start_time);
@@ -377,9 +400,13 @@
             
             showView('#form-view');
         }
-
         async function deleteEvent() {
             if (!editingEventId || !confirm('Are you sure you want to delete this event?')) {
+                return;
+            }
+            // Lightweight offline handling: just alert the user if offline.
+            if (!navigator.onLine) {
+                alert("You are offline. Please reconnect to delete the event.");
                 return;
             }
             const { error } = await db.from('events').delete().eq('id', editingEventId);
@@ -389,10 +416,13 @@
                 showView('#schedule-view');
             }
         }
-
         // === FORM SUBMISSION LOGIC ===
         async function handleEventFormSubmit(e) {
             e.preventDefault();
+            if (!navigator.onLine) {
+                alert("You are offline. Please reconnect to save changes.");
+                return;
+            }
             const form = e.target;
             const formData = new FormData(form);
             const eventData = Object.fromEntries(formData.entries());
@@ -405,7 +435,6 @@
             } else {
                 response = await db.from('events').insert([eventData]);
             }
-
             if (response.error) {
                 alert('Error: ' + response.error.message);
             } else {
@@ -414,10 +443,13 @@
         }
         async function handleTaskFormSubmit(e) {
             e.preventDefault();
+             if (!navigator.onLine) {
+                alert("You are offline. Please reconnect to save changes.");
+                return;
+            }
             const form = e.target;
             const formData = new FormData(form);
             const taskData = Object.fromEntries(formData.entries());
-
             let response;
             if (editingTodoId) {
                 response = await db.from('todos').update(taskData).eq('id', editingTodoId);
@@ -456,12 +488,10 @@
                 bodyEl.appendChild(button);
             }
         }
-
         // === TO-DO VIEW LOGIC (UPDATED) ===
         async function displayTodos() {
             const { data: todos, error } = await db.from('todos').select('*').order('due_date');
             if (error) { console.error("Error fetching todos:", error); return; }
-
             const todayYMD = toYMD(new Date());
             
             const overdueTasks = todos.filter(t => t.due_date < todayYMD && t.status !== 'Completed');
@@ -471,21 +501,17 @@
             renderTasks(overdueTasks, document.getElementById('overdue-tasks'));
             renderTasks(todayTasks, document.getElementById('today-tasks'));
             renderTasks(upcomingTasks, document.getElementById('upcoming-tasks'));
-
             updateTodoStats(todos, todayTasks);
         }
-
         function renderTasks(tasks, container) { 
             container.innerHTML = tasks.length ? tasks.map(renderTask).join('') : '<p class="text-slate-500">No tasks.</p>'; 
         }
-
         function renderTask(task) {
             const isCompleted = task.status === 'Completed';
             const statusColors = { 'Pending': 'bg-red-500/20 text-red-500', 'In Progress': 'bg-yellow-500/20 text-yellow-500', 'Completed': 'bg-green-500/20 text-green-500' };
             const dueDateText = getDueDateText(task.due_date);
             const todayYMD = toYMD(new Date());
             const isOverdue = task.due_date < todayYMD && !isCompleted;
-
             return `<div class="flex items-center gap-4 p-4 rounded-lg bg-white/50 dark:bg-white/5 ${isCompleted ? 'opacity-60' : ''} ${isOverdue ? 'border border-red-500/50' : ''}">
                         <input type="checkbox" data-id="${task.id}" class="form-checkbox h-5 w-5 rounded border-slate-300 dark:border-slate-600 bg-transparent text-primary focus:ring-primary/50" ${isCompleted ? 'checked' : ''}>
                         <div class="flex-grow">
@@ -503,7 +529,6 @@
             const today = new Date(toYMD(new Date()));
             const dueDate = new Date(dueDateStr + 'T00:00:00');
             const diffDays = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
-
             if (diffDays === 0) return 'Due Today';
             if (diffDays === 1) return 'Due Tomorrow';
             if (diffDays > 1) return `Due in ${diffDays} days`;
@@ -513,7 +538,6 @@
             }
             return `Due ${dueDate.toLocaleDateString()}`;
         }
-
         function updateTodoStats(allTasks, todayTasks) {
             const completedToday = todayTasks.filter(t => t.status === 'Completed').length;
             const totalPending = allTasks.filter(t => t.status !== 'Completed').length;
@@ -523,7 +547,6 @@
             document.getElementById('progress-bar').style.width = `${progress}%`;
             document.getElementById('stats-container').innerHTML = `<div><p class="text-2xl font-bold">${todayTasks.length}</p><p class="text-sm text-slate-500">Today's Tasks</p></div><div><p class="text-2xl font-bold">${completedToday}</p><p class="text-sm text-slate-500">Completed</p></div><div><p class="text-2xl font-bold">${totalPending}</p><p class="text-sm text-slate-500">Pending</p></div>`;
         }
-
         function showTodoOptionsMenu(task, button) {
             document.querySelectorAll('.todo-options-menu').forEach(menu => menu.remove());
             const menu = document.createElement('div');
@@ -531,14 +554,12 @@
             menu.innerHTML = `<button class="w-full text-left px-4 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 rounded-t-lg edit-todo-btn">Edit</button><button class="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 dark:hover:bg-red-500/20 rounded-b-lg delete-todo-btn">Delete</button>`;
             button.parentElement.style.position = 'relative';
             button.parentElement.appendChild(menu);
-
             menu.querySelector('.edit-todo-btn').onclick = () => { menu.remove(); editTodo(task); };
             menu.querySelector('.delete-todo-btn').onclick = () => { menu.remove(); deleteTodo(task.id); };
             setTimeout(() => {
                 document.addEventListener('click', () => menu.remove(), { once: true });
             }, 0);
         }
-
         function editTodo(task) {
             editingTodoId = task.id;
             document.getElementById('task-title').value = task.title;
@@ -548,8 +569,11 @@
             document.querySelector('#new-task-form button[type="submit"]').textContent = 'Update Task';
             showView('#new-task-view');
         }
-
         async function deleteTodo(taskId) {
+            if (!navigator.onLine) {
+                alert("You are offline. Please reconnect to delete tasks.");
+                return;
+            }
             if (!confirm('Are you sure you want to delete this task?')) return;
             const { error } = await db.from('todos').delete().eq('id', taskId);
             if (error) {
@@ -558,7 +582,6 @@
                 displayTodos();
             }
         }
-
         // === SETTINGS VIEW LOGIC ===
         function initializeSettings() {
             const themeSelector = document.getElementById('theme-selector');
@@ -580,7 +603,6 @@
                 });
             });
         }
-
         // === PROJECTS VIEW LOGIC ===
         async function loadProjects() {
             const { data: projects, error } = await db.from('projects').select('*').order('created_at');
@@ -678,8 +700,11 @@
             });
             return taskEl;
         }
-
         async function deleteProjectTask(taskId) {
+             if (!navigator.onLine) {
+                alert("You are offline. Please reconnect to delete tasks.");
+                return;
+            }
             if (!confirm('Are you sure you want to delete this task?')) {
                 return;
             }
@@ -691,7 +716,6 @@
                 displayProjects();
             }
         }
-
         function editProjectTask(task) {
             editingTaskId = task.id;
             document.getElementById('project-task-title').value = task.title;
@@ -705,6 +729,10 @@
         
         async function handleProjectFormSubmit(e) {
             e.preventDefault();
+            if (!navigator.onLine) {
+                alert("You are offline. Please reconnect to create projects.");
+                return;
+            }
             const form = e.target;
             const formData = new FormData(form);
             const newProject = Object.fromEntries(formData.entries());
@@ -720,10 +748,13 @@
         
         async function handleProjectTaskFormSubmit(e) {
             e.preventDefault();
+            if (!navigator.onLine) {
+                alert("You are offline. Please reconnect to save tasks.");
+                return;
+            }
             const form = e.target;
             const formData = new FormData(form);
             const taskData = Object.fromEntries(formData.entries());
-
             let response;
             if (editingTaskId) {
                 response = await db.from('project_tasks').update(taskData).eq('id', editingTaskId);
@@ -735,7 +766,6 @@
                 taskData.project_id = currentProjectId;
                 response = await db.from('project_tasks').insert([taskData]);
             }
-
             if (response.error) {
                 alert('Error saving task: ' + response.error.message);
             } else {
@@ -765,6 +795,14 @@
                     e.preventDefault();
                     column.classList.remove('bg-slate-200/50', 'dark:bg-slate-800/50');
                     if (!dragTaskId) return;
+                    
+                    if (!navigator.onLine) {
+                        alert("You are offline. Please reconnect to update task status.");
+                        // Re-render to snap the card back to its original column
+                        displayProjects();
+                        return;
+                    }
+                    
                     const newStatus = column.dataset.status;
                     
                     const { error } = await db
@@ -780,17 +818,18 @@
                 });
             });
         }
-
         // === TEMPLATE FUNCTIONS ===
         function scheduleForTomorrow() {
             selectedDate.setDate(selectedDate.getDate() + 1);
             displayEvents(selectedDate);
         }
-
         async function saveCurrentDayAsTemplate() {
+            if (!navigator.onLine) {
+                alert("You are offline. Please reconnect to save templates.");
+                return;
+            }
             const templateName = prompt("Please enter a name for this template:");
             if (!templateName) return;
-
             const dateString = toYMD(selectedDate);
             const { data: events, error: fetchError } = await db.from('events')
                 .select('title, start_time, end_time, category')
@@ -800,22 +839,18 @@
                 alert('Error fetching events to save: ' + fetchError.message);
                 return;
             }
-
             if (!events || events.length === 0) {
                 alert('There are no events on this day to save as a template.');
                 return;
             }
-
             const { data: template, error: templateError } = await db.from('schedule_templates')
                 .insert({ name: templateName })
                 .select()
                 .single();
-
             if (templateError) {
                 alert('Error creating template: ' + templateError.message);
                 return;
             }
-
             const templateEvents = events.map(event => ({
                 template_id: template.id,
                 title: event.title,
@@ -823,16 +858,13 @@
                 end_time: event.end_time,
                 category: event.category,
             }));
-
             const { error: eventsError } = await db.from('template_events').insert(templateEvents);
-
             if (eventsError) {
                 alert('Error saving template events: ' + eventsError.message);
             } else {
                 alert(`Template "${templateName}" saved successfully!`);
             }
         }
-
         async function showLoadTemplateModal() {
             const { data: templates, error } = await db.from('schedule_templates').select('*');
             if (error) {
@@ -842,7 +874,6 @@
             
             const templateList = document.getElementById('template-list');
             templateList.innerHTML = '';
-
             if (templates.length === 0) {
                 templateList.innerHTML = '<p class="text-slate-500">No saved templates found.</p>';
             } else {
@@ -854,12 +885,14 @@
                     templateList.appendChild(button);
                 });
             }
-
             document.getElementById('load-template-modal').classList.remove('hidden');
             document.getElementById('load-template-modal').classList.add('flex');
         }
-
         async function loadTemplate(templateId) {
+            if (!navigator.onLine) {
+                alert("You are offline. Please reconnect to load templates.");
+                return;
+            }
             if (!confirm('This will add the template events to the current day. Are you sure?')) {
                 return;
             }
@@ -867,7 +900,6 @@
             const { data: templateEvents, error } = await db.from('template_events')
                 .select('*')
                 .eq('template_id', templateId);
-
             if (error) {
                 alert('Error fetching template events: ' + error.message);
                 return;
@@ -881,7 +913,6 @@
                 end_time: event.end_time,
                 category: event.category,
             }));
-
             const { error: insertError } = await db.from('events').insert(newEvents);
             
             if (insertError) {
@@ -906,7 +937,6 @@
                 faviconEl.href = originalFavicon;
             }
         }
-
         function updatePomodoroTimerDisplay() {
             const minutes = Math.floor(pomodoroTimeLeft / 60);
             const seconds = pomodoroTimeLeft % 60;
@@ -922,15 +952,12 @@
                  document.title = newTitle;
                  originalTitle = newTitle; // Keep track of the last "normal" title
             }
-
             document.getElementById('pomodoro-cycle-count').textContent = `Cycle: ${pomodoroCycleCount} / ${pomodoroSettings.longBreakCycle}`;
         }
-
         function updatePomodoroButton(isRunning) {
             const startPauseBtn = document.getElementById('pomodoro-start-pause-btn');
             const startPauseText = document.getElementById('pomodoro-start-pause-text');
             const playIcon = startPauseBtn.querySelector('.material-symbols-outlined');
-
             if (isRunning) {
                 startPauseText.textContent = 'Pause';
                 playIcon.textContent = 'pause';
@@ -943,7 +970,6 @@
                 startPauseBtn.classList.add('bg-primary', 'hover:bg-primary/90');
             }
         }
-
         function setPomodoroSession(session) {
             pausePomodoroTimer();
             stopAlerts();
@@ -955,7 +981,6 @@
                 btn.classList.remove('bg-primary', 'text-white');
                 btn.classList.add('bg-slate-200', 'dark:bg-slate-700', 'text-slate-700', 'dark:text-slate-300', 'hover:bg-slate-300', 'dark:hover:bg-slate-600');
             });
-
             document.getElementById(`pomodoro-${session.replace(/([A-Z])/g, '-$1').toLowerCase()}-btn`).classList.remove('bg-slate-200', 'dark:bg-slate-700', 'text-slate-700', 'dark:text-slate-300', 'hover:bg-slate-300', 'dark:hover:bg-slate-600');
             document.getElementById(`pomodoro-${session.replace(/([A-Z])/g, '-$1').toLowerCase()}-btn`).classList.add('bg-primary', 'text-white');
             
@@ -967,16 +992,13 @@
                 Notification.requestPermission();
             }
         }
-
         function startPomodoroTimer() {
             if (pomodoroIsRunning) return;
             
             requestNotificationPermission();
             stopAlerts();
-
             pomodoroIsRunning = true;
             updatePomodoroButton(true);
-
             timerInterval = setInterval(() => {
                 pomodoroTimeLeft--;
                 if (pomodoroTimeLeft < 0) {
@@ -988,7 +1010,6 @@
                 }
             }, 1000);
         }
-
         function pausePomodoroTimer() {
             if (!pomodoroIsRunning) return;
             pomodoroIsRunning = false;
@@ -996,7 +1017,6 @@
             clearInterval(timerInterval);
             timerInterval = null;
         }
-
         function resetPomodoroTimer() {
             pausePomodoroTimer();
             stopAlerts();
@@ -1007,11 +1027,9 @@
             updatePomodoroButton(false);
             updatePomodoroTimerDisplay();
         }
-
         function handleSessionEnd() {
             pomodoroIsRunning = false;
             updatePomodoroButton(false);
-
             // 1. Sound Alert
             alarmSound.play();
             
@@ -1021,7 +1039,6 @@
             if (faviconEl) {
                 faviconEl.href = bellFavicon;
             }
-
             // 3. Desktop Notification
             const sessionEndText = pomodoroCurrentSession === 'work' ? 'Work session complete! Time for a break.' : 'Break complete! Time to get back to work.';
             if ('Notification' in window && Notification.permission === 'granted') {
@@ -1037,7 +1054,6 @@
                 document.title = isTitleToggled ? "⏰ Time's up!" : sessionEndText;
                 isTitleToggled = !isTitleToggled;
             }, 1000);
-
             // Set up the next session but don't start it
             if (pomodoroCurrentSession === 'work') {
                 pomodoroCycleCount++;
@@ -1051,13 +1067,10 @@
             }
             pausePomodoroTimer(); // Ensure timer is paused
         }
-
-
         function applyPomodoroSettings() {
             const workDuration = parseInt(document.getElementById('work-duration').value);
             const shortBreakDuration = parseInt(document.getElementById('short-break-duration').value);
             const longBreakDuration = parseInt(document.getElementById('long-break-duration').value);
-
             if (workDuration > 0 && shortBreakDuration > 0 && longBreakDuration > 0) {
                 pomodoroSettings.work = workDuration;
                 pomodoroSettings.shortBreak = shortBreakDuration;
@@ -1069,7 +1082,6 @@
                 const originalText = applyBtn.textContent;
                 applyBtn.textContent = 'Settings Applied!';
                 setTimeout(() => { applyBtn.textContent = originalText; }, 2000);
-
             } else {
                 // Let's provide feedback without an alert
                  const applyBtn = document.getElementById('apply-pomodoro-settings-btn');
@@ -1092,12 +1104,25 @@
             }
             pomodoroTimeLeft = pomodoroSettings.work * 60;
         }
+
+        // === ONLINE/OFFLINE STATUS HANDLING ===
+        function updateOnlineStatus() {
+            const onlineStatusIndicator = document.getElementById('online-status');
+            if (navigator.onLine) {
+                onlineStatusIndicator.classList.add('bg-green-500');
+                onlineStatusIndicator.classList.remove('bg-red-500');
+                onlineStatusIndicator.title = 'Online';
+            } else {
+                onlineStatusIndicator.classList.add('bg-red-500');
+                onlineStatusIndicator.classList.remove('bg-green-500');
+                onlineStatusIndicator.title = 'Offline - Some features may be unavailable';
+            }
+        }
         
         // === INITIALIZATION ===
         document.addEventListener('DOMContentLoaded', () => {
             originalTitle = document.title;
             originalFavicon = document.getElementById('favicon').href;
-
             loadPomodoroSettings();
             
             flatpickr('#date', { defaultDate: 'today', dateFormat: 'Y-m-d' });
@@ -1118,7 +1143,6 @@
             
             // The profile pic is not a standard nav link, so it gets its own listener
             document.getElementById('profile-pic').addEventListener('click', () => showView('#settings-view'));
-
             // Pomodoro event listeners
             document.getElementById('pomodoro-start-pause-btn').addEventListener('click', () => pomodoroIsRunning ? pausePomodoroTimer() : startPomodoroTimer());
             document.getElementById('pomodoro-reset-btn').addEventListener('click', resetPomodoroTimer);
@@ -1126,7 +1150,6 @@
             document.getElementById('pomodoro-short-break-btn').addEventListener('click', () => setPomodoroSession('shortBreak'));
             document.getElementById('pomodoro-long-break-btn').addEventListener('click', () => setPomodoroSession('longBreak'));
             document.getElementById('apply-pomodoro-settings-btn').addEventListener('click', applyPomodoroSettings);
-
             // Form submissions
             document.getElementById('event-form').addEventListener('submit', handleEventFormSubmit);
             document.getElementById('new-task-form').addEventListener('submit', handleTaskFormSubmit);
@@ -1175,10 +1198,14 @@
                 document.getElementById('load-template-modal').classList.add('hidden');
                 document.getElementById('load-template-modal').classList.remove('flex');
             });
-
             // Global event listeners for dynamic content
             document.addEventListener('change', async (e) => {
                 if (e.target.matches('#today-tasks input[type="checkbox"], #upcoming-tasks input[type="checkbox"], #overdue-tasks input[type="checkbox"]')) {
+                    if (!navigator.onLine) {
+                        alert("You are offline. Please reconnect to update tasks.");
+                        e.target.checked = !e.target.checked; // Revert the checkbox change
+                        return;
+                    }
                     const taskId = e.target.dataset.id;
                     const newStatus = e.target.checked ? 'Completed' : 'Pending';
                 
@@ -1198,12 +1225,47 @@
                     showTodoOptionsMenu(task, optionsBtn);
                 }
             });
-
             setupDragAndDrop();
+
+            // Setup Online/Offline listeners
+            window.addEventListener('online', updateOnlineStatus);
+            window.addEventListener('offline', updateOnlineStatus);
+            updateOnlineStatus(); // Initial check
+
+            // === NEW: HEADER SCROLL LOGIC ===
+            let lastScrollTop = 0;
+            const header = document.querySelector('header');
+            window.addEventListener("scroll", function() {
+                let scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                if (scrollTop > lastScrollTop && scrollTop > 50) {
+                    // Downscroll
+                    header.classList.add('-translate-y-full');
+                } else if (scrollTop === 0) {
+                    // At the very top
+                    header.classList.remove('-translate-y-full');
+                }
+                lastScrollTop = scrollTop <= 0 ? 0 : scrollTop; // For Mobile or negative scrolling
+            }, false);
             
             // Initial view
             showView('#schedule-view');
         });
     </script>
+    
+    <!-- PWA Service Worker Registration -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/service-worker.js')
+            .then(registration => {
+              console.log('ServiceWorker registration successful with scope: ', registration.scope);
+            })
+            .catch(err => {
+              console.log('ServiceWorker registration failed: ', err);
+            });
+        });
+      }
+    </script>
 </body>
 </html>
+
