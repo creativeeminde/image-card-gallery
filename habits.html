@@ -1,226 +1,181 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Habit Tracker</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Habit Tracker — Supabase</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
+        body { font-family: 'Inter', sans-serif; }
         .date-scroller::-webkit-scrollbar { display: none; }
         .date-scroller { -ms-overflow-style: none; scrollbar-width: none; }
         .habit-progress-bar, .view { transition: all 0.3s ease-in-out; }
         .toast-notification, .modal-container { transition: opacity 0.3s ease-in-out; }
         .view.hidden { display: none; }
-        .day-btn.active, .time-range-btn.active {
-            background-color: #EF4444;
-            color: #FFFFFF;
-            font-weight: 600;
-        }
-        .theme-btn.active {
-            background-color: white;
-            color: #111827; /* gray-900 */
-        }
-        .dark .theme-btn.active {
-            background-color: #4B5563; /* gray-600 */
-            color: white;
-        }
-        .achievement-unlocked {
-            box-shadow: 0 0 15px rgba(250, 204, 21, 0.6); /* amber-400 */
-            animation: glow 1.5s infinite alternate;
-        }
-        @keyframes glow {
-            from { box-shadow: 0 0 5px rgba(250, 204, 21, 0.4); }
-            to { box-shadow: 0 0 20px rgba(250, 204, 21, 0.8); }
-        }
-        /* Styles for swipe actions */
-        .habit-swipe-container, .hidden-habit-swipe-container {
-            position: relative;
-            overflow: hidden;
-            border-radius: 0.75rem; /* 12px */
-            user-select: none; /* Prevent text selection during drag */
-        }
-        .habit-content, .hidden-habit-tile {
-            transition: transform 0.3s ease-out;
-            position: relative;
-            z-index: 10;
-            cursor: grab;
-        }
-        .habit-actions {
-            position: absolute;
-            top: 0;
-            right: 0;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            z-index: 1;
-        }
-        .habit-action-btn {
-            width: 70px;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 0.75rem;
-            font-weight: 600;
-            cursor: pointer;
-        }
+        .day-btn.active, .time-range-btn.active { background-color: #EF4444; color: #FFFFFF; font-weight: 600; }
+        .theme-btn.active { background-color: white; color: #111827; }
+        .dark .theme-btn.active { background-color: #4B5563; color: white; }
+        .achievement-unlocked { box-shadow: 0 0 15px rgba(250,204,21,0.6); animation: glow 1.5s infinite alternate; }
+        @keyframes glow { from { box-shadow: 0 0 5px rgba(250,204,21,0.4);} to { box-shadow: 0 0 20px rgba(250,204,21,0.8);} }
+        .habit-swipe-container, .hidden-habit-swipe-container { position: relative; overflow: hidden; border-radius: 0.75rem; user-select: none; }
+        .habit-content, .hidden-habit-tile { transition: transform 0.3s ease-out; position: relative; z-index: 10; cursor: grab; }
+        .habit-actions { position: absolute; top: 0; right: 0; height: 100%; display:flex; align-items:center; z-index:1; }
+        .habit-action-btn { width:70px; height: 100%; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; font-size:0.75rem; font-weight:600; cursor:pointer; }
     </style>
 </head>
 <body class="antialiased bg-gray-100 dark:bg-black text-gray-900 dark:text-gray-200">
-    <!-- The HTML structure remains the same -->
-    <div id="app-container">
-        <div id="main-view" class="view p-5 pb-24 min-h-screen">
-            <header class="flex justify-between items-center mb-6">
-                <button class="flex items-center gap-1.5 bg-white dark:bg-[#1E1E1E] px-3 py-1.5 rounded-full text-sm font-semibold">
-                    <span>All</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="http://www.w3.org/2000/svg" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
-                </button>
-                <h1 id="header-title" class="text-xl font-bold">Today</h1>
-                <button class="w-8 h-8 rounded-full bg-yellow-400 text-black flex items-center justify-center text-lg"><span>😊</span></button>
-            </header>
-            <div id="date-scroller-container" class="date-scroller flex space-x-3 overflow-x-auto pb-4 mb-6"></div>
-            <div id="habits-container" class="space-y-3"></div>
-            
-            <div id="hidden-habits-section" class="fixed bottom-20 left-0 right-0 z-20 px-5 hidden">
-                 <div id="hidden-habits-header" class="bg-gray-300 dark:bg-gray-800 text-gray-800 dark:text-white font-semibold py-2 px-4 rounded-t-lg cursor-pointer flex justify-between items-center">
-                    <span>Hidden Habits</span>
-                    <svg id="hidden-habits-arrow" class="w-5 h-5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" /></svg>
-                </div>
-                <div id="hidden-habits-list" class="bg-gray-200 dark:bg-gray-900/80 backdrop-blur-sm max-h-0 overflow-y-auto transition-all duration-300 ease-in-out p-0 space-y-2">
-                    </div>
-            </div>
-        </div>
 
-        <div id="stats-view" class="view hidden p-5 pb-24 min-h-screen">
-             <header class="flex justify-between items-center mb-6">
-                <h1 class="text-xl font-bold">Statistics</h1>
-            </header>
-            <div id="stats-container" class="space-y-6">
-                </div>
-        </div>
-        
-        <div id="achievements-view" class="view hidden p-5 pb-24 min-h-screen">
-             <header class="flex justify-between items-center mb-6">
-                <h1 class="text-xl font-bold flex items-center gap-2">
-                    <span class="text-2xl">🏆</span>
-                    Achievements
-                </h1>
-            </header>
-            <div id="achievements-container" class="space-y-6">
-                </div>
-             <p class="text-center text-gray-500 dark:text-gray-400 mt-8 font-semibold">Keep going to unlock more rewards!</p>
-        </div>
-
-        <div id="settings-view" class="view hidden p-5 pb-24 min-h-screen">
-            <header class="flex justify-between items-center mb-6">
-                <h1 class="text-xl font-bold">Settings</h1>
-            </header>
-            <div class="space-y-4">
-                <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
-                    <h2 class="font-bold text-lg mb-3">Appearance</h2>
-                    <div id="theme-selector" class="flex rounded-lg bg-gray-200 dark:bg-black p-1">
-                         <button data-theme="light" class="theme-btn flex-1 py-2 text-sm font-semibold rounded-md transition-colors text-gray-600 dark:text-gray-400">Light</button>
-                         <button data-theme="dark" class="theme-btn flex-1 py-2 text-sm font-semibold rounded-md transition-colors text-gray-600 dark:text-gray-400">Dark</button>
-                    </div>
-                </div>
-                <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
-                    <h2 class="font-bold text-lg mb-2">Data Management</h2>
-                    <button id="reset-data-btn" class="w-full text-left p-3 bg-red-100 dark:bg-red-900/50 hover:bg-red-200 dark:hover:bg-red-900/80 rounded-lg text-red-700 dark:text-red-300 font-semibold">Reset All Data</button>
-                    <p class="text-xs text-gray-500 mt-2">This will permanently delete all your habits and progress.</p>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div id="add-habit-view" class="fixed inset-0 bg-gray-100 dark:bg-black transform translate-x-full z-50 p-5 overflow-y-auto">
-        <header class="flex items-center mb-8">
-            <button id="back-btn" class="p-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg></button>
-            <h2 id="form-title" class="text-xl font-bold mx-auto">Custom Habit</h2>
-            <div class="w-6"></div>
+<div id="app-container">
+    <div id="main-view" class="view p-5 pb-24 min-h-screen">
+        <header class="flex justify-between items-center mb-6">
+            <button class="flex items-center gap-1.5 bg-white dark:bg-[#1E1E1E] px-3 py-1.5 rounded-full text-sm font-semibold">
+                <span>All</span>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+            </button>
+            <h1 id="header-title" class="text-xl font-bold">Today</h1>
+            <button class="w-8 h-8 rounded-full bg-yellow-400 text-black flex items-center justify-center text-lg"><span>😊</span></button>
         </header>
-        <div class="space-y-4 pb-5">
+
+        <div id="date-scroller-container" class="date-scroller flex space-x-3 overflow-x-auto pb-4 mb-6"></div>
+        <div id="habits-container" class="space-y-3"></div>
+
+        <div id="hidden-habits-section" class="fixed bottom-20 left-0 right-0 z-20 px-5 hidden">
+            <div id="hidden-habits-header" class="bg-gray-300 dark:bg-gray-800 text-gray-800 dark:text-white font-semibold py-2 px-4 rounded-t-lg cursor-pointer flex justify-between items-center">
+                <span>Hidden Habits</span>
+                <svg id="hidden-habits-arrow" class="w-5 h-5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" /></svg>
+            </div>
+            <div id="hidden-habits-list" class="bg-gray-200 dark:bg-gray-900/80 backdrop-blur-sm max-h-0 overflow-y-auto transition-all duration-300 ease-in-out p-0 space-y-2"></div>
+        </div>
+    </div>
+
+    <div id="stats-view" class="view hidden p-5 pb-24 min-h-screen">
+        <header class="flex justify-between items-center mb-6">
+            <h1 class="text-xl font-bold">Statistics</h1>
+        </header>
+        <div id="stats-container" class="space-y-6"></div>
+    </div>
+
+    <div id="achievements-view" class="view hidden p-5 pb-24 min-h-screen">
+        <header class="flex justify-between items-center mb-6">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <span class="text-2xl">🏆</span>
+                Achievements
+            </h1>
+        </header>
+        <div id="achievements-container" class="space-y-6"></div>
+        <p class="text-center text-gray-500 dark:text-gray-400 mt-8 font-semibold">Keep going to unlock more rewards!</p>
+    </div>
+
+    <div id="settings-view" class="view hidden p-5 pb-24 min-h-screen">
+        <header class="flex justify-between items-center mb-6">
+            <h1 class="text-xl font-bold">Settings</h1>
+        </header>
+        <div class="space-y-4">
             <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
-                <div class="flex items-center gap-4">
-                    <button id="icon-preview-btn" class="w-14 h-14 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center text-3xl flex-shrink-0">➕</button>
-                    <div class="flex-grow space-y-2">
-                        <input id="habit-name-input" type="text" placeholder="Habit name" class="w-full bg-transparent text-lg font-semibold placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none">
-                        <input id="habit-category-input" type="text" placeholder="Category (e.g., Health)" class="w-full bg-transparent text-sm text-gray-500 dark:placeholder-gray-400 focus:outline-none">
-                    </div>
+                <h2 class="font-bold text-lg mb-3">Appearance</h2>
+                <div id="theme-selector" class="flex rounded-lg bg-gray-200 dark:bg-black p-1">
+                     <button data-theme="light" class="theme-btn flex-1 py-2 text-sm font-semibold rounded-md transition-colors text-gray-600 dark:text-gray-400">Light</button>
+                     <button data-theme="dark" class="theme-btn flex-1 py-2 text-sm font-semibold rounded-md transition-colors text-gray-600 dark:text-gray-400">Dark</button>
                 </div>
             </div>
-            <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl flex justify-between items-center">
-                 <label class="font-semibold">Times Per Day</label>
-                 <input id="habit-times-per-day-input" type="number" value="1" min="1" class="w-20 bg-gray-200 dark:bg-gray-700 text-center font-semibold rounded-lg py-1 focus:outline-none focus:ring-2 focus:ring-red-500">
-            </div>
-             <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
-                <label class="font-semibold">Target Days</label>
-                <div id="form-target-days" class="flex justify-between items-center mt-3">
-                    </div>
-            </div>
             <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
-                <label class="font-semibold">Time Range</label>
-                <div id="form-time-range" class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
-                     </div>
-            </div>
-            <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
-                <label class="font-semibold">Color</label>
-                <div id="form-color-grid" class="grid grid-cols-8 gap-3 py-4 place-items-center"></div>
-            </div>
-             <button id="save-habit-btn" class="w-full bg-red-500 text-white font-bold py-4 rounded-xl mt-6">Create Habit</button>
-        </div>
-    </div>
-    
-    <div id="icon-picker-modal" class="modal-container fixed inset-0 bg-black/70 z-[60] hidden items-center justify-center p-5">
-        <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl w-full max-w-sm">
-            <h3 class="text-lg font-bold text-center mb-4">Choose an Icon</h3>
-            <div id="icon-grid" class="grid grid-cols-6 gap-2 max-h-60 overflow-y-auto"></div>
-            <button id="close-icon-modal" class="mt-4 w-full py-2 bg-gray-200 dark:bg-gray-700 rounded-lg">Close</button>
-        </div>
-    </div>
-    <div id="context-menu-modal" class="modal-container fixed inset-0 bg-black/70 z-[60] hidden items-end justify-center p-5">
-        <div class="bg-white dark:bg-[#1E1E1E] p-2 rounded-xl w-full max-w-sm space-y-2">
-            <button id="edit-habit-btn" class="w-full text-center p-3 font-semibold bg-gray-200/50 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg">Edit Habit</button>
-            <button id="delete-habit-btn" class="w-full text-center p-3 font-semibold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/50 hover:bg-red-200 dark:hover:bg-red-900/80 rounded-lg">Delete Habit</button>
-            <button id="close-context-menu" class="w-full text-center p-3 font-bold mt-2 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 rounded-lg">Cancel</button>
-        </div>
-    </div>
-     <div id="confirm-modal" class="modal-container fixed inset-0 bg-black/70 z-[70] hidden items-center justify-center p-5">
-        <div class="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl w-full max-w-sm text-center">
-            <h3 id="confirm-title" class="text-lg font-bold mb-2">Are you sure?</h3>
-            <p id="confirm-message" class="text-sm text-gray-500 dark:text-gray-400 mb-6">This action cannot be undone.</p>
-            <div class="flex gap-4">
-                <button id="confirm-cancel-btn" class="w-full py-2 bg-gray-200 dark:bg-gray-700 rounded-lg font-semibold">Cancel</button>
-                <button id="confirm-action-btn" class="w-full py-2 bg-red-600 text-white rounded-lg font-semibold">Confirm</button>
+                <h2 class="font-bold text-lg mb-2">Data Management</h2>
+                <button id="reset-data-btn" class="w-full text-left p-3 bg-red-100 dark:bg-red-900/50 hover:bg-red-200 dark:hover:bg-red-900/80 rounded-lg text-red-700 dark:text-red-300 font-semibold">Reset All Data</button>
+                <p class="text-xs text-gray-500 mt-2">This will permanently delete all your habits and progress from Supabase and local cache.</p>
             </div>
         </div>
     </div>
+</div>
 
-    <footer class="fixed bottom-0 left-0 right-0 bg-white dark:bg-black border-t border-gray-200 dark:border-gray-800 p-2 flex justify-around items-center z-50">
-        <button data-view="main-view" class="nav-btn p-2 text-red-500"><svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" /></svg></button>
-        <button data-view="stats-view" class="nav-btn p-2 text-gray-500 dark:text-gray-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg></button>
-        <button id="add-habit-btn" class="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center text-white -mt-8 border-4 border-white dark:border-black"><svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg></button>
-        <button data-view="achievements-view" class="nav-btn p-2 text-gray-500 dark:text-gray-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" /></svg></button>
-        <button data-view="settings-view" class="nav-btn p-2 text-gray-500 dark:text-gray-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg></button>
-    </footer>
+<div id="add-habit-view" class="fixed inset-0 bg-gray-100 dark:bg-black transform translate-x-full z-50 p-5 overflow-y-auto">
+    <header class="flex items-center mb-8">
+        <button id="back-btn" class="p-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg></button>
+        <h2 id="form-title" class="text-xl font-bold mx-auto">Custom Habit</h2>
+        <div class="w-6"></div>
+    </header>
+    <div class="space-y-4 pb-5">
+        <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
+            <div class="flex items-center gap-4">
+                <button id="icon-preview-btn" class="w-14 h-14 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center text-3xl flex-shrink-0">➕</button>
+                <div class="flex-grow space-y-2">
+                    <input id="habit-name-input" type="text" placeholder="Habit name" class="w-full bg-transparent text-lg font-semibold placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none">
+                    <input id="habit-category-input" type="text" placeholder="Category (e.g., Health)" class="w-full bg-transparent text-sm text-gray-500 dark:placeholder-gray-400 focus:outline-none">
+                </div>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl flex justify-between items-center">
+             <label class="font-semibold">Times Per Day</label>
+             <input id="habit-times-per-day-input" type="number" value="1" min="1" class="w-20 bg-gray-200 dark:bg-gray-700 text-center font-semibold rounded-lg py-1 focus:outline-none focus:ring-2 focus:ring-red-500">
+        </div>
+         <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
+            <label class="font-semibold">Target Days</label>
+            <div id="form-target-days" class="flex justify-between items-center mt-3"></div>
+        </div>
+        <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
+            <label class="font-semibold">Time Range</label>
+            <div id="form-time-range" class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3"></div>
+        </div>
+        <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
+            <label class="font-semibold">Color</label>
+            <div id="form-color-grid" class="grid grid-cols-8 gap-3 py-4 place-items-center"></div>
+        </div>
+         <button id="save-habit-btn" class="w-full bg-red-500 text-white font-bold py-4 rounded-xl mt-6">Create Habit</button>
+    </div>
+</div>
 
-    <script>
-    document.addEventListener('DOMContentLoaded', () => {
-    // --- SUPABASE SETUP ---
-    const { createClient } = supabase;
-    const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
-    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
+<div id="icon-picker-modal" class="modal-container fixed inset-0 bg-black/70 z-[60] hidden items-center justify-center p-5">
+    <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl w-full max-w-sm">
+        <h3 class="text-lg font-bold text-center mb-4">Choose an Icon</h3>
+        <div id="icon-grid" class="grid grid-cols-6 gap-2 max-h-60 overflow-y-auto"></div>
+        <button id="close-icon-modal" class="mt-4 w-full py-2 bg-gray-200 dark:bg-gray-700 rounded-lg">Close</button>
+    </div>
+</div>
 
-    // --- DOM ELEMENTS ---
+<div id="context-menu-modal" class="modal-container fixed inset-0 bg-black/70 z-[60] hidden items-end justify-center p-5">
+    <div class="bg-white dark:bg-[#1E1E1E] p-2 rounded-xl w-full max-w-sm space-y-2">
+        <button id="edit-habit-btn" class="w-full text-center p-3 font-semibold bg-gray-200/50 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg">Edit Habit</button>
+        <button id="delete-habit-btn" class="w-full text-center p-3 font-semibold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/50 hover:bg-red-200 dark:hover:bg-red-900/80 rounded-lg">Delete Habit</button>
+        <button id="close-context-menu" class="w-full text-center p-3 font-bold mt-2 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 rounded-lg">Cancel</button>
+    </div>
+</div>
+
+<div id="confirm-modal" class="modal-container fixed inset-0 bg-black/70 z-[70] hidden items-center justify-center p-5">
+    <div class="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl w-full max-w-sm text-center">
+        <h3 id="confirm-title" class="text-lg font-bold mb-2">Are you sure?</h3>
+        <p id="confirm-message" class="text-sm text-gray-500 dark:text-gray-400 mb-6">This action cannot be undone.</p>
+        <div class="flex gap-4">
+            <button id="confirm-cancel-btn" class="w-full py-2 bg-gray-200 dark:bg-gray-700 rounded-lg font-semibold">Cancel</button>
+            <button id="confirm-action-btn" class="w-full py-2 bg-red-600 text-white rounded-lg font-semibold">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<footer class="fixed bottom-0 left-0 right-0 bg-white dark:bg-black border-t border-gray-200 dark:border-gray-800 p-2 flex justify-around items-center z-50">
+    <button data-view="main-view" class="nav-btn p-2 text-red-500"><svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" /></svg></button>
+    <button data-view="stats-view" class="nav-btn p-2 text-gray-500 dark:text-gray-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg></button>
+    <button id="add-habit-btn" class="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center text-white -mt-8 border-4 border-white dark:border-black"><svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg></button>
+    <button data-view="achievements-view" class="nav-btn p-2 text-gray-500 dark:text-gray-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" /></svg></button>
+    <button data-view="settings-view" class="nav-btn p-2 text-gray-500 dark:text-gray-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg></button>
+</footer>
+
+<script type="module">
+/* ===========================
+   Supabase config (from user)
+   =========================== */
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
+const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ===========================
+   App code (mostly same UI)
+   =========================== */
+document.addEventListener('DOMContentLoaded', async () => {
+    // DOM elements
     const appContainer = document.getElementById('app-container');
     const headerTitle = document.getElementById('header-title');
     const habitsContainer = document.getElementById('habits-container');
@@ -245,14 +200,14 @@
     const contextMenuModal = document.getElementById('context-menu-modal');
     const confirmModal = document.getElementById('confirm-modal');
     const themeSelector = document.getElementById('theme-selector');
-    
-    // --- STATE & CONSTANTS ---
-    let user = null;
+
+    // State
     let selectedDate = new Date();
-    let habits = []; // { id, name, icon, color, progressColor, goal, creationDate, category, targetDays, timeRange, hiddenUntil }
-    let history = {}; // { 'YYYY-MM-DD': { habitId: count | 'skipped' } }
+    let habits = []; // local cache: array of habit objects from DB
+    let history = {}; // { 'YYYY-MM-DD': { habitId: { count, status } } }
     let currentEditingHabitId = null;
 
+    // UI constants
     const COLORS = [
         { main: 'bg-blue-600', progress: 'bg-blue-400' }, { main: 'bg-yellow-500', progress: 'bg-yellow-300' },
         { main: 'bg-teal-500', progress: 'bg-teal-300' }, { main: 'bg-red-500', progress: 'bg-red-400' },
@@ -260,111 +215,39 @@
         { main: 'bg-pink-500', progress: 'bg-pink-400' }, { main: 'bg-indigo-500', progress: 'bg-indigo-400' }
     ];
     const ICONS = ['📚','🏃','💻','🧘','💧','🎨','🎵','🧹','💰','💪','🎯','🗣️','✏️','🌱','🌅','🍎','✍️','💡'];
-    const DAYS_OF_WEEK = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-    const TIME_RANGES = ['Anytime', 'Morning', 'Afternoon', 'Evening'];
-    
-    // --- HELPER FUNCTIONS ---
+    const DAYS_OF_WEEK = ['S','M','T','W','T','F','S'];
+    const TIME_RANGES = ['Anytime','Morning','Afternoon','Evening'];
+
+    // Helpers
     const toISODateString = date => new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString().split('T')[0];
-    const isSameDay = (d1, d2) => d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
-    
-    const loadData = async () => {
-        if (!user) return;
-        
-        const { data: habitsData, error: habitsError } = await supabaseClient
-            .from('habits')
-            .select('*')
-            .eq('user_id', user.id);
-            
-        if (habitsError) {
-            console.error('Error fetching habits:', habitsError);
-            if (habitsError.code === '42P01') {
-                 habitsContainer.innerHTML = `<div class="text-center mt-20 text-red-500 p-4 rounded-xl bg-red-500/10">
-                    <h2 class="text-xl font-bold">Database Setup Incomplete</h2>
-                    <p class="mt-2">The required tables ('habits' and 'history') were not found in your database.</p>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Please run the setup script from the <strong>supabase_setup.sql</strong> file in your Supabase project's SQL Editor to create them.</p>
-                </div>`;
-                 return; // Stop further execution
-            } else {
-                showToast('Error fetching habits. Check console.');
-            }
-            return;
-        } else {
-            // Map snake_case from DB to camelCase for the app
-            habits = (habitsData || []).map(h => ({
-                id: h.id,
-                userId: h.user_id,
-                name: h.name,
-                icon: h.icon,
-                color: h.color,
-                progressColor: h.progress_color,
-                goal: h.goal,
-                creationDate: h.creation_date,
-                category: h.category,
-                targetDays: h.target_days,
-                timeRange: h.time_range,
-                hiddenUntil: h.hidden_until
-            }));
-        }
-
-        const { data: historyData, error: historyError } = await supabaseClient
-            .from('history')
-            .select('*')
-            .eq('user_id', user.id);
-
-        if (historyError) {
-            console.error('Error fetching history:', historyError);
-            if (historyError.code !== '42P01') { // Avoid showing a second error for the same issue
-                 showToast('Error fetching history. Check console.');
-            }
-        } else {
-            history = {};
-            (historyData || []).forEach(record => {
-                if (!history[record.date]) {
-                    history[record.date] = {};
-                }
-                history[record.date][record.habit_id] = record.skipped ? 'skipped' : record.count;
-            });
-        }
-        
-        renderDateScroller();
-        renderHabits();
-    };
+    const isSameDay = (d1, d2) => d1.getFullYear()===d2.getFullYear() && d1.getMonth()===d2.getMonth() && d1.getDate()===d2.getDate();
 
     const showToast = (message) => {
         const toast = document.createElement('div');
         toast.className = 'toast-notification fixed bottom-24 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-full text-sm opacity-0 transform translate-y-2 z-[100]';
         toast.textContent = message;
         document.body.appendChild(toast);
-        setTimeout(() => { toast.classList.remove('opacity-0', 'translate-y-2'); }, 10);
-        setTimeout(() => {
-            toast.classList.add('opacity-0', 'translate-y-2');
-            toast.addEventListener('transitionend', () => toast.remove());
+        setTimeout(()=> { toast.classList.remove('opacity-0','translate-y-2'); }, 10);
+        setTimeout(()=> {
+            toast.classList.add('opacity-0','translate-y-2');
+            toast.addEventListener('transitionend', ()=> toast.remove());
         }, 2000);
     };
 
-    const showModal = (modal) => {
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-    };
+    const showModal = (modal) => { modal.classList.remove('hidden'); modal.classList.add('flex'); }
     const hideModal = (modal) => modal.classList.add('hidden');
-    
+
     const showConfirmation = (title, message, onConfirm) => {
         document.getElementById('confirm-title').textContent = title;
         document.getElementById('confirm-message').textContent = message;
         showModal(confirmModal);
-        
+
         const confirmBtn = document.getElementById('confirm-action-btn');
         const cancelBtn = document.getElementById('confirm-cancel-btn');
 
-        const confirmHandler = () => {
-            onConfirm();
-            hideModal(confirmModal);
-            cleanup();
-        };
-        const cancelHandler = () => {
-            hideModal(confirmModal);
-            cleanup();
-        };
+        const confirmHandler = () => { onConfirm(); hideModal(confirmModal); cleanup(); };
+        const cancelHandler = () => { hideModal(confirmModal); cleanup(); };
+
         const cleanup = () => {
             confirmBtn.removeEventListener('click', confirmHandler);
             cancelBtn.removeEventListener('click', cancelHandler);
@@ -374,77 +257,275 @@
         cancelBtn.addEventListener('click', cancelHandler);
     };
 
-    // --- THEME MANAGEMENT ---
-    const applyTheme = (theme) => {
-        if (theme === 'light') {
-            document.documentElement.classList.remove('dark');
-        } else {
-            document.documentElement.classList.add('dark');
+    // -------------------------
+    // Supabase interaction
+    // -------------------------
+
+    // Load habits and history from Supabase into local caches
+    async function loadDataFromSupabase() {
+        try {
+            // Load habits
+            let { data: habitsData, error: habitsError } = await supabase
+                .from('habits')
+                .select('*')
+                .order('id', { ascending: true });
+
+            if (habitsError) throw habitsError;
+            habits = (habitsData || []).map(h => normalizeHabitFromDB(h));
+
+            // Load history entries
+            let { data: historyData, error: historyError } = await supabase
+                .from('history')
+                .select('*');
+
+            if (historyError) throw historyError;
+
+            // Build history object: { 'YYYY-MM-DD': { habitId: { count, status } } }
+            history = {};
+            (historyData || []).forEach(row => {
+                const dateKey = (row.date instanceof String) ? row.date : row.date; // date string
+                const iso = new Date(row.date).toISOString().split('T')[0];
+                if (!history[iso]) history[iso] = {};
+                history[iso][String(row.habit_id)] = { count: row.count ?? 0, status: row.status ?? null, id: row.id };
+            });
+
+            // Persist a small local cache for faster UI loads (optional)
+            localStorage.setItem('habits_cache', JSON.stringify(habits));
+            localStorage.setItem('history_cache', JSON.stringify(history));
+        } catch (err) {
+            console.error('Error loading from Supabase:', err);
+            // If Supabase fails, try to load caches
+            const cachedHabits = localStorage.getItem('habits_cache');
+            const cachedHistory = localStorage.getItem('history_cache');
+            habits = cachedHabits ? JSON.parse(cachedHabits) : [];
+            history = cachedHistory ? JSON.parse(cachedHistory) : {};
+            showToast('Could not reach Supabase — using local cache.');
         }
-        localStorage.setItem('theme', theme);
-        updateThemeToggleUI(theme);
-    };
+    }
 
-    const updateThemeToggleUI = (theme) => {
-        themeSelector.querySelectorAll('.theme-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.theme === theme);
-        });
-    };
+    // Normalize habit from DB: ensure fields exist and UI-friendly keys
+    function normalizeHabitFromDB(row) {
+        return {
+            id: row.id,
+            name: row.name,
+            category: row.category || '',
+            goal: row.goal || 1,
+            targetDays: Array.isArray(row.target_days) ? row.target_days : (row.target_days ? JSON.parse(row.target_days) : [0,1,2,3,4,5,6]),
+            timeRange: row.time_range || 'Anytime',
+            icon: row.icon || '➕',
+            color: row.color || 'bg-red-500',
+            progressColor: row.progress_color || 'bg-red-400',
+            creationDate: (row.creation_date) ? (new Date(row.creation_date).toISOString().split('T')[0]) : toISODateString(new Date())
+        };
+    }
 
-    // --- VIEW MANAGEMENT ---
-    const showView = (viewId) => {
-        appContainer.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
-        document.getElementById(viewId).classList.remove('hidden');
+    // Create a new habit in Supabase and local cache
+    async function createHabitOnSupabase(habitData) {
+        try {
+            // Prepare DB row: target_days is JSONB in Supabase; send array
+            const insertRow = {
+                name: habitData.name,
+                category: habitData.category,
+                goal: habitData.goal,
+                target_days: habitData.targetDays,
+                time_range: habitData.timeRange,
+                icon: habitData.icon,
+                color: habitData.color,
+                progress_color: habitData.progressColor,
+                creation_date: habitData.creationDate
+            };
 
-        document.querySelectorAll('.nav-btn').forEach(btn => {
-            btn.classList.toggle('text-red-500', btn.dataset.view === viewId);
-            const isInactive = btn.dataset.view !== viewId;
-            btn.classList.toggle('text-gray-500', isInactive);
-            btn.classList.toggle('dark:text-gray-400', isInactive);
-        });
-        
-        if(viewId === 'stats-view') renderStatsView();
-        if(viewId === 'achievements-view') renderAchievementsView();
-    };
+            const { data, error } = await supabase
+                .from('habits')
+                .insert([insertRow])
+                .select()
+                .single();
 
-    // --- RENDER FUNCTIONS ---
-    const renderHabits = () => {
+            if (error) throw error;
+
+            const created = normalizeHabitFromDB(data);
+            habits.push(created);
+            localStorage.setItem('habits_cache', JSON.stringify(habits));
+            return created;
+        } catch (err) {
+            console.error('Create habit error:', err);
+            showToast('Failed to create habit (offline?).');
+            return null;
+        }
+    }
+
+    // Update habit in Supabase
+    async function updateHabitOnSupabase(id, partial) {
+        try {
+            const { data, error } = await supabase
+                .from('habits')
+                .update(partial)
+                .eq('id', id)
+                .select()
+                .single();
+            if (error) throw error;
+            // update local cache
+            const idx = habits.findIndex(h => h.id === id);
+            if (idx > -1) habits[idx] = normalizeHabitFromDB(data);
+            localStorage.setItem('habits_cache', JSON.stringify(habits));
+            return habits[idx];
+        } catch (err) {
+            console.error('Update habit error:', err);
+            showToast('Failed to update habit.');
+            return null;
+        }
+    }
+
+    // Delete habit and its history from Supabase
+    async function deleteHabitOnSupabase(id) {
+        try {
+            // Delete history rows for that habit
+            await supabase.from('history').delete().eq('habit_id', id);
+            // Delete habit
+            const { error } = await supabase.from('habits').delete().eq('id', id);
+            if (error) throw error;
+            habits = habits.filter(h => h.id !== id);
+            // remove from local history
+            Object.keys(history).forEach(dateKey => { if (history[dateKey][String(id)]) delete history[dateKey][String(id)]; });
+            localStorage.setItem('habits_cache', JSON.stringify(habits));
+            localStorage.setItem('history_cache', JSON.stringify(history));
+            return true;
+        } catch (err) {
+            console.error('Delete habit error:', err);
+            showToast('Failed to delete habit.');
+            return false;
+        }
+    }
+
+    // Upsert a single history entry: create or update one row for (habit_id, date)
+    async function upsertHistoryEntryOnSupabase(habitId, isoDate, entry) {
+        // entry = { count: number, status: string|null }
+        try {
+            // Try to find existing row
+            const { data: existingRows, error: selErr } = await supabase
+                .from('history')
+                .select('*')
+                .eq('habit_id', habitId)
+                .eq('date', isoDate);
+
+            if (selErr) throw selErr;
+
+            if (existingRows && existingRows.length > 0) {
+                const row = existingRows[0];
+                const { data: updated, error: updErr } = await supabase
+                    .from('history')
+                    .update({ count: entry.count, status: entry.status })
+                    .eq('id', row.id)
+                    .select()
+                    .single();
+                if (updErr) throw updErr;
+                // Update local cache id
+                if (!history[isoDate]) history[isoDate] = {};
+                history[isoDate][String(habitId)] = { count: updated.count, status: updated.status, id: updated.id };
+            } else {
+                const { data: inserted, error: insErr } = await supabase
+                    .from('history')
+                    .insert([{ habit_id: habitId, date: isoDate, status: entry.status, count: entry.count }])
+                    .select()
+                    .single();
+                if (insErr) throw insErr;
+                if (!history[isoDate]) history[isoDate] = {};
+                history[isoDate][String(habitId)] = { count: inserted.count, status: inserted.status, id: inserted.id };
+            }
+            localStorage.setItem('history_cache', JSON.stringify(history));
+        } catch (err) {
+            console.error('Upsert history error:', err);
+            showToast('Failed to sync history to Supabase.');
+        }
+    }
+
+    // Remove a history entry (reset) for a habit on a specific date in Supabase
+    async function removeHistoryEntryOnSupabase(habitId, isoDate) {
+        try {
+            // delete where habit_id and date
+            const { error } = await supabase
+                .from('history')
+                .delete()
+                .eq('habit_id', habitId)
+                .eq('date', isoDate);
+            if (error) throw error;
+            if (history[isoDate]) {
+                delete history[isoDate][String(habitId)];
+                if (Object.keys(history[isoDate]).length === 0) delete history[isoDate];
+            }
+            localStorage.setItem('history_cache', JSON.stringify(history));
+        } catch (err) {
+            console.error('Remove history error:', err);
+            showToast('Failed to remove history entry.');
+        }
+    }
+
+    // -------------------------
+    // UI render & interactions
+    // -------------------------
+
+    // Render date scroller
+    function renderDateScroller() {
+        dateScrollerContainer.innerHTML = '';
+        const today = new Date();
+        headerTitle.textContent = isSameDay(selectedDate, today) ? "Today" : selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+        for (let i = -7; i <= 7; i++) {
+            const date = new Date();
+            date.setDate(today.getDate() + i);
+            const isSelected = isSameDay(date, selectedDate);
+
+            const dateEl = document.createElement('button');
+            dateEl.className = 'flex flex-col items-center justify-center space-y-1.5 w-12 flex-shrink-0';
+            dateEl.innerHTML = `
+                <span class="text-sm font-medium ${isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}">${date.toLocaleDateString('en-US', {weekday:'short'})}</span>
+                <span class="flex items-center justify-center w-9 h-9 text-sm font-semibold rounded-full ${isSelected ? 'bg-red-500 text-white' : 'text-gray-800 dark:text-gray-200'}">${date.getDate()}</span>`;
+
+            dateEl.addEventListener('click', () => {
+                selectedDate = date;
+                renderDateScroller();
+                renderHabits();
+            });
+            dateScrollerContainer.appendChild(dateEl);
+            if (isSelected) setTimeout(()=> dateEl.scrollIntoView({ behavior:'smooth', inline:'center' }), 100);
+        }
+    }
+
+    // Render habits for the currently selected date (uses local cache)
+    function renderHabits() {
         const dateKey = toISODateString(selectedDate);
         const dayOfWeek = selectedDate.getDay();
-        const today = new Date();
-        today.setHours(0, 0, 0, 0); // Normalize today's date
-        
+        const today = new Date(); today.setHours(0,0,0,0);
+
         const allHabitsForDay = habits.filter(h => new Date(h.creationDate) <= selectedDate && h.targetDays.includes(dayOfWeek));
-        
+
         const visibleHabits = allHabitsForDay.filter(h => {
             if (!h.hiddenUntil) return true;
-            const hiddenDate = new Date(h.hiddenUntil);
-            return hiddenDate < today;
+            const hid = new Date(h.hiddenUntil);
+            return hid < today;
         });
         const hiddenHabits = allHabitsForDay.filter(h => {
             if (!h.hiddenUntil) return false;
-            const hiddenDate = new Date(h.hiddenUntil);
-            return hiddenDate >= today;
+            const hid = new Date(h.hiddenUntil);
+            return hid >= today;
         });
-        
-        habitsContainer.innerHTML = ''; 
 
+        habitsContainer.innerHTML = '';
         if (visibleHabits.length === 0 && hiddenHabits.length === 0) {
-            habitsContainer.innerHTML = `<div class="text-center mt-20 flex flex-col items-center"><div class="w-40 h-40 opacity-30"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none"><circle cx="100" cy="100" r="80" fill="#FF4B4B" fill-opacity="0.1"/><path d="M140.833 83.3333L125 62.5L108.333 83.3333M140.833 83.3333C142.5 87.5 141.667 90.8333 140 93.3333C135.833 100 128.333 105 120 106.667C111.667 108.333 102.5 106.667 95 101.667C87.5 96.6667 82.5 89.1667 80.8333 80.8333C79.1667 72.5 80.8333 63.3333 85.8333 55.8333C90.8333 48.3333 98.3333 43.3333 106.667 41.6667C110.833 40.8333 115 41.6667 118.333 43.3333" stroke="#FF4B4B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M125 62.5V41.6667M125 62.5L140.833 83.3333" stroke="#FF4B4B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M91.6667 125L83.3333 141.667L66.6667 133.333L75 116.667" fill="#FF4B4B" fill-opacity="0.3" stroke="#FF4B4B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M125 100C125 104.142 121.642 107.5 117.5 107.5C113.358 107.5 110 104.142 110 100C110 95.8579 113.358 92.5 117.5 92.5C121.642 92.5 125 95.8579 125 100Z" fill="#FF4B4B" fill-opacity="0.3"/><path d="M133.333 58.3333C133.333 60.1912 131.858 61.6667 130 61.6667C128.142 61.6667 126.667 60.1912 126.667 58.3333C126.667 56.4755 128.142 55 130 55C131.858 55 133.333 56.4755 133.333 58.3333Z" fill="#FF4B4B" fill-opacity="0.3"/><path d="M75 83.3333C75 85.1912 73.5245 86.6667 71.6667 86.6667C69.8088 86.6667 68.3333 85.1912 68.3333 83.3333C68.3333 81.4755 69.8088 80 71.6667 80C73.5245 80 75 81.4755 75 83.3333Z" fill="#FF4B4B" fill-opacity="0.3"/><path d="M83.3333 116.667L75 125" stroke="#FF4B4B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h2 class="text-xl font-bold mt-4">No Habits Today</h2><p class="text-gray-500 dark:text-gray-400 mt-1">Tap "+" to add a new habit.</p></div>`;
+            habitsContainer.innerHTML = `<div class="text-center mt-20 flex flex-col items-center"><div class="w-40 h-40 opacity-30">...</div><h2 class="text-xl font-bold mt-4">No Habits Today</h2><p class="text-gray-500 dark:text-gray-400 mt-1">Tap "+" to add a new habit.</p></div>`;
         } else if (visibleHabits.length === 0) {
-             habitsContainer.innerHTML = `<div class="text-center mt-20 text-gray-500 dark:text-gray-400">All habits for today are hidden.</div>`;
+            habitsContainer.innerHTML = `<div class="text-center mt-20 text-gray-500 dark:text-gray-400">All habits for today are hidden.</div>`;
         }
 
         visibleHabits.forEach(habit => {
-            const dayHistory = (history[dateKey] && history[dateKey][habit.id]);
-            const isSkipped = dayHistory === 'skipped';
-            const currentCount = typeof dayHistory === 'number' ? dayHistory : 0;
+            const dayHist = (history[dateKey] && history[dateKey][String(habit.id)]);
+            const isSkipped = dayHist && dayHist.status === 'skipped';
+            const currentCount = dayHist ? dayHist.count : 0;
             const progressPercentage = isSkipped ? 100 : Math.min((currentCount / habit.goal) * 100, 100);
-            
-            const habitElWrapper = document.createElement('div');
-            habitElWrapper.className = 'habit-swipe-container';
 
-            habitElWrapper.innerHTML = `
+            const wrapper = document.createElement('div');
+            wrapper.className = 'habit-swipe-container';
+            wrapper.innerHTML = `
                 <div class="habit-actions">
                     <button data-action="skip" class="habit-action-btn bg-orange-500"><svg class="w-6 h-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>Skip</button>
                     <button data-action="hide" class="habit-action-btn bg-blue-700"><svg class="w-6 h-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m0 0l-3.59-3.59"/></svg>Hide</button>
@@ -464,38 +545,32 @@
                     <button class="options-btn p-2 -mr-2 flex-shrink-0" data-habit-id="${habit.id}"><svg class="w-6 h-6 text-white/70 pointer-events-none" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" /></svg></button>
                 </div>
             `;
-            
-            const habitContent = habitElWrapper.querySelector('.habit-content');
-            addSwipeListeners(habit, habitContent, dateKey);
-            
-            habitContent.addEventListener('click', async (e) => {
-                if(e.target.closest('.options-btn') || isSkipped) return;
-                
-                const currentCount = (history[dateKey]?.[habit.id] || 0) + 1;
-                
-                if (currentCount <= habit.goal) {
-                    const { error } = await supabaseClient
-                        .from('history')
-                        .upsert({ 
-                            user_id: user.id, 
-                            habit_id: habit.id, 
-                            date: dateKey, 
-                            count: currentCount,
-                            skipped: false
-                        }, { onConflict: 'user_id, habit_id, date' });
 
-                    if (error) console.error('Error updating progress:', error);
-                    else await loadData();
+            const habitContent = wrapper.querySelector('.habit-content');
+            addSwipeListeners(habit, habitContent, dateKey);
+
+            habitContent.addEventListener('click', async (e) => {
+                if (e.target.closest('.options-btn')) return;
+                // Increment count for this habit/day
+                if (!history[dateKey]) history[dateKey] = {};
+                const current = (history[dateKey][String(habit.id)] ? history[dateKey][String(habit.id)].count : 0) + 1;
+                if (current <= habit.goal) {
+                    history[dateKey][String(habit.id)] = { count: current, status: null };
+                    await upsertHistoryEntryOnSupabase(habit.id, dateKey, { count: current, status: null });
+                    renderHabits();
+                } else {
+                    // already reached goal
+                    showToast('Goal already reached for this habit today.');
                 }
             });
 
-            habitsContainer.appendChild(habitElWrapper);
+            habitsContainer.appendChild(wrapper);
         });
 
         renderHiddenHabits(hiddenHabits);
-    };
+    }
 
-    const renderHiddenHabits = (hiddenHabits) => {
+    function renderHiddenHabits(hiddenHabits) {
         if (hiddenHabits.length > 0) {
             hiddenHabitsSection.classList.remove('hidden');
             hiddenHabitsList.innerHTML = hiddenHabits.map(habit => `
@@ -509,49 +584,25 @@
                     </div>
                 </div>
             `).join('');
-            
+
+            // add listeners
             hiddenHabitsList.querySelectorAll('.unhide-btn').forEach(btn => {
-                const habitId = btn.closest('.hidden-habit-swipe-container').dataset.habitId;
-                btn.addEventListener('click', () => unhideHabit(habitId));
+                const habitId = parseInt(btn.closest('.hidden-habit-swipe-container').dataset.habitId);
+                btn.addEventListener('click', async () => {
+                    await unhideHabit(habitId);
+                });
             });
+
             hiddenHabitsList.querySelectorAll('.hidden-habit-tile').forEach(tile => {
                 addUnhideSwipeListener(tile);
             });
         } else {
             hiddenHabitsSection.classList.add('hidden');
         }
-    };
-    
-    const renderDateScroller = () => {
-        dateScrollerContainer.innerHTML = '';
-        const today = new Date();
-        headerTitle.textContent = isSameDay(selectedDate, today) ? "Today" : selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        
-        for (let i = -7; i <= 7; i++) {
-            const date = new Date();
-            date.setDate(today.getDate() + i);
-            const isSelected = isSameDay(date, selectedDate);
-            
-            const dateEl = document.createElement('button');
-            dateEl.className = 'flex flex-col items-center justify-center space-y-1.5 w-12 flex-shrink-0';
-            dateEl.innerHTML = `
-                <span class="text-sm font-medium ${isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}">${date.toLocaleDateString('en-US', {weekday: 'short'})}</span>
-                <span class="flex items-center justify-center w-9 h-9 text-sm font-semibold rounded-full ${isSelected ? 'bg-red-500 text-white' : 'text-gray-800 dark:text-gray-200'}">${date.getDate()}</span>`;
-            
-            dateEl.addEventListener('click', () => {
-                selectedDate = date;
-                renderDateScroller();
-                renderHabits();
-            });
-            dateScrollerContainer.appendChild(dateEl);
-            if (isSelected) {
-                setTimeout(() => dateEl.scrollIntoView({ behavior: 'smooth', inline: 'center' }), 100);
-            }
-        }
-    };
-    
-    // --- STATISTICS RENDER FUNCTIONS ---
-    const renderTodaysProgress = () => {
+    }
+
+    // Stats & achievements rendering (kept mostly the same)
+    function renderTodaysProgress() {
         const today = new Date();
         const dateKey = toISODateString(today);
         const dayOfWeek = today.getDay();
@@ -559,7 +610,7 @@
         if (activeHabits.length === 0) return '';
 
         const todaysHistory = history[dateKey] || {};
-        const completedCount = activeHabits.filter(h => (todaysHistory[h.id] || 0) >= h.goal).length;
+        const completedCount = activeHabits.filter(h => (todaysHistory[String(h.id)] && todaysHistory[String(h.id)].count >= h.goal)).length;
         const progress = activeHabits.length > 0 ? Math.round((completedCount / activeHabits.length) * 100) : 0;
 
         return `
@@ -574,9 +625,9 @@
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">${completedCount} of ${activeHabits.length} habits completed.</p>
             </div>
         `;
-    };
+    }
 
-    const renderWeeklyOverview = () => {
+    function renderWeeklyOverview() {
         let weeklyContent = '';
         const today = new Date();
         for (let i = 6; i >= 0; i--) {
@@ -588,7 +639,7 @@
             let progress = 0;
             if (activeHabits.length > 0) {
                 const dayHistory = history[dateKey] || {};
-                const completedCount = activeHabits.filter(h => (dayHistory[h.id] || 0) >= h.goal).length;
+                const completedCount = activeHabits.filter(h => (dayHistory[String(h.id)] && dayHistory[String(h.id)].count >= h.goal)).length;
                 progress = (completedCount / activeHabits.length) * 100;
             }
             weeklyContent += `
@@ -596,7 +647,7 @@
                     <div class="w-full h-32 bg-gray-200 dark:bg-gray-800 rounded-md flex items-end">
                         <div class="w-full bg-teal-500 rounded-md" style="height: ${progress}%"></div>
                     </div>
-                    <span class="text-xs font-medium text-gray-500 dark:text-gray-400">${date.toLocaleDateString('en-us', {weekday: 'short'})}</span>
+                    <span class="text-xs font-medium text-gray-500 dark:text-gray-400">${date.toLocaleDateString('en-us', {weekday:'short'})}</span>
                 </div>
             `;
         }
@@ -606,15 +657,15 @@
                 <div class="grid grid-cols-7 gap-3">${weeklyContent}</div>
             </div>
         `;
-    };
+    }
 
-    const renderMonthlyOverview = () => {
+    function renderMonthlyOverview() {
         const today = new Date();
         const month = today.getMonth();
         const year = today.getFullYear();
         const firstDayOfMonth = new Date(year, month, 1);
         const daysInMonth = new Date(year, month + 1, 0).getDate();
-        
+
         let daysContent = Array(firstDayOfMonth.getDay()).fill(`<div class="w-8 h-8"></div>`).join('');
 
         for (let day = 1; day <= daysInMonth; day++) {
@@ -627,17 +678,16 @@
 
             if (activeHabits.length > 0) {
                 const dayHistory = history[dateKey] || {};
-                const completedCount = activeHabits.filter(h => (dayHistory[h.id] || 0) >= h.goal).length;
+                const completedCount = activeHabits.filter(h => (dayHistory[String(h.id)] && dayHistory[String(h.id)].count >= h.goal)).length;
                 completionRate = completedCount / activeHabits.length;
             } else if (date < today) {
                 bgColor = 'bg-gray-200/50 dark:bg-gray-800/50';
             }
 
+            if (completionRate > 0) bgColor = 'bg-red-200 dark:bg-red-800/70';
+            if (completionRate >= 0.5) bgColor = 'bg-yellow-200 dark:bg-yellow-800/70';
+            if (completionRate === 1) bgColor = 'bg-green-200 dark:bg-green-800/70';
 
-            if(completionRate > 0) bgColor = 'bg-red-200 dark:bg-red-800/70';
-            if(completionRate >= 0.5) bgColor = 'bg-yellow-200 dark:bg-yellow-800/70';
-            if(completionRate === 1) bgColor = 'bg-green-200 dark:bg-green-800/70';
-            
             daysContent += `<div class="w-8 h-8 flex items-center justify-center text-xs rounded-md ${bgColor}">${day}</div>`;
         }
 
@@ -650,39 +700,37 @@
                 </div>
             </div>
         `;
-    };
-    
-    const calculateStreak = (habitId) => {
+    }
+
+    function calculateStreak(habitId) {
         let currentStreak = 0;
         let checkDate = new Date();
         const habit = habits.find(h => h.id === habitId);
         if (!habit) return 0;
-
         while (new Date(habit.creationDate) <= checkDate) {
             const dateKey = toISODateString(checkDate);
             const dayOfWeek = checkDate.getDay();
-            
             if (habit.targetDays.includes(dayOfWeek)) {
                 const dayHistory = history[dateKey];
-                if (dayHistory && (dayHistory[habitId] || 0) >= habit.goal) {
+                if (dayHistory && (dayHistory[String(habitId)] && dayHistory[String(habitId)].count >= habit.goal)) {
                     currentStreak++;
-                } else if (!dayHistory || dayHistory[habitId] !== 'skipped') { // Don't break streak for skipped days
+                } else if (!dayHistory || (dayHistory[String(habitId)] && dayHistory[String(habitId)].status === 'skipped')) {
+                    // do nothing, skip does not break streak per earlier logic
+                    break;
+                } else {
                     break;
                 }
             }
             checkDate.setDate(checkDate.getDate() - 1);
         }
         return currentStreak;
-    };
+    }
 
-
-    const renderHabitPerformance = () => {
+    function renderHabitPerformance() {
         if (habits.length === 0) return '';
-        
         let performanceContent = habits.map(habit => {
             const streak = calculateStreak(habit.id);
-            const totalCompletions = Object.values(history).reduce((acc, day) => acc + ((day[habit.id] && day[habit.id] >= habit.goal) ? 1 : 0), 0);
-            
+            const totalCompletions = Object.values(history).reduce((acc, day) => acc + ((day[String(habit.id)] && day[String(habit.id)].count >= habit.goal) ? 1 : 0), 0);
             return `
                 <div class="p-4 rounded-xl flex items-center gap-4 bg-gray-200/50 dark:bg-gray-800/50">
                     <div class="text-3xl">${habit.icon}</div>
@@ -697,16 +745,15 @@
                 </div>
             `;
         }).join('');
-
         return `
             <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
                 <h3 class="font-bold mb-3">Habit Performance</h3>
                 <div class="space-y-3">${performanceContent}</div>
             </div>
         `;
-    };
+    }
 
-    const renderStatsView = () => {
+    function renderStatsView() {
         const container = document.getElementById('stats-container');
         if (habits.length === 0) {
             container.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 mt-10">Start tracking habits to see your stats!</p>`;
@@ -718,17 +765,16 @@
             ${renderMonthlyOverview()}
             ${renderHabitPerformance()}
         `;
-    };
-    
-    // --- ACHIEVEMENTS LOGIC ---
-    const getAchievements = () => {
-        const totalCompletions = Object.values(history).reduce((sum, day) => sum + Object.values(day).filter(d => typeof d === 'number').length, 0);
+    }
+
+    function getAchievements() {
+        const totalCompletions = Object.values(history).reduce((sum, day) => sum + Object.values(day).filter(d => typeof d.count === 'number' && d.count > 0).length, 0);
         const maxStreak = Math.max(0, ...habits.map(h => calculateStreak(h.id)));
         const earlyRiserHabits = habits.filter(h => h.timeRange === 'Morning').length;
         const totalGoalsMet = Object.values(history).reduce((sum, day) => {
             return sum + Object.keys(day).filter(habitId => {
                 const habit = habits.find(h => h.id == habitId);
-                return habit && day[habitId] >= habit.goal;
+                return habit && day[habitId] && day[habitId].count >= habit.goal;
             }).length;
         }, 0);
 
@@ -741,16 +787,16 @@
             { id: 'firstHabit', title: 'First Step', icon: '🌱', unlocked: habits.length > 0 },
             { id: 'fiveHabits', title: 'Habit Builder', icon: '🏗️', unlocked: habits.length >= 5 },
             { id: 'perfectDay', title: 'Perfect Day', icon: '✅', unlocked: Object.values(history).some(day => {
-                const dayDateStr = Object.keys(history).find(key => history[key] === day);
-                if (!dayDateStr) return false;
-                const dayDate = new Date(dayDateStr);
+                const dateKey = Object.keys(history).find(k => history[k] === day);
+                if (!dateKey) return false;
+                const dayDate = new Date(dateKey);
                 const activeHabits = habits.filter(h => h.targetDays.includes(dayDate.getUTCDay()));
-                return activeHabits.length > 0 && activeHabits.every(h => (day[h.id] || 0) >= h.goal);
+                return activeHabits.length > 0 && activeHabits.every(h => (day[String(h.id)] && day[String(h.id)].count >= h.goal));
             })}
         ];
-    };
+    }
 
-    const renderAchievementsView = () => {
+    function renderAchievementsView() {
         const container = document.getElementById('achievements-container');
         const achievements = getAchievements();
         const unlockedCount = achievements.filter(a => a.unlocked).length;
@@ -777,54 +823,39 @@
                 ${badgesHTML}
             </div>
         `;
-    };
+    }
 
-    // --- FORM & MODAL LOGIC ---
-     const openAddHabitView = (habitToEdit = null) => {
+    // -------------------------
+    // Form interactions
+    // -------------------------
+    const openAddHabitView = (habitToEdit = null) => {
         currentEditingHabitId = habitToEdit ? habitToEdit.id : null;
         formTitle.textContent = habitToEdit ? 'Edit Habit' : 'Create Habit';
         saveHabitBtn.textContent = habitToEdit ? 'Save Changes' : 'Create Habit';
-        
+
         habitNameInput.value = habitToEdit ? habitToEdit.name : '';
         habitCategoryInput.value = habitToEdit ? habitToEdit.category : '';
         habitTimesPerDayInput.value = habitToEdit ? habitToEdit.goal : '1';
         iconPreviewButton.textContent = habitToEdit ? habitToEdit.icon : '➕';
-        
-        const targetDays = habitToEdit ? habitToEdit.targetDays : [0, 1, 2, 3, 4, 5, 6];
-        formTargetDays.innerHTML = DAYS_OF_WEEK.map((day, index) => 
-            `<button class="day-btn w-10 h-10 rounded-full text-sm bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-300 ${targetDays.includes(index) ? 'active' : ''}" data-day="${index}">${day}</button>`
-        ).join('');
+
+        const targetDays = habitToEdit ? habitToEdit.targetDays : [0,1,2,3,4,5,6];
+        formTargetDays.innerHTML = DAYS_OF_WEEK.map((day,index) => `<button class="day-btn w-10 h-10 rounded-full text-sm bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-300 ${targetDays.includes(index)?'active':''}" data-day="${index}">${day}</button>`).join('');
 
         const timeRange = habitToEdit ? habitToEdit.timeRange : 'Anytime';
-        formTimeRange.innerHTML = TIME_RANGES.map(range => 
-            `<button class="time-range-btn flex-1 py-2 px-3 text-sm rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-300 ${timeRange === range ? 'active' : ''}" data-range="${range}">${range}</button>`
-        ).join('');
+        formTimeRange.innerHTML = TIME_RANGES.map(range => `<button class="time-range-btn flex-1 py-2 px-3 text-sm rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-300 ${timeRange===range ? 'active' : ''}" data-range="${range}">${range}</button>`).join('');
 
         let selectedColor = habitToEdit ? habitToEdit.color : COLORS[3].main;
-        formColorGrid.innerHTML = COLORS.map(c => 
-            `<button class="w-8 h-8 rounded-full ${c.main} ${selectedColor === c.main ? 'ring-2 ring-offset-2 ring-offset-white dark:ring-offset-[#1E1E1E] ring-white' : ''}" data-main="${c.main}" data-progress="${c.progress}"></button>`
-        ).join('');
-        
+        formColorGrid.innerHTML = COLORS.map(c => `<button class="w-8 h-8 rounded-full ${c.main} ${selectedColor===c.main ? 'ring-2 ring-offset-2 ring-offset-white dark:ring-offset-[#1E1E1E] ring-white' : ''}" data-main="${c.main}" data-progress="${c.progress}"></button>`).join('');
+
         addHabitView.classList.remove('translate-x-full');
     };
 
-    formTargetDays.addEventListener('click', e => {
-        if (e.target.matches('.day-btn')) {
-            e.target.classList.toggle('active');
-        }
-    });
-
-    formTimeRange.addEventListener('click', e => {
-        if (e.target.matches('.time-range-btn')) {
-            formTimeRange.querySelectorAll('.time-range-btn').forEach(btn => btn.classList.remove('active'));
-            e.target.classList.add('active');
-        }
-    });
-
+    formTargetDays.addEventListener('click', e => { if (e.target.matches('.day-btn')) e.target.classList.toggle('active'); });
+    formTimeRange.addEventListener('click', e => { if (e.target.matches('.time-range-btn')) { formTimeRange.querySelectorAll('.time-range-btn').forEach(btn=>btn.classList.remove('active')); e.target.classList.add('active'); }});
     formColorGrid.addEventListener('click', e => {
-        if(e.target.dataset.main) {
-            formColorGrid.querySelectorAll('button').forEach(btn => btn.classList.remove('ring-2', 'ring-offset-2', 'ring-offset-white', 'dark:ring-offset-[#1E1E1E]', 'ring-white'));
-            e.target.classList.add('ring-2', 'ring-offset-2', 'ring-offset-white', 'dark:ring-offset-[#1E1E1E]', 'ring-white');
+        if (e.target.dataset && e.target.dataset.main) {
+            formColorGrid.querySelectorAll('button').forEach(btn => btn.classList.remove('ring-2','ring-offset-2','ring-offset-white','dark:ring-offset-[#1E1E1E]','ring-white'));
+            e.target.classList.add('ring-2','ring-offset-2','ring-offset-white','dark:ring-offset-[#1E1E1E]','ring-white');
         }
     });
 
@@ -833,225 +864,195 @@
         const category = habitCategoryInput.value.trim();
         const goal = parseInt(habitTimesPerDayInput.value, 10);
         const selectedDays = [...formTargetDays.querySelectorAll('.day-btn.active')].map(btn => parseInt(btn.dataset.day));
-        
         if (!name || !goal || goal < 1 || selectedDays.length === 0) {
             showToast("Please fill all fields and select at least one day.");
             return;
         }
-
         const selectedColorEl = formColorGrid.querySelector('.ring-2');
-        
-        // Map camelCase from app to snake_case for DB
-        const habitData = { 
-            name, 
-            category, 
-            goal, 
-            target_days: selectedDays, 
-            time_range: formTimeRange.querySelector('.time-range-btn.active').dataset.range, 
-            icon: iconPreviewButton.textContent, 
-            color: selectedColorEl.dataset.main, 
-            progress_color: selectedColorEl.dataset.progress 
-        };
+        const color = selectedColorEl ? selectedColorEl.dataset.main : COLORS[3].main;
+        const progressColor = selectedColorEl ? selectedColorEl.dataset.progress : COLORS[3].progress;
+        const icon = iconPreviewButton.textContent;
+        const timeRange = formTimeRange.querySelector('.time-range-btn.active').dataset.range;
+        const creationDate = toISODateString(new Date());
+
+        const habitData = { name, category, goal, targetDays: selectedDays, timeRange, icon, color, progressColor, creationDate };
 
         if (currentEditingHabitId) {
-            const { error } = await supabaseClient.from('habits').update(habitData).eq('id', currentEditingHabitId);
-            if(error) console.error("Error updating habit:", error);
+            // update
+            const partial = {
+                name, category, goal, target_days: selectedDays, time_range: timeRange, icon, color, progress_color: progressColor
+            };
+            await updateHabitOnSupabase(currentEditingHabitId, partial);
+            showToast('Habit updated.');
         } else {
-            const { error } = await supabaseClient.from('habits').insert({ 
-                ...habitData, 
-                user_id: user.id,
-                creation_date: toISODateString(new Date()) 
-            });
-            if(error) console.error("Error creating habit:", error);
+            const created = await createHabitOnSupabase(habitData);
+            if (created) showToast('Habit created.');
         }
-        
-        await loadData();
+
+        renderHabits();
         addHabitView.classList.add('translate-x-full');
     });
 
-    // --- SWIPE ACTIONS LOGIC ---
-    async function handleSwipeAction(action, habit, dateKey) {
-        let error;
-        switch(action) {
-            case 'skip':
-                ({ error } = await supabaseClient.from('history').upsert({
-                    user_id: user.id, habit_id: habit.id, date: dateKey, count: 0, skipped: true
-                }, { onConflict: 'user_id, habit_id, date' }));
-                if (!error) showToast(`'${habit.name}' skipped for today.`);
-                break;
-            case 'hide':
-                const tomorrow = new Date();
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                ({ error } = await supabaseClient.from('habits').update({ hidden_until: toISODateString(tomorrow) }).eq('id', habit.id));
-                break;
-            case 'reset':
-                 ({ error } = await supabaseClient.from('history').delete().match({ user_id: user.id, habit_id: habit.id, date: dateKey }));
-                 if (!error) showToast(`'${habit.name}' progress reset.`);
-                break;
-        }
-        if(error) console.error(`Error with action ${action}:`, error);
-        else await loadData();
-    }
-
+    // Swipe logic for actions
     function addSwipeListeners(habit, element, dateKey) {
-        let startX = 0;
-        let currentX = 0;
-        let isDragging = false;
+        let startX = 0, currentX = 0, isDragging = false;
         const maxDrag = 210;
-
         function dragStart(e) {
             startX = e.touches ? e.touches[0].clientX : e.clientX;
-            currentX = startX;
-            isDragging = true;
-            element.style.transition = 'none';
-            document.addEventListener('mousemove', dragMove);
-            document.addEventListener('mouseup', dragEnd);
-            document.addEventListener('touchmove', dragMove, { passive: true });
-            document.addEventListener('touchend', dragEnd);
+            currentX = startX; isDragging = true; element.style.transition = 'none';
+            document.addEventListener('mousemove', dragMove); document.addEventListener('mouseup', dragEnd);
+            document.addEventListener('touchmove', dragMove, { passive: true }); document.addEventListener('touchend', dragEnd);
         }
-
         function dragMove(e) {
-            if (!isDragging) return;
-            e.preventDefault();
+            if (!isDragging) return; e.preventDefault();
             currentX = e.touches ? e.touches[0].clientX : e.clientX;
-            let diff = currentX - startX;
-            if (diff > 0) diff = 0;
-            if (diff < -maxDrag) diff = -maxDrag;
+            let diff = currentX - startX; if (diff > 0) diff = 0; if (diff < -maxDrag) diff = -maxDrag;
             element.style.transform = `translateX(${diff}px)`;
         }
-
         function dragEnd() {
             if (!isDragging) return;
             isDragging = false;
-            document.removeEventListener('mousemove', dragMove);
-            document.removeEventListener('mouseup', dragEnd);
-            document.removeEventListener('touchmove', dragMove);
-            document.removeEventListener('touchend', dragEnd);
-
+            document.removeEventListener('mousemove', dragMove); document.removeEventListener('mouseup', dragEnd);
+            document.removeEventListener('touchmove', dragMove); document.removeEventListener('touchend', dragEnd);
             element.style.transition = 'transform 0.3s ease-out';
             const diff = currentX - startX;
-            if (diff < -50) {
-                element.style.transform = `translateX(-${maxDrag}px)`;
-            } else {
-                element.style.transform = 'translateX(0px)';
-            }
+            if (diff < -50) element.style.transform = `translateX(-${maxDrag}px)`; else element.style.transform = 'translateX(0px)';
         }
-
         element.addEventListener('mousedown', dragStart);
         element.addEventListener('touchstart', dragStart, { passive: true });
 
         const parent = element.parentElement;
-        parent.querySelector('[data-action="skip"]').addEventListener('click', () => handleSwipeAction('skip', habit, dateKey));
-        parent.querySelector('[data-action="hide"]').addEventListener('click', () => handleSwipeAction('hide', habit, dateKey));
-        parent.querySelector('[data-action="reset"]').addEventListener('click', () => handleSwipeAction('reset', habit, dateKey));
+        parent.querySelector('[data-action="skip"]').addEventListener('click', async () => {
+            // mark as skipped in history
+            const iso = dateKey;
+            if (!history[iso]) history[iso] = {};
+            history[iso][String(habit.id)] = { count: 0, status: 'skipped' };
+            await upsertHistoryEntryOnSupabase(habit.id, iso, { count: 0, status: 'skipped' });
+            renderHabits();
+            showToast(`'${habit.name}' skipped for ${iso}.`);
+        });
+
+        parent.querySelector('[data-action="hide"]').addEventListener('click', async () => {
+            const idx = habits.findIndex(h => h.id === habit.id);
+            if (idx > -1) {
+                const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+                const iso = toISODateString(tomorrow);
+                // set hiddenUntil in DB
+                await updateHabitOnSupabase(habit.id, { hidden_until: iso });
+                showToast(`'${habit.name}' hidden until ${iso}.`);
+                await loadDataFromSupabase(); renderHabits();
+            }
+        });
+
+        parent.querySelector('[data-action="reset"]').addEventListener('click', async () => {
+            const iso = dateKey;
+            if (history[iso] && history[iso][String(habit.id)]) {
+                // remove history row for that date/habit
+                await removeHistoryEntryOnSupabase(habit.id, iso);
+                renderHabits();
+                showToast(`'${habit.name}' progress reset for ${iso}.`);
+            } else {
+                showToast('No progress to reset for this habit today.');
+            }
+        });
     }
 
     const unhideHabit = async (habitId) => {
-        const { error } = await supabaseClient.from('habits').update({ hidden_until: null }).eq('id', habitId);
-        if(error) console.error("Error unhiding habit:", error);
-        else {
-            const habit = habits.find(h => h.id === habitId);
-            showToast(`'${habit.name}' is now visible.`);
-            await loadData();
-        }
+        // remove hidden_until
+        await updateHabitOnSupabase(habitId, { hidden_until: null });
+        await loadDataFromSupabase();
+        renderHabits();
+        showToast('Habit is now visible.');
     };
 
     function addUnhideSwipeListener(element) {
         let startX = 0, currentX = 0, isDragging = false;
-        
         function dragStart(e) {
             startX = e.touches ? e.touches[0].clientX : e.clientX;
-            currentX = startX;
-            isDragging = true;
-            element.style.transition = 'none';
-            document.addEventListener('mousemove', dragMove);
-            document.addEventListener('mouseup', dragEnd);
-            document.addEventListener('touchmove', dragMove, { passive: true });
-            document.addEventListener('touchend', dragEnd);
+            currentX = startX; isDragging = true; element.style.transition = 'none';
+            document.addEventListener('mousemove', dragMove); document.addEventListener('mouseup', dragEnd);
+            document.addEventListener('touchmove', dragMove, { passive: true }); document.addEventListener('touchend', dragEnd);
         }
-
         function dragMove(e) {
-            if (!isDragging) return;
-            e.preventDefault();
+            if (!isDragging) return; e.preventDefault();
             currentX = e.touches ? e.touches[0].clientX : e.clientX;
-            let diff = currentX - startX;
-            if (diff < 0) diff = 0;
+            let diff = currentX - startX; if (diff < 0) diff = 0;
             element.style.transform = `translateX(${diff}px)`;
         }
-
         function dragEnd() {
             if (!isDragging) return;
-            isDragging = false;
-            document.removeEventListener('mousemove', dragMove);
-            document.removeEventListener('mouseup', dragEnd);
-            document.removeEventListener('touchmove', dragMove);
-            document.removeEventListener('touchend', dragEnd);
-
+            isDragging = false; document.removeEventListener('mousemove', dragMove); document.removeEventListener('mouseup', dragEnd);
+            document.removeEventListener('touchmove', dragMove); document.removeEventListener('touchend', dragEnd);
             element.style.transition = 'transform 0.3s ease-out';
-            const habitId = element.closest('.hidden-habit-swipe-container').dataset.habitId;
+            const habitId = parseInt(element.closest('.hidden-habit-swipe-container').dataset.habitId);
             const diff = currentX - startX;
-            if (diff > 50) unhideHabit(habitId);
-            else element.style.transform = 'translateX(0)';
+            if (diff > 50) unhideHabit(habitId); else element.style.transform = 'translateX(0)';
         }
-
         element.addEventListener('mousedown', dragStart);
         element.addEventListener('touchstart', dragStart, { passive: true });
     }
 
-    // --- INITIALIZATION & EVENT LISTENERS ---
-    const initializeApp = async () => {
-        const { data: { session } } = await supabaseClient.auth.getSession();
+    // -------------------------
+    // Initialization & events
+    // -------------------------
+    // Theme apply
+    const applyTheme = (theme) => {
+        if (theme === 'light') document.documentElement.classList.remove('dark'); else document.documentElement.classList.add('dark');
+        localStorage.setItem('theme', theme);
+        updateThemeToggleUI(theme);
+    };
+    const updateThemeToggleUI = (theme) => {
+        themeSelector.querySelectorAll('.theme-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.theme === theme));
+    };
 
-        if (session) {
-            user = session.user;
-        } else {
-            const randomEmail = `user-${Date.now()}@habit-tracker.app`;
-            const randomPassword = Math.random().toString(36).slice(-8);
-            
-            const { data, error } = await supabaseClient.auth.signUp({
-                email: randomEmail,
-                password: randomPassword,
-            });
+    // Load data from Supabase on start
+    await loadDataFromSupabase();
 
-            if (error) {
-                console.error('Error creating user session:', error);
-                habitsContainer.innerHTML = `<div class="text-center mt-20 text-red-500 p-4">
-                    <h2 class="text-xl font-bold">Authentication Error</h2>
-                    <p class="mt-2">Could not create a user session to save data.</p>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Please check your Supabase project settings. Ensure the "Email" provider is enabled and that "Confirm email" is turned OFF under the provider settings.</p>
-                </div>`;
-                return;
-            }
-            user = data.user;
-        }
+    // Initialize Theme
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    applyTheme(savedTheme);
 
-        if(user) {
-            await loadData();
-        }
-        
-        const savedTheme = localStorage.getItem('theme') || 'dark';
-        applyTheme(savedTheme);
-    }
-    
-    initializeApp();
+    renderDateScroller();
+    renderHabits();
 
+    // Navigation
     document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
-        btn.addEventListener('click', () => showView(btn.dataset.view));
+        btn.addEventListener('click', () => {
+            showView(btn.dataset.view);
+        });
     });
 
+    function showView(viewId) {
+        appContainer.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+        document.getElementById(viewId).classList.remove('hidden');
+
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.classList.toggle('text-red-500', btn.dataset.view === viewId);
+            const isInactive = btn.dataset.view !== viewId;
+            btn.classList.toggle('text-gray-500', isInactive);
+            btn.classList.toggle('dark:text-gray-400', isInactive);
+        });
+
+        if (viewId === 'stats-view') renderStatsView();
+        if (viewId === 'achievements-view') renderAchievementsView();
+    }
+
+    // Add habit btn
     document.getElementById('add-habit-btn').addEventListener('click', () => openAddHabitView());
     backBtn.addEventListener('click', () => addHabitView.classList.add('translate-x-full'));
 
+    // Context menu
     habitsContainer.addEventListener('click', e => {
         const optionsBtn = e.target.closest('.options-btn');
         if (optionsBtn) {
-            currentEditingHabitId = optionsBtn.dataset.habitId;
+            const habitId = parseInt(optionsBtn.dataset.habitId);
+            currentEditingHabitId = habitId;
             showModal(contextMenuModal);
         }
     });
-    
+
     document.getElementById('close-context-menu').addEventListener('click', () => hideModal(contextMenuModal));
-    document.getElementById('edit-habit-btn').addEventListener('click', () => {
+    document.getElementById('edit-habit-btn').addEventListener('click', async () => {
         hideModal(contextMenuModal);
         const habitToEdit = habits.find(h => h.id === currentEditingHabitId);
         if (habitToEdit) openAddHabitView(habitToEdit);
@@ -1060,15 +1061,13 @@
     document.getElementById('delete-habit-btn').addEventListener('click', () => {
         hideModal(contextMenuModal);
         showConfirmation('Delete Habit', 'Are you sure you want to delete this habit and all its history?', async () => {
-            const { error } = await supabaseClient.from('habits').delete().eq('id', currentEditingHabitId);
-            if (error) console.error("Error deleting habit:", error);
-            else {
-                await loadData();
-                showToast('Habit deleted.');
-            }
+            await deleteHabitOnSupabase(currentEditingHabitId);
+            renderHabits();
+            showToast('Habit deleted.');
         });
     });
 
+    // Icon picker
     iconGrid.innerHTML = ICONS.map(icon => `<button class="text-3xl p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700" data-icon="${icon}">${icon}</button>`).join('');
     iconPreviewButton.addEventListener('click', () => showModal(iconPickerModal));
     document.getElementById('close-icon-modal').addEventListener('click', () => hideModal(iconPickerModal));
@@ -1079,39 +1078,39 @@
         }
     });
 
+    // Reset all data
     document.getElementById('reset-data-btn').addEventListener('click', () => {
-        showConfirmation('Reset All Data', 'This is irreversible. All your habits and progress will be lost.', async () => {
-            const { error } = await supabaseClient.from('habits').delete().eq('user_id', user.id);
-            if(error) console.error("Error resetting data:", error);
-            else {
-                await loadData();
-                showToast('All data has been reset.');
+        showConfirmation('Reset All Data', 'This is irreversible. All your habits and progress will be lost from Supabase and local cache.', async () => {
+            try {
+                // delete all history then habits
+                await supabase.from('history').delete();
+                await supabase.from('habits').delete();
+            } catch (err) {
+                console.error('Reset error:', err);
             }
+            habits = []; history = {};
+            localStorage.removeItem('habits_cache'); localStorage.removeItem('history_cache');
+            renderHabits();
+            showToast('All data has been reset.');
         });
     });
 
     themeSelector.addEventListener('click', (e) => {
-        if (e.target.matches('.theme-btn')) {
-            applyTheme(e.target.dataset.theme);
-        }
+        if (e.target.matches('.theme-btn')) applyTheme(e.target.dataset.theme);
     });
 
+    // Hidden habits toggle
     hiddenHabitsHeader.addEventListener('click', () => {
         const isExpanded = hiddenHabitsList.classList.contains('expanded');
         if (isExpanded) {
-            hiddenHabitsList.style.maxHeight = '0';
-            hiddenHabitsList.style.padding = '0';
-            hiddenHabitsArrow.style.transform = 'rotate(0deg)';
+            hiddenHabitsList.style.maxHeight = '0'; hiddenHabitsList.style.padding = '0'; hiddenHabitsArrow.style.transform = 'rotate(0deg)';
         } else {
-            hiddenHabitsList.style.maxHeight = '200px';
-            hiddenHabitsList.style.padding = '1rem';
-            hiddenHabitsArrow.style.transform = 'rotate(180deg)';
+            hiddenHabitsList.style.maxHeight = '200px'; hiddenHabitsList.style.padding = '1rem'; hiddenHabitsArrow.style.transform = 'rotate(180deg)';
         }
         hiddenHabitsList.classList.toggle('expanded');
     });
-});
-</script>
 
+}); // end DOMContentLoaded
+</script>
 </body>
 </html>
-
