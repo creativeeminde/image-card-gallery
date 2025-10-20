@@ -38,6 +38,37 @@
             from { box-shadow: 0 0 5px rgba(250, 204, 21, 0.4); }
             to { box-shadow: 0 0 20px rgba(250, 204, 21, 0.8); }
         }
+        /* Styles for swipe actions */
+        .habit-swipe-container {
+            position: relative;
+            overflow: hidden;
+            border-radius: 0.75rem; /* 12px */
+        }
+        .habit-content {
+            transition: transform 0.3s ease-out;
+            position: relative;
+            z-index: 10;
+        }
+        .habit-actions {
+            position: absolute;
+            top: 0;
+            right: 0;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            z-index: 1;
+        }
+        .habit-action-btn {
+            width: 70px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body class="antialiased bg-gray-100 dark:bg-black text-gray-900 dark:text-gray-200">
@@ -93,6 +124,10 @@
                          <button data-theme="light" class="theme-btn flex-1 py-2 text-sm font-semibold rounded-md transition-colors text-gray-600 dark:text-gray-400">Light</button>
                          <button data-theme="dark" class="theme-btn flex-1 py-2 text-sm font-semibold rounded-md transition-colors text-gray-600 dark:text-gray-400">Dark</button>
                     </div>
+                </div>
+                 <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
+                    <h2 class="font-bold text-lg mb-2">Functionality</h2>
+                    <button id="unhide-habits-btn" class="w-full text-left p-3 bg-blue-100 dark:bg-blue-900/50 hover:bg-blue-200 dark:hover:bg-blue-900/80 rounded-lg text-blue-700 dark:text-blue-300 font-semibold">Show All Hidden Habits</button>
                 </div>
                 <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
                     <h2 class="font-bold text-lg mb-2">Data Management</h2>
@@ -210,8 +245,8 @@
     
     // --- STATE & CONSTANTS ---
     let selectedDate = new Date();
-    let habits = []; // { id, name, icon, color, progressColor, goal, creationDate, category, targetDays, timeRange }
-    let history = {}; // { 'YYYY-MM-DD': { habitId: count } }
+    let habits = []; // { id, name, icon, color, progressColor, goal, creationDate, category, targetDays, timeRange, hiddenUntil }
+    let history = {}; // { 'YYYY-MM-DD': { habitId: count | 'skipped' } }
     let currentEditingHabitId = null;
 
     const COLORS = [
@@ -321,7 +356,10 @@
     const renderHabits = () => {
         const dateKey = toISODateString(selectedDate);
         const dayOfWeek = selectedDate.getDay();
-        const habitsForDay = habits.filter(h => new Date(h.creationDate) <= selectedDate && h.targetDays.includes(dayOfWeek));
+        const habitsForDay = habits.filter(h => {
+            const isHidden = h.hiddenUntil && new Date(h.hiddenUntil) > new Date();
+            return !isHidden && new Date(h.creationDate) <= selectedDate && h.targetDays.includes(dayOfWeek)
+        });
         
         habitsContainer.innerHTML = ''; 
 
@@ -331,24 +369,39 @@
         }
 
         habitsForDay.forEach(habit => {
-            const currentCount = (history[dateKey] && history[dateKey][habit.id]) || 0;
-            const progressPercentage = Math.min((currentCount / habit.goal) * 100, 100);
-            const habitEl = document.createElement('div');
-            habitEl.className = `p-4 rounded-xl flex items-center gap-4 ${habit.color}`;
-            habitEl.innerHTML = `
-                <div class="text-2xl">${habit.icon}</div>
-                <div class="flex-grow">
-                    <p class="font-semibold text-white">${habit.name}</p>
-                    <div class="w-full bg-black/20 rounded-full h-2 mt-1.5">
-                        <div class="habit-progress-bar h-2 rounded-full ${habit.progressColor}" style="width: ${progressPercentage}%"></div>
+            const dayHistory = (history[dateKey] && history[dateKey][habit.id]);
+            const isSkipped = dayHistory === 'skipped';
+            const currentCount = typeof dayHistory === 'number' ? dayHistory : 0;
+            const progressPercentage = isSkipped ? 100 : Math.min((currentCount / habit.goal) * 100, 100);
+            
+            const habitElWrapper = document.createElement('div');
+            habitElWrapper.className = 'habit-swipe-container';
+
+            habitElWrapper.innerHTML = `
+                <div class="habit-actions">
+                    <button data-action="skip" class="habit-action-btn bg-orange-500"><svg class="w-6 h-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>Skip</button>
+                    <button data-action="hide" class="habit-action-btn bg-blue-700"><svg class="w-6 h-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m0 0l-3.59-3.59"/></svg>Hide</button>
+                    <button data-action="reset" class="habit-action-btn bg-teal-500"><svg class="w-6 h-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 4l5 5M20 20l-5-5"/></svg>Reset</button>
+                </div>
+                <div class="habit-content p-4 rounded-xl flex items-center gap-4 ${isSkipped ? 'bg-gray-500' : habit.color}">
+                    <div class="text-2xl">${habit.icon}</div>
+                    <div class="flex-grow">
+                        <p class="font-semibold text-white">${habit.name}</p>
+                        <div class="w-full bg-black/20 rounded-full h-2 mt-1.5">
+                            <div class="habit-progress-bar h-2 rounded-full ${isSkipped ? 'bg-orange-400' : habit.progressColor}" style="width: ${progressPercentage}%"></div>
+                        </div>
                     </div>
+                    <div class="text-center">
+                        <p class="font-semibold text-sm text-white/80">${isSkipped ? 'Skipped' : `${currentCount}/${habit.goal}`}</p>
+                    </div>
+                    <button class="options-btn p-2 -mr-2 flex-shrink-0" data-habit-id="${habit.id}"><svg class="w-6 h-6 text-white/70 pointer-events-none" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" /></svg></button>
                 </div>
-                <div class="text-center">
-                    <p class="font-semibold text-sm text-white/80">${currentCount}/${habit.goal}</p>
-                </div>
-                <button class="options-btn p-2 -mr-2 flex-shrink-0" data-habit-id="${habit.id}"><svg class="w-6 h-6 text-white/70 pointer-events-none" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" /></svg></button>
             `;
-            habitEl.addEventListener('click', (e) => {
+            
+            const habitContent = habitElWrapper.querySelector('.habit-content');
+            addSwipeListeners(habit, habitContent, dateKey);
+            
+            habitContent.addEventListener('click', (e) => {
                 if(e.target.closest('.options-btn')) return;
                 if (!history[dateKey]) history[dateKey] = {};
                 const current = (history[dateKey][habit.id] || 0) + 1;
@@ -358,7 +411,8 @@
                     renderHabits();
                 }
             });
-            habitsContainer.appendChild(habitEl);
+
+            habitsContainer.appendChild(habitElWrapper);
         });
     };
     
@@ -391,6 +445,7 @@
     };
     
     // --- STATISTICS RENDER FUNCTIONS ---
+    // ... (rest of the stats functions are unchanged) ...
     const renderTodaysProgress = () => {
         const today = new Date();
         const dateKey = toISODateString(today);
@@ -491,7 +546,7 @@
             </div>
         `;
     };
-
+    
     const calculateStreak = (habitId) => {
         let currentStreak = 0;
         let checkDate = new Date();
@@ -506,7 +561,7 @@
                 const dayHistory = history[dateKey];
                 if (dayHistory && (dayHistory[habitId] || 0) >= habit.goal) {
                     currentStreak++;
-                } else {
+                } else if (!dayHistory || dayHistory[habitId] !== 'skipped') { // Don't break streak for skipped days
                     break;
                 }
             }
@@ -514,6 +569,7 @@
         }
         return currentStreak;
     };
+
 
     const renderHabitPerformance = () => {
         if (habits.length === 0) return '';
@@ -561,7 +617,7 @@
     
     // --- ACHIEVEMENTS LOGIC ---
     const getAchievements = () => {
-        const totalCompletions = Object.values(history).reduce((sum, day) => sum + Object.values(day).length, 0);
+        const totalCompletions = Object.values(history).reduce((sum, day) => sum + Object.values(day).filter(d => typeof d === 'number').length, 0);
         const maxStreak = Math.max(0, ...habits.map(h => calculateStreak(h.id)));
         const earlyRiserHabits = habits.filter(h => h.timeRange === 'Morning').length;
         const totalGoalsMet = Object.values(history).reduce((sum, day) => {
@@ -580,8 +636,10 @@
             { id: 'firstHabit', title: 'First Step', icon: '🌱', unlocked: habits.length > 0 },
             { id: 'fiveHabits', title: 'Habit Builder', icon: '🏗️', unlocked: habits.length >= 5 },
             { id: 'perfectDay', title: 'Perfect Day', icon: '✅', unlocked: Object.values(history).some(day => {
-                const dayDate = new Date(Object.keys(history).find(key => history[key] === day));
-                const activeHabits = habits.filter(h => h.targetDays.includes(dayDate.getDay()));
+                const dayDateStr = Object.keys(history).find(key => history[key] === day);
+                if (!dayDateStr) return false;
+                const dayDate = new Date(dayDateStr);
+                const activeHabits = habits.filter(h => h.targetDays.includes(dayDate.getUTCDay()));
                 return activeHabits.length > 0 && activeHabits.every(h => (day[h.id] || 0) >= h.goal);
             })}
         ];
@@ -617,7 +675,8 @@
     };
 
     // --- FORM & MODAL LOGIC ---
-    const openAddHabitView = (habitToEdit = null) => {
+    // ... (rest of the form functions are unchanged) ...
+     const openAddHabitView = (habitToEdit = null) => {
         currentEditingHabitId = habitToEdit ? habitToEdit.id : null;
         formTitle.textContent = habitToEdit ? 'Edit Habit' : 'Create Habit';
         saveHabitBtn.textContent = habitToEdit ? 'Save Changes' : 'Create Habit';
@@ -702,6 +761,71 @@
         addHabitView.classList.add('translate-x-full');
     });
 
+    // --- SWIPE ACTIONS LOGIC ---
+    function addSwipeListeners(habit, element, dateKey) {
+        let startX = 0;
+        let currentX = 0;
+        let isDragging = false;
+        const maxDrag = 210; // 3 buttons * 70px
+
+        element.addEventListener('touchstart', (e) => {
+            startX = e.touches[0].clientX;
+            isDragging = true;
+            element.style.transition = 'none';
+        }, { passive: true });
+
+        element.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            currentX = e.touches[0].clientX;
+            let diff = currentX - startX;
+            if (diff > 0) diff = 0; // Prevent swiping right
+            if (diff < -maxDrag) diff = -maxDrag;
+            element.style.transform = `translateX(${diff}px)`;
+        }, { passive: true });
+
+        element.addEventListener('touchend', () => {
+            if (!isDragging) return;
+            isDragging = false;
+            element.style.transition = 'transform 0.3s ease-out';
+            const diff = currentX - startX;
+
+            if (diff < -50) { // Threshold to open
+                element.style.transform = `translateX(-${maxDrag}px)`;
+            } else {
+                element.style.transform = 'translateX(0px)';
+            }
+        });
+
+        // Click listeners for the action buttons
+        const parent = element.parentElement;
+        parent.querySelector('[data-action="skip"]').addEventListener('click', () => {
+             if (!history[dateKey]) history[dateKey] = {};
+             history[dateKey][habit.id] = 'skipped';
+             saveData();
+             renderHabits(); // Re-render to show update and close swipe
+             showToast(`'${habit.name}' skipped for today.`);
+        });
+        parent.querySelector('[data-action="hide"]').addEventListener('click', () => {
+            const habitIndex = habits.findIndex(h => h.id === habit.id);
+            if(habitIndex > -1) {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                habits[habitIndex].hiddenUntil = toISODateString(tomorrow);
+                saveData();
+                renderHabits();
+                showToast(`'${habit.name}' hidden until tomorrow.`);
+            }
+        });
+        parent.querySelector('[data-action="reset"]').addEventListener('click', () => {
+             if (history[dateKey] && history[dateKey][habit.id]) {
+                delete history[dateKey][habit.id];
+                saveData();
+                renderHabits();
+                showToast(`'${habit.name}' progress reset.`);
+             }
+        });
+    }
+
     // --- INITIALIZATION & EVENT LISTENERS ---
     loadData();
 
@@ -774,6 +898,14 @@
             showToast('All data has been reset.');
         });
     });
+    
+    document.getElementById('unhide-habits-btn').addEventListener('click', () => {
+        habits.forEach(h => delete h.hiddenUntil);
+        saveData();
+        renderHabits();
+        showToast('All habits are now visible.');
+    });
+
 
     themeSelector.addEventListener('click', (e) => {
         if (e.target.matches('.theme-btn')) {
