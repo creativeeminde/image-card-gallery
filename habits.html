@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Habit Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -81,7 +82,7 @@
             <header class="flex justify-between items-center mb-6">
                 <button class="flex items-center gap-1.5 bg-white dark:bg-[#1E1E1E] px-3 py-1.5 rounded-full text-sm font-semibold">
                     <span>All</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="http://www.w3.org/2000/svg" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
                 </button>
                 <h1 id="header-title" class="text-xl font-bold">Today</h1>
                 <button class="w-8 h-8 rounded-full bg-yellow-400 text-black flex items-center justify-center text-lg"><span>😊</span></button>
@@ -213,6 +214,12 @@
 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
+    // --- SUPABASE SETUP ---
+    const { createClient } = supabase;
+    const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
+
     // --- DOM ELEMENTS ---
     const appContainer = document.getElementById('app-container');
     const headerTitle = document.getElementById('header-title');
@@ -240,6 +247,7 @@
     const themeSelector = document.getElementById('theme-selector');
     
     // --- STATE & CONSTANTS ---
+    let user = null;
     let selectedDate = new Date();
     let habits = []; // { id, name, icon, color, progressColor, goal, creationDate, category, targetDays, timeRange, hiddenUntil }
     let history = {}; // { 'YYYY-MM-DD': { habitId: count | 'skipped' } }
@@ -259,16 +267,54 @@
     const toISODateString = date => new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString().split('T')[0];
     const isSameDay = (d1, d2) => d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
     
-    const saveData = () => {
-        localStorage.setItem('habits', JSON.stringify(habits));
-        localStorage.setItem('history', JSON.stringify(history));
-    };
-    
-    const loadData = () => {
-        const storedHabits = localStorage.getItem('habits');
-        const storedHistory = localStorage.getItem('history');
-        habits = storedHabits ? JSON.parse(storedHabits) : [];
-        history = storedHistory ? JSON.parse(storedHistory) : {};
+    const loadData = async () => {
+        if (!user) return;
+        
+        const { data: habitsData, error: habitsError } = await supabaseClient
+            .from('habits')
+            .select('*')
+            .eq('user_id', user.id);
+            
+        if (habitsError) {
+            console.error('Error fetching habits:', habitsError);
+            if (habitsError.code === '42P01') {
+                 habitsContainer.innerHTML = `<div class="text-center mt-20 text-red-500 p-4 rounded-xl bg-red-500/10">
+                    <h2 class="text-xl font-bold">Database Setup Incomplete</h2>
+                    <p class="mt-2">The required tables ('habits' and 'history') were not found in your database.</p>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Please run the setup script from the <strong>supabase_setup.sql</strong> file in your Supabase project's SQL Editor to create them.</p>
+                </div>`;
+                 return; // Stop further execution
+            } else {
+                showToast('Error fetching habits. Check console.');
+            }
+            return;
+        } else {
+            habits = habitsData || [];
+        }
+
+        const { data: historyData, error: historyError } = await supabaseClient
+            .from('history')
+            .select('*')
+            .eq('user_id', user.id);
+
+        if (historyError) {
+            console.error('Error fetching history:', historyError);
+            if (historyError.code !== '42P01') { // Avoid showing a second error for the same issue
+                 showToast('Error fetching history. Check console.');
+            }
+            // Don't clear habits if only history fails
+        } else {
+            history = {};
+            (historyData || []).forEach(record => {
+                if (!history[record.date]) {
+                    history[record.date] = {};
+                }
+                history[record.date][record.habit_id] = record.skipped ? 'skipped' : record.count;
+            });
+        }
+        
+        renderDateScroller();
+        renderHabits();
     };
 
     const showToast = (message) => {
@@ -409,14 +455,24 @@
             const habitContent = habitElWrapper.querySelector('.habit-content');
             addSwipeListeners(habit, habitContent, dateKey);
             
-            habitContent.addEventListener('click', (e) => {
-                if(e.target.closest('.options-btn')) return;
-                if (!history[dateKey]) history[dateKey] = {};
-                const current = (history[dateKey][habit.id] || 0) + 1;
-                if (current <= habit.goal) {
-                    history[dateKey][habit.id] = current;
-                    saveData();
-                    renderHabits();
+            habitContent.addEventListener('click', async (e) => {
+                if(e.target.closest('.options-btn') || isSkipped) return;
+                
+                const currentCount = (history[dateKey]?.[habit.id] || 0) + 1;
+                
+                if (currentCount <= habit.goal) {
+                    const { error } = await supabaseClient
+                        .from('history')
+                        .upsert({ 
+                            user_id: user.id, 
+                            habit_id: habit.id, 
+                            date: dateKey, 
+                            count: currentCount,
+                            skipped: false
+                        }, { onConflict: 'user_id, habit_id, date' });
+
+                    if (error) console.error('Error updating progress:', error);
+                    else await loadData();
                 }
             });
 
@@ -441,12 +497,10 @@
                 </div>
             `).join('');
             
-            // Add listeners for unhiding
             hiddenHabitsList.querySelectorAll('.unhide-btn').forEach(btn => {
-                const habitId = parseInt(btn.closest('.hidden-habit-swipe-container').dataset.habitId);
+                const habitId = btn.closest('.hidden-habit-swipe-container').dataset.habitId;
                 btn.addEventListener('click', () => unhideHabit(habitId));
             });
-            // Add swipe right to unhide listeners
             hiddenHabitsList.querySelectorAll('.hidden-habit-tile').forEach(tile => {
                 addUnhideSwipeListener(tile);
             });
@@ -723,19 +777,16 @@
         habitTimesPerDayInput.value = habitToEdit ? habitToEdit.goal : '1';
         iconPreviewButton.textContent = habitToEdit ? habitToEdit.icon : '➕';
         
-        // Populate Target Days
         const targetDays = habitToEdit ? habitToEdit.targetDays : [0, 1, 2, 3, 4, 5, 6];
         formTargetDays.innerHTML = DAYS_OF_WEEK.map((day, index) => 
             `<button class="day-btn w-10 h-10 rounded-full text-sm bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-300 ${targetDays.includes(index) ? 'active' : ''}" data-day="${index}">${day}</button>`
         ).join('');
 
-        // Populate Time Range
         const timeRange = habitToEdit ? habitToEdit.timeRange : 'Anytime';
         formTimeRange.innerHTML = TIME_RANGES.map(range => 
             `<button class="time-range-btn flex-1 py-2 px-3 text-sm rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-300 ${timeRange === range ? 'active' : ''}" data-range="${range}">${range}</button>`
         ).join('');
 
-        // Populate Colors
         let selectedColor = habitToEdit ? habitToEdit.color : COLORS[3].main;
         formColorGrid.innerHTML = COLORS.map(c => 
             `<button class="w-8 h-8 rounded-full ${c.main} ${selectedColor === c.main ? 'ring-2 ring-offset-2 ring-offset-white dark:ring-offset-[#1E1E1E] ring-white' : ''}" data-main="${c.main}" data-progress="${c.progress}"></button>`
@@ -764,7 +815,7 @@
         }
     });
 
-    saveHabitBtn.addEventListener('click', () => {
+    saveHabitBtn.addEventListener('click', async () => {
         const name = habitNameInput.value.trim();
         const category = habitCategoryInput.value.trim();
         const goal = parseInt(habitTimesPerDayInput.value, 10);
@@ -776,34 +827,63 @@
         }
 
         const selectedColorEl = formColorGrid.querySelector('.ring-2');
-        const color = selectedColorEl.dataset.main;
-        const progressColor = selectedColorEl.dataset.progress;
-        const icon = iconPreviewButton.textContent;
-        const timeRange = formTimeRange.querySelector('.time-range-btn.active').dataset.range;
         
-        const habitData = { name, category, goal, targetDays: selectedDays, timeRange, icon, color, progressColor };
+        const habitData = { 
+            name, 
+            category, 
+            goal, 
+            targetDays: selectedDays, 
+            timeRange: formTimeRange.querySelector('.time-range-btn.active').dataset.range, 
+            icon: iconPreviewButton.textContent, 
+            color: selectedColorEl.dataset.main, 
+            progressColor: selectedColorEl.dataset.progress 
+        };
 
         if (currentEditingHabitId) {
-            const habitIndex = habits.findIndex(h => h.id === currentEditingHabitId);
-            if (habitIndex > -1) {
-                habits[habitIndex] = { ...habits[habitIndex], ...habitData };
-            }
+            const { error } = await supabaseClient.from('habits').update(habitData).eq('id', currentEditingHabitId);
+            if(error) console.error("Error updating habit:", error);
         } else {
-            const newHabit = { id: Date.now(), ...habitData, creationDate: toISODateString(new Date()) };
-            habits.push(newHabit);
+            const { error } = await supabaseClient.from('habits').insert({ 
+                ...habitData, 
+                user_id: user.id,
+                creationDate: toISODateString(new Date()) 
+            });
+            if(error) console.error("Error creating habit:", error);
         }
         
-        saveData();
-        renderHabits();
+        await loadData();
         addHabitView.classList.add('translate-x-full');
     });
 
-    // --- SWIPE ACTIONS LOGIC (FIXED FOR MOUSE AND TOUCH) ---
+    // --- SWIPE ACTIONS LOGIC ---
+    async function handleSwipeAction(action, habit, dateKey) {
+        let error;
+        switch(action) {
+            case 'skip':
+                ({ error } = await supabaseClient.from('history').upsert({
+                    user_id: user.id, habit_id: habit.id, date: dateKey, count: 0, skipped: true
+                }, { onConflict: 'user_id, habit_id, date' }));
+                if (!error) showToast(`'${habit.name}' skipped for today.`);
+                break;
+            case 'hide':
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                ({ error } = await supabaseClient.from('habits').update({ hiddenUntil: toISODateString(tomorrow) }).eq('id', habit.id));
+                break;
+            case 'reset':
+                 ({ error } = await supabaseClient.from('history').delete().match({ user_id: user.id, habit_id: habit.id, date: dateKey }));
+                 if (!error) showToast(`'${habit.name}' progress reset.`);
+                break;
+        }
+        if(error) console.error(`Error with action ${action}:`, error);
+        else await loadData();
+    }
+
     function addSwipeListeners(habit, element, dateKey) {
         let startX = 0;
         let currentX = 0;
         let isDragging = false;
-        const maxDrag = 210; // 3 buttons * 70px
+        const maxDrag = 210;
 
         function dragStart(e) {
             startX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -821,7 +901,7 @@
             e.preventDefault();
             currentX = e.touches ? e.touches[0].clientX : e.clientX;
             let diff = currentX - startX;
-            if (diff > 0) diff = 0; // Prevent swiping right
+            if (diff > 0) diff = 0;
             if (diff < -maxDrag) diff = -maxDrag;
             element.style.transform = `translateX(${diff}px)`;
         }
@@ -847,47 +927,23 @@
         element.addEventListener('touchstart', dragStart, { passive: true });
 
         const parent = element.parentElement;
-        parent.querySelector('[data-action="skip"]').addEventListener('click', () => {
-             if (!history[dateKey]) history[dateKey] = {};
-             history[dateKey][habit.id] = 'skipped';
-             saveData();
-             renderHabits();
-             showToast(`'${habit.name}' skipped for today.`);
-        });
-        parent.querySelector('[data-action="hide"]').addEventListener('click', () => {
-            const habitIndex = habits.findIndex(h => h.id === habit.id);
-            if(habitIndex > -1) {
-                const tomorrow = new Date();
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                habits[habitIndex].hiddenUntil = toISODateString(tomorrow);
-                saveData();
-                renderHabits();
-            }
-        });
-        parent.querySelector('[data-action="reset"]').addEventListener('click', () => {
-             if (history[dateKey] && history[dateKey][habit.id]) {
-                delete history[dateKey][habit.id];
-                saveData();
-                renderHabits();
-                showToast(`'${habit.name}' progress reset.`);
-             }
-        });
+        parent.querySelector('[data-action="skip"]').addEventListener('click', () => handleSwipeAction('skip', habit, dateKey));
+        parent.querySelector('[data-action="hide"]').addEventListener('click', () => handleSwipeAction('hide', habit, dateKey));
+        parent.querySelector('[data-action="reset"]').addEventListener('click', () => handleSwipeAction('reset', habit, dateKey));
     }
 
-    const unhideHabit = (habitId) => {
-        const habitIndex = habits.findIndex(h => h.id === habitId);
-        if (habitIndex > -1) {
-            delete habits[habitIndex].hiddenUntil;
-            saveData();
-            renderHabits();
-            showToast(`'${habits[habitIndex].name}' is now visible.`);
+    const unhideHabit = async (habitId) => {
+        const { error } = await supabaseClient.from('habits').update({ hiddenUntil: null }).eq('id', habitId);
+        if(error) console.error("Error unhiding habit:", error);
+        else {
+            const habit = habits.find(h => h.id === habitId);
+            showToast(`'${habit.name}' is now visible.`);
+            await loadData();
         }
     };
 
     function addUnhideSwipeListener(element) {
-        let startX = 0;
-        let currentX = 0;
-        let isDragging = false;
+        let startX = 0, currentX = 0, isDragging = false;
         
         function dragStart(e) {
             startX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -905,7 +961,7 @@
             e.preventDefault();
             currentX = e.touches ? e.touches[0].clientX : e.clientX;
             let diff = currentX - startX;
-            if (diff < 0) diff = 0; // Prevent left swipe
+            if (diff < 0) diff = 0;
             element.style.transform = `translateX(${diff}px)`;
         }
 
@@ -918,13 +974,10 @@
             document.removeEventListener('touchend', dragEnd);
 
             element.style.transition = 'transform 0.3s ease-out';
-            const habitId = parseInt(element.closest('.hidden-habit-swipe-container').dataset.habitId);
+            const habitId = element.closest('.hidden-habit-swipe-container').dataset.habitId;
             const diff = currentX - startX;
-            if (diff > 50) { // Threshold to unhide
-                unhideHabit(habitId);
-            } else {
-                element.style.transform = 'translateX(0)';
-            }
+            if (diff > 50) unhideHabit(habitId);
+            else element.style.transform = 'translateX(0)';
         }
 
         element.addEventListener('mousedown', dragStart);
@@ -932,30 +985,56 @@
     }
 
     // --- INITIALIZATION & EVENT LISTENERS ---
-    loadData();
+    const initializeApp = async () => {
+        const { data: { session } } = await supabaseClient.auth.getSession();
 
-    // Initialize Theme
-    const savedTheme = localStorage.getItem('theme') || 'dark'; // Default to dark mode
-    applyTheme(savedTheme);
+        if (session) {
+            user = session.user;
+        } else {
+            // The error "Anonymous sign-ins are disabled" suggests we need an alternative.
+            // We'll sign up a new user with a random email/password. This creates a persistent
+            // identity for the user in this browser.
+            const randomEmail = `user-${Date.now()}@habit-tracker.app`;
+            const randomPassword = Math.random().toString(36).slice(-8);
+            
+            const { data, error } = await supabaseClient.auth.signUp({
+                email: randomEmail,
+                password: randomPassword,
+            });
+
+            if (error) {
+                console.error('Error creating user session:', error);
+                habitsContainer.innerHTML = `<div class="text-center mt-20 text-red-500 p-4">
+                    <h2 class="text-xl font-bold">Authentication Error</h2>
+                    <p class="mt-2">Could not create a user session to save data.</p>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Please check your Supabase project settings. Ensure the "Email" provider is enabled and that "Confirm email" is turned OFF under the provider settings.</p>
+                </div>`;
+                return;
+            }
+            user = data.user;
+        }
+
+        if(user) {
+            await loadData();
+        }
+        
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        applyTheme(savedTheme);
+    }
     
-    renderDateScroller();
-    renderHabits();
+    initializeApp();
 
-    // Navigation
     document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
         btn.addEventListener('click', () => showView(btn.dataset.view));
     });
 
-    // Habit Form
     document.getElementById('add-habit-btn').addEventListener('click', () => openAddHabitView());
     backBtn.addEventListener('click', () => addHabitView.classList.add('translate-x-full'));
 
-    // Context Menu
     habitsContainer.addEventListener('click', e => {
         const optionsBtn = e.target.closest('.options-btn');
         if (optionsBtn) {
-            const habitId = parseInt(optionsBtn.dataset.habitId);
-            currentEditingHabitId = habitId;
+            currentEditingHabitId = optionsBtn.dataset.habitId;
             showModal(contextMenuModal);
         }
     });
@@ -969,20 +1048,16 @@
 
     document.getElementById('delete-habit-btn').addEventListener('click', () => {
         hideModal(contextMenuModal);
-        showConfirmation('Delete Habit', 'Are you sure you want to delete this habit and all its history?', () => {
-            habits = habits.filter(h => h.id !== currentEditingHabitId);
-            Object.keys(history).forEach(dateKey => {
-                if (history[dateKey][currentEditingHabitId]) {
-                    delete history[dateKey][currentEditingHabitId];
-                }
-            });
-            saveData();
-            renderHabits();
-            showToast('Habit deleted.');
+        showConfirmation('Delete Habit', 'Are you sure you want to delete this habit and all its history?', async () => {
+            const { error } = await supabaseClient.from('habits').delete().eq('id', currentEditingHabitId);
+            if (error) console.error("Error deleting habit:", error);
+            else {
+                await loadData();
+                showToast('Habit deleted.');
+            }
         });
     });
 
-    // Icon Picker
     iconGrid.innerHTML = ICONS.map(icon => `<button class="text-3xl p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700" data-icon="${icon}">${icon}</button>`).join('');
     iconPreviewButton.addEventListener('click', () => showModal(iconPickerModal));
     document.getElementById('close-icon-modal').addEventListener('click', () => hideModal(iconPickerModal));
@@ -993,14 +1068,14 @@
         }
     });
 
-    // Settings
     document.getElementById('reset-data-btn').addEventListener('click', () => {
-        showConfirmation('Reset All Data', 'This is irreversible. All your habits and progress will be lost.', () => {
-            habits = [];
-            history = {};
-            saveData();
-            renderHabits();
-            showToast('All data has been reset.');
+        showConfirmation('Reset All Data', 'This is irreversible. All your habits and progress will be lost.', async () => {
+            const { error } = await supabaseClient.from('habits').delete().eq('user_id', user.id);
+            if(error) console.error("Error resetting data:", error);
+            else {
+                await loadData();
+                showToast('All data has been reset.');
+            }
         });
     });
 
@@ -1010,7 +1085,6 @@
         }
     });
 
-    // Hidden habits toggle
     hiddenHabitsHeader.addEventListener('click', () => {
         const isExpanded = hiddenHabitsList.classList.contains('expanded');
         if (isExpanded) {
@@ -1018,7 +1092,7 @@
             hiddenHabitsList.style.padding = '0';
             hiddenHabitsArrow.style.transform = 'rotate(0deg)';
         } else {
-            hiddenHabitsList.style.maxHeight = '200px'; // Or a suitable height
+            hiddenHabitsList.style.maxHeight = '200px';
             hiddenHabitsList.style.padding = '1rem';
             hiddenHabitsArrow.style.transform = 'rotate(180deg)';
         }
@@ -1029,3 +1103,4 @@
 
 </body>
 </html>
+
