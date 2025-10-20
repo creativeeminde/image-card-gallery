@@ -8,13 +8,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-      }
-    </script>
-
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -50,11 +43,13 @@
             position: relative;
             overflow: hidden;
             border-radius: 0.75rem; /* 12px */
+            user-select: none; /* Prevent text selection during drag */
         }
         .habit-content, .hidden-habit-tile {
             transition: transform 0.3s ease-out;
             position: relative;
             z-index: 10;
+            cursor: grab;
         }
         .habit-actions {
             position: absolute;
@@ -75,10 +70,12 @@
             color: white;
             font-size: 0.75rem;
             font-weight: 600;
+            cursor: pointer;
         }
     </style>
 </head>
 <body class="antialiased bg-gray-100 dark:bg-black text-gray-900 dark:text-gray-200">
+    <!-- The HTML structure remains the same -->
     <div id="app-container">
         <div id="main-view" class="view p-5 pb-24 min-h-screen">
             <header class="flex justify-between items-center mb-6">
@@ -801,48 +798,60 @@
         addHabitView.classList.add('translate-x-full');
     });
 
-    // --- SWIPE ACTIONS LOGIC ---
+    // --- SWIPE ACTIONS LOGIC (FIXED FOR MOUSE AND TOUCH) ---
     function addSwipeListeners(habit, element, dateKey) {
         let startX = 0;
         let currentX = 0;
         let isDragging = false;
         const maxDrag = 210; // 3 buttons * 70px
 
-        element.addEventListener('touchstart', (e) => {
-            startX = e.touches[0].clientX;
+        function dragStart(e) {
+            startX = e.touches ? e.touches[0].clientX : e.clientX;
+            currentX = startX;
             isDragging = true;
             element.style.transition = 'none';
-        }, { passive: true });
+            document.addEventListener('mousemove', dragMove);
+            document.addEventListener('mouseup', dragEnd);
+            document.addEventListener('touchmove', dragMove, { passive: true });
+            document.addEventListener('touchend', dragEnd);
+        }
 
-        element.addEventListener('touchmove', (e) => {
+        function dragMove(e) {
             if (!isDragging) return;
-            currentX = e.touches[0].clientX;
+            e.preventDefault();
+            currentX = e.touches ? e.touches[0].clientX : e.clientX;
             let diff = currentX - startX;
             if (diff > 0) diff = 0; // Prevent swiping right
             if (diff < -maxDrag) diff = -maxDrag;
             element.style.transform = `translateX(${diff}px)`;
-        }, { passive: true });
+        }
 
-        element.addEventListener('touchend', () => {
+        function dragEnd() {
             if (!isDragging) return;
             isDragging = false;
+            document.removeEventListener('mousemove', dragMove);
+            document.removeEventListener('mouseup', dragEnd);
+            document.removeEventListener('touchmove', dragMove);
+            document.removeEventListener('touchend', dragEnd);
+
             element.style.transition = 'transform 0.3s ease-out';
             const diff = currentX - startX;
-
-            if (diff < -50) { // Threshold to open
+            if (diff < -50) {
                 element.style.transform = `translateX(-${maxDrag}px)`;
             } else {
                 element.style.transform = 'translateX(0px)';
             }
-        });
+        }
 
-        // Click listeners for the action buttons
+        element.addEventListener('mousedown', dragStart);
+        element.addEventListener('touchstart', dragStart, { passive: true });
+
         const parent = element.parentElement;
         parent.querySelector('[data-action="skip"]').addEventListener('click', () => {
              if (!history[dateKey]) history[dateKey] = {};
              history[dateKey][habit.id] = 'skipped';
              saveData();
-             renderHabits(); // Re-render to show update and close swipe
+             renderHabits();
              showToast(`'${habit.name}' skipped for today.`);
         });
         parent.querySelector('[data-action="hide"]').addEventListener('click', () => {
@@ -877,32 +886,49 @@
 
     function addUnhideSwipeListener(element) {
         let startX = 0;
+        let currentX = 0;
         let isDragging = false;
-
-        element.addEventListener('touchstart', e => {
-            startX = e.touches[0].clientX;
+        
+        function dragStart(e) {
+            startX = e.touches ? e.touches[0].clientX : e.clientX;
+            currentX = startX;
             isDragging = true;
-        }, { passive: true });
+            element.style.transition = 'none';
+            document.addEventListener('mousemove', dragMove);
+            document.addEventListener('mouseup', dragEnd);
+            document.addEventListener('touchmove', dragMove, { passive: true });
+            document.addEventListener('touchend', dragEnd);
+        }
 
-        element.addEventListener('touchmove', e => {
+        function dragMove(e) {
             if (!isDragging) return;
-            let currentX = e.touches[0].clientX;
+            e.preventDefault();
+            currentX = e.touches ? e.touches[0].clientX : e.clientX;
             let diff = currentX - startX;
             if (diff < 0) diff = 0; // Prevent left swipe
             element.style.transform = `translateX(${diff}px)`;
-        }, { passive: true });
+        }
 
-        element.addEventListener('touchend', e => {
+        function dragEnd() {
             if (!isDragging) return;
             isDragging = false;
+            document.removeEventListener('mousemove', dragMove);
+            document.removeEventListener('mouseup', dragEnd);
+            document.removeEventListener('touchmove', dragMove);
+            document.removeEventListener('touchend', dragEnd);
+
+            element.style.transition = 'transform 0.3s ease-out';
             const habitId = parseInt(element.closest('.hidden-habit-swipe-container').dataset.habitId);
-            const diff = e.changedTouches[0].clientX - startX;
+            const diff = currentX - startX;
             if (diff > 50) { // Threshold to unhide
                 unhideHabit(habitId);
             } else {
                 element.style.transform = 'translateX(0)';
             }
-        });
+        }
+
+        element.addEventListener('mousedown', dragStart);
+        element.addEventListener('touchstart', dragStart, { passive: true });
     }
 
     // --- INITIALIZATION & EVENT LISTENERS ---
