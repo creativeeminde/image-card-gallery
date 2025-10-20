@@ -69,6 +69,19 @@
             font-size: 0.75rem;
             font-weight: 600;
         }
+        .habit-checkin-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            padding-left: 1.5rem; /* px-6 */
+            z-index: 5;
+            opacity: 0;
+            transition: opacity 0.3s ease-out;
+        }
     </style>
 </head>
 <body class="antialiased bg-gray-100 dark:bg-black text-gray-900 dark:text-gray-200">
@@ -135,6 +148,10 @@
                          <button data-theme="light" class="theme-btn flex-1 py-2 text-sm font-semibold rounded-md transition-colors text-gray-600 dark:text-gray-400">Light</button>
                          <button data-theme="dark" class="theme-btn flex-1 py-2 text-sm font-semibold rounded-md transition-colors text-gray-600 dark:text-gray-400">Dark</button>
                     </div>
+                </div>
+                 <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
+                    <h2 class="font-bold text-lg mb-2">Functionality</h2>
+                    <button id="unhide-habits-btn" class="w-full text-left p-3 bg-blue-100 dark:bg-blue-900/50 hover:bg-blue-200 dark:hover:bg-blue-900/80 rounded-lg text-blue-700 dark:text-blue-300 font-semibold">Show All Hidden Habits</button>
                 </div>
                 <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
                     <h2 class="font-bold text-lg mb-2">Data Management</h2>
@@ -390,6 +407,9 @@
             habitElWrapper.className = 'habit-swipe-container';
 
             habitElWrapper.innerHTML = `
+                <div class="habit-checkin-bg bg-green-500 rounded-xl">
+                    <svg class="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg>
+                </div>
                 <div class="habit-actions">
                     <button data-action="skip" class="habit-action-btn bg-orange-500"><svg class="w-6 h-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>Skip</button>
                     <button data-action="hide" class="habit-action-btn bg-blue-700"><svg class="w-6 h-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m0 0l-3.59-3.59"/></svg>Hide</button>
@@ -411,18 +431,7 @@
             `;
             
             const habitContent = habitElWrapper.querySelector('.habit-content');
-            addSwipeListeners(habit, habitContent, dateKey);
-            
-            habitContent.addEventListener('click', (e) => {
-                if(e.target.closest('.options-btn')) return;
-                if (!history[dateKey]) history[dateKey] = {};
-                const current = (history[dateKey][habit.id] || 0) + 1;
-                if (current <= habit.goal) {
-                    history[dateKey][habit.id] = current;
-                    saveData();
-                    renderHabits();
-                }
-            });
+            addHabitInteractionListeners(habit, habitElWrapper, dateKey);
 
             habitsContainer.appendChild(habitElWrapper);
         });
@@ -805,50 +814,84 @@
     });
 
     // --- SWIPE ACTIONS LOGIC ---
-    function addSwipeListeners(habit, element, dateKey) {
+    function addHabitInteractionListeners(habit, wrapper, dateKey) {
+        const content = wrapper.querySelector('.habit-content');
+        const checkinBg = wrapper.querySelector('.habit-checkin-bg');
+        
         let startX = 0;
         let currentX = 0;
         let isDragging = false;
-        const maxDrag = 210; // 3 buttons * 70px
+        const actionThreshold = -50; // Left swipe
+        const checkinThreshold = 60; // Right swipe
+        const maxActionsDrag = 210;
+        const maxCheckinDrag = 90;
 
-        element.addEventListener('touchstart', (e) => {
+        content.addEventListener('touchstart', (e) => {
+            // Prevent interaction if another habit is already swiped
+            const anotherSwiped = document.querySelector('.swiped-left, .swiped-right');
+            if (anotherSwiped && anotherSwiped !== content) {
+                anotherSwiped.style.transform = 'translateX(0)';
+                anotherSwiped.classList.remove('swiped-left', 'swiped-right');
+            }
             startX = e.touches[0].clientX;
             isDragging = true;
-            element.style.transition = 'none';
+            content.style.transition = 'none';
+            if(checkinBg) checkinBg.style.transition = 'none';
         }, { passive: true });
 
-        element.addEventListener('touchmove', (e) => {
+        content.addEventListener('touchmove', (e) => {
             if (!isDragging) return;
             currentX = e.touches[0].clientX;
             let diff = currentX - startX;
-            if (diff > 0) diff = 0; // Prevent swiping right
-            if (diff < -maxDrag) diff = -maxDrag;
-            element.style.transform = `translateX(${diff}px)`;
+            
+            if (diff < 0) { // Swiping left
+                if (diff < -maxActionsDrag) diff = -maxActionsDrag;
+                 if(checkinBg) checkinBg.style.opacity = '0';
+            } else { // Swiping right
+                if (diff > maxCheckinDrag) diff = maxCheckinDrag;
+                if(checkinBg) checkinBg.style.opacity = diff / maxCheckinDrag;
+            }
+            content.style.transform = `translateX(${diff}px)`;
         }, { passive: true });
 
-        element.addEventListener('touchend', () => {
+        content.addEventListener('touchend', () => {
             if (!isDragging) return;
             isDragging = false;
-            element.style.transition = 'transform 0.3s ease-out';
+            content.style.transition = 'transform 0.3s ease-out';
+            if(checkinBg) checkinBg.style.transition = 'opacity 0.3s ease-out';
             const diff = currentX - startX;
+            
+            content.classList.remove('swiped-left', 'swiped-right');
 
-            if (diff < -50) { // Threshold to open
-                element.style.transform = `translateX(-${maxDrag}px)`;
-            } else {
-                element.style.transform = 'translateX(0px)';
+            if (diff < actionThreshold) { // Snap open actions
+                content.style.transform = `translateX(-${maxActionsDrag}px)`;
+                content.classList.add('swiped-left');
+            } else if (diff > checkinThreshold) { // Complete habit
+                 if (!history[dateKey]) history[dateKey] = {};
+                 const current = (history[dateKey][habit.id] || 0) + 1;
+                 if (current <= habit.goal) {
+                    history[dateKey][habit.id] = current;
+                    saveData();
+                 }
+                // Animate back and re-render
+                content.style.transform = 'translateX(0px)';
+                if(checkinBg) checkinBg.style.opacity = '0';
+                setTimeout(renderHabits, 300);
+            } else { // Snap back to center
+                content.style.transform = 'translateX(0px)';
+                if(checkinBg) checkinBg.style.opacity = '0';
             }
         });
 
         // Click listeners for the action buttons
-        const parent = element.parentElement;
-        parent.querySelector('[data-action="skip"]').addEventListener('click', () => {
+        wrapper.querySelector('[data-action="skip"]').addEventListener('click', () => {
              if (!history[dateKey]) history[dateKey] = {};
              history[dateKey][habit.id] = 'skipped';
              saveData();
-             renderHabits(); // Re-render to show update and close swipe
+             renderHabits();
              showToast(`'${habit.name}' skipped for today.`);
         });
-        parent.querySelector('[data-action="hide"]').addEventListener('click', () => {
+        wrapper.querySelector('[data-action="hide"]').addEventListener('click', () => {
             const habitIndex = habits.findIndex(h => h.id === habit.id);
             if(habitIndex > -1) {
                 const tomorrow = new Date();
@@ -859,7 +902,7 @@
                 showToast(`'${habit.name}' hidden until tomorrow.`);
             }
         });
-        parent.querySelector('[data-action="reset"]').addEventListener('click', () => {
+        wrapper.querySelector('[data-action="reset"]').addEventListener('click', () => {
              if (history[dateKey] && history[dateKey][habit.id]) {
                 delete history[dateKey][habit.id];
                 saveData();
@@ -867,7 +910,18 @@
                 showToast(`'${habit.name}' progress reset.`);
              }
         });
+        
+        // Option button click
+        const optionsBtn = wrapper.querySelector('.options-btn');
+        if (optionsBtn) {
+            optionsBtn.addEventListener('click', () => {
+                 const habitId = parseInt(optionsBtn.dataset.habitId);
+                 currentEditingHabitId = habitId;
+                 showModal(contextMenuModal);
+            });
+        }
     }
+
 
     const unhideHabit = (habitId) => {
         const habitIndex = habits.findIndex(h => h.id === habitId);
@@ -929,15 +983,6 @@
     backBtn.addEventListener('click', () => addHabitView.classList.add('translate-x-full'));
 
     // Context Menu
-    habitsContainer.addEventListener('click', e => {
-        const optionsBtn = e.target.closest('.options-btn');
-        if (optionsBtn) {
-            const habitId = parseInt(optionsBtn.dataset.habitId);
-            currentEditingHabitId = habitId;
-            showModal(contextMenuModal);
-        }
-    });
-    
     document.getElementById('close-context-menu').addEventListener('click', () => hideModal(contextMenuModal));
     document.getElementById('edit-habit-btn').addEventListener('click', () => {
         hideModal(contextMenuModal);
@@ -1007,3 +1052,4 @@
 
 </body>
 </html>
+
