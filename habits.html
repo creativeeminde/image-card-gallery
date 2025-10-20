@@ -348,10 +348,21 @@
     const renderHabits = () => {
         const dateKey = toISODateString(selectedDate);
         const dayOfWeek = selectedDate.getDay();
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Normalize today's date
+        
         const allHabitsForDay = habits.filter(h => new Date(h.creationDate) <= selectedDate && h.targetDays.includes(dayOfWeek));
         
-        const visibleHabits = allHabitsForDay.filter(h => !h.hiddenUntil || new Date(h.hiddenUntil) <= new Date());
-        const hiddenHabits = allHabitsForDay.filter(h => h.hiddenUntil && new Date(h.hiddenUntil) > new Date());
+        const visibleHabits = allHabitsForDay.filter(h => {
+            if (!h.hiddenUntil) return true;
+            const hiddenDate = new Date(h.hiddenUntil);
+            return hiddenDate < today;
+        });
+        const hiddenHabits = allHabitsForDay.filter(h => {
+            if (!h.hiddenUntil) return false;
+            const hiddenDate = new Date(h.hiddenUntil);
+            return hiddenDate >= today;
+        });
         
         habitsContainer.innerHTML = ''; 
 
@@ -837,7 +848,6 @@
                 habits[habitIndex].hiddenUntil = toISODateString(tomorrow);
                 saveData();
                 renderHabits();
-                showToast(`'${habit.name}' hidden until tomorrow.`);
             }
         });
         parent.querySelector('[data-action="reset"]').addEventListener('click', () => {
