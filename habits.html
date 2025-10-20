@@ -19,6 +19,11 @@
         .habit-progress-bar, .view { transition: all 0.3s ease-in-out; }
         .toast-notification, .modal-container { transition: opacity 0.3s ease-in-out; }
         .view.hidden { display: none; }
+        .day-btn.active, .time-range-btn.active {
+            background-color: #EF4444;
+            color: #FFFFFF;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body class="antialiased">
@@ -74,18 +79,39 @@
             <div class="w-6"></div>
         </header>
         <div class="space-y-4 pb-24">
+            <!-- Habit Name, Icon, Category -->
             <div class="bg-[#1E1E1E] p-4 rounded-xl">
                 <div class="flex items-center gap-4">
-                    <button id="icon-preview-btn" class="w-14 h-14 bg-gray-700 rounded-lg flex items-center justify-center text-3xl">➕</button>
-                    <div class="flex-grow">
+                    <button id="icon-preview-btn" class="w-14 h-14 bg-gray-700 rounded-lg flex items-center justify-center text-3xl flex-shrink-0">➕</button>
+                    <div class="flex-grow space-y-2">
                         <input id="habit-name-input" type="text" placeholder="Habit name" class="w-full bg-transparent text-lg font-semibold placeholder-gray-400 focus:outline-none">
-                        <input id="habit-goal-input" type="number" placeholder="Goal (e.g., 10)" class="w-full bg-transparent text-sm text-gray-400 placeholder-gray-400 focus:outline-none mt-1">
+                        <input id="habit-category-input" type="text" placeholder="Category (e.g., Health)" class="w-full bg-transparent text-sm text-gray-400 placeholder-gray-400 focus:outline-none">
                     </div>
                 </div>
             </div>
+            <!-- Times Per Day -->
+            <div class="bg-[#1E1E1E] p-4 rounded-xl flex justify-between items-center">
+                 <label class="font-semibold">Times Per Day</label>
+                 <input id="habit-times-per-day-input" type="number" value="1" min="1" class="w-20 bg-gray-700 text-center font-semibold rounded-lg py-1 focus:outline-none focus:ring-2 focus:ring-red-500">
+            </div>
+             <!-- Target Days -->
+            <div class="bg-[#1E1E1E] p-4 rounded-xl">
+                <label class="font-semibold">Target Days</label>
+                <div id="form-target-days" class="flex justify-between items-center mt-3">
+                    <!-- Day buttons will be injected here -->
+                </div>
+            </div>
+            <!-- Time Range -->
+            <div class="bg-[#1E1E1E] p-4 rounded-xl">
+                <label class="font-semibold">Time Range</label>
+                <div id="form-time-range" class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
+                     <!-- Time range buttons will be injected here -->
+                </div>
+            </div>
+            <!-- Color -->
             <div class="bg-[#1E1E1E] p-4 rounded-xl">
                 <label class="font-semibold">Color</label>
-                <div id="form-color-grid" class="grid grid-cols-6 gap-4 py-4 place-items-center"></div>
+                <div id="form-color-grid" class="grid grid-cols-8 gap-3 py-4 place-items-center"></div>
             </div>
         </div>
         <div class="absolute bottom-0 left-0 right-0 p-5 bg-black border-t border-gray-800">
@@ -132,7 +158,6 @@
     document.addEventListener('DOMContentLoaded', () => {
     // --- DOM ELEMENTS ---
     const appContainer = document.getElementById('app-container');
-    const mainView = document.getElementById('main-view');
     const headerTitle = document.getElementById('header-title');
     const habitsContainer = document.getElementById('habits-container');
     const dateScrollerContainer = document.getElementById('date-scroller-container');
@@ -140,12 +165,13 @@
     const saveHabitBtn = document.getElementById('save-habit-btn');
     const formTitle = document.getElementById('form-title');
     const habitNameInput = document.getElementById('habit-name-input');
-    const habitGoalInput = document.getElementById('habit-goal-input');
+    const habitCategoryInput = document.getElementById('habit-category-input');
+    const habitTimesPerDayInput = document.getElementById('habit-times-per-day-input');
+    const formTargetDays = document.getElementById('form-target-days');
+    const formTimeRange = document.getElementById('form-time-range');
     const iconPreviewButton = document.getElementById('icon-preview-btn');
     const formColorGrid = document.getElementById('form-color-grid');
     const backBtn = document.getElementById('back-btn');
-    
-    // Modals & Context Menus
     const iconPickerModal = document.getElementById('icon-picker-modal');
     const iconGrid = document.getElementById('icon-grid');
     const contextMenuModal = document.getElementById('context-menu-modal');
@@ -153,7 +179,7 @@
     
     // --- STATE & CONSTANTS ---
     let selectedDate = new Date();
-    let habits = []; // { id, name, icon, color, progressColor, goal, creationDate }
+    let habits = []; // { id, name, icon, color, progressColor, goal, creationDate, category, targetDays, timeRange }
     let history = {}; // { 'YYYY-MM-DD': { habitId: count } }
     let currentEditingHabitId = null;
 
@@ -164,6 +190,8 @@
         { main: 'bg-pink-500', progress: 'bg-pink-400' }, { main: 'bg-indigo-500', progress: 'bg-indigo-400' }
     ];
     const ICONS = ['📚','🏃','💻','🧘','💧','🎨','🎵','🧹','💰','💪','🎯','🗣️','✏️','🌱','🌅','🍎','✍️','💡'];
+    const DAYS_OF_WEEK = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    const TIME_RANGES = ['Anytime', 'Morning', 'Afternoon', 'Evening'];
     
     // --- HELPER FUNCTIONS ---
     const toISODateString = date => new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString().split('T')[0];
@@ -241,7 +269,9 @@
     // --- RENDER FUNCTIONS ---
     const renderHabits = () => {
         const dateKey = toISODateString(selectedDate);
-        const habitsForDay = habits.filter(h => new Date(h.creationDate) <= selectedDate);
+        const dayOfWeek = selectedDate.getDay();
+        const habitsForDay = habits.filter(h => new Date(h.creationDate) <= selectedDate && h.targetDays.includes(dayOfWeek));
+        
         habitsContainer.innerHTML = ''; 
 
         if (habitsForDay.length === 0) {
@@ -313,12 +343,13 @@
     const renderTodaysProgress = () => {
         const today = new Date();
         const dateKey = toISODateString(today);
-        const activeHabits = habits.filter(h => new Date(h.creationDate) <= today);
+        const dayOfWeek = today.getDay();
+        const activeHabits = habits.filter(h => new Date(h.creationDate) <= today && h.targetDays.includes(dayOfWeek));
         if (activeHabits.length === 0) return '';
 
         const todaysHistory = history[dateKey] || {};
         const completedCount = activeHabits.filter(h => (todaysHistory[h.id] || 0) >= h.goal).length;
-        const progress = Math.round((completedCount / activeHabits.length) * 100);
+        const progress = activeHabits.length > 0 ? Math.round((completedCount / activeHabits.length) * 100) : 0;
 
         return `
             <div class="bg-[#1E1E1E] p-4 rounded-xl">
@@ -341,7 +372,8 @@
             const date = new Date();
             date.setDate(today.getDate() - i);
             const dateKey = toISODateString(date);
-            const activeHabits = habits.filter(h => new Date(h.creationDate) <= date);
+            const dayOfWeek = date.getDay();
+            const activeHabits = habits.filter(h => new Date(h.creationDate) <= date && h.targetDays.includes(dayOfWeek));
             let progress = 0;
             if (activeHabits.length > 0) {
                 const dayHistory = history[dateKey] || {};
@@ -369,15 +401,16 @@
         const today = new Date();
         const month = today.getMonth();
         const year = today.getFullYear();
-        const firstDay = new Date(year, month, 1);
+        const firstDayOfMonth = new Date(year, month, 1);
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         
-        let daysContent = Array(firstDay.getDay()).fill(`<div class="w-8 h-8"></div>`).join('');
+        let daysContent = Array(firstDayOfMonth.getDay()).fill(`<div class="w-8 h-8"></div>`).join('');
 
         for (let day = 1; day <= daysInMonth; day++) {
             const date = new Date(year, month, day);
             const dateKey = toISODateString(date);
-            const activeHabits = habits.filter(h => new Date(h.creationDate) <= date);
+            const dayOfWeek = date.getDay();
+            const activeHabits = habits.filter(h => new Date(h.creationDate) <= date && h.targetDays.includes(dayOfWeek));
             let completionRate = 0;
             let bgColor = 'bg-gray-800';
 
@@ -385,11 +418,15 @@
                 const dayHistory = history[dateKey] || {};
                 const completedCount = activeHabits.filter(h => (dayHistory[h.id] || 0) >= h.goal).length;
                 completionRate = completedCount / activeHabits.length;
+            } else if (date < today) {
+                // Day with no active habits
+                 bgColor = 'bg-gray-800/50';
             }
 
+
             if(completionRate > 0) bgColor = 'bg-red-800/70';
-            if(completionRate > 0.25) bgColor = 'bg-yellow-800/70';
-            if(completionRate > 0.75) bgColor = 'bg-green-800/70';
+            if(completionRate >= 0.5) bgColor = 'bg-yellow-800/70';
+            if(completionRate === 1) bgColor = 'bg-green-800/70';
             
             daysContent += `<div class="w-8 h-8 flex items-center justify-center text-xs rounded-md ${bgColor}">${day}</div>`;
         }
@@ -413,11 +450,16 @@
 
         while (new Date(habit.creationDate) <= checkDate) {
             const dateKey = toISODateString(checkDate);
-            const dayHistory = history[dateKey];
-            if (dayHistory && (dayHistory[habitId] || 0) >= habit.goal) {
-                currentStreak++;
-            } else {
-                break;
+            const dayOfWeek = checkDate.getDay();
+            
+            // Only check for a streak on days the habit is targeted
+            if (habit.targetDays.includes(dayOfWeek)) {
+                const dayHistory = history[dateKey];
+                if (dayHistory && (dayHistory[habitId] || 0) >= habit.goal) {
+                    currentStreak++;
+                } else {
+                    break;
+                }
             }
             checkDate.setDate(checkDate.getDate() - 1);
         }
@@ -475,17 +517,43 @@
         saveHabitBtn.textContent = habitToEdit ? 'Save Changes' : 'Create Habit';
         
         habitNameInput.value = habitToEdit ? habitToEdit.name : '';
-        habitGoalInput.value = habitToEdit ? habitToEdit.goal : '1';
+        habitCategoryInput.value = habitToEdit ? habitToEdit.category : '';
+        habitTimesPerDayInput.value = habitToEdit ? habitToEdit.goal : '1';
         iconPreviewButton.textContent = habitToEdit ? habitToEdit.icon : '➕';
         
-        let selectedColor = habitToEdit ? habitToEdit.color : COLORS[2].main;
-        
+        // Populate Target Days
+        const targetDays = habitToEdit ? habitToEdit.targetDays : [0, 1, 2, 3, 4, 5, 6];
+        formTargetDays.innerHTML = DAYS_OF_WEEK.map((day, index) => 
+            `<button class="day-btn w-10 h-10 rounded-full text-sm bg-gray-700 text-gray-300 ${targetDays.includes(index) ? 'active' : ''}" data-day="${index}">${day}</button>`
+        ).join('');
+
+        // Populate Time Range
+        const timeRange = habitToEdit ? habitToEdit.timeRange : 'Anytime';
+        formTimeRange.innerHTML = TIME_RANGES.map(range => 
+            `<button class="time-range-btn flex-1 py-2 px-3 text-sm rounded-lg bg-gray-700 text-gray-300 ${timeRange === range ? 'active' : ''}" data-range="${range}">${range}</button>`
+        ).join('');
+
+        // Populate Colors
+        let selectedColor = habitToEdit ? habitToEdit.color : COLORS[3].main;
         formColorGrid.innerHTML = COLORS.map(c => 
-            `<button class="w-10 h-10 rounded-full ${c.main} ${selectedColor === c.main ? 'ring-2 ring-white' : ''}" data-main="${c.main}" data-progress="${c.progress}"></button>`
+            `<button class="w-8 h-8 rounded-full ${c.main} ${selectedColor === c.main ? 'ring-2 ring-white' : ''}" data-main="${c.main}" data-progress="${c.progress}"></button>`
         ).join('');
         
         addHabitView.classList.remove('translate-x-full');
     };
+
+    formTargetDays.addEventListener('click', e => {
+        if (e.target.matches('.day-btn')) {
+            e.target.classList.toggle('active');
+        }
+    });
+
+    formTimeRange.addEventListener('click', e => {
+        if (e.target.matches('.time-range-btn')) {
+            formTimeRange.querySelectorAll('.time-range-btn').forEach(btn => btn.classList.remove('active'));
+            e.target.classList.add('active');
+        }
+    });
 
     formColorGrid.addEventListener('click', e => {
         if(e.target.dataset.main) {
@@ -496,9 +564,12 @@
 
     saveHabitBtn.addEventListener('click', () => {
         const name = habitNameInput.value.trim();
-        const goal = parseInt(habitGoalInput.value, 10);
-        if (!name || !goal || goal < 1) {
-            showToast("Please enter a valid name and goal.");
+        const category = habitCategoryInput.value.trim();
+        const goal = parseInt(habitTimesPerDayInput.value, 10);
+        const selectedDays = [...formTargetDays.querySelectorAll('.day-btn.active')].map(btn => parseInt(btn.dataset.day));
+        
+        if (!name || !goal || goal < 1 || selectedDays.length === 0) {
+            showToast("Please fill all fields and select at least one day.");
             return;
         }
 
@@ -506,14 +577,17 @@
         const color = selectedColorEl.dataset.main;
         const progressColor = selectedColorEl.dataset.progress;
         const icon = iconPreviewButton.textContent;
+        const timeRange = formTimeRange.querySelector('.time-range-btn.active').dataset.range;
         
+        const habitData = { name, category, goal, targetDays: selectedDays, timeRange, icon, color, progressColor };
+
         if (currentEditingHabitId) {
             const habitIndex = habits.findIndex(h => h.id === currentEditingHabitId);
             if (habitIndex > -1) {
-                habits[habitIndex] = { ...habits[habitIndex], name, goal, icon, color, progressColor };
+                habits[habitIndex] = { ...habits[habitIndex], ...habitData };
             }
         } else {
-            const newHabit = { id: Date.now(), name, icon, color, progressColor, goal, creationDate: toISODateString(new Date()) };
+            const newHabit = { id: Date.now(), ...habitData, creationDate: toISODateString(new Date()) };
             habits.push(newHabit);
         }
         
@@ -531,7 +605,6 @@
     document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
         btn.addEventListener('click', () => showView(btn.dataset.view));
     });
-
     document.querySelector('.nav-btn[disabled]').addEventListener('click', () => showToast('Social features coming soon!'));
 
     // Habit Form
