@@ -289,7 +289,21 @@
             }
             return;
         } else {
-            habits = habitsData || [];
+            // Map snake_case from DB to camelCase for the app
+            habits = (habitsData || []).map(h => ({
+                id: h.id,
+                userId: h.user_id,
+                name: h.name,
+                icon: h.icon,
+                color: h.color,
+                progressColor: h.progress_color,
+                goal: h.goal,
+                creationDate: h.creation_date,
+                category: h.category,
+                targetDays: h.target_days,
+                timeRange: h.time_range,
+                hiddenUntil: h.hidden_until
+            }));
         }
 
         const { data: historyData, error: historyError } = await supabaseClient
@@ -302,7 +316,6 @@
             if (historyError.code !== '42P01') { // Avoid showing a second error for the same issue
                  showToast('Error fetching history. Check console.');
             }
-            // Don't clear habits if only history fails
         } else {
             history = {};
             (historyData || []).forEach(record => {
@@ -828,15 +841,16 @@
 
         const selectedColorEl = formColorGrid.querySelector('.ring-2');
         
+        // Map camelCase from app to snake_case for DB
         const habitData = { 
             name, 
             category, 
             goal, 
-            targetDays: selectedDays, 
-            timeRange: formTimeRange.querySelector('.time-range-btn.active').dataset.range, 
+            target_days: selectedDays, 
+            time_range: formTimeRange.querySelector('.time-range-btn.active').dataset.range, 
             icon: iconPreviewButton.textContent, 
             color: selectedColorEl.dataset.main, 
-            progressColor: selectedColorEl.dataset.progress 
+            progress_color: selectedColorEl.dataset.progress 
         };
 
         if (currentEditingHabitId) {
@@ -846,7 +860,7 @@
             const { error } = await supabaseClient.from('habits').insert({ 
                 ...habitData, 
                 user_id: user.id,
-                creationDate: toISODateString(new Date()) 
+                creation_date: toISODateString(new Date()) 
             });
             if(error) console.error("Error creating habit:", error);
         }
@@ -868,7 +882,7 @@
             case 'hide':
                 const tomorrow = new Date();
                 tomorrow.setDate(tomorrow.getDate() + 1);
-                ({ error } = await supabaseClient.from('habits').update({ hiddenUntil: toISODateString(tomorrow) }).eq('id', habit.id));
+                ({ error } = await supabaseClient.from('habits').update({ hidden_until: toISODateString(tomorrow) }).eq('id', habit.id));
                 break;
             case 'reset':
                  ({ error } = await supabaseClient.from('history').delete().match({ user_id: user.id, habit_id: habit.id, date: dateKey }));
@@ -933,7 +947,7 @@
     }
 
     const unhideHabit = async (habitId) => {
-        const { error } = await supabaseClient.from('habits').update({ hiddenUntil: null }).eq('id', habitId);
+        const { error } = await supabaseClient.from('habits').update({ hidden_until: null }).eq('id', habitId);
         if(error) console.error("Error unhiding habit:", error);
         else {
             const habit = habits.find(h => h.id === habitId);
@@ -991,9 +1005,6 @@
         if (session) {
             user = session.user;
         } else {
-            // The error "Anonymous sign-ins are disabled" suggests we need an alternative.
-            // We'll sign up a new user with a random email/password. This creates a persistent
-            // identity for the user in this browser.
             const randomEmail = `user-${Date.now()}@habit-tracker.app`;
             const randomPassword = Math.random().toString(36).slice(-8);
             
