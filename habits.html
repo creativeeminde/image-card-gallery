@@ -39,12 +39,12 @@
             to { box-shadow: 0 0 20px rgba(250, 204, 21, 0.8); }
         }
         /* Styles for swipe actions */
-        .habit-swipe-container {
+        .habit-swipe-container, .hidden-habit-swipe-container {
             position: relative;
             overflow: hidden;
             border-radius: 0.75rem; /* 12px */
         }
-        .habit-content {
+        .habit-content, .hidden-habit-tile {
             transition: transform 0.3s ease-out;
             position: relative;
             z-index: 10;
@@ -86,6 +86,17 @@
             </header>
             <div id="date-scroller-container" class="date-scroller flex space-x-3 overflow-x-auto pb-4 mb-6"></div>
             <div id="habits-container" class="space-y-3"></div>
+            
+            <!-- Hidden Habits Section -->
+            <div id="hidden-habits-section" class="fixed bottom-20 left-0 right-0 z-20 px-5 hidden">
+                 <div id="hidden-habits-header" class="bg-gray-300 dark:bg-gray-800 text-gray-800 dark:text-white font-semibold py-2 px-4 rounded-t-lg cursor-pointer flex justify-between items-center">
+                    <span>Hidden Habits</span>
+                    <svg id="hidden-habits-arrow" class="w-5 h-5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" /></svg>
+                </div>
+                <div id="hidden-habits-list" class="bg-gray-200 dark:bg-gray-900/80 backdrop-blur-sm max-h-0 overflow-y-auto transition-all duration-300 ease-in-out p-0 space-y-2">
+                    <!-- Hidden habits will be injected here -->
+                </div>
+            </div>
         </div>
 
         <!-- Stats View -->
@@ -124,10 +135,6 @@
                          <button data-theme="light" class="theme-btn flex-1 py-2 text-sm font-semibold rounded-md transition-colors text-gray-600 dark:text-gray-400">Light</button>
                          <button data-theme="dark" class="theme-btn flex-1 py-2 text-sm font-semibold rounded-md transition-colors text-gray-600 dark:text-gray-400">Dark</button>
                     </div>
-                </div>
-                 <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
-                    <h2 class="font-bold text-lg mb-2">Functionality</h2>
-                    <button id="unhide-habits-btn" class="w-full text-left p-3 bg-blue-100 dark:bg-blue-900/50 hover:bg-blue-200 dark:hover:bg-blue-900/80 rounded-lg text-blue-700 dark:text-blue-300 font-semibold">Show All Hidden Habits</button>
                 </div>
                 <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
                     <h2 class="font-bold text-lg mb-2">Data Management</h2>
@@ -226,6 +233,10 @@
     const headerTitle = document.getElementById('header-title');
     const habitsContainer = document.getElementById('habits-container');
     const dateScrollerContainer = document.getElementById('date-scroller-container');
+    const hiddenHabitsSection = document.getElementById('hidden-habits-section');
+    const hiddenHabitsHeader = document.getElementById('hidden-habits-header');
+    const hiddenHabitsList = document.getElementById('hidden-habits-list');
+    const hiddenHabitsArrow = document.getElementById('hidden-habits-arrow');
     const addHabitView = document.getElementById('add-habit-view');
     const saveHabitBtn = document.getElementById('save-habit-btn');
     const formTitle = document.getElementById('form-title');
@@ -356,19 +367,20 @@
     const renderHabits = () => {
         const dateKey = toISODateString(selectedDate);
         const dayOfWeek = selectedDate.getDay();
-        const habitsForDay = habits.filter(h => {
-            const isHidden = h.hiddenUntil && new Date(h.hiddenUntil) > new Date();
-            return !isHidden && new Date(h.creationDate) <= selectedDate && h.targetDays.includes(dayOfWeek)
-        });
+        const allHabitsForDay = habits.filter(h => new Date(h.creationDate) <= selectedDate && h.targetDays.includes(dayOfWeek));
+        
+        const visibleHabits = allHabitsForDay.filter(h => !h.hiddenUntil || new Date(h.hiddenUntil) <= new Date());
+        const hiddenHabits = allHabitsForDay.filter(h => h.hiddenUntil && new Date(h.hiddenUntil) > new Date());
         
         habitsContainer.innerHTML = ''; 
 
-        if (habitsForDay.length === 0) {
+        if (visibleHabits.length === 0 && hiddenHabits.length === 0) {
             habitsContainer.innerHTML = `<div class="text-center mt-20 flex flex-col items-center"><div class="w-40 h-40 opacity-30"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none"><circle cx="100" cy="100" r="80" fill="#FF4B4B" fill-opacity="0.1"/><path d="M140.833 83.3333L125 62.5L108.333 83.3333M140.833 83.3333C142.5 87.5 141.667 90.8333 140 93.3333C135.833 100 128.333 105 120 106.667C111.667 108.333 102.5 106.667 95 101.667C87.5 96.6667 82.5 89.1667 80.8333 80.8333C79.1667 72.5 80.8333 63.3333 85.8333 55.8333C90.8333 48.3333 98.3333 43.3333 106.667 41.6667C110.833 40.8333 115 41.6667 118.333 43.3333" stroke="#FF4B4B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M125 62.5V41.6667M125 62.5L140.833 83.3333" stroke="#FF4B4B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M91.6667 125L83.3333 141.667L66.6667 133.333L75 116.667" fill="#FF4B4B" fill-opacity="0.3" stroke="#FF4B4B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M125 100C125 104.142 121.642 107.5 117.5 107.5C113.358 107.5 110 104.142 110 100C110 95.8579 113.358 92.5 117.5 92.5C121.642 92.5 125 95.8579 125 100Z" fill="#FF4B4B" fill-opacity="0.3"/><path d="M133.333 58.3333C133.333 60.1912 131.858 61.6667 130 61.6667C128.142 61.6667 126.667 60.1912 126.667 58.3333C126.667 56.4755 128.142 55 130 55C131.858 55 133.333 56.4755 133.333 58.3333Z" fill="#FF4B4B" fill-opacity="0.3"/><path d="M75 83.3333C75 85.1912 73.5245 86.6667 71.6667 86.6667C69.8088 86.6667 68.3333 85.1912 68.3333 83.3333C68.3333 81.4755 69.8088 80 71.6667 80C73.5245 80 75 81.4755 75 83.3333Z" fill="#FF4B4B" fill-opacity="0.3"/><path d="M83.3333 116.667L75 125" stroke="#FF4B4B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h2 class="text-xl font-bold mt-4">No Habits Today</h2><p class="text-gray-500 dark:text-gray-400 mt-1">Tap "+" to add a new habit.</p></div>`;
-            return;
+        } else if (visibleHabits.length === 0) {
+             habitsContainer.innerHTML = `<div class="text-center mt-20 text-gray-500 dark:text-gray-400">All habits for today are hidden.</div>`;
         }
 
-        habitsForDay.forEach(habit => {
+        visibleHabits.forEach(habit => {
             const dayHistory = (history[dateKey] && history[dateKey][habit.id]);
             const isSkipped = dayHistory === 'skipped';
             const currentCount = typeof dayHistory === 'number' ? dayHistory : 0;
@@ -414,6 +426,37 @@
 
             habitsContainer.appendChild(habitElWrapper);
         });
+
+        renderHiddenHabits(hiddenHabits);
+    };
+
+    const renderHiddenHabits = (hiddenHabits) => {
+        if (hiddenHabits.length > 0) {
+            hiddenHabitsSection.classList.remove('hidden');
+            hiddenHabitsList.innerHTML = hiddenHabits.map(habit => `
+                <div class="hidden-habit-swipe-container" data-habit-id="${habit.id}">
+                    <div class="hidden-habit-tile bg-gray-300 dark:bg-gray-800 p-2 rounded-lg flex items-center justify-between opacity-70">
+                        <div class="flex items-center gap-3">
+                           <span class="text-xl">${habit.icon}</span>
+                           <span class="text-sm font-semibold">${habit.name}</span>
+                        </div>
+                        <button class="unhide-btn text-xs font-bold text-blue-600 dark:text-blue-400 p-2">UNHIDE</button>
+                    </div>
+                </div>
+            `).join('');
+            
+            // Add listeners for unhiding
+            hiddenHabitsList.querySelectorAll('.unhide-btn').forEach(btn => {
+                const habitId = parseInt(btn.closest('.hidden-habit-swipe-container').dataset.habitId);
+                btn.addEventListener('click', () => unhideHabit(habitId));
+            });
+            // Add swipe right to unhide listeners
+            hiddenHabitsList.querySelectorAll('.hidden-habit-tile').forEach(tile => {
+                addUnhideSwipeListener(tile);
+            });
+        } else {
+            hiddenHabitsSection.classList.add('hidden');
+        }
     };
     
     const renderDateScroller = () => {
@@ -826,6 +869,46 @@
         });
     }
 
+    const unhideHabit = (habitId) => {
+        const habitIndex = habits.findIndex(h => h.id === habitId);
+        if (habitIndex > -1) {
+            delete habits[habitIndex].hiddenUntil;
+            saveData();
+            renderHabits();
+            showToast(`'${habits[habitIndex].name}' is now visible.`);
+        }
+    };
+
+    function addUnhideSwipeListener(element) {
+        let startX = 0;
+        let isDragging = false;
+
+        element.addEventListener('touchstart', e => {
+            startX = e.touches[0].clientX;
+            isDragging = true;
+        }, { passive: true });
+
+        element.addEventListener('touchmove', e => {
+            if (!isDragging) return;
+            let currentX = e.touches[0].clientX;
+            let diff = currentX - startX;
+            if (diff < 0) diff = 0; // Prevent left swipe
+            element.style.transform = `translateX(${diff}px)`;
+        }, { passive: true });
+
+        element.addEventListener('touchend', e => {
+            if (!isDragging) return;
+            isDragging = false;
+            const habitId = parseInt(element.closest('.hidden-habit-swipe-container').dataset.habitId);
+            const diff = e.changedTouches[0].clientX - startX;
+            if (diff > 50) { // Threshold to unhide
+                unhideHabit(habitId);
+            } else {
+                element.style.transform = 'translateX(0)';
+            }
+        });
+    }
+
     // --- INITIALIZATION & EVENT LISTENERS ---
     loadData();
 
@@ -898,23 +981,29 @@
             showToast('All data has been reset.');
         });
     });
-    
-    document.getElementById('unhide-habits-btn').addEventListener('click', () => {
-        habits.forEach(h => delete h.hiddenUntil);
-        saveData();
-        renderHabits();
-        showToast('All habits are now visible.');
-    });
-
 
     themeSelector.addEventListener('click', (e) => {
         if (e.target.matches('.theme-btn')) {
             applyTheme(e.target.dataset.theme);
         }
     });
+
+    // Hidden habits toggle
+    hiddenHabitsHeader.addEventListener('click', () => {
+        const isExpanded = hiddenHabitsList.classList.contains('expanded');
+        if (isExpanded) {
+            hiddenHabitsList.style.maxHeight = '0';
+            hiddenHabitsList.style.padding = '0';
+            hiddenHabitsArrow.style.transform = 'rotate(0deg)';
+        } else {
+            hiddenHabitsList.style.maxHeight = '200px'; // Or a suitable height
+            hiddenHabitsList.style.padding = '1rem';
+            hiddenHabitsArrow.style.transform = 'rotate(180deg)';
+        }
+        hiddenHabitsList.classList.toggle('expanded');
+    });
 });
 </script>
 
 </body>
 </html>
-
