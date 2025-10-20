@@ -827,6 +827,7 @@
         const maxCheckinDrag = 90;
 
         content.addEventListener('touchstart', (e) => {
+            // Prevent interaction if another habit is already swiped
             const anotherSwiped = document.querySelector('.swiped-left, .swiped-right');
             if (anotherSwiped && anotherSwiped !== content) {
                 anotherSwiped.style.transform = 'translateX(0)';
@@ -872,6 +873,7 @@
                     history[dateKey][habit.id] = current;
                     saveData();
                  }
+                // Animate back and re-render
                 content.style.transform = 'translateX(0px)';
                 if(checkinBg) checkinBg.style.opacity = '0';
                 setTimeout(renderHabits, 300);
@@ -882,29 +884,26 @@
         });
 
         // Click listeners for the action buttons
-        wrapper.querySelector('[data-action="skip"]').addEventListener('click', (e) => {
-             e.stopPropagation();
+        wrapper.querySelector('[data-action="skip"]').addEventListener('click', () => {
              if (!history[dateKey]) history[dateKey] = {};
              history[dateKey][habit.id] = 'skipped';
              saveData();
-             renderHabits(); 
+             renderHabits();
              showToast(`'${habit.name}' skipped for today.`);
         });
-        wrapper.querySelector('[data-action="hide"]').addEventListener('click', (e) => {
-            e.stopPropagation();
+        wrapper.querySelector('[data-action="hide"]').addEventListener('click', () => {
             const habitIndex = habits.findIndex(h => h.id === habit.id);
             if(habitIndex > -1) {
                 const tomorrow = new Date();
-                tomorrow.setDate(new Date().getDate() + 1);
+                tomorrow.setDate(tomorrow.getDate() + 1);
                 habits[habitIndex].hiddenUntil = toISODateString(tomorrow);
                 saveData();
                 renderHabits();
                 showToast(`'${habit.name}' hidden until tomorrow.`);
             }
         });
-        wrapper.querySelector('[data-action="reset"]').addEventListener('click', (e) => {
-             e.stopPropagation();
-             if (history[dateKey] && typeof history[dateKey][habit.id] === 'number') {
+        wrapper.querySelector('[data-action="reset"]').addEventListener('click', () => {
+             if (history[dateKey] && history[dateKey][habit.id]) {
                 delete history[dateKey][habit.id];
                 saveData();
                 renderHabits();
@@ -915,8 +914,7 @@
         // Option button click
         const optionsBtn = wrapper.querySelector('.options-btn');
         if (optionsBtn) {
-            optionsBtn.addEventListener('click', (e) => {
-                 e.stopPropagation();
+            optionsBtn.addEventListener('click', () => {
                  const habitId = parseInt(optionsBtn.dataset.habitId);
                  currentEditingHabitId = habitId;
                  showModal(contextMenuModal);
@@ -1027,23 +1025,6 @@
             renderHabits();
             showToast('All data has been reset.');
         });
-    });
-    
-    document.getElementById('unhide-habits-btn').addEventListener('click', () => {
-        let unhiddenCount = 0;
-        habits.forEach(h => {
-            if (h.hiddenUntil) {
-                delete h.hiddenUntil;
-                unhiddenCount++;
-            }
-        });
-        if (unhiddenCount > 0) {
-            saveData();
-            renderHabits();
-            showToast('All hidden habits are now visible.');
-        } else {
-            showToast('No habits were hidden.');
-        }
     });
 
     themeSelector.addEventListener('click', (e) => {
