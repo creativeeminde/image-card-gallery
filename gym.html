@@ -24,6 +24,8 @@
             --shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
             --border-radius: 12px;
             --border-radius-small: 8px;
+            --action-blue: #3498db;
+            --action-red: #e74c3c;
         }
 
         * {
@@ -38,6 +40,8 @@
             color: var(--text-color);
             padding-bottom: 80px; /* Space for bottom nav */
             padding-top: 100px; /* Space for new header/calendar */
+            /* Prevent pull-to-refresh and overscroll bounce on mobile */
+            overscroll-behavior: none;
         }
 
         h1, h2, h3 {
@@ -154,7 +158,7 @@
         }
 
         .btn-danger {
-            background-color: #e74c3c;
+            background-color: var(--action-red);
             color: white;
         }
         .btn-danger:hover {
@@ -369,10 +373,11 @@
             background-color: var(--primary-dark);
         }
 
+        /* --- NEW: Swipe-to-Reveal Set Item --- */
         .set-display-item {
-            background-color: var(--body-bg);
+            position: relative;
+            overflow: hidden; /* This is crucial */
             border-radius: var(--border-radius-small);
-            padding: 0.75rem 1rem;
             margin-bottom: 0.75rem;
             border: 1px solid var(--border-color);
         }
@@ -380,13 +385,62 @@
             margin-bottom: 0;
         }
         
-        .set-display-content {
-            display: grid;
-            grid-template-columns: 30px 1fr 1fr 30px;
-            align-items: center;
-            font-size: 0.95rem;
+        /* Layer for action buttons (behind content) */
+        .set-action-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            justify-content: space-between; /* Pushes buttons to edges */
         }
         
+        .btn-action {
+            border: none;
+            color: white;
+            padding: 0 1.5rem;
+            height: 100%;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+        }
+        
+        .btn-action-delete {
+            background-color: var(--action-red);
+        }
+        
+        .btn-action-edit {
+            background-color: var(--action-blue);
+        }
+        
+        /* Layer for the set info (on top, swipable) */
+        .set-display-content {
+            position: relative;
+            z-index: 2; /* Sits on top of action layer */
+            background-color: var(--body-bg);
+            width: 100%;
+            transition: transform 0.3s ease;
+            cursor: grab;
+            display: grid;
+            grid-template-columns: 30px 1fr 1fr;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            font-size: 0.95rem;
+            /* Disable text selection while dragging */
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        
+        .set-display-content.dragging {
+            transition: none; /* No transition while actively dragging */
+            cursor: grabbing;
+        }
+
+        /* Removed the 'three dots' handle */
         .set-display-item .set-number {
             font-weight: 600;
             color: var(--text-light);
@@ -412,18 +466,15 @@
             color: var(--text-light);
             margin-left: 5px;
         }
-        .set-display-item .set-options {
-            text-align: right;
-            font-size: 1.2rem;
-            color: var(--text-light);
-            cursor: pointer;
-        }
+        /* End Swipe CSS */
 
         /* Set Edit Form */
         .set-edit-form {
             display: none; /* Hidden by default */
             align-items: center;
             gap: 0.5rem;
+            padding: 0.75rem 1rem;
+            background-color: var(--body-bg);
         }
         .set-edit-form label {
             font-weight: 600;
@@ -446,6 +497,8 @@
         .set-display-item.editing .set-edit-form {
             display: flex; /* Show the edit form */
         }
+        /* --- End Edit Form --- */
+
 
         /* --- 8. Progress Screen --- */
         #progress-screen select {
@@ -773,6 +826,7 @@
         </div>
     </div>
 
+
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             
@@ -785,6 +839,14 @@
 
             const DAYS_OF_WEEK_SHORT = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
             const defaultDB = { plans: [], history: [] };
+
+            // --- NEW: Swipe Drag State ---
+            let isDragging = false;
+            let startX = 0;
+            let currentTranslate = 0;
+            let draggedElement = null;
+            const swipeThreshold = 60; // How many pixels to swipe to trigger action
+            const swipeSnapTarget = 80; // How many pixels to snap open to
 
             function loadDB() {
                 db = JSON.parse(localStorage.getItem('gymTrackerDB')) || defaultDB;
@@ -934,13 +996,14 @@
                     </div>`).join('');
             }
             
-            // Render Plan Detail Screen
+            // --- MODIFIED: Render Plan Detail Screen ---
             function renderPlanDetailScreen(planId) {
                 const plan = db.plans.find(p => p.id === planId);
                 if (!plan) return;
                 currentPlanId = planId;
                 document.getElementById('plan-detail-title').textContent = plan.name;
                 const exercisesContainer = document.getElementById('plan-detail-exercises');
+                
                 exercisesContainer.innerHTML = plan.exercises.map(exercise => `
                     <div class="exercise-detail-card" data-exercise-id="${exercise.id}">
                         <div class="exercise-detail-card-header">
@@ -950,11 +1013,14 @@
                         <div class="sets-display-container">
                             ${exercise.sets.map((set, index) => `
                                 <div class="set-display-item" data-set-index="${index}">
-                                    <div class="set-display-content">
+                                    <div class="set-action-layer">
+                                        <button class="btn-action btn-action-delete">Delete</button>
+                                        <button class="btn-action btn-action-edit">Edit</button>
+                                    </div>
+                                    <div class="set-display-content" draggable="false">
                                         <span class="set-number">${index + 1}</span>
                                         <span class="set-reps">${set.reps} <span>REPS</span></span>
                                         <span class="set-weight">${set.weight} <span>KG</span></span>
-                                        <span class="set-options">⋮</span>
                                     </div>
                                     <div class="set-edit-form">
                                         <label>${index + 1}</label>
@@ -972,16 +1038,92 @@
 
             // --- 4. Plan Modal & Detail View Logic ---
 
-            // ... (plan-form submit, add-exercise-btn, etc. remain the same)
+            // --- NEW: Swipe Event Handlers ---
+            function getTranslateX(element) {
+                const style = window.getComputedStyle(element);
+                const matrix = new DOMMatrixReadOnly(style.transform);
+                return matrix.m41;
+            }
             
-            // Event Delegation for Plan Detail Screen
+            function closeAllSwipes(exceptElement) {
+                document.querySelectorAll('.set-display-content').forEach(el => {
+                    if (el !== exceptElement) {
+                        el.style.transform = 'translateX(0px)';
+                    }
+                });
+            }
+
+            function handleDragStart(e) {
+                draggedElement = e.target.closest('.set-display-content');
+                if (!draggedElement || draggedElement.closest('.set-display-item').classList.contains('editing')) {
+                    draggedElement = null;
+                    return;
+                }
+                
+                e.preventDefault(); // Prevent page scroll on touch
+                closeAllSwipes(draggedElement); // Close other open swipes
+                
+                startX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
+                isDragging = true;
+                draggedElement.classList.add('dragging');
+                currentTranslate = getTranslateX(draggedElement);
+            }
+
+            function handleDragMove(e) {
+                if (!isDragging || !draggedElement) return;
+                
+                e.preventDefault();
+                const currentX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+                const diffX = currentX - startX;
+                let newTranslate = currentTranslate + diffX;
+
+                // Constrain drag
+                newTranslate = Math.max(-swipeSnapTarget, Math.min(swipeSnapTarget, newTranslate));
+                
+                draggedElement.style.transform = `translateX(${newTranslate}px)`;
+            }
+
+            function handleDragEnd() {
+                if (!isDragging || !draggedElement) return;
+
+                isDragging = false;
+                draggedElement.classList.remove('dragging');
+                
+                const finalTranslate = getTranslateX(draggedElement);
+                
+                let snapPosition = 0;
+                if (finalTranslate > swipeThreshold) {
+                    snapPosition = swipeSnapTarget; // Snap open to right
+                } else if (finalTranslate < -swipeThreshold) {
+                    snapPosition = -swipeSnapTarget; // Snap open to left
+                }
+                
+                draggedElement.style.transform = `translateX(${snapPosition}px)`;
+                draggedElement = null;
+            }
+
+            // Attach swipe listeners
+            const detailExercises = document.getElementById('plan-detail-exercises');
+            detailExercises.addEventListener('mousedown', handleDragStart);
+            detailExercises.addEventListener('touchstart', handleDragStart, { passive: false });
+            
+            // Attach move/end listeners to the whole document for better drag experience
+            document.addEventListener('mousemove', handleDragMove);
+            document.addEventListener('touchmove', handleDragMove, { passive: false });
+            
+            document.addEventListener('mouseup', handleDragEnd);
+            document.addEventListener('touchend', handleDragEnd);
+            document.addEventListener('mouseleave', handleDragEnd); // Handle mouse leaving the window
+
+            // --- MODIFIED: Event Delegation for Plan Detail Screen ---
             document.getElementById('plan-detail-exercises').addEventListener('click', e => {
                 const target = e.target;
+                const setItem = target.closest('.set-display-item');
                 const exerciseId = target.closest('.exercise-detail-card')?.dataset.exerciseId;
                 const plan = db.plans.find(p => p.id === currentPlanId);
                 if (!plan) return;
 
-                // Add a new set
+                // Add a new set (Green + button)
                 if (target.classList.contains('btn-add-set')) {
                     const exercise = plan.exercises.find(ex => ex.id === exerciseId);
                     if (exercise) {
@@ -990,24 +1132,42 @@
                         renderPlanDetailScreen(currentPlanId);
                     }
                 }
+                
+                // --- NEW: Handle swipe button clicks ---
 
-                // Edit a set (click three dots)
-                if (target.classList.contains('set-options')) {
-                    const setItem = target.closest('.set-display-item');
+                // Click "Edit"
+                if (target.classList.contains('btn-action-edit')) {
                     setItem.classList.add('editing');
+                    // Snap content back to center
+                    setItem.querySelector('.set-display-content').style.transform = 'translateX(0px)';
                 }
+
+                // Click "Delete"
+                if (target.classList.contains('btn-action-delete')) {
+                    if (!confirm('Are you sure you want to delete this set?')) return;
+                    
+                    const setIndex = parseInt(setItem.dataset.setIndex);
+                    const exercise = plan.exercises.find(ex => ex.id === exerciseId);
+                    
+                    if (exercise && exercise.sets[setIndex] !== undefined) {
+                        exercise.sets.splice(setIndex, 1); // Delete from array
+                        saveDB();
+                        renderPlanDetailScreen(currentPlanId); // Re-render
+                    }
+                }
+
+                // --- (Logic for Save/Cancel on the edit form remains the same) ---
 
                 // Cancel editing a set
                 if (target.classList.contains('btn-cancel-edit-set')) {
-                    const setItem = target.closest('.set-display-item');
                     setItem.classList.remove('editing');
                 }
 
                 // Save an edited set
                 if (target.classList.contains('btn-save-set')) {
-                    const setItem = target.closest('.set-display-item');
                     const setIndex = parseInt(setItem.dataset.setIndex);
                     const exercise = plan.exercises.find(ex => ex.id === exerciseId);
+                    
                     if (exercise && exercise.sets[setIndex] !== undefined) {
                         const newReps = parseInt(setItem.querySelector('.edit-set-reps').value);
                         const newWeight = parseFloat(setItem.querySelector('.edit-set-weight').value);
@@ -1015,7 +1175,7 @@
                         if (!isNaN(newReps) && !isNaN(newWeight)) {
                             exercise.sets[setIndex] = { reps: newReps, weight: newWeight };
                             saveDB();
-                            // Update UI without full re-render for better UX
+                            // Update UI without full re-render
                             setItem.querySelector('.set-reps').innerHTML = `${newReps} <span>REPS</span>`;
                             setItem.querySelector('.set-weight').innerHTML = `${newWeight} <span>KG</span>`;
                             setItem.classList.remove('editing');
@@ -1042,27 +1202,109 @@
             });
 
 
-            // --- (All other functions for History, Progress, Modals, Active Workout, etc. remain the same)
-            function renderHistoryScreen() { /* ... */ }
-            function renderProgressScreen() { /* ... */ }
-            function startWorkout(planId) { /* ... */ }
-            // All other functions are unchanged from the previous version. Please copy them from there.
-            // This is just a placeholder to keep the script structure.
-            // The following are simplified placeholders for the remaining functions.
-            const populateProgressChartSelect = () => {};
-            const renderVolumeChart = () => {};
-            const renderPRs = () => {};
-            const addExerciseToForm = () => {};
-            const createSetFormHTML = () => {};
-            const startTimer = () => {};
-            const stopTimer = () => {};
+            // --- (All other functions for History, Progress, Modals, Active Workout, etc. remain the same) ---
+            function renderHistoryScreen() {
+                const list = document.getElementById('workout-history-list');
+                const sortedHistory = [...db.history].sort((a,b) => new Date(b.date) - new Date(a.date));
+                if (sortedHistory.length === 0) { list.innerHTML = '<p>No completed workouts found in your history.</p>'; return; }
+                list.innerHTML = sortedHistory.map(w => `<div class="card history-item"><h3>${w.planName}</h3><p><strong>Date:</strong> ${new Date(w.date).toLocaleString()}</p><p><strong>Duration:</strong> ${w.duration} min</p><p><strong>Volume:</strong> ${w.volume.toLocaleString()} kg</p></div>`).join('');
+            }
             
-            // Event listeners for plan list and plan modal form submit (from previous version)
+            function renderProgressScreen() {
+                renderPRs();
+                populateProgressChartSelect();
+                renderVolumeChart();
+            }
+
+            function renderPRs() {
+                const prList = document.getElementById('pr-list');
+                const prs = {};
+                db.history.forEach(workout => {
+                    workout.sets.forEach(set => {
+                        const exName = set.exerciseName;
+                        if (!prs[exName] || (set.weight > prs[exName].weight) || (set.weight === prs[exName].weight && set.reps > prs[exName].reps)) {
+                            prs[exName] = { weight: set.weight, reps: set.reps };
+                        }
+                    });
+                });
+                if (Object.keys(prs).length === 0) { prList.innerHTML = '<p>No personal records yet. Complete a workout to see your PRs!</p>'; return; }
+                prList.innerHTML = Object.entries(prs).map(([name, pr]) => `<div class="pr-item"><p>${name}</p><span>${pr.weight} kg x ${pr.reps}</span></div>`).join('');
+            }
+            
+            function populateProgressChartSelect() {
+                const select = document.getElementById('progress-chart-select');
+                select.innerHTML = '<option value="">All Workouts (Total Volume)</option>';
+                const planNames = [...new Set(db.plans.map(p => p.name))];
+                planNames.forEach(name => { select.innerHTML += `<option value="${name}">${name}</option>`; });
+            }
+            
+            function renderVolumeChart() {
+                const ctx = document.getElementById('volume-chart').getContext('2d');
+                const selectedPlan = document.getElementById('progress-chart-select').value;
+                let workoutsToShow;
+                let chartLabel = 'Total Volume (kg)';
+                if (selectedPlan) {
+                    workoutsToShow = db.history.filter(w => w.planName === selectedPlan);
+                    chartLabel = `${selectedPlan} Volume (kg)`;
+                } else {
+                    workoutsToShow = db.history;
+                }
+                workoutsToShow.sort((a, b) => new Date(a.date) - new Date(b.date));
+                const labels = workoutsToShow.map(w => new Date(w.date).toLocaleDateString());
+                const data = workoutsToShow.map(w => w.volume);
+                if (volumeChart) volumeChart.destroy();
+                volumeChart = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels: labels, datasets: [{ label: chartLabel, data: data, backgroundColor: 'rgba(76, 175, 80, 0.2)', borderColor: 'rgba(76, 175, 80, 1)', borderWidth: 2, tension: 0.1, fill: true }] },
+                    options: { scales: { y: { beginAtZero: true } }, responsive: true }
+                });
+            }
+
+            // Plan Modal Logic
+            document.getElementById('add-plan-btn').addEventListener('click', () => {
+                document.getElementById('plan-form').reset();
+                document.getElementById('plan-id').value = '';
+                document.getElementById('plan-modal-title').textContent = 'Add Workout Plan';
+                document.getElementById('exercises-container').innerHTML = '';
+                document.querySelectorAll('#plan-days-selection input[type="checkbox"]').forEach(cb => cb.checked = false);
+                addExerciseToForm();
+                showModal('plan-modal');
+            });
+            document.getElementById('add-exercise-btn').addEventListener('click', () => addExerciseToForm());
+            document.getElementById('exercises-container').addEventListener('click', (e) => {
+                if (e.target.classList.contains('add-set-btn')) {
+                    const setsContainer = e.target.previousElementSibling;
+                    const setIndex = setsContainer.children.length;
+                    setsContainer.innerHTML += createSetFormHTML(null, setIndex);
+                }
+                if (e.target.classList.contains('remove-set-btn')) {
+                    e.target.closest('.set-editor').remove();
+                    const setsContainer = e.target.closest('.sets-container');
+                    Array.from(setsContainer.children).forEach((setDiv, i) => { setDiv.querySelector('label').textContent = `Set ${i + 1}`; });
+                }
+                if (e.target.classList.contains('remove-exercise-btn')) {
+                    e.target.closest('.exercise-editor').remove();
+                }
+            });
+            
+            function addExerciseToForm(exercise = null) {
+                const container = document.getElementById('exercises-container');
+                const exerciseId = generateId();
+                const exerciseDiv = document.createElement('div');
+                exerciseDiv.className = 'exercise-editor';
+                exerciseDiv.dataset.id = exercise ? exercise.id : exerciseId;
+                exerciseDiv.innerHTML = `<div class="exercise-editor-header"><input type="text" class="exercise-name" placeholder="Exercise Name" value="${exercise ? exercise.name : ''}" required><button type="button" class="btn-danger btn-small remove-exercise-btn">&times;</button></div><div class="sets-container">${exercise ? exercise.sets.map((set, i) => createSetFormHTML(set, i)).join('') : createSetFormHTML(null, 0)}</div><button type="button" class="btn btn-secondary btn-small add-set-btn">+ Add Set</button>`;
+                container.appendChild(exerciseDiv);
+            }
+            function createSetFormHTML(set = null, index = 0) {
+                return `<div class="set-editor"><label>Set ${index + 1}</label><input type="number" class="set-reps" placeholder="Reps" min="0" value="${set ? set.reps : ''}" required><input type="number" class="set-weight" placeholder="Weight (kg)" min="0" value="${set ? set.weight : ''}" required><button type="button" class="btn-danger btn-small remove-set-btn">&times;</button></div>`;
+            }
+            
+            // Plan List Event Delegation
             document.getElementById('workout-plans-list').addEventListener('click', (e) => {
                 const target = e.target;
                 const planId = target.dataset.id || target.closest('.workout-plan-item')?.dataset.id;
                 if (!planId) return;
-
                 if (target.closest('.view-plan-details')) {
                     renderPlanDetailScreen(planId);
                 } else if (target.classList.contains('edit-plan-btn')) {
@@ -1071,9 +1313,7 @@
                         document.getElementById('plan-modal-title').textContent = 'Edit Workout Plan';
                         document.getElementById('plan-id').value = plan.id;
                         document.getElementById('plan-name').value = plan.name;
-                        document.querySelectorAll('#plan-days-selection input[type="checkbox"]').forEach(cb => {
-                            cb.checked = plan.days && plan.days.includes(cb.value);
-                        });
+                        document.querySelectorAll('#plan-days-selection input[type="checkbox"]').forEach(cb => { cb.checked = plan.days && plan.days.includes(cb.value); });
                         const container = document.getElementById('exercises-container');
                         container.innerHTML = '';
                         plan.exercises.forEach(addExerciseToForm);
@@ -1084,14 +1324,12 @@
                         db.plans = db.plans.filter(p => p.id !== planId);
                         saveDB();
                         renderAll();
-                        if (currentPlanId === planId) {
-                            currentPlanId = null;
-                            showScreen('plans-screen');
-                        }
+                        if (currentPlanId === planId) { currentPlanId = null; showScreen('plans-screen'); }
                     }
                 }
             });
 
+            // Plan Form Submit
             document.getElementById('plan-form').addEventListener('submit', (e) => {
                 e.preventDefault();
                 const planId = document.getElementById('plan-id').value;
@@ -1116,6 +1354,69 @@
                 closeModal('plan-modal');
                 if (currentPlanId === planId) renderPlanDetailScreen(currentPlanId); else showScreen('plans-screen');
             });
+            
+            // Active Workout Logic
+            function startWorkout(planId) {
+                const plan = db.plans.find(p => p.id === planId);
+                if (!plan) return;
+                document.getElementById('workout-modal-title').textContent = plan.name;
+                document.getElementById('active-plan-id').value = plan.id;
+                const container = document.getElementById('active-workout-exercises');
+                container.innerHTML = plan.exercises.map((ex, exIndex) => `<div class="exercise-item" data-exercise-name="${ex.name}"><h3>${ex.name}</h3>${ex.sets.map((set, setIndex) => `<div class="set-row"><label>Set ${setIndex + 1} (Target: ${set.reps}x${set.weight}kg)</label><input type="number" class="active-set-reps" placeholder="Reps" min="0" value="${set.reps}" data-ex-index="${exIndex}" data-set-index="${setIndex}"><input type="number" class="active-set-weight" placeholder="Weight" min="0" step="0.5" value="${set.weight}" data-ex-index="${exIndex}" data-set-index="${setIndex}"><input type="checkbox" class="set-complete-check" title="Mark as complete"></div>`).join('')}</div>`).join('');
+                startTimer();
+                showModal('workout-modal');
+            }
+            function startTimer() {
+                workoutStartTime = Date.now();
+                const timerEl = document.getElementById('workout-timer');
+                if (workoutTimerInterval) clearInterval(workoutTimerInterval);
+                workoutTimerInterval = setInterval(() => {
+                    const elapsed = Date.now() - workoutStartTime;
+                    const h = String(Math.floor(elapsed / 3600000)).padStart(2, '0');
+                    const m = String(Math.floor((elapsed % 3600000) / 60000)).padStart(2, '0');
+                    const s = String(Math.floor((elapsed % 60000) / 1000)).padStart(2, '0');
+                    timerEl.textContent = `${h}:${m}:${s}`;
+                }, 1000);
+            }
+            function stopTimer() {
+                clearInterval(workoutTimerInterval);
+                workoutTimerInterval = null;
+                return Math.round((Date.now() - workoutStartTime) / 60000); // in minutes
+            }
+            document.getElementById('active-workout-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const duration = stopTimer();
+                const planId = document.getElementById('active-plan-id').value;
+                const plan = db.plans.find(p => p.id === planId);
+                const completedSets = [];
+                let totalVolume = 0;
+                document.querySelectorAll('#active-workout-exercises .exercise-item').forEach(exDiv => {
+                    const exerciseName = exDiv.dataset.exerciseName;
+                    exDiv.querySelectorAll('.set-row').forEach(setRow => {
+                        if (setRow.querySelector('.set-complete-check:checked')) {
+                            const reps = parseInt(setRow.querySelector('.active-set-reps').value);
+                            const weight = parseFloat(setRow.querySelector('.active-set-weight').value);
+                            if (!isNaN(reps) && !isNaN(weight)) {
+                                completedSets.push({ exerciseName, reps, weight });
+                                totalVolume += reps * weight;
+                            }
+                        }
+                    });
+                });
+                const historyEntry = { id: generateId(), planId: plan.id, planName: plan.name, date: new Date().toISOString(), duration: duration, volume: totalVolume, sets: completedSets };
+                db.history.push(historyEntry);
+                saveDB();
+                renderAll();
+                closeModal('workout-modal');
+                showScreen('history-screen');
+            });
+            document.getElementById('cancel-workout-btn').addEventListener('click', () => {
+                if (confirm('Are you sure you want to cancel this workout? Progress will not be saved.')) {
+                    stopTimer();
+                    closeModal('workout-modal');
+                }
+            });
+            document.getElementById('progress-chart-select').addEventListener('change', renderVolumeChart);
 
             // --- 6. Initial Load ---
             loadDB();
@@ -1123,5 +1424,6 @@
             showScreen('home-screen');
         });
     </script>
+
 </body>
 </html>
