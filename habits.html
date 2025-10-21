@@ -473,24 +473,71 @@ document.addEventListener('DOMContentLoaded', async () => {
         const today = new Date();
         headerTitle.textContent = isSameDay(selectedDate, today) ? "Today" : selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-        for (let i = -7; i <= 7; i++) {
+        for (let i = -14; i <= 14; i++) {
             const date = new Date();
             date.setDate(today.getDate() + i);
             const isSelected = isSameDay(date, selectedDate);
 
+            const dateKey = toISODateString(date);
+            const dayOfWeek = date.getDay();
+
+            // Calculate progress for the day
+            const activeHabits = habits.filter(h => new Date(h.creationDate) <= date && h.targetDays.includes(dayOfWeek));
+            let progress = 0;
+            if (activeHabits.length > 0) {
+                const dayHistory = history[dateKey] || {};
+                const completedCount = activeHabits.filter(h => {
+                    const dayHistItem = dayHistory[String(h.id)];
+                    return dayHistItem && dayHistItem.count >= h.goal && dayHistItem.status !== 'skipped';
+                }).length;
+                progress = (completedCount / activeHabits.length) * 100;
+            }
+
+            const radius = 16;
+            const circumference = 2 * Math.PI * radius;
+            const offset = circumference - (progress / 100) * circumference;
+
             const dateEl = document.createElement('button');
-            dateEl.className = 'flex flex-col items-center justify-center space-y-1.5 w-12 flex-shrink-0';
+            
+            dateEl.className = `
+                flex flex-col items-center justify-center space-y-2 p-2 w-16 h-24 rounded-full flex-shrink-0 
+                transition-all duration-300 ease-in-out
+                dark:bg-[#1E1E1E] bg-gray-100
+                border-2
+                ${isSelected ? 'border-red-500' : 'border-transparent dark:border-transparent'}
+            `;
+
             dateEl.innerHTML = `
-                <span class="text-sm font-medium ${isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}">${date.toLocaleDateString('en-US', {weekday:'short'})}</span>
-                <span class="flex items-center justify-center w-9 h-9 text-sm font-semibold rounded-full ${isSelected ? 'bg-red-500 text-white' : 'text-gray-800 dark:text-gray-200'}">${date.getDate()}</span>`;
+                <span class="text-sm font-semibold ${isSelected ? 'text-red-500 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}">
+                    ${date.toLocaleDateString('en-US', {weekday:'short'})}
+                </span>
+                <div class="relative w-10 h-10 flex items-center justify-center">
+                    <svg class="absolute inset-0 w-full h-full" viewBox="0 0 36 36">
+                        <circle class="stroke-current text-gray-300 dark:text-gray-700" cx="18" cy="18" r="${radius}" fill="none" stroke-width="2.5"></circle>
+                        <circle class="stroke-current text-red-500 origin-center -rotate-90" cx="18" cy="18" r="${radius}" fill="none" stroke-width="2.5"
+                            stroke-dasharray="${circumference}"
+                            stroke-dashoffset="${offset}"
+                            stroke-linecap="round"
+                            style="transition: stroke-dashoffset 0.5s ease-in-out;"
+                        ></circle>
+                    </svg>
+                    <span class="font-bold text-sm ${isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-300'}">
+                        ${date.getDate()}
+                    </span>
+                </div>
+            `;
 
             dateEl.addEventListener('click', () => {
                 selectedDate = date;
                 renderDateScroller();
                 renderHabits();
             });
+
             dateScrollerContainer.appendChild(dateEl);
-            if (isSelected) setTimeout(()=> dateEl.scrollIntoView({ behavior:'smooth', inline:'center' }), 100);
+
+            if (isSelected) {
+                setTimeout(()=> dateEl.scrollIntoView({ behavior:'smooth', inline:'center', block: 'nearest' }), 100);
+            }
         }
     }
 
@@ -1166,3 +1213,4 @@ document.addEventListener('DOMContentLoaded', async () => {
 </script>
 </body>
 </html>
+
