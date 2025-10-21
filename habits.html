@@ -1061,7 +1061,69 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Swipe logic for actions
     function addSwipeListeners(habit, element, dateKey) {
-        // ... (omitted for brevity, no changes needed here)
+        let startX = 0, currentX = 0, isDragging = false;
+        const maxDrag = 210; // 3 buttons * 70px
+        function dragStart(e) {
+            startX = e.touches ? e.touches[0].clientX : e.clientX;
+            currentX = startX; isDragging = true; element.style.transition = 'none';
+            document.addEventListener('mousemove', dragMove); document.addEventListener('mouseup', dragEnd);
+            document.addEventListener('touchmove', dragMove, { passive: true }); document.addEventListener('touchend', dragEnd);
+        }
+        function dragMove(e) {
+            if (!isDragging) return; e.preventDefault();
+            currentX = e.touches ? e.touches[0].clientX : e.clientX;
+            let diff = currentX - startX; if (diff > 0) diff = 0; if (diff < -maxDrag) diff = -maxDrag;
+            element.style.transform = `translateX(${diff}px)`;
+        }
+        function dragEnd() {
+            if (!isDragging) return;
+            isDragging = false;
+            document.removeEventListener('mousemove', dragMove); document.removeEventListener('mouseup', dragEnd);
+            document.removeEventListener('touchmove', dragMove); document.removeEventListener('touchend', dragEnd);
+            element.style.transition = 'transform 0.3s ease-out';
+            const diff = currentX - startX;
+            if (diff < -50) {
+                element.style.transform = `translateX(-${maxDrag}px)`;
+            } else {
+                element.style.transform = 'translateX(0px)';
+            }
+        }
+        element.addEventListener('mousedown', dragStart);
+        element.addEventListener('touchstart', dragStart, { passive: true });
+
+        const parent = element.parentElement;
+        parent.querySelector('[data-action="skip"]').addEventListener('click', async () => {
+            const iso = dateKey;
+            if (!history[iso]) history[iso] = {};
+            history[iso][String(habit.id)] = { count: 0, status: 'skipped' };
+            await upsertHistoryEntryOnSupabase(habit.id, iso, { count: 0, status: 'skipped' });
+            renderHabits();
+            showToast(`'${habit.name}' skipped for ${iso}.`);
+        });
+
+        parent.querySelector('[data-action="hide"]').addEventListener('click', () => {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const iso = toISODateString(tomorrow);
+            
+            hiddenHabitsState[String(habit.id)] = iso;
+            localStorage.setItem('hidden_habits_state', JSON.stringify(hiddenHabitsState));
+            
+            renderHabits();
+            showToast(`'${habit.name}' hidden until tomorrow.`);
+        });
+
+        parent.querySelector('[data-action="reset"]').addEventListener('click', async () => {
+            const iso = dateKey;
+            if (history[iso] && history[iso][String(habit.id)]) {
+                await removeHistoryEntryOnSupabase(habit.id, iso);
+                renderHabits();
+                showToast(`'${habit.name}' progress reset for ${iso}.`);
+            } else {
+                showToast('No progress to reset for this habit today.');
+                element.style.transform = 'translateX(0px)';
+            }
+        });
     }
 
     const unhideHabit = (habitId) => {
@@ -1072,7 +1134,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     function addUnhideSwipeListener(element) {
-        // ... (omitted for brevity, no changes needed here)
+        let startX = 0, currentX = 0, isDragging = false;
+        function dragStart(e) {
+            startX = e.touches ? e.touches[0].clientX : e.clientX;
+            currentX = startX; isDragging = true; element.style.transition = 'none';
+            document.addEventListener('mousemove', dragMove); document.addEventListener('mouseup', dragEnd);
+            document.addEventListener('touchmove', dragMove, { passive: true }); document.addEventListener('touchend', dragEnd);
+        }
+        function dragMove(e) {
+            if (!isDragging) return; e.preventDefault();
+            currentX = e.touches ? e.touches[0].clientX : e.clientX;
+            let diff = currentX - startX; if (diff < 0) diff = 0;
+            element.style.transform = `translateX(${diff}px)`;
+        }
+        function dragEnd() {
+            if (!isDragging) return;
+            isDragging = false; document.removeEventListener('mousemove', dragMove); document.removeEventListener('mouseup', dragEnd);
+            document.removeEventListener('touchmove', dragMove); document.removeEventListener('touchend', dragEnd);
+            element.style.transition = 'transform 0.3s ease-out';
+            const habitId = parseInt(element.closest('.hidden-habit-swipe-container').dataset.habitId);
+            const diff = currentX - startX;
+            if (diff > 50) unhideHabit(habitId); else element.style.transform = 'translateX(0)';
+        }
+        element.addEventListener('mousedown', dragStart);
+        element.addEventListener('touchstart', dragStart, { passive: true });
     }
 
     // -------------------------
@@ -1237,3 +1322,4 @@ document.addEventListener('DOMContentLoaded', async () => {
 </script>
 </body>
 </html>
+
