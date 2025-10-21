@@ -770,28 +770,226 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Stats & achievements rendering (kept mostly the same)
     function renderTodaysProgress() {
-        // ... (omitted for brevity, no changes needed here)
+        const today = new Date();
+        const dateKey = toISODateString(today);
+        const dayOfWeek = today.getDay();
+        const activeHabits = habits.filter(h => new Date(h.creationDate) <= today && h.targetDays.includes(dayOfWeek));
+        if (activeHabits.length === 0) return '';
+
+        const todaysHistory = history[dateKey] || {};
+        const completedCount = activeHabits.filter(h => (todaysHistory[String(h.id)] && todaysHistory[String(h.id)].count >= h.goal)).length;
+        const progress = activeHabits.length > 0 ? Math.round((completedCount / activeHabits.length) * 100) : 0;
+
+        return `
+            <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
+                <h3 class="font-bold mb-2">Today's Progress</h3>
+                <div class="flex items-center gap-4">
+                    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+                        <div class="bg-green-500 h-2.5 rounded-full" style="width: ${progress}%"></div>
+                    </div>
+                    <span class="font-semibold text-lg">${progress}%</span>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">${completedCount} of ${activeHabits.length} habits completed.</p>
+            </div>
+        `;
     }
+
     function renderWeeklyOverview() {
-        // ... (omitted for brevity, no changes needed here)
+        let weeklyContent = '';
+        const today = new Date();
+        for (let i = 6; i >= 0; i--) {
+            const date = new Date();
+            date.setDate(today.getDate() - i);
+            const dateKey = toISODateString(date);
+            const dayOfWeek = date.getDay();
+            const activeHabits = habits.filter(h => new Date(h.creationDate) <= date && h.targetDays.includes(dayOfWeek));
+            let progress = 0;
+            if (activeHabits.length > 0) {
+                const dayHistory = history[dateKey] || {};
+                const completedCount = activeHabits.filter(h => (dayHistory[String(h.id)] && dayHistory[String(h.id)].count >= h.goal)).length;
+                progress = (completedCount / activeHabits.length) * 100;
+            }
+            weeklyContent += `
+                <div class="flex flex-col items-center gap-2">
+                    <div class="w-full h-32 bg-gray-200 dark:bg-gray-800 rounded-md flex items-end">
+                        <div class="w-full bg-teal-500 rounded-md" style="height: ${progress}%"></div>
+                    </div>
+                    <span class="text-xs font-medium text-gray-500 dark:text-gray-400">${date.toLocaleDateString('en-us', {weekday:'short'})}</span>
+                </div>
+            `;
+        }
+        return `
+            <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
+                <h3 class="font-bold mb-3">Weekly Overview</h3>
+                <div class="grid grid-cols-7 gap-3">${weeklyContent}</div>
+            </div>
+        `;
     }
+
     function renderMonthlyOverview() {
-        // ... (omitted for brevity, no changes needed here)
+        const today = new Date();
+        const month = today.getMonth();
+        const year = today.getFullYear();
+        const firstDayOfMonth = new Date(year, month, 1);
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+        let daysContent = Array(firstDayOfMonth.getDay()).fill(`<div class="w-8 h-8"></div>`).join('');
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(year, month, day);
+            const dateKey = toISODateString(date);
+            const dayOfWeek = date.getDay();
+            const activeHabits = habits.filter(h => new Date(h.creationDate) <= date && h.targetDays.includes(dayOfWeek));
+            let completionRate = 0;
+            let bgColor = 'bg-gray-200 dark:bg-gray-800';
+
+            if (activeHabits.length > 0) {
+                const dayHistory = history[dateKey] || {};
+                const completedCount = activeHabits.filter(h => (dayHistory[String(h.id)] && dayHistory[String(h.id)].count >= h.goal)).length;
+                completionRate = completedCount / activeHabits.length;
+            } else if (date < today) {
+                bgColor = 'bg-gray-200/50 dark:bg-gray-800/50';
+            }
+
+            if (completionRate > 0) bgColor = 'bg-red-200 dark:bg-red-800/70';
+            if (completionRate >= 0.5) bgColor = 'bg-yellow-200 dark:bg-yellow-800/70';
+            if (completionRate === 1) bgColor = 'bg-green-200 dark:bg-green-800/70';
+
+            daysContent += `<div class="w-8 h-8 flex items-center justify-center text-xs rounded-md ${bgColor}">${day}</div>`;
+        }
+
+        return `
+            <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
+                <h3 class="font-bold mb-3">${today.toLocaleString('default', { month: 'long' })} Overview</h3>
+                <div class="grid grid-cols-7 gap-2 text-center">
+                    <div class="text-xs text-gray-500 dark:text-gray-400">S</div><div class="text-xs text-gray-500 dark:text-gray-400">M</div><div class="text-xs text-gray-500 dark:text-gray-400">T</div><div class="text-xs text-gray-500 dark:text-gray-400">W</div><div class="text-xs text-gray-500 dark:text-gray-400">T</div><div class="text-xs text-gray-500 dark:text-gray-400">F</div><div class="text-xs text-gray-500 dark:text-gray-400">S</div>
+                    ${daysContent}
+                </div>
+            </div>
+        `;
     }
+
     function calculateStreak(habitId) {
-        // ... (omitted for brevity, no changes needed here)
+        let currentStreak = 0;
+        let checkDate = new Date();
+        const habit = habits.find(h => h.id === habitId);
+        if (!habit) return 0;
+        while (new Date(habit.creationDate) <= checkDate) {
+            const dateKey = toISODateString(checkDate);
+            const dayOfWeek = checkDate.getDay();
+            if (habit.targetDays.includes(dayOfWeek)) {
+                const dayHistory = history[dateKey];
+                if (dayHistory && (dayHistory[String(habitId)] && dayHistory[String(habitId)].count >= habit.goal)) {
+                    currentStreak++;
+                } else if (!dayHistory || (dayHistory[String(habitId)] && dayHistory[String(habitId)].status === 'skipped')) {
+                    // do nothing, skip does not break streak per earlier logic
+                    break;
+                } else {
+                    break;
+                }
+            }
+            checkDate.setDate(checkDate.getDate() - 1);
+        }
+        return currentStreak;
     }
+
     function renderHabitPerformance() {
-        // ... (omitted for brevity, no changes needed here)
+        if (habits.length === 0) return '';
+        let performanceContent = habits.map(habit => {
+            const streak = calculateStreak(habit.id);
+            const totalCompletions = Object.values(history).reduce((acc, day) => acc + ((day[String(habit.id)] && day[String(habit.id)].count >= habit.goal) ? 1 : 0), 0);
+            return `
+                <div class="p-4 rounded-xl flex items-center gap-4 bg-gray-200/50 dark:bg-gray-800/50">
+                    <div class="text-3xl">${habit.icon}</div>
+                    <div class="flex-grow">
+                        <p class="font-bold">${habit.name}</p>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Total Completions: ${totalCompletions}</p>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-2xl font-bold text-orange-500 dark:text-orange-400">${streak}</p>
+                        <p class="text-xs text-gray-600 dark:text-gray-400">Day Streak</p>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        return `
+            <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
+                <h3 class="font-bold mb-3">Habit Performance</h3>
+                <div class="space-y-3">${performanceContent}</div>
+            </div>
+        `;
     }
+
     function renderStatsView() {
-        // ... (omitted for brevity, no changes needed here)
+        const container = document.getElementById('stats-container');
+        if (habits.length === 0) {
+            container.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 mt-10">Start tracking habits to see your stats!</p>`;
+            return;
+        }
+        container.innerHTML = `
+            ${renderTodaysProgress()}
+            ${renderWeeklyOverview()}
+            ${renderMonthlyOverview()}
+            ${renderHabitPerformance()}
+        `;
     }
+
     function getAchievements() {
-        // ... (omitted for brevity, no changes needed here)
+        const totalCompletions = Object.values(history).reduce((sum, day) => sum + Object.values(day).filter(d => typeof d.count === 'number' && d.count > 0).length, 0);
+        const maxStreak = Math.max(0, ...habits.map(h => calculateStreak(h.id)));
+        const earlyRiserHabits = habits.filter(h => h.timeRange === 'Morning').length;
+        const totalGoalsMet = Object.values(history).reduce((sum, day) => {
+            return sum + Object.keys(day).filter(habitId => {
+                const habit = habits.find(h => h.id == habitId);
+                return habit && day[habitId] && day[habitId].count >= habit.goal;
+            }).length;
+        }, 0);
+
+        return [
+            { id: 'streak7', title: '7-Day Streak', icon: '🔥', unlocked: maxStreak >= 7 },
+            { id: 'streak30', title: '30-Day Streak', icon: '🌟', unlocked: maxStreak >= 30 },
+            { id: 'earlyRiser', title: 'Early Riser', icon: '🌅', unlocked: earlyRiserHabits > 0 && totalCompletions > 5 },
+            { id: 'consistency', title: 'Consistency Champ', icon: '🎯', unlocked: totalCompletions >= 50 },
+            { id: 'goalMaster', title: 'Goal Master', icon: '👑', unlocked: totalGoalsMet >= 100 },
+            { id: 'firstHabit', title: 'First Step', icon: '🌱', unlocked: habits.length > 0 },
+            { id: 'fiveHabits', title: 'Habit Builder', icon: '🏗️', unlocked: habits.length >= 5 },
+            { id: 'perfectDay', title: 'Perfect Day', icon: '✅', unlocked: Object.values(history).some(day => {
+                const dateKey = Object.keys(history).find(k => history[k] === day);
+                if (!dateKey) return false;
+                const dayDate = new Date(dateKey);
+                const activeHabits = habits.filter(h => h.targetDays.includes(dayDate.getUTCDay()));
+                return activeHabits.length > 0 && activeHabits.every(h => (day[String(h.id)] && day[String(h.id)].count >= h.goal));
+            })}
+        ];
     }
+
     function renderAchievementsView() {
-       // ... (omitted for brevity, no changes needed here)
+        const container = document.getElementById('achievements-container');
+        const achievements = getAchievements();
+        const unlockedCount = achievements.filter(a => a.unlocked).length;
+        const progress = (unlockedCount / achievements.length) * 100;
+
+        let badgesHTML = achievements.map(ach => `
+            <div class="flex flex-col items-center text-center p-4 rounded-xl ${ach.unlocked ? 'bg-amber-400/10 dark:bg-amber-900/40 achievement-unlocked' : 'bg-gray-200 dark:bg-gray-800 opacity-60'}">
+                <div class="text-4xl mb-2">${ach.unlocked ? ach.icon : '🔒'}</div>
+                <h4 class="font-bold text-sm">${ach.title}</h4>
+            </div>
+        `).join('');
+
+        container.innerHTML = `
+            <div class="bg-white dark:bg-[#1E1E1E] p-4 rounded-xl">
+                <h3 class="font-bold mb-2">Next Reward</h3>
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4">
+                    <div class="bg-gradient-to-r from-yellow-400 to-orange-500 h-4 rounded-full text-xs text-black font-bold flex items-center justify-center" style="width: ${progress}%">
+                       Level ${Math.floor(unlockedCount / 2) + 1}
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">${unlockedCount} / ${achievements.length} Unlocked</p>
+            </div>
+            <div class="grid grid-cols-3 gap-4">
+                ${badgesHTML}
+            </div>
+        `;
     }
 
     // -------------------------
@@ -1039,4 +1237,3 @@ document.addEventListener('DOMContentLoaded', async () => {
 </script>
 </body>
 </html>
-
