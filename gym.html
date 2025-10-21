@@ -225,6 +225,85 @@
             flex-wrap: wrap;
         }
 
+        /* --- NEW: Daily Calendar View --- */
+        .daily-calendar {
+            display: flex;
+            justify-content: space-between;
+            overflow-x: auto;
+            margin-bottom: 1.5rem;
+            padding: 0.5rem 0;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none; /* Firefox */
+        }
+        .daily-calendar::-webkit-scrollbar {
+            display: none; /* Safari and Chrome */
+        }
+
+        .day-card {
+            flex: 0 0 auto; /* Do not grow, do not shrink, base size auto */
+            width: 80px; /* Fixed width for each day card */
+            height: 120px; /* Fixed height */
+            background-color: var(--card-bg);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            margin: 0 0.5rem; /* Space between cards */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 0.75rem;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s;
+            scroll-snap-align: center;
+            position: relative;
+            overflow: hidden; /* Hide overflowing emojis */
+        }
+
+        .day-card.active {
+            background-color: var(--primary-color);
+            color: white;
+            transform: scale(1.05);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+        }
+        .day-card.active .day-name, .day-card.active .day-number {
+             color: white;
+        }
+        .day-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        .day-number {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+            color: var(--text-color);
+        }
+        .day-name {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            color: var(--text-light);
+        }
+        .day-card.active .day-name {
+            color: rgba(255, 255, 255, 0.8);
+        }
+        .day-emojis {
+            position: absolute;
+            bottom: 5px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 3px;
+            font-size: 1rem; /* Adjust emoji size */
+            line-height: 1;
+            padding: 0 5px; /* Prevent emojis from touching edges */
+        }
+        /* End NEW */
+
+
         /* --- 8. Progress Screen --- */
         #progress-screen select {
             width: 100%;
@@ -318,13 +397,42 @@
         }
 
         .form-group input[type="text"],
-        .form-group input[type="number"] {
+        .form-group input[type="number"],
+        .form-group select { /* Added select for days */
             width: 100%;
             padding: 0.75rem;
             border: 1px solid var(--border-color);
             border-radius: 8px;
             font-size: 1rem;
         }
+
+        /* NEW: Day selection checkboxes */
+        .day-selection {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .day-selection label {
+            background-color: var(--body-bg);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            font-size: 0.9rem;
+            transition: background-color 0.2s, border-color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .day-selection input[type="checkbox"] {
+            display: none; /* Hide default checkbox */
+        }
+        .day-selection input[type="checkbox"]:checked + label {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-dark);
+        }
+        /* End NEW */
         
         .exercise-editor {
             background: var(--body-bg);
@@ -431,9 +539,15 @@
 
         <section id="plans-screen" class="screen">
             <h2>Workout Plans</h2>
-            <div id="workout-plans-list">
+
+            <div class="daily-calendar" id="daily-calendar">
                 </div>
-            <button class="btn btn-primary btn-full" id="add-plan-btn">+ Add Workout Plan</button>
+            <div class="card">
+                <h3>All Plans</h3>
+                <div id="workout-plans-list">
+                    </div>
+                <button class="btn btn-primary btn-full" id="add-plan-btn">+ Add Workout Plan</button>
+            </div>
         </section>
 
         <section id="history-screen" class="screen">
@@ -491,7 +605,19 @@
                     <label for="plan-name">Plan Name</label>
                     <input type="text" id="plan-name" placeholder="e.g., Legs Day" required>
                 </div>
-                
+
+                <div class="form-group">
+                    <label>Days of the Week</label>
+                    <div class="day-selection" id="plan-days-selection">
+                        <input type="checkbox" id="day-sun" value="SUN"><label for="day-sun">Sun</label>
+                        <input type="checkbox" id="day-mon" value="MON"><label for="day-mon">Mon</label>
+                        <input type="checkbox" id="day-tue" value="TUE"><label for="day-tue">Tue</label>
+                        <input type="checkbox" id="day-wed" value="WED"><label for="day-wed">Wed</label>
+                        <input type="checkbox" id="day-thu" value="THU"><label for="day-thu">Thu</label>
+                        <input type="checkbox" id="day-fri" value="FRI"><label for="day-fri">Fri</label>
+                        <input type="checkbox" id="day-sat" value="SAT"><label for="day-sat">Sat</label>
+                    </div>
+                </div>
                 <h3>Exercises</h3>
                 <div id="exercises-container">
                     </div>
@@ -538,6 +664,9 @@
             let workoutStartTime;
             let volumeChart;
             
+            // Days of the week for display and linking plans
+            const DAYS_OF_WEEK_SHORT = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
             const defaultDB = {
                 plans: [],
                 history: []
@@ -583,7 +712,7 @@
             });
 
             modalCloseButtons.forEach(btn => {
-                btn.addEventListener('click', () => closeModal(btn.dataset.target));
+                btn.addEventListener('click', (e) => closeModal(e.currentTarget.dataset.target)); // Use currentTarget for delegation
             });
 
             // Close modal on outside click
@@ -614,11 +743,13 @@
                 oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
                 const thisWeekWorkouts = db.history.filter(w => new Date(w.date) >= oneWeekAgo).length;
 
+                // Calculate favorite body part from linked plan names in history
                 const planCounts = db.history.reduce((acc, w) => {
                     acc[w.planName] = (acc[w.planName] || 0) + 1;
                     return acc;
                 }, {});
-                const favoriteBodyPart = Object.keys(planCounts).reduce((a, b) => planCounts[a] > planCounts[b] ? a : b, '—');
+                const favoriteBodyPart = Object.keys(planCounts).reduce((a, b) => (planCounts[a] || 0) > (planCounts[b] || 0) ? a : b, '—');
+
 
                 document.getElementById('stat-total-workouts').textContent = totalWorkouts;
                 document.getElementById('stat-this-week').textContent = thisWeekWorkouts;
@@ -627,7 +758,7 @@
 
                 // Recent Workouts
                 const recentList = document.getElementById('recent-workouts-list');
-                const recentWorkouts = [...db.history].reverse().slice(0, 3);
+                const recentWorkouts = [...db.history].sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 3); // Sort descending by date
                 
                 if (recentWorkouts.length === 0) {
                     recentList.innerHTML = '<p>No recent workouts logged.</p>';
@@ -635,7 +766,8 @@
                 }
 
                 recentList.innerHTML = recentWorkouts.map(w => {
-                    const exerciseCount = w.sets.reduce((acc, s) => acc.add(s.exerciseName), new Set()).size;
+                    // Count unique exercise names in the sets array
+                    const exerciseCount = new Set(w.sets.map(s => s.exerciseName)).size;
                     return `
                         <div class="recent-workout-item">
                             <div>
@@ -653,13 +785,19 @@
 
             // 3.2. Plans Screen
             function renderPlansScreen() {
+                renderDailyCalendar(); // NEW: Render the daily calendar view
+                
                 const list = document.getElementById('workout-plans-list');
-                if (db.plans.length === 0) {
-                    list.innerHTML = '<p>No workout plans created yet. Add one to get started!</p>';
+                // Filter out plans that are linked to specific days for the "All Plans" list,
+                // or just display all if you prefer
+                const unlinkedPlans = db.plans.filter(p => !p.days || p.days.length === 0);
+
+                if (unlinkedPlans.length === 0) {
+                    list.innerHTML = '<p>No unassigned workout plans. Add one to get started or link existing ones to days!</p>';
                     return;
                 }
 
-                list.innerHTML = db.plans.map(plan => `
+                list.innerHTML = unlinkedPlans.map(plan => `
                     <div class="card workout-plan-item">
                         <h3>${plan.name}</h3>
                         <p>${plan.exercises.length} exercises</p>
@@ -672,10 +810,100 @@
                 `).join('');
             }
 
+            // NEW: Render Daily Calendar
+            function renderDailyCalendar() {
+                const dailyCalendarEl = document.getElementById('daily-calendar');
+                dailyCalendarEl.innerHTML = ''; // Clear previous content
+
+                const today = new Date();
+                const currentDayOfWeek = today.getDay(); // 0 for Sunday, 1 for Monday, etc.
+
+                for (let i = 0; i < 7; i++) {
+                    const date = new Date(today);
+                    date.setDate(today.getDate() - currentDayOfWeek + i); // Calculate date for each day of the week
+
+                    const dayShort = DAYS_OF_WEEK_SHORT[date.getDay()]; // e.g., 'SUN', 'MON'
+                    const dayNumber = date.getDate();
+
+                    const dayPlans = db.plans.filter(plan => plan.days && plan.days.includes(dayShort));
+                    
+                    // Get emojis for the plans on this day
+                    const planEmojis = dayPlans.map(plan => {
+                        // Simple emoji selection based on plan name or first exercise
+                        if (plan.name.toLowerCase().includes('legs')) return '🦵';
+                        if (plan.name.toLowerCase().includes('chest')) return '💪';
+                        if (plan.name.toLowerCase().includes('back')) return '🏋️';
+                        if (plan.name.toLowerCase().includes('arms') || plan.name.toLowerCase().includes('biceps')) return '💪';
+                        if (plan.name.toLowerCase().includes('shoulders')) return '🧘'; // Just an example
+                        if (plan.exercises.length > 0) { // Fallback based on exercise type if available
+                           if (plan.exercises[0].name.toLowerCase().includes('squat')) return '🏋️';
+                           if (plan.exercises[0].name.toLowerCase().includes('bench')) return '💪';
+                        }
+                        return '⚙️'; // Default
+                    }).slice(0, 3); // Limit to 3 emojis for visual clarity
+
+                    const dayCard = document.createElement('div');
+                    dayCard.classList.add('day-card');
+                    if (date.toDateString() === today.toDateString()) {
+                        dayCard.classList.add('active'); // Highlight today
+                    }
+                    dayCard.dataset.day = dayShort; // Store the day for interaction
+
+                    dayCard.innerHTML = `
+                        <span class="day-number">${dayNumber}</span>
+                        <span class="day-name">${dayShort}</span>
+                        <div class="day-emojis">
+                            ${planEmojis.join('')}
+                        </div>
+                    `;
+                    dailyCalendarEl.appendChild(dayCard);
+                }
+            }
+
+            // --- Event listener for daily calendar cards ---
+            document.getElementById('daily-calendar').addEventListener('click', (e) => {
+                const dayCard = e.target.closest('.day-card');
+                if (dayCard) {
+                    const selectedDay = dayCard.dataset.day;
+                    // You could implement logic here to show plans for the selected day in more detail,
+                    // or filter the main list. For now, we'll just log it.
+                    console.log(`Clicked on ${selectedDay}. Plans for today:`, db.plans.filter(p => p.days && p.days.includes(selectedDay)));
+                    // Optional: Add a class to show selected day, remove from others
+                    document.querySelectorAll('.day-card').forEach(card => card.classList.remove('active'));
+                    dayCard.classList.add('active');
+                    // Render the plans relevant to the selected day below the calendar
+                    renderPlansForSelectedDay(selectedDay);
+                }
+            });
+
+            function renderPlansForSelectedDay(selectedDay) {
+                const list = document.getElementById('workout-plans-list');
+                const plansForDay = db.plans.filter(p => p.days && p.days.includes(selectedDay));
+
+                if (plansForDay.length === 0) {
+                    list.innerHTML = `<p>No workout plans assigned to ${selectedDay}.</p>`;
+                    return;
+                }
+
+                list.innerHTML = plansForDay.map(plan => `
+                    <div class="card workout-plan-item">
+                        <h3>${plan.name}</h3>
+                        <p>${plan.exercises.length} exercises</p>
+                        <div class="workout-plan-item-actions">
+                            <button class="btn btn-primary btn-small start-workout-btn" data-id="${plan.id}">Start Workout</button>
+                            <button class="btn btn-secondary btn-small edit-plan-btn" data-id="${plan.id}">Edit</button>
+                            <button class="btn btn-danger btn-small delete-plan-btn" data-id="${plan.id}">Delete</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            // End NEW
+
             // 3.3. History Screen
             function renderHistoryScreen() {
                 const list = document.getElementById('workout-history-list');
-                const sortedHistory = [...db.history].reverse();
+                const sortedHistory = [...db.history].sort((a,b) => new Date(b.date) - new Date(a.date)); // Sort descending by date
 
                 if (sortedHistory.length === 0) {
                     list.innerHTML = '<p>No completed workouts found in your history.</p>';
@@ -728,6 +956,7 @@
             function populateProgressChartSelect() {
                 const select = document.getElementById('progress-chart-select');
                 select.innerHTML = '<option value="">All Workouts (Total Volume)</option>';
+                // Use a Set to ensure unique plan names
                 const planNames = [...new Set(db.plans.map(p => p.name))];
                 planNames.forEach(name => {
                     select.innerHTML += `<option value="${name}">${name}</option>`;
@@ -790,6 +1019,7 @@
                 document.getElementById('plan-id').value = '';
                 document.getElementById('plan-modal-title').textContent = 'Add Workout Plan';
                 document.getElementById('exercises-container').innerHTML = '';
+                document.querySelectorAll('#plan-days-selection input[type="checkbox"]').forEach(cb => cb.checked = false); // NEW: Clear day selection
                 addExerciseToForm(); // Add one empty exercise field
                 showModal('plan-modal');
             });
@@ -857,6 +1087,10 @@
                 const planId = document.getElementById('plan-id').value;
                 const planName = document.getElementById('plan-name').value;
                 
+                // NEW: Get selected days
+                const selectedDays = Array.from(document.querySelectorAll('#plan-days-selection input[type="checkbox"]:checked'))
+                                          .map(cb => cb.value);
+
                 const exercises = [];
                 document.querySelectorAll('#exercises-container .exercise-editor').forEach(exDiv => {
                     const exercise = {
@@ -878,13 +1112,14 @@
                     // Update existing plan
                     const planIndex = db.plans.findIndex(p => p.id === planId);
                     if (planIndex > -1) {
-                        db.plans[planIndex] = { ...db.plans[planIndex], name: planName, exercises };
+                        db.plans[planIndex] = { ...db.plans[planIndex], name: planName, days: selectedDays, exercises };
                     }
                 } else {
                     // Create new plan
                     db.plans.push({
                         id: generateId(),
                         name: planName,
+                        days: selectedDays, // NEW: Add days to plan
                         exercises
                     });
                 }
@@ -907,6 +1142,11 @@
                         document.getElementById('plan-id').value = plan.id;
                         document.getElementById('plan-name').value = plan.name;
                         
+                        // NEW: Populate selected days
+                        document.querySelectorAll('#plan-days-selection input[type="checkbox"]').forEach(cb => {
+                            cb.checked = plan.days && plan.days.includes(cb.value);
+                        });
+
                         const container = document.getElementById('exercises-container');
                         container.innerHTML = '';
                         plan.exercises.forEach(addExerciseToForm);
@@ -1025,7 +1265,7 @@
                 saveDB();
                 renderAll();
                 closeModal('workout-modal');
-                showScreen('history-screen');
+                showScreen('history-screen'); // Navigate to history after finishing workout
             });
             
             // Cancel Workout
