@@ -206,6 +206,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let habits = []; // local cache: array of habit objects from DB
     let history = {}; // { 'YYYY-MM-DD': { habitId: { count, status } } }
     let currentEditingHabitId = null;
+    let hiddenHabitsState = {}; // Store hidden habits locally
 
     // UI constants
     const COLORS = [
@@ -500,13 +501,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         const allHabitsForDay = habits.filter(h => new Date(h.creationDate) <= selectedDate && h.targetDays.includes(dayOfWeek));
 
         const visibleHabits = allHabitsForDay.filter(h => {
-            if (!h.hiddenUntil) return true;
-            const hid = new Date(h.hiddenUntil);
+            const hiddenDateStr = hiddenHabitsState[String(h.id)];
+            if (!hiddenDateStr) return true;
+            const hid = new Date(hiddenDateStr);
             return hid < today;
         });
         const hiddenHabits = allHabitsForDay.filter(h => {
-            if (!h.hiddenUntil) return false;
-            const hid = new Date(h.hiddenUntil);
+            const hiddenDateStr = hiddenHabitsState[String(h.id)];
+            if (!hiddenDateStr) return false;
+            const hid = new Date(hiddenDateStr);
             return hid >= today;
         });
 
@@ -588,8 +591,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             // add listeners
             hiddenHabitsList.querySelectorAll('.unhide-btn').forEach(btn => {
                 const habitId = parseInt(btn.closest('.hidden-habit-swipe-container').dataset.habitId);
-                btn.addEventListener('click', async () => {
-                    await unhideHabit(habitId);
+                btn.addEventListener('click', () => {
+                    unhideHabit(habitId);
                 });
             });
 
@@ -932,16 +935,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             showToast(`'${habit.name}' skipped for ${iso}.`);
         });
 
-        parent.querySelector('[data-action="hide"]').addEventListener('click', async () => {
-            const idx = habits.findIndex(h => h.id === habit.id);
-            if (idx > -1) {
-                const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-                const iso = toISODateString(tomorrow);
-                // set hiddenUntil in DB
-                await updateHabitOnSupabase(habit.id, { hidden_until: iso });
-                showToast(`'${habit.name}' hidden until ${iso}.`);
-                await loadDataFromSupabase(); renderHabits();
-            }
+        parent.querySelector('[data-action="hide"]').addEventListener('click', () => {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const iso = toISODateString(tomorrow);
+            
+            hiddenHabitsState[String(habit.id)] = iso;
+            localStorage.setItem('hidden_habits_state', JSON.stringify(hiddenHabitsState));
+            
+            renderHabits();
         });
 
         parent.querySelector('[data-action="reset"]').addEventListener('click', async () => {
@@ -957,10 +959,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    const unhideHabit = async (habitId) => {
-        // remove hidden_until
-        await updateHabitOnSupabase(habitId, { hidden_until: null });
-        await loadDataFromSupabase();
+    const unhideHabit = (habitId) => {
+        delete hiddenHabitsState[String(habitId)];
+        localStorage.setItem('hidden_habits_state', JSON.stringify(hiddenHabitsState));
         renderHabits();
         showToast('Habit is now visible.');
     };
@@ -1007,6 +1008,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Load data from Supabase on start
     await loadDataFromSupabase();
+
+    // Load hidden state from local storage
+    const savedHiddenState = localStorage.getItem('hidden_habits_state');
+    if (savedHiddenState) {
+        hiddenHabitsState = JSON.parse(savedHiddenState);
+    }
 
     // Initialize Theme
     const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -1083,13 +1090,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         showConfirmation('Reset All Data', 'This is irreversible. All your habits and progress will be lost from Supabase and local cache.', async () => {
             try {
                 // delete all history then habits
-                await supabase.from('history').delete();
-                await supabase.from('habits').delete();
+                let { error: historyError } = await supabase.from('history').delete().neq('id', -1);
+                if (historyError) throw historyError;
+                let { error: habitsError } = await supabase.from('habits').delete().neq('id', -1);
+                if (habitsError) throw habitsError;
             } catch (err) {
                 console.error('Reset error:', err);
             }
-            habits = []; history = {};
-            localStorage.removeItem('habits_cache'); localStorage.removeItem('history_cache');
+            habits = []; history = {}; hiddenHabitsState = {};
+            localStorage.removeItem('habits_cache'); 
+            localStorage.removeItem('history_cache');
+            localStorage.removeItem('hidden_habits_state');
             renderHabits();
             showToast('All data has been reset.');
         });
@@ -1114,3 +1125,4 @@ document.addEventListener('DOMContentLoaded', async () => {
 </script>
 </body>
 </html>
+
