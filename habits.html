@@ -21,7 +21,7 @@
         .achievement-unlocked { box-shadow: 0 0 15px rgba(250,204,21,0.6); animation: glow 1.5s infinite alternate; }
         @keyframes glow { from { box-shadow: 0 0 5px rgba(250,204,21,0.4);} to { box-shadow: 0 0 20px rgba(250,204,21,0.8);} }
         .habit-swipe-container, .hidden-habit-swipe-container { position: relative; overflow: hidden; border-radius: 0.75rem; user-select: none; }
-        .habit-content, .hidden-habit-tile { transition: transform 0.3s ease-out; position: relative; z-index: 10; cursor: grab; }
+        .habit-content, .hidden-habit-tile { transition: transform 0.3s ease-out, background-color 0.5s ease-out, opacity 0.5s ease-out; position: relative; z-index: 10; cursor: grab; }
         .habit-actions { position: absolute; top: 0; right: 0; height: 100%; display:flex; align-items:center; z-index:1; }
         .habit-action-btn { width:70px; height: 100%; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; font-size:0.75rem; font-weight:600; cursor:pointer; }
     </style>
@@ -506,6 +506,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             const hid = new Date(hiddenDateStr);
             return hid < today;
         });
+        
+        const isHabitCompleted = (habit, dateKey) => {
+            const dayHist = history[dateKey] && history[dateKey][String(habit.id)];
+            if (!dayHist || (dayHist && dayHist.status === 'skipped')) return false;
+            return dayHist.count >= habit.goal;
+        };
+        visibleHabits.sort((a, b) => isHabitCompleted(a, dateKey) - isHabitCompleted(b, dateKey));
+
         const hiddenHabits = allHabitsForDay.filter(h => {
             const hiddenDateStr = hiddenHabitsState[String(h.id)];
             if (!hiddenDateStr) return false;
@@ -524,27 +532,35 @@ document.addEventListener('DOMContentLoaded', async () => {
             const dayHist = (history[dateKey] && history[dateKey][String(habit.id)]);
             const isSkipped = dayHist && dayHist.status === 'skipped';
             const currentCount = dayHist ? dayHist.count : 0;
+            const isCompleted = !isSkipped && currentCount >= habit.goal;
             const progressPercentage = isSkipped ? 100 : Math.min((currentCount / habit.goal) * 100, 100);
 
             const wrapper = document.createElement('div');
             wrapper.className = 'habit-swipe-container';
+            
+            let bgColor = isSkipped ? 'bg-gray-500' : habit.color;
+            if (isCompleted) {
+                bgColor = 'bg-green-500 dark:bg-green-700';
+            }
+
             wrapper.innerHTML = `
                 <div class="habit-actions">
                     <button data-action="skip" class="habit-action-btn bg-orange-500"><svg class="w-6 h-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>Skip</button>
                     <button data-action="hide" class="habit-action-btn bg-blue-700"><svg class="w-6 h-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m0 0l-3.59-3.59"/></svg>Hide</button>
                     <button data-action="reset" class="habit-action-btn bg-teal-500"><svg class="w-6 h-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 4l5 5M20 20l-5-5"/></svg>Reset</button>
                 </div>
-                <div class="habit-content p-4 rounded-xl flex items-center gap-4 ${isSkipped ? 'bg-gray-500' : habit.color}">
+                <div class="habit-content p-4 rounded-xl flex items-center gap-4 ${bgColor} ${isCompleted ? 'opacity-80' : ''}">
                     <div class="text-2xl">${habit.icon}</div>
                     <div class="flex-grow">
                         <p class="font-semibold text-white">${habit.name}</p>
                         <div class="w-full bg-black/20 rounded-full h-2 mt-1.5">
-                            <div class="habit-progress-bar h-2 rounded-full ${isSkipped ? 'bg-orange-400' : habit.progressColor}" style="width: ${progressPercentage}%"></div>
+                            <div class="habit-progress-bar h-2 rounded-full ${isSkipped ? 'bg-orange-400' : (isCompleted ? 'bg-white/50' : habit.progressColor)}" style="width: ${progressPercentage}%"></div>
                         </div>
                     </div>
                     <div class="text-center">
                         <p class="font-semibold text-sm text-white/80">${isSkipped ? 'Skipped' : `${currentCount}/${habit.goal}`}</p>
                     </div>
+                    <div class="completion-checkmark text-2xl text-white transition-opacity duration-500 ${isCompleted ? 'opacity-100' : 'opacity-0'}">✅</div>
                     <button class="options-btn p-2 -mr-2 flex-shrink-0" data-habit-id="${habit.id}"><svg class="w-6 h-6 text-white/70 pointer-events-none" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" /></svg></button>
                 </div>
             `;
