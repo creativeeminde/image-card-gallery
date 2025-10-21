@@ -373,7 +373,7 @@
             background-color: var(--primary-dark);
         }
 
-        /* --- NEW: Swipe-to-Reveal Set Item --- */
+        /* --- Swipe-to-Reveal Set Item --- */
         .set-display-item {
             position: relative;
             overflow: hidden; /* This is crucial */
@@ -440,7 +440,6 @@
             cursor: grabbing;
         }
 
-        /* Removed the 'three dots' handle */
         .set-display-item .set-number {
             font-weight: 600;
             color: var(--text-light);
@@ -475,6 +474,12 @@
             gap: 0.5rem;
             padding: 0.75rem 1rem;
             background-color: var(--body-bg);
+            
+            /* --- FIX --- */
+            /* Establish stacking context to appear on top of the action layer */
+            position: relative; 
+            z-index: 3; 
+            /* --- END FIX --- */
         }
         .set-edit-form label {
             font-weight: 600;
@@ -840,7 +845,7 @@
             const DAYS_OF_WEEK_SHORT = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
             const defaultDB = { plans: [], history: [] };
 
-            // --- NEW: Swipe Drag State ---
+            // --- Swipe Drag State ---
             let isDragging = false;
             let startX = 0;
             let currentTranslate = 0;
@@ -906,7 +911,6 @@
                 renderProgressScreen();
             }
 
-            // ... (renderHomeScreen, renderHistoryScreen, renderProgressScreen, etc. remain the same)
             function renderHomeScreen() {
                 const totalWorkouts = db.history.length;
                 const totalVolume = db.history.reduce((acc, w) => acc + (w.volume || 0), 0);
@@ -996,7 +1000,7 @@
                     </div>`).join('');
             }
             
-            // --- MODIFIED: Render Plan Detail Screen ---
+            // Render Plan Detail Screen
             function renderPlanDetailScreen(planId) {
                 const plan = db.plans.find(p => p.id === planId);
                 if (!plan) return;
@@ -1038,7 +1042,7 @@
 
             // --- 4. Plan Modal & Detail View Logic ---
 
-            // --- NEW: Swipe Event Handlers ---
+            // --- Swipe Event Handlers ---
             function getTranslateX(element) {
                 const style = window.getComputedStyle(element);
                 const matrix = new DOMMatrixReadOnly(style.transform);
@@ -1115,7 +1119,7 @@
             document.addEventListener('touchend', handleDragEnd);
             document.addEventListener('mouseleave', handleDragEnd); // Handle mouse leaving the window
 
-            // --- MODIFIED: Event Delegation for Plan Detail Screen ---
+            // --- Event Delegation for Plan Detail Screen ---
             document.getElementById('plan-detail-exercises').addEventListener('click', e => {
                 const target = e.target;
                 const setItem = target.closest('.set-display-item');
@@ -1133,7 +1137,7 @@
                     }
                 }
                 
-                // --- NEW: Handle swipe button clicks ---
+                // --- Handle swipe button clicks ---
 
                 // Click "Edit"
                 if (target.classList.contains('btn-action-edit')) {
@@ -1144,7 +1148,11 @@
 
                 // Click "Delete"
                 if (target.classList.contains('btn-action-delete')) {
-                    if (!confirm('Are you sure you want to delete this set?')) return;
+                    if (!confirm('Are you sure you want to delete this set?')) {
+                        // If user cancels, snap back
+                        setItem.querySelector('.set-display-content').style.transform = 'translateX(0px)';
+                        return;
+                    }
                     
                     const setIndex = parseInt(setItem.dataset.setIndex);
                     const exercise = plan.exercises.find(ex => ex.id === exerciseId);
@@ -1200,7 +1208,6 @@
                     renderPlanDetailScreen(currentPlanId);
                 }
             });
-
 
             // --- (All other functions for History, Progress, Modals, Active Workout, etc. remain the same) ---
             function renderHistoryScreen() {
