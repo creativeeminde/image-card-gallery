@@ -12,7 +12,7 @@
         body { font-family: 'Inter', sans-serif; }
         .date-scroller::-webkit-scrollbar { display: none; }
         .date-scroller { -ms-overflow-style: none; scrollbar-width: none; }
-        .habit-progress-bar, .view { transition: all 0.3s ease-in-out; }
+        .view { transition: all 0.3s ease-in-out; }
         .toast-notification, .modal-container { transition: opacity 0.3s ease-in-out; }
         .view.hidden { display: none; }
         .day-btn.active, .time-range-btn.active { background-color: #EF4444; color: #FFFFFF; font-weight: 600; }
@@ -21,7 +21,7 @@
         .achievement-unlocked { box-shadow: 0 0 15px rgba(250,204,21,0.6); animation: glow 1.5s infinite alternate; }
         @keyframes glow { from { box-shadow: 0 0 5px rgba(250,204,21,0.4);} to { box-shadow: 0 0 20px rgba(250,204,21,0.8);} }
         .habit-swipe-container, .hidden-habit-swipe-container { position: relative; overflow: hidden; border-radius: 0.75rem; user-select: none; }
-        .habit-content, .hidden-habit-tile { transition: transform 0.3s ease-out, background-color 0.5s ease-out, opacity 0.5s ease-out; position: relative; z-index: 10; cursor: grab; }
+        .habit-content, .hidden-habit-tile { transition: transform 0.3s ease-out, background 0.5s ease-out, opacity 0.5s ease-out; position: relative; z-index: 10; cursor: grab; }
         .habit-actions { position: absolute; top: 0; right: 0; height: 100%; display:flex; align-items:center; z-index:1; }
         .habit-action-btn { width:70px; height: 100%; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; font-size:0.75rem; font-weight:600; cursor:pointer; }
     </style>
@@ -210,10 +210,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // UI constants
     const COLORS = [
-        { main: 'bg-blue-600', progress: 'bg-blue-400' }, { main: 'bg-yellow-500', progress: 'bg-yellow-300' },
-        { main: 'bg-teal-500', progress: 'bg-teal-300' }, { main: 'bg-red-500', progress: 'bg-red-400' },
-        { main: 'bg-green-500', progress: 'bg-green-400' }, { main: 'bg-purple-600', progress: 'bg-purple-400' },
-        { main: 'bg-pink-500', progress: 'bg-pink-400' }, { main: 'bg-indigo-500', progress: 'bg-indigo-400' }
+        { main: '#3B82F6', dark: '#1E3A8A' }, // blue-500, blue-800
+        { main: '#FBBF24', dark: '#B45309' }, // amber-400, amber-700
+        { main: '#2DD4BF', dark: '#0F766E' }, // teal-400, teal-700
+        { main: '#F87171', dark: '#991B1B' }, // red-400, red-800
+        { main: '#4ADE80', dark: '#166534' }, // green-400, green-800
+        { main: '#A78BFA', dark: '#5B21B6' }, // violet-400, violet-700
+        { main: '#F472B6', dark: '#9D174D' }, // pink-400, pink-800
+        { main: '#818CF8', dark: '#3730A3' }  // indigo-400, indigo-800
     ];
     const ICONS = ['📚','🏃','💻','🧘','💧','🎨','🎵','🧹','💰','💪','🎯','🗣️','✏️','🌱','🌅','🍎','✍️','💡'];
     const DAYS_OF_WEEK = ['S','M','T','W','T','F','S'];
@@ -314,8 +318,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             targetDays: Array.isArray(row.target_days) ? row.target_days : (row.target_days ? JSON.parse(row.target_days) : [0,1,2,3,4,5,6]),
             timeRange: row.time_range || 'Anytime',
             icon: row.icon || '➕',
-            color: row.color || 'bg-red-500',
-            progressColor: row.progress_color || 'bg-red-400',
+            color: row.color || '#F87171',
             creationDate: (row.creation_date) ? (new Date(row.creation_date).toISOString().split('T')[0]) : toISODateString(new Date())
         };
     }
@@ -332,7 +335,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 time_range: habitData.timeRange,
                 icon: habitData.icon,
                 color: habitData.color,
-                progress_color: habitData.progressColor,
                 creation_date: habitData.creationDate
             };
 
@@ -538,10 +540,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             const wrapper = document.createElement('div');
             wrapper.className = 'habit-swipe-container';
             
-            let bgColor = isSkipped ? 'bg-gray-500' : habit.color;
+            let mainColor, darkColor;
             if (isCompleted) {
-                bgColor = 'bg-green-500 dark:bg-green-700';
+                mainColor = '#4ADE80'; // green-400
+                darkColor = '#166534'; // green-800
+            } else if (isSkipped) {
+                mainColor = '#A1A1AA'; // zinc-400
+                darkColor = '#3F3F46'; // zinc-700
+            } else {
+                const colorPair = COLORS.find(c => c.main === habit.color) || COLORS[3];
+                mainColor = colorPair.main;
+                darkColor = colorPair.dark;
             }
+
+            const backgroundStyle = `background: linear-gradient(to right, ${mainColor} ${progressPercentage}%, ${darkColor} ${progressPercentage}%);`;
 
             wrapper.innerHTML = `
                 <div class="habit-actions">
@@ -549,13 +561,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <button data-action="hide" class="habit-action-btn bg-blue-700"><svg class="w-6 h-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m0 0l-3.59-3.59"/></svg>Hide</button>
                     <button data-action="reset" class="habit-action-btn bg-teal-500"><svg class="w-6 h-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 4l5 5M20 20l-5-5"/></svg>Reset</button>
                 </div>
-                <div class="habit-content p-4 rounded-xl flex items-center gap-4 ${bgColor} ${isCompleted ? 'opacity-80' : ''}">
+                <div class="habit-content p-4 rounded-xl flex items-center gap-4 ${isCompleted ? 'opacity-80' : ''}" style="${backgroundStyle}">
                     <div class="text-2xl">${habit.icon}</div>
                     <div class="flex-grow">
                         <p class="font-semibold text-white">${habit.name}</p>
-                        <div class="w-full bg-black/20 rounded-full h-2 mt-1.5">
-                            <div class="habit-progress-bar h-2 rounded-full ${isSkipped ? 'bg-orange-400' : (isCompleted ? 'bg-white/50' : habit.progressColor)}" style="width: ${progressPercentage}%"></div>
-                        </div>
                     </div>
                     <div class="text-center">
                         <p class="font-semibold text-sm text-white/80">${isSkipped ? 'Skipped' : `${currentCount}/${habit.goal}`}</p>
@@ -570,6 +579,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             habitContent.addEventListener('click', async (e) => {
                 if (e.target.closest('.options-btn')) return;
+                 if (isCompleted && !e.target.closest('.options-btn')) {
+                    showToast('Habit already completed! Reset to change.');
+                    return;
+                }
                 // Increment count for this habit/day
                 if (!history[dateKey]) history[dateKey] = {};
                 const current = (history[dateKey][String(habit.id)] ? history[dateKey][String(habit.id)].count : 0) + 1;
@@ -577,9 +590,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     history[dateKey][String(habit.id)] = { count: current, status: null };
                     await upsertHistoryEntryOnSupabase(habit.id, dateKey, { count: current, status: null });
                     renderHabits();
-                } else {
-                    // already reached goal
-                    showToast('Goal already reached for this habit today.');
                 }
             });
 
@@ -864,7 +874,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         formTimeRange.innerHTML = TIME_RANGES.map(range => `<button class="time-range-btn flex-1 py-2 px-3 text-sm rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-300 ${timeRange===range ? 'active' : ''}" data-range="${range}">${range}</button>`).join('');
 
         let selectedColor = habitToEdit ? habitToEdit.color : COLORS[3].main;
-        formColorGrid.innerHTML = COLORS.map(c => `<button class="w-8 h-8 rounded-full ${c.main} ${selectedColor===c.main ? 'ring-2 ring-offset-2 ring-offset-white dark:ring-offset-[#1E1E1E] ring-white' : ''}" data-main="${c.main}" data-progress="${c.progress}"></button>`).join('');
+        formColorGrid.innerHTML = COLORS.map(c => `<button class="w-8 h-8 rounded-full ${selectedColor===c.main ? 'ring-2 ring-offset-2 ring-white dark:ring-offset-[#1E1E1E] ring-current' : ''}" style="background-color: ${c.main}" data-main="${c.main}" data-dark="${c.dark}"></button>`).join('');
 
         addHabitView.classList.remove('translate-x-full');
     };
@@ -873,8 +883,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     formTimeRange.addEventListener('click', e => { if (e.target.matches('.time-range-btn')) { formTimeRange.querySelectorAll('.time-range-btn').forEach(btn=>btn.classList.remove('active')); e.target.classList.add('active'); }});
     formColorGrid.addEventListener('click', e => {
         if (e.target.dataset && e.target.dataset.main) {
-            formColorGrid.querySelectorAll('button').forEach(btn => btn.classList.remove('ring-2','ring-offset-2','ring-offset-white','dark:ring-offset-[#1E1E1E]','ring-white'));
-            e.target.classList.add('ring-2','ring-offset-2','ring-offset-white','dark:ring-offset-[#1E1E1E]','ring-white');
+            formColorGrid.querySelectorAll('button').forEach(btn => btn.classList.remove('ring-2','ring-offset-2','ring-white','dark:ring-offset-[#1E1E1E]','ring-current'));
+            e.target.classList.add('ring-2','ring-offset-2','ring-white','dark:ring-offset-[#1E1E1E]','ring-current');
         }
     });
 
@@ -889,17 +899,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         const selectedColorEl = formColorGrid.querySelector('.ring-2');
         const color = selectedColorEl ? selectedColorEl.dataset.main : COLORS[3].main;
-        const progressColor = selectedColorEl ? selectedColorEl.dataset.progress : COLORS[3].progress;
         const icon = iconPreviewButton.textContent;
         const timeRange = formTimeRange.querySelector('.time-range-btn.active').dataset.range;
         const creationDate = toISODateString(new Date());
 
-        const habitData = { name, category, goal, targetDays: selectedDays, timeRange, icon, color, progressColor, creationDate };
+        const habitData = { name, category, goal, targetDays: selectedDays, timeRange, icon, color, creationDate };
 
         if (currentEditingHabitId) {
             // update
             const partial = {
-                name, category, goal, target_days: selectedDays, time_range: timeRange, icon, color, progress_color: progressColor
+                name, category, goal, target_days: selectedDays, time_range: timeRange, icon, color
             };
             await updateHabitOnSupabase(currentEditingHabitId, partial);
             showToast('Habit updated.');
