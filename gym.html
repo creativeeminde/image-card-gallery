@@ -661,42 +661,124 @@
             padding: 0.5rem;
         }
 
-        /* --- 11. Active Workout Modal --- */
+
+        /* --- 11. Active Workout Modal (NEW DESIGN) --- */
+        #workout-modal .modal-content {
+            max-width: 95%; /* Allow it to be wider on large screens */
+            background-color: var(--body-bg); /* Match body bg for seamless feel */
+        }
+        
+        #workout-timer {
+            text-align: center;
+            font-size: 2.5rem; /* Bigger timer */
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            color: var(--primary-color);
+        }
+
         #workout-modal .exercise-item {
             margin-bottom: 1.5rem;
+            background: var(--card-bg);
+            padding: 1rem;
+            border-radius: var(--border-radius-small);
+            box-shadow: var(--shadow);
         }
         
         #workout-modal .exercise-item h3 {
             border-bottom: 2px solid var(--primary-color);
             padding-bottom: 0.5rem;
             margin-bottom: 1rem;
+            font-size: 1.25rem;
         }
 
-        #workout-modal .set-row {
+        .set-grid-row {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr 1fr;
+            grid-template-columns: 30px 1.5fr 1fr 1fr 50px; /* SET | PREV | KG | REPS | ✓ */
             gap: 0.5rem;
             align-items: center;
+            margin-bottom: 0.5rem;
+            padding: 0.25rem 0;
+        }
+        
+        .set-grid-header {
+            font-weight: 600;
+            font-size: 0.75rem;
+            color: var(--text-light);
+            text-align: center;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
             margin-bottom: 0.75rem;
         }
+        .set-grid-header span:nth-child(2) { text-align: left; padding-left: 0.5rem; }
+
+        .set-grid-row:not(.set-grid-header) {
+            font-weight: 600;
+            text-align: center;
+            border-radius: var(--border-radius-small);
+        }
         
-        #workout-modal .set-row label {
+        .set-grid-row.completed {
+            opacity: 0.6;
+            background-color: #f9f9f9;
+        }
+
+        .set-grid-row .set-number {
+            font-weight: 700;
+        }
+
+        .set-grid-row .set-previous {
             font-size: 0.9rem;
-            font-weight: 600;
+            color: var(--text-light);
+            text-align: left;
+            padding-left: 0.5rem;
+        }
+
+        .set-grid-row input[type="number"] {
+            width: 100%;
+            padding: 0.75rem 0.25rem;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius-small);
             text-align: center;
+            font-size: 1rem;
+            font-weight: 600;
+            /* Hide number spinners */
+            -moz-appearance: textfield;
+        }
+        .set-grid-row input::-webkit-outer-spin-button,
+        .set-grid-row input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
         }
         
-        #workout-modal .set-row input {
-            padding: 0.5rem;
-            text-align: center;
+        .btn-set-complete {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 2px solid var(--border-color);
+            background: none;
+            cursor: pointer;
+            font-size: 1.2rem;
+            color: var(--border-color);
+            transition: all 0.2s;
+            margin: 0 auto;
         }
         
-        #workout-timer {
-            text-align: center;
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin-bottom: 1.5rem;
+        .btn-set-complete.completed {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            color: white;
         }
+        
+        #workout-modal .modal-actions {
+            background-color: var(--card-bg);
+            padding: 1rem;
+            margin: 1rem -2rem -2rem -2rem; /* Extend to modal edges */
+            border-top: 1px solid var(--border-color);
+            border-bottom-left-radius: var(--border-radius);
+            border-bottom-right-radius: var(--border-radius);
+        }
+        /* --- End Active Workout Modal --- */
+
 
     </style>
 </head>
@@ -822,7 +904,8 @@
             <div id="workout-timer">00:00:00</div>
             <form id="active-workout-form">
                 <input type="hidden" id="active-plan-id">
-                <div id="active-workout-exercises"></div>
+                <div id="active-workout-exercises">
+                    </div>
                 <div class="modal-actions">
                     <button type="button" class="btn btn-danger" id="cancel-workout-btn">Cancel</button>
                     <button type="submit" class="btn btn-primary">Finish Workout</button>
@@ -1209,7 +1292,130 @@
                 }
             });
 
-            // --- (All other functions for History, Progress, Modals, Active Workout, etc. remain the same) ---
+
+            // --- 5. Active Workout Modal Logic (NEW DESIGN) ---
+
+            function startWorkout(planId) {
+                const plan = db.plans.find(p => p.id === planId);
+                if (!plan) return;
+
+                document.getElementById('workout-modal-title').textContent = plan.name;
+                document.getElementById('active-plan-id').value = plan.id;
+                const container = document.getElementById('active-workout-exercises');
+                
+                container.innerHTML = plan.exercises.map((ex) => `
+                    <div class="exercise-item" data-exercise-name="${ex.name}">
+                        <h3>${ex.name}</h3>
+                        <div class="set-grid-row set-grid-header">
+                            <span>Set</span>
+                            <span style="text-align: left; padding-left: 0.5rem;">Previous</span>
+                            <span>kg</span>
+                            <span>Reps</span>
+                            <span>✓</span>
+                        </div>
+                        ${ex.sets.map((set, setIndex) => `
+                            <div class="set-grid-row" data-set-index="${setIndex}">
+                                <span class="set-number">${setIndex + 1}</span>
+                                <span class="set-previous">${set.reps} x ${set.weight} kg</span>
+                                <input type="number" class="active-set-weight" placeholder="kg" min="0" step="0.5" value="${set.weight}">
+                                <input type="number" class="active-set-reps" placeholder="Reps" min="0" value="${set.reps}">
+                                <button type="button" class="btn-set-complete"></button>
+                            </div>
+                        `).join('')}
+                    </div>
+                `).join('');
+                
+                startTimer();
+                showModal('workout-modal');
+            }
+            
+            // Add click listener for the new check button
+            document.getElementById('active-workout-form').addEventListener('click', (e) => {
+                if (e.target.classList.contains('btn-set-complete')) {
+                    e.preventDefault(); // Prevent form submission
+                    e.target.classList.toggle('completed');
+                    e.target.closest('.set-grid-row').classList.toggle('completed'); // Dims the whole row
+                }
+            });
+
+            function startTimer() {
+                workoutStartTime = Date.now();
+                const timerEl = document.getElementById('workout-timer');
+                
+                if (workoutTimerInterval) clearInterval(workoutTimerInterval);
+                
+                workoutTimerInterval = setInterval(() => {
+                    const elapsed = Date.now() - workoutStartTime;
+                    const h = String(Math.floor(elapsed / 3600000)).padStart(2, '0');
+                    const m = String(Math.floor((elapsed % 3600000) / 60000)).padStart(2, '0');
+                    const s = String(Math.floor((elapsed % 60000) / 1000)).padStart(2, '0');
+                    timerEl.textContent = `${h}:${m}:${s}`;
+                }, 1000);
+            }
+            
+            function stopTimer() {
+                clearInterval(workoutTimerInterval);
+                workoutTimerInterval = null;
+                return Math.round((Date.now() - workoutStartTime) / 60000); // in minutes
+            }
+            
+            // Finish Workout (UPDATED logic)
+            document.getElementById('active-workout-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                
+                const duration = stopTimer();
+                const planId = document.getElementById('active-plan-id').value;
+                const plan = db.plans.find(p => p.id === planId);
+                
+                const completedSets = [];
+                let totalVolume = 0;
+                
+                document.querySelectorAll('#active-workout-exercises .exercise-item').forEach(exDiv => {
+                    const exerciseName = exDiv.dataset.exerciseName;
+                    
+                    // Find completed rows
+                    exDiv.querySelectorAll('.set-grid-row.completed').forEach(setRow => {
+                        const reps = parseInt(setRow.querySelector('.active-set-reps').value);
+                        const weight = parseFloat(setRow.querySelector('.active-set-weight').value);
+                        
+                        if (!isNaN(reps) && !isNaN(weight)) {
+                            completedSets.push({
+                                exerciseName,
+                                reps,
+                                weight
+                            });
+                            totalVolume += reps * weight;
+                        }
+                    });
+                });
+                
+                const historyEntry = {
+                    id: generateId(),
+                    planId: plan.id,
+                    planName: plan.name,
+                    date: new Date().toISOString(),
+                    duration: duration,
+                    volume: totalVolume,
+                    sets: completedSets
+                };
+                
+                db.history.push(historyEntry);
+                saveDB();
+                renderAll();
+                closeModal('workout-modal');
+                showScreen('history-screen'); // Navigate to history after finishing workout
+            });
+            
+            // Cancel Workout
+            document.getElementById('cancel-workout-btn').addEventListener('click', () => {
+                if (confirm('Are you sure you want to cancel this workout? Progress will not be saved.')) {
+                    stopTimer();
+                    closeModal('workout-modal');
+                }
+            });
+
+
+            // --- (All other functions for History, Progress, Plan Modal) ---
             function renderHistoryScreen() {
                 const list = document.getElementById('workout-history-list');
                 const sortedHistory = [...db.history].sort((a,b) => new Date(b.date) - new Date(a.date));
@@ -1362,67 +1568,6 @@
                 if (currentPlanId === planId) renderPlanDetailScreen(currentPlanId); else showScreen('plans-screen');
             });
             
-            // Active Workout Logic
-            function startWorkout(planId) {
-                const plan = db.plans.find(p => p.id === planId);
-                if (!plan) return;
-                document.getElementById('workout-modal-title').textContent = plan.name;
-                document.getElementById('active-plan-id').value = plan.id;
-                const container = document.getElementById('active-workout-exercises');
-                container.innerHTML = plan.exercises.map((ex, exIndex) => `<div class="exercise-item" data-exercise-name="${ex.name}"><h3>${ex.name}</h3>${ex.sets.map((set, setIndex) => `<div class="set-row"><label>Set ${setIndex + 1} (Target: ${set.reps}x${set.weight}kg)</label><input type="number" class="active-set-reps" placeholder="Reps" min="0" value="${set.reps}" data-ex-index="${exIndex}" data-set-index="${setIndex}"><input type="number" class="active-set-weight" placeholder="Weight" min="0" step="0.5" value="${set.weight}" data-ex-index="${exIndex}" data-set-index="${setIndex}"><input type="checkbox" class="set-complete-check" title="Mark as complete"></div>`).join('')}</div>`).join('');
-                startTimer();
-                showModal('workout-modal');
-            }
-            function startTimer() {
-                workoutStartTime = Date.now();
-                const timerEl = document.getElementById('workout-timer');
-                if (workoutTimerInterval) clearInterval(workoutTimerInterval);
-                workoutTimerInterval = setInterval(() => {
-                    const elapsed = Date.now() - workoutStartTime;
-                    const h = String(Math.floor(elapsed / 3600000)).padStart(2, '0');
-                    const m = String(Math.floor((elapsed % 3600000) / 60000)).padStart(2, '0');
-                    const s = String(Math.floor((elapsed % 60000) / 1000)).padStart(2, '0');
-                    timerEl.textContent = `${h}:${m}:${s}`;
-                }, 1000);
-            }
-            function stopTimer() {
-                clearInterval(workoutTimerInterval);
-                workoutTimerInterval = null;
-                return Math.round((Date.now() - workoutStartTime) / 60000); // in minutes
-            }
-            document.getElementById('active-workout-form').addEventListener('submit', (e) => {
-                e.preventDefault();
-                const duration = stopTimer();
-                const planId = document.getElementById('active-plan-id').value;
-                const plan = db.plans.find(p => p.id === planId);
-                const completedSets = [];
-                let totalVolume = 0;
-                document.querySelectorAll('#active-workout-exercises .exercise-item').forEach(exDiv => {
-                    const exerciseName = exDiv.dataset.exerciseName;
-                    exDiv.querySelectorAll('.set-row').forEach(setRow => {
-                        if (setRow.querySelector('.set-complete-check:checked')) {
-                            const reps = parseInt(setRow.querySelector('.active-set-reps').value);
-                            const weight = parseFloat(setRow.querySelector('.active-set-weight').value);
-                            if (!isNaN(reps) && !isNaN(weight)) {
-                                completedSets.push({ exerciseName, reps, weight });
-                                totalVolume += reps * weight;
-                            }
-                        }
-                    });
-                });
-                const historyEntry = { id: generateId(), planId: plan.id, planName: plan.name, date: new Date().toISOString(), duration: duration, volume: totalVolume, sets: completedSets };
-                db.history.push(historyEntry);
-                saveDB();
-                renderAll();
-                closeModal('workout-modal');
-                showScreen('history-screen');
-            });
-            document.getElementById('cancel-workout-btn').addEventListener('click', () => {
-                if (confirm('Are you sure you want to cancel this workout? Progress will not be saved.')) {
-                    stopTimer();
-                    closeModal('workout-modal');
-                }
-            });
             document.getElementById('progress-chart-select').addEventListener('change', renderVolumeChart);
 
             // --- 6. Initial Load ---
