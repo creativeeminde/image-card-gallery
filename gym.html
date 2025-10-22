@@ -601,10 +601,9 @@
                     el.classList.toggle('visible', isOffline);
                 });
                 
-                // Disable or enable buttons based on online status
-                // We'll allow actions, and they will be queued if offline.
+                // --- We no longer disable buttons, as actions will be queued ---
                 // document.querySelectorAll('.btn-primary, .btn-danger').forEach(btn => {
-                //     btn.disabled = isOffline; // Example: uncomment to disable buttons
+                //     btn.disabled = isOffline;
                 // });
 
                 if (!isOffline) {
@@ -733,8 +732,8 @@
             // --- MODIFIED: 'savePlanToSupabase' now handles offline ---
             async function savePlanToSupabase(plan) {
                 try {
-                    // If offline, throw an error to be caught by the catch block
-                    if (!navigator.onLine) throw new Error("Offline: Queuing update.");
+                    // --- FIXED: Removed unreliable 'navigator.onLine' check ---
+                    // if (!navigator.onLine) throw new Error("Offline: Queuing update.");
                     
                     const { error } = await supabaseClient.from('plans').update(plan).eq('id', plan.id);
                     if (error) throw error; // Throw to be caught
@@ -841,7 +840,8 @@
                 };
                 
                 try {
-                    if (!navigator.onLine) throw new Error("Offline: Queuing workout.");
+                    // --- FIXED: Removed unreliable 'navigator.onLine' check ---
+                    // if (!navigator.onLine) throw new Error("Offline: Queuing workout.");
                     
                     const { error } = await supabaseClient.from('history').insert(historyEntry); 
                     if (error) throw error;
@@ -851,12 +851,11 @@
                     
                 } catch (error) {
                     console.warn("Offline or error saving workout, adding to queue:", error.message);
-                    // --- NEW: Add to offline queue ---
+                    // --- This will now only run if the insert() fails ---
                     addToOfflineQueue({ type: 'addHistory', payload: historyEntry });
                 }
                 
-                // --- MODIFIED: This now runs in both online/offline cases
-                // (because addToOfflineQueue updates 'db' optimistically)
+                // --- This now runs in both online/offline cases
                 closeModal('workout-modal'); 
                 showScreen('history-screen'); 
             });
@@ -889,7 +888,8 @@
                     }; 
                     
                     try {
-                        if (!navigator.onLine) throw new Error("Offline: Queuing run.");
+                        // --- FIXED: Removed unreliable 'navigator.onLine' check ---
+                        // if (!navigator.onLine) throw new Error("Offline: Queuing run.");
                         
                         const { error } = await supabaseClient.from('runningLog').insert(logEntry); 
                         if (error) throw error;
@@ -900,7 +900,7 @@
                         
                     } catch (error) {
                         console.error("Offline or error saving run log, adding to queue:", error.message);
-                        // --- NEW: Add to offline queue ---
+                        // --- This will now only run if the insert() fails ---
                         addToOfflineQueue({ type: 'addRun', payload: logEntry });
                         intervalInfo.innerHTML = `<p>Interval finished! Logged (offline).</p>`; 
                     }
@@ -929,6 +929,7 @@
             document.getElementById('exercises-container').addEventListener('click', (e) => { if (e.target.classList.contains('add-set-btn')) { const setsContainer = e.target.previousElementSibling; const setIndex = setsContainer.children.length; setsContainer.innerHTML += createSetFormHTML(null, setIndex); } if (e.target.classList.contains('remove-set-btn')) { e.target.closest('.set-editor').remove(); const setsContainer = e.target.closest('.sets-container'); if (setsContainer) { Array.from(setsContainer.children).forEach((setDiv, i) => { setDiv.querySelector('label').textContent = `Set ${i + 1}`; }); } } if (e.target.classList.contains('remove-exercise-btn')) { e.target.closest('.exercise-editor').remove(); } });
             
             // --- MODIFIED: 'plan-form' submit now handles offline ---
+            // --- This logic is also refactored to prevent duplicate ID generation ---
             document.getElementById('plan-form').addEventListener('submit', async (e) => { 
                 e.preventDefault(); 
                 const planId = document.getElementById('plan-id').value; 
@@ -942,39 +943,45 @@
                     exercises.push(exercise); 
                 }); 
 
-                try {
-                    if (!navigator.onLine) throw new Error("Offline: Queuing plan save.");
+                // --- REFINED LOGIC ---
+                let planData;
+                let actionType;
 
-                    if (planId) {
-                        // Update existing plan
-                        const planData = { id: planId, name: planName, days: selectedDays, icon: selectedIcon, exercises };
-                        const { error } = await supabaseClient.from('plans').update(planData).eq('id', planId);
-                        if (error) throw error;
-                        console.log('Plan updated successfully online.');
+                if (planId) {
+                    // This is an UPDATE
+                    planData = { id: planId, name: planName, days: selectedDays, icon: selectedIcon, exercises };
+                    actionType = 'updatePlan';
+                } else {
+                    // This is a CREATE
+                    // Generate the ID *once* here, so it's the same for try and catch.
+                    planData = { id: generateId(), name: planName, days: selectedDays, icon: selectedIcon, exercises };
+                    actionType = 'createPlan';
+                }
+
+                try {
+                    // --- FIXED: Removed unreliable 'navigator.onLine' check ---
+                    // if (!navigator.onLine) throw new Error("Offline: Queuing plan save.");
+
+                    let error;
+                    if (actionType === 'updatePlan') {
+                        ({ error } = await supabaseClient.from('plans').update(planData).eq('id', planData.id));
                     } else {
-                        // Create new plan
-                        // --- MODIFIED: Generate client-side ID for offline sync ---
-                        const newPlan = { id: generateId(), name: planName, days: selectedDays, icon: selectedIcon, exercises };
-                        const { error } = await supabaseClient.from('plans').insert([newPlan]);
-                        if (error) throw error;
-                        console.log('Plan created successfully online.');
+                        // Pass the pre-generated planData
+                        ({ error } = await supabaseClient.from('plans').insert([planData]));
                     }
                     
+                    if (error) throw error;
+                    
+                    console.log(`Plan ${actionType} successful online.`);
                     await refreshData();
                     
                 } catch (error) {
-                    console.warn("Offline or error saving plan, adding to queue:", error.message);
-                    // --- NEW: Add to offline queue ---
-                    if (planId) {
-                        const planData = { id: planId, name: planName, days: selectedDays, icon: selectedIcon, exercises };
-                        addToOfflineQueue({ type: 'updatePlan', payload: planData });
-                    } else {
-                        const newPlan = { id: generateId(), name: planName, days: selectedDays, icon: selectedIcon, exercises };
-                        addToOfflineQueue({ type: 'createPlan', payload: newPlan });
-                    }
+                    console.warn(`Offline or error during ${actionType}, adding to queue:`, error.message);
+                    // Add the *pre-defined* planData to the queue
+                    addToOfflineQueue({ type: actionType, payload: planData });
                 }
+                // --- END REFINED LOGIC ---
                 
-                // --- MODIFIED: This now runs in both online/offline cases ---
                 closeModal('plan-modal'); 
                 if (currentPlanId === planId) renderPlanDetailScreen(currentPlanId); 
                 else showScreen('plans-screen'); 
@@ -1006,7 +1013,8 @@
                 } else if (target.classList.contains('delete-plan-btn')) { 
                     if (confirm(`Are you sure you want to delete this workout plan? This cannot be undone.`)) { 
                         try {
-                            if (!navigator.onLine) throw new Error("Offline: Queuing delete.");
+                            // --- FIXED: Removed unreliable 'navigator.onLine' check ---
+                            // if (!navigator.onLine) throw new Error("Offline: Queuing delete.");
                             
                             const { error } = await supabaseClient.from('plans').delete().eq('id', planId);
                             if (error) throw error;
@@ -1016,11 +1024,11 @@
                             
                         } catch (error) {
                             console.warn("Offline or error deleting plan, adding to queue:", error.message);
-                            // --- NEW: Add to offline queue ---
+                            // --- This will now only run if the delete() fails ---
                             addToOfflineQueue({ type: 'deletePlan', payload: { id: planId } });
                         }
                         
-                        // --- MODIFIED: This now runs in both online/offline cases ---
+                        // --- This now runs in both online/offline cases
                         if (currentPlanId === planId) { 
                             currentPlanId = null; 
                             showScreen('plans-screen'); 
