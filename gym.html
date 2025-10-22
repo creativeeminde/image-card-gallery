@@ -304,7 +304,7 @@
             display: flex;
             justify-content: center;
             gap: 2px;
-            font-size: 0.8rem;
+            font-size: 1.2rem; /* Made emoji slightly bigger */
             line-height: 1;
             padding: 0 3px; 
             white-space: nowrap;
@@ -633,6 +633,37 @@
             border-color: var(--primary-dark);
         }
         
+        /* --- NEW: Emoji Selection --- */
+        .emoji-selection {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .emoji-selection label {
+            background-color: var(--body-bg);
+            padding: 0.5rem;
+            width: 44px; /* Square shape */
+            height: 44px;
+            border-radius: var(--border-radius-small);
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            font-size: 1.5rem; /* Bigger emoji */
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .emoji-selection input[type="radio"] {
+            display: none; /* Hide default radio */
+        }
+        .emoji-selection input[type="radio"]:checked + label {
+            background-color: var(--primary-color);
+            border-color: var(--primary-dark);
+            transform: scale(1.1);
+            box-shadow: var(--shadow);
+        }
+        /* --- End Emoji Selection --- */
+        
         .exercise-editor {
             background: var(--body-bg);
             padding: 1rem;
@@ -884,6 +915,22 @@
                         <input type="checkbox" id="day-sat" value="SAT"><label for="day-sat">Sat</label>
                     </div>
                 </div>
+
+                <div class="form-group">
+                    <label>Icon</label>
+                    <div class="emoji-selection" id="plan-icon-selection">
+                        <input type="radio" name="plan-icon" id="icon-1" value="💪" checked><label for="icon-1">💪</label>
+                        <input type="radio" name="plan-icon" id="icon-2" value="🏋️"><label for="icon-2">🏋️</label>
+                        <input type="radio" name="plan-icon" id="icon-3" value="🦵"><label for="icon-3">🦵</label>
+                        <input type="radio" name="plan-icon" id="icon-4" value="🧘"><label for="icon-4">🧘</label>
+                        <input type="radio" name="plan-icon" id="icon-5" value="🏃"><label for="icon-5">🏃</label>
+                        <input type="radio" name="plan-icon" id="icon-6" value="🥊"><label for="icon-6">🥊</label>
+                        <input type="radio" name="plan-icon" id="icon-7" value="🔥"><label for="icon-7">🔥</label>
+                        <input type="radio" name="plan-icon" id="icon-8" value="🤸"><label for="icon-8">🤸</label>
+                        <input type="radio" name="plan-icon" id="icon-9" value="🛡️"><label for="icon-9">🛡️</label>
+                        <input type="radio" name="plan-icon" id="icon-10" value="⚙️"><label for="icon-10">⚙️</label>
+                    </div>
+                </div>
                 <h3>Exercises</h3>
                 <div id="exercises-container"></div>
                 <button type="button" class="btn btn-secondary btn-small" id="add-exercise-btn">+ Add Exercise</button>
@@ -1028,6 +1075,7 @@
                 renderPlansForSelectedDay(todayDayShort);
             }
             
+            // --- MODIFIED: Renders calendar using plan.icon ---
             function renderDailyCalendar() {
                 const dailyCalendarEl = document.getElementById('daily-calendar');
                 dailyCalendarEl.innerHTML = '';
@@ -1039,13 +1087,13 @@
                     const dayShort = DAYS_OF_WEEK_SHORT[date.getDay()];
                     const dayNumber = date.getDate();
                     const dayPlans = db.plans.filter(plan => plan.days && plan.days.includes(dayShort));
+                    
+                    // --- REPLACED LOGIC ---
                     const planEmojis = dayPlans.map(plan => {
-                        if (plan.name.toLowerCase().includes('legs')) return '🦵';
-                        if (plan.name.toLowerCase().includes('chest')) return '💪';
-                        if (plan.name.toLowerCase().includes('back')) return '🏋️';
-                        if (plan.name.toLowerCase().includes('arms') || plan.name.toLowerCase().includes('biceps')) return '💪';
-                        return '⚙️';
-                    }).slice(0, 3);
+                        return plan.icon || '🏋️'; // Use the plan's icon, or a general default
+                    }).slice(0, 1); // Show only one icon for clarity
+                    // --- END REPLACED LOGIC ---
+
                     const dayCard = document.createElement('div');
                     dayCard.className = 'day-card';
                     if (date.toDateString() === today.toDateString()) dayCard.classList.add('active');
@@ -1075,7 +1123,7 @@
                 }
                 list.innerHTML = plansForDay.map(plan => `
                     <div class="card workout-plan-item view-plan-details" data-id="${plan.id}">
-                        <h3>${plan.name}</h3><p>${plan.exercises.length} exercises</p>
+                        <h3>${plan.icon || '🏋️'} ${plan.name}</h3><p>${plan.exercises.length} exercises</p>
                         <div class="workout-plan-item-actions">
                             <button class="btn btn-secondary btn-small edit-plan-btn" data-id="${plan.id}">Edit</button>
                             <button class="btn btn-danger btn-small delete-plan-btn" data-id="${plan.id}">Delete</button>
@@ -1474,12 +1522,18 @@
             }
 
             // Plan Modal Logic
+            // MODIFIED: Reset icon on add
             document.getElementById('add-plan-btn').addEventListener('click', () => {
                 document.getElementById('plan-form').reset();
                 document.getElementById('plan-id').value = '';
                 document.getElementById('plan-modal-title').textContent = 'Add Workout Plan';
                 document.getElementById('exercises-container').innerHTML = '';
                 document.querySelectorAll('#plan-days-selection input[type="checkbox"]').forEach(cb => cb.checked = false);
+                // --- NEW ---
+                // Reset icon selection to default (first one)
+                document.querySelectorAll('input[name="plan-icon"]').forEach(radio => radio.checked = false);
+                document.getElementById('icon-1').checked = true;
+                // --- END NEW ---
                 addExerciseToForm();
                 showModal('plan-modal');
             });
@@ -1513,17 +1567,12 @@
                 return `<div class="set-editor"><label>Set ${index + 1}</label><input type="number" class="set-reps" placeholder="Reps" min="0" value="${set ? set.reps : ''}" required><input type="number" class="set-weight" placeholder="Weight (kg)" min="0" value="${set ? set.weight : ''}" required><button type="button" class="btn-danger btn-small remove-set-btn">&times;</button></div>`;
             }
             
-            // =================================================================
-            // === THIS IS THE FIXED BLOCK =====================================
-            // =================================================================
+            // Plan List Event Delegation (FIXED)
             document.getElementById('workout-plans-list').addEventListener('click', (e) => {
                 const target = e.target;
-                // Get the planId from the closest item, in case user clicks button or card
                 const planId = target.closest('.workout-plan-item')?.dataset.id;
                 
-                if (!planId) return; // Exit if the click was not on a plan item
-
-                // --- CORRECTED LOGIC ORDER ---
+                if (!planId) return; 
 
                 // 1. Check for EDIT button click FIRST
                 if (target.classList.contains('edit-plan-btn')) {
@@ -1535,6 +1584,18 @@
                         document.querySelectorAll('#plan-days-selection input[type="checkbox"]').forEach(cb => { 
                             cb.checked = plan.days && plan.days.includes(cb.value); 
                         });
+                        
+                        // --- NEW: Populate Icon ---
+                        document.querySelectorAll('input[name="plan-icon"]').forEach(radio => radio.checked = false);
+                        const iconToSelect = plan.icon || '💪';
+                        const radioToSelect = document.querySelector(`input[name="plan-icon"][value="${iconToSelect}"]`);
+                        if (radioToSelect) {
+                            radioToSelect.checked = true;
+                        } else {
+                            document.getElementById('icon-10').checked = true; // Fallback
+                        }
+                        // --- END NEW ---
+
                         const container = document.getElementById('exercises-container');
                         container.innerHTML = '';
                         plan.exercises.forEach(addExerciseToForm);
@@ -1547,7 +1608,6 @@
                         db.plans = db.plans.filter(p => p.id !== planId);
                         saveDB();
                         renderAll(); // Re-render everything
-                        // If we are on the detail screen of the plan we just deleted, go back
                         if (currentPlanId === planId) { 
                             currentPlanId = null;
                             showScreen('plans-screen');
@@ -1559,17 +1619,19 @@
                     renderPlanDetailScreen(planId);
                 }
             });
-            // =================================================================
-            // === END OF FIXED BLOCK ==========================================
-            // =================================================================
 
 
-            // Plan Form Submit
+            // MODIFIED: Plan Form Submit (saves icon)
             document.getElementById('plan-form').addEventListener('submit', (e) => {
                 e.preventDefault();
                 const planId = document.getElementById('plan-id').value;
                 const planName = document.getElementById('plan-name').value;
                 const selectedDays = Array.from(document.querySelectorAll('#plan-days-selection input[type="checkbox"]:checked')).map(cb => cb.value);
+                
+                // --- NEW ---
+                const selectedIcon = document.querySelector('input[name="plan-icon"]:checked').value || '⚙️';
+                // --- END NEW ---
+
                 const exercises = [];
                 document.querySelectorAll('#exercises-container .exercise-editor').forEach(exDiv => {
                     const exercise = { id: exDiv.dataset.id || generateId(), name: exDiv.querySelector('.exercise-name').value, sets: [] };
@@ -1578,12 +1640,14 @@
                     });
                     exercises.push(exercise);
                 });
+                
                 if (planId) {
                     const planIndex = db.plans.findIndex(p => p.id === planId);
-                    if (planIndex > -1) db.plans[planIndex] = { ...db.plans[planIndex], name: planName, days: selectedDays, exercises };
+                    if (planIndex > -1) db.plans[planIndex] = { ...db.plans[planIndex], name: planName, days: selectedDays, icon: selectedIcon, exercises };
                 } else {
-                    db.plans.push({ id: generateId(), name: planName, days: selectedDays, exercises });
+                    db.plans.push({ id: generateId(), name: planName, days: selectedDays, icon: selectedIcon, exercises });
                 }
+                
                 saveDB();
                 renderAll();
                 closeModal('plan-modal');
