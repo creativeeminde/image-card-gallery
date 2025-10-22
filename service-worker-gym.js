@@ -3,7 +3,6 @@ const DATA_CACHE_NAME = 'gym-app-data-v2';
 
 // 1. URLs for the app shell to be cached immediately
 const APP_SHELL_URLS = [
-    '/',
     'gym.html', // IMPORTANT: Rename your 'gym (2).html' to 'index.html'
     'manifest-gym.json',
     'https://cdn.jsdelivr.net/npm/chart.js',
