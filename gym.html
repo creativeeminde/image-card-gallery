@@ -10,6 +10,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- 1. Add Supabase Client Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
         /* --- 1. Global Styles & Variables --- */
@@ -364,19 +366,57 @@
     <div id="workout-modal" class="modal"> <div class="modal-content"> <div class="modal-header"><h2 id="workout-modal-title">Active Workout</h2><button class="modal-close" data-target="workout-modal">&times;</button></div> <div id="workout-timer">00:00:00</div> <form id="active-workout-form"> <input type="hidden" id="active-plan-id"><div id="active-workout-exercises"></div> <div class="modal-actions"><button type="button" class="btn btn-danger" id="cancel-workout-btn">Cancel</button><button type="submit" class="btn btn-primary">Finish Workout</button></div> </form> </div> </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             
-            // --- 1. State Management ---
-            let db; let workoutTimerInterval; let workoutStartTime; let volumeChart; let runningChart; let currentPlanId = null; 
-            let intervalTimer = null; let countdownTimer = null; 
+            // --- 1. Supabase & State Management ---
+            const SUPABASE_URL = 'https://pqznofnefwdaqkxhweiw.supabase.co';
+            const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBxem5vZm5lZndkYXFreGh3ZWl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjExMDMyMTIsImV4cCI6MjA3NjY3OTIxMn0.sLogWOCZndk0AiPc1M_GLkn_sI6rIW41P0ODph-pnH0';
+            const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+            let db = { plans: [], history: [], runningLog: [] }; // This will hold our data in memory
+            let workoutTimerInterval; 
+            let workoutStartTime; 
+            let volumeChart; 
+            let runningChart; 
+            let currentPlanId = null; 
+            let intervalTimer = null; 
+            let countdownTimer = null; 
             let intervalState = { running: false, currentPhase: 'idle', currentTime: 0, currentRep: 0, totalReps: 0, runDuration: 0, restDuration: 0, startTime: null };
             const DAYS_OF_WEEK_SHORT = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-            const defaultDB = { plans: [], history: [], runningLog: [] }; 
-            let isDragging = false; let startX = 0; let currentTranslate = 0; let draggedElement = null;
-            const swipeThreshold = 60; const swipeSnapTarget = 80; 
+            let isDragging = false; 
+            let startX = 0; 
+            let currentTranslate = 0; 
+            let draggedElement = null;
+            const swipeThreshold = 60; 
+            const swipeSnapTarget = 80; 
 
-            function loadDB() { db = JSON.parse(localStorage.getItem('gymTrackerDB')) || defaultDB; if (!db.runningLog) db.runningLog = []; }
-            function saveDB() { localStorage.setItem('gymTrackerDB', JSON.stringify(db)); }
+            async function loadDB() {
+                try {
+                    const { data: plans, error: plansError } = await supabase.from('plans').select('*');
+                    if (plansError) throw plansError;
+                    db.plans = plans || [];
+
+                    const { data: history, error: historyError } = await supabase.from('history').select('*');
+                    if (historyError) throw historyError;
+                    db.history = history || [];
+
+                    const { data: runningLog, error: runningLogError } = await supabase.from('runningLog').select('*');
+                    if (runningLogError) throw runningLogError;
+                    db.runningLog = runningLog || [];
+
+                    console.log("Database loaded successfully from Supabase.");
+                } catch (error) {
+                    console.error("Error loading data from Supabase:", error);
+                    alert("Could not load data. Please check your Supabase setup and network connection.");
+                }
+            }
+
+            // A utility to refresh local DB state after an operation
+            async function refreshData() {
+                await loadDB();
+                renderAll();
+            }
+
             function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2); }
             function formatTime(seconds) { const mins = String(Math.floor(seconds / 60)).padStart(2, '0'); const secs = String(seconds % 60).padStart(2, '0'); return `${mins}:${secs}`; }
 
@@ -390,7 +430,7 @@
             modals.forEach(modal => modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(modal.id); }));
             document.getElementById('back-to-plans-btn').addEventListener('click', () => { currentPlanId = null; showScreen('plans-screen'); });
 
-            // --- 3. Render Functions ---
+            // --- 3. Render Functions (Largely Unchanged) ---
             function renderAll() { renderHomeScreen(); renderDailyCalendar(); renderPlansScreen(); renderHistoryScreen(); renderRunningLog(); updateTotalIntervalTime(); renderRunningChart(); }
             function renderHomeScreen() { const totalWorkouts = db.history.length; const totalVolume = db.history.reduce((acc, w) => acc + (w.volume || 0), 0); const oneWeekAgo = new Date(); oneWeekAgo.setDate(oneWeekAgo.getDate() - 7); const thisWeekWorkouts = db.history.filter(w => new Date(w.date) >= oneWeekAgo).length; const planCounts = db.history.reduce((acc, w) => { acc[w.planName] = (acc[w.planName] || 0) + 1; return acc; }, {}); const favoriteBodyPart = Object.keys(planCounts).reduce((a, b) => (planCounts[a] || 0) > (planCounts[b] || 0) ? a : b, '—'); document.getElementById('stat-total-workouts').textContent = totalWorkouts; document.getElementById('stat-this-week').textContent = thisWeekWorkouts; document.getElementById('stat-total-volume').innerHTML = `${totalVolume.toLocaleString()} <small>kg</small>`; document.getElementById('stat-fav-bodypart').textContent = favoriteBodyPart; const recentList = document.getElementById('recent-workouts-list'); const recentWorkouts = [...db.history].sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 3); if (recentWorkouts.length === 0) { recentList.innerHTML = '<p>No recent workouts logged.</p>'; } else { recentList.innerHTML = recentWorkouts.map(w => { const exerciseCount = new Set(w.sets.map(s => s.exerciseName)).size; return `<div class="recent-workout-item"><div><h3>${w.planName}</h3><p>${new Date(w.date).toLocaleDateString()}</p></div><div><p>Duration: ${w.duration || '—'} min</p><p>Exercises: ${exerciseCount}</p></div></div>`; }).join(''); } populateProgressChartSelect(); renderVolumeChart(); renderPRs(); }
             function renderPlansScreen() { const todayDayShort = DAYS_OF_WEEK_SHORT[new Date().getDay()]; document.querySelectorAll('.day-card').forEach(card => card.classList.remove('active')); const activeCard = document.querySelector(`.day-card[data-day="${todayDayShort}"]`); if(activeCard) activeCard.classList.add('active'); renderPlansForSelectedDay(todayDayShort); }
@@ -407,8 +447,7 @@
             function updateTotalIntervalTime() { const runSec = parseInt(document.getElementById('run-duration').value) || 0; const restSec = parseInt(document.getElementById('rest-duration').value) || 0; const reps = parseInt(document.getElementById('repetitions').value) || 0; const totalSeconds = (runSec * reps) + (restSec * (reps > 0 ? reps - 1 : 0)); document.getElementById('total-interval-time').textContent = formatTime(totalSeconds); }
             function renderRunningChart() { const ctx = document.getElementById('running-volume-chart')?.getContext('2d'); if (!ctx) return; const sortedLog = [...db.runningLog].sort((a, b) => new Date(a.date) - new Date(b.date)); const labels = sortedLog.map(run => new Date(run.date).toLocaleDateString()); const data = sortedLog.map(run => run.totalDuration / 60); if (runningChart) runningChart.destroy(); runningChart = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: 'Run Duration (minutes)', data: data, backgroundColor: 'rgba(52, 152, 219, 0.2)', borderColor: 'rgba(52, 152, 219, 1)', borderWidth: 2, tension: 0.1, fill: true }] }, options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Minutes' } } }, responsive: true } }); }
 
-            // --- 4. Plan Modal & Detail View Logic ---
-            // --- Swipe Event Handlers ---
+            // --- 4. Plan Modal & Detail View Logic (with Supabase calls) ---
             function getTranslateX(element) { const style = window.getComputedStyle(element); const matrix = new DOMMatrixReadOnly(style.transform); return matrix.m41; }
             function closeAllSwipes(exceptElement) { document.querySelectorAll('.set-display-content').forEach(el => { if (el !== exceptElement) { el.style.transform = 'translateX(0px)'; } }); }
             function handleDragStart(e) { draggedElement = e.target.closest('.set-display-content'); if (!draggedElement || draggedElement.closest('.set-display-item').classList.contains('editing')) { draggedElement = null; return; } e.preventDefault(); closeAllSwipes(draggedElement); startX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX; isDragging = true; draggedElement.classList.add('dragging'); currentTranslate = getTranslateX(draggedElement); }
@@ -419,39 +458,174 @@
             document.addEventListener('mousemove', handleDragMove); document.addEventListener('touchmove', handleDragMove, { passive: false });
             document.addEventListener('mouseup', handleDragEnd); document.addEventListener('touchend', handleDragEnd); document.addEventListener('mouseleave', handleDragEnd); 
             
-            // --- Event Delegation for Plan Detail Screen ---
-            document.getElementById('plan-detail-exercises').addEventListener('click', e => { const target = e.target; const setItem = target.closest('.set-display-item'); const exerciseId = target.closest('.exercise-detail-card')?.dataset.exerciseId; const plan = db.plans.find(p => p.id === currentPlanId); if (!plan) return; if (target.classList.contains('btn-add-set')) { const exercise = plan.exercises.find(ex => ex.id === exerciseId); if (exercise) { exercise.sets.push({ reps: 8, weight: 20 }); saveDB(); renderPlanDetailScreen(currentPlanId); } } else if (setItem) { if (target.classList.contains('btn-action-edit')) { setItem.classList.add('editing'); setItem.querySelector('.set-display-content').style.transform = 'translateX(0px)'; } else if (target.classList.contains('btn-action-delete')) { if (!confirm('Are you sure you want to delete this set?')) { setItem.querySelector('.set-display-content').style.transform = 'translateX(0px)'; return; } const setIndex = parseInt(setItem.dataset.setIndex); const exercise = plan.exercises.find(ex => ex.id === exerciseId); if (exercise && exercise.sets[setIndex] !== undefined) { exercise.sets.splice(setIndex, 1); saveDB(); renderPlanDetailScreen(currentPlanId); } } else if (target.classList.contains('btn-cancel-edit-set')) { setItem.classList.remove('editing'); } else if (target.classList.contains('btn-save-set')) { const setIndex = parseInt(setItem.dataset.setIndex); const exercise = plan.exercises.find(ex => ex.id === exerciseId); if (exercise && exercise.sets[setIndex] !== undefined) { const newReps = parseInt(setItem.querySelector('.edit-set-reps').value); const newWeight = parseFloat(setItem.querySelector('.edit-set-weight').value); if (!isNaN(newReps) && !isNaN(newWeight)) { exercise.sets[setIndex] = { reps: newReps, weight: newWeight }; saveDB(); setItem.querySelector('.set-reps').innerHTML = `${newReps} <span>REPS</span>`; setItem.querySelector('.set-weight').innerHTML = `${newWeight} <span>KG</span>`; setItem.classList.remove('editing'); } } } } });
-            document.getElementById('add-exercise-to-plan-btn').addEventListener('click', () => { const plan = db.plans.find(p => p.id === currentPlanId); if (!plan) return; const newExerciseName = prompt("Enter the name for the new exercise:"); if (newExerciseName && newExerciseName.trim() !== '') { plan.exercises.push({ id: generateId(), name: newExerciseName.trim(), sets: [{ reps: 8, weight: 20 }] }); saveDB(); renderPlanDetailScreen(currentPlanId); } });
+            async function savePlanToSupabase(plan) {
+                const { error } = await supabase.from('plans').update(plan).eq('id', plan.id);
+                if (error) console.error("Error updating plan:", error);
+                else {
+                    const planIndex = db.plans.findIndex(p => p.id === plan.id);
+                    if (planIndex > -1) db.plans[planIndex] = plan; // Update local state
+                }
+            }
+            
+            document.getElementById('plan-detail-exercises').addEventListener('click', async e => {
+                const target = e.target;
+                const setItem = target.closest('.set-display-item');
+                const exerciseId = target.closest('.exercise-detail-card')?.dataset.exerciseId;
+                const plan = db.plans.find(p => p.id === currentPlanId);
+                if (!plan) return;
 
+                if (target.classList.contains('btn-add-set')) {
+                    const exercise = plan.exercises.find(ex => ex.id === exerciseId);
+                    if (exercise) {
+                        exercise.sets.push({ reps: 8, weight: 20 });
+                        await savePlanToSupabase(plan);
+                        renderPlanDetailScreen(currentPlanId);
+                    }
+                } else if (setItem) {
+                    const exercise = plan.exercises.find(ex => ex.id === exerciseId);
+                    const setIndex = parseInt(setItem.dataset.setIndex);
+
+                    if (target.classList.contains('btn-action-edit')) {
+                        setItem.classList.add('editing');
+                        setItem.querySelector('.set-display-content').style.transform = 'translateX(0px)';
+                    } else if (target.classList.contains('btn-action-delete')) {
+                        if (!confirm('Are you sure you want to delete this set?')) {
+                            setItem.querySelector('.set-display-content').style.transform = 'translateX(0px)';
+                            return;
+                        }
+                        if (exercise && exercise.sets[setIndex] !== undefined) {
+                            exercise.sets.splice(setIndex, 1);
+                            await savePlanToSupabase(plan);
+                            renderPlanDetailScreen(currentPlanId);
+                        }
+                    } else if (target.classList.contains('btn-cancel-edit-set')) {
+                        setItem.classList.remove('editing');
+                    } else if (target.classList.contains('btn-save-set')) {
+                        if (exercise && exercise.sets[setIndex] !== undefined) {
+                            const newReps = parseInt(setItem.querySelector('.edit-set-reps').value);
+                            const newWeight = parseFloat(setItem.querySelector('.edit-set-weight').value);
+                            if (!isNaN(newReps) && !isNaN(newWeight)) {
+                                exercise.sets[setIndex] = { reps: newReps, weight: newWeight };
+                                await savePlanToSupabase(plan);
+                                renderPlanDetailScreen(currentPlanId);
+                            }
+                        }
+                    }
+                }
+            });
+
+            document.getElementById('add-exercise-to-plan-btn').addEventListener('click', async () => {
+                const plan = db.plans.find(p => p.id === currentPlanId);
+                if (!plan) return;
+                const newExerciseName = prompt("Enter the name for the new exercise:");
+                if (newExerciseName && newExerciseName.trim() !== '') {
+                    plan.exercises.push({
+                        id: generateId(),
+                        name: newExerciseName.trim(),
+                        sets: [{ reps: 8, weight: 20 }]
+                    });
+                    await savePlanToSupabase(plan);
+                    renderPlanDetailScreen(currentPlanId);
+                }
+            });
+            
             // --- 5. Active Workout Modal Logic ---
             startWorkout = function(planId) { const plan = db.plans.find(p => p.id === planId); if (!plan) return; document.getElementById('workout-modal-title').textContent = plan.name; document.getElementById('active-plan-id').value = plan.id; const container = document.getElementById('active-workout-exercises'); container.innerHTML = plan.exercises.map((ex) => `<div class="exercise-item" data-exercise-name="${ex.name}"><h3>${ex.name}</h3><div class="set-grid-row set-grid-header"><span>Set</span><span style="text-align: left; padding-left: 0.5rem;">Previous</span><span>kg</span><span>Reps</span><span>✓</span></div>${ex.sets.map((set, setIndex) => `<div class="set-grid-row" data-set-index="${setIndex}"><span class="set-number">${setIndex + 1}</span><span class="set-previous">${set.reps} x ${set.weight} kg</span><input type="number" class="active-set-weight" placeholder="kg" min="0" step="0.5" value="${set.weight}"><input type="number" class="active-set-reps" placeholder="Reps" min="0" value="${set.reps}"><button type="button" class="btn-set-complete"></button></div>`).join('')}</div>`).join(''); startTimer(); showModal('workout-modal'); }
             document.getElementById('active-workout-form').addEventListener('click', (e) => { if (e.target.classList.contains('btn-set-complete')) { e.preventDefault(); e.target.classList.toggle('completed'); e.target.closest('.set-grid-row').classList.toggle('completed'); } });
             startTimer = function() { workoutStartTime = Date.now(); const timerEl = document.getElementById('workout-timer'); if (workoutTimerInterval) clearInterval(workoutTimerInterval); workoutTimerInterval = setInterval(() => { const elapsed = Date.now() - workoutStartTime; const h = String(Math.floor(elapsed / 3600000)).padStart(2, '0'); const m = String(Math.floor((elapsed % 3600000) / 60000)).padStart(2, '0'); const s = String(Math.floor((elapsed % 60000) / 1000)).padStart(2, '0'); timerEl.textContent = `${h}:${m}:${s}`; }, 1000); }
             stopTimer = function() { clearInterval(workoutTimerInterval); workoutTimerInterval = null; return Math.round((Date.now() - workoutStartTime) / 60000); }
-            document.getElementById('active-workout-form').addEventListener('submit', (e) => { e.preventDefault(); const duration = stopTimer(); const planId = document.getElementById('active-plan-id').value; const plan = db.plans.find(p => p.id === planId); const completedSets = []; let totalVolume = 0; document.querySelectorAll('#active-workout-exercises .exercise-item').forEach(exDiv => { const exerciseName = exDiv.dataset.exerciseName; exDiv.querySelectorAll('.set-grid-row.completed').forEach(setRow => { const reps = parseInt(setRow.querySelector('.active-set-reps').value); const weight = parseFloat(setRow.querySelector('.active-set-weight').value); if (!isNaN(reps) && !isNaN(weight)) { completedSets.push({ exerciseName, reps, weight }); totalVolume += reps * weight; } }); }); const historyEntry = { id: generateId(), planId: plan.id, planName: plan.name, date: new Date().toISOString(), duration: duration, volume: totalVolume, sets: completedSets }; db.history.push(historyEntry); saveDB(); renderAll(); closeModal('workout-modal'); showScreen('history-screen'); });
+            document.getElementById('active-workout-form').addEventListener('submit', async (e) => { e.preventDefault(); const duration = stopTimer(); const planId = document.getElementById('active-plan-id').value; const plan = db.plans.find(p => p.id === planId); const completedSets = []; let totalVolume = 0; document.querySelectorAll('#active-workout-exercises .exercise-item').forEach(exDiv => { const exerciseName = exDiv.dataset.exerciseName; exDiv.querySelectorAll('.set-grid-row.completed').forEach(setRow => { const reps = parseInt(setRow.querySelector('.active-set-reps').value); const weight = parseFloat(setRow.querySelector('.active-set-weight').value); if (!isNaN(reps) && !isNaN(weight)) { completedSets.push({ exerciseName, reps, weight }); totalVolume += reps * weight; } }); }); const historyEntry = { planId: plan.id, planName: plan.name, date: new Date().toISOString(), duration: duration, volume: totalVolume, sets: completedSets }; const { error } = await supabase.from('history').insert(historyEntry); if (error) { console.error("Error saving workout history:", error); alert("Failed to save workout."); } else { await refreshData(); closeModal('workout-modal'); showScreen('history-screen'); } });
             document.getElementById('cancel-workout-btn').addEventListener('click', () => { if (confirm('Are you sure you want to cancel this workout? Progress will not be saved.')) { stopTimer(); closeModal('workout-modal'); } });
 
             // --- 6. Running Interval Logic ---
             const intervalForm = document.getElementById('interval-form'); const startIntervalBtn = document.getElementById('start-interval-btn'); const stopIntervalBtn = document.getElementById('stop-interval-btn'); const intervalInfo = document.getElementById('interval-info'); const intervalTimerDisplay = document.getElementById('interval-timer-display');
             intervalForm.addEventListener('input', updateTotalIntervalTime);
             startIntervalBtn.addEventListener('click', startCountdown); 
-            stopIntervalBtn.addEventListener('click', () => { if (!intervalState.running) return; clearInterval(intervalTimer); clearInterval(countdownTimer); intervalTimer = null; countdownTimer = null; if (intervalState.startTime) { const totalRunTimeSeconds = (intervalState.runDuration * intervalState.totalReps) + (intervalState.restDuration * (intervalState.totalReps > 0 ? intervalState.totalReps - 1 : 0)); db.runningLog.push({ id: generateId(), date: intervalState.startTime, type: 'Interval', runDuration: intervalState.runDuration, restDuration: intervalState.restDuration, reps: intervalState.totalReps, totalDuration: totalRunTimeSeconds }); saveDB(); renderRunningLog(); renderRunningChart(); intervalInfo.innerHTML = `<p>Interval finished! Logged.</p>`; } else { intervalInfo.innerHTML = `<p>Set your interval goal below and start!</p>`; } intervalState.running = false; intervalState.currentPhase = 'idle'; intervalState.startTime = null; intervalTimerDisplay.textContent = '00:00'; intervalTimerDisplay.style.color = 'var(--text-light)'; startIntervalBtn.style.display = 'inline-block'; stopIntervalBtn.style.display = 'none'; intervalForm.querySelectorAll('input').forEach(input => input.disabled = false); });
+            stopIntervalBtn.addEventListener('click', async () => { if (!intervalState.running) return; clearInterval(intervalTimer); clearInterval(countdownTimer); intervalTimer = null; countdownTimer = null; if (intervalState.startTime) { const totalRunTimeSeconds = (intervalState.runDuration * intervalState.totalReps) + (intervalState.restDuration * (intervalState.totalReps > 0 ? intervalState.totalReps - 1 : 0)); const logEntry = { date: intervalState.startTime, type: 'Interval', runDuration: intervalState.runDuration, restDuration: intervalState.restDuration, reps: intervalState.totalReps, totalDuration: totalRunTimeSeconds }; const { error } = await supabase.from('runningLog').insert(logEntry); if (error) { console.error("Error saving run log:", error); alert("Failed to save run."); } else { intervalInfo.innerHTML = `<p>Interval finished! Logged.</p>`; await refreshData(); } } else { intervalInfo.innerHTML = `<p>Set your interval goal below and start!</p>`; } intervalState.running = false; intervalState.currentPhase = 'idle'; intervalState.startTime = null; intervalTimerDisplay.textContent = '00:00'; intervalTimerDisplay.style.color = 'var(--text-light)'; startIntervalBtn.style.display = 'inline-block'; stopIntervalBtn.style.display = 'none'; intervalForm.querySelectorAll('input').forEach(input => input.disabled = false); });
             function startCountdown() { if (intervalState.running) return; const runDuration = parseInt(document.getElementById('run-duration').value); const restDuration = parseInt(document.getElementById('rest-duration').value); const repetitions = parseInt(document.getElementById('repetitions').value); if (isNaN(runDuration) || runDuration <= 0 || isNaN(repetitions) || repetitions <= 0 || isNaN(restDuration) || restDuration < 0) { alert("Please enter valid numbers for run, rest, and repetitions."); return; } intervalState = { running: true, currentPhase: 'countdown', currentTime: 3, currentRep: 0, totalReps: repetitions, runDuration: runDuration, restDuration: restDuration, startTime: null }; startIntervalBtn.style.display = 'none'; stopIntervalBtn.style.display = 'inline-block'; intervalForm.querySelectorAll('input').forEach(input => input.disabled = true); updateIntervalDisplay(); countdownTimer = setInterval(() => { intervalState.currentTime--; updateIntervalDisplay(); if (intervalState.currentTime <= 0) { clearInterval(countdownTimer); countdownTimer = null; intervalState.currentPhase = 'run'; intervalState.currentRep = 1; intervalState.currentTime = intervalState.runDuration; intervalState.startTime = new Date().toISOString(); updateIntervalDisplay(); intervalTimer = setInterval(tickIntervalTimer, 1000); } }, 1000); }
             function tickIntervalTimer() { intervalState.currentTime--; if (intervalState.currentTime < 0) { if (intervalState.currentPhase === 'run') { if (intervalState.currentRep >= intervalState.totalReps) { stopIntervalBtn.click(); return; } else if (intervalState.restDuration > 0) { intervalState.currentPhase = 'rest'; intervalState.currentTime = intervalState.restDuration; } else { intervalState.currentRep++; intervalState.currentPhase = 'run'; intervalState.currentTime = intervalState.runDuration; } } else { intervalState.currentRep++; intervalState.currentPhase = 'run'; intervalState.currentTime = intervalState.runDuration; } } updateIntervalDisplay(); }
             function updateIntervalDisplay() { if (!intervalState.running && intervalState.currentPhase === 'idle') { intervalTimerDisplay.textContent = `00:00`; intervalInfo.innerHTML = `<p>Set your interval goal below and start!</p>`; intervalTimerDisplay.style.color = 'var(--text-light)'; return; } if(intervalState.currentPhase === 'countdown') { intervalTimerDisplay.textContent = `${intervalState.currentTime}`; intervalInfo.innerHTML = `<p style="font-weight: 600;">Get Ready!</p>`; intervalTimerDisplay.style.color = 'var(--action-blue)'; } else { let phaseText = intervalState.currentPhase === 'run' ? 'RUN' : 'REST'; intervalTimerDisplay.textContent = formatTime(intervalState.currentTime); intervalInfo.innerHTML = ` <p>Rep ${intervalState.currentRep} / ${intervalState.totalReps}</p><p class="phase-text">${phaseText}</p> `; intervalTimerDisplay.style.color = intervalState.currentPhase === 'run' ? 'var(--primary-color)' : 'var(--action-red)'; } }
 
             // --- Other Event Listeners & Functions ---
-            // --- RESTORED ---
             document.getElementById('add-plan-btn').addEventListener('click', () => { document.getElementById('plan-form').reset(); document.getElementById('plan-id').value = ''; document.getElementById('plan-modal-title').textContent = 'Add Workout Plan'; document.getElementById('exercises-container').innerHTML = ''; document.querySelectorAll('#plan-days-selection input[type="checkbox"]').forEach(cb => cb.checked = false); document.querySelectorAll('input[name="plan-icon"]').forEach(radio => radio.checked = false); document.getElementById('icon-1').checked = true; addExerciseToForm(); showModal('plan-modal'); });
             document.getElementById('add-exercise-btn').addEventListener('click', () => addExerciseToForm());
             document.getElementById('exercises-container').addEventListener('click', (e) => { if (e.target.classList.contains('add-set-btn')) { const setsContainer = e.target.previousElementSibling; const setIndex = setsContainer.children.length; setsContainer.innerHTML += createSetFormHTML(null, setIndex); } if (e.target.classList.contains('remove-set-btn')) { e.target.closest('.set-editor').remove(); const setsContainer = e.target.closest('.sets-container'); if (setsContainer) { Array.from(setsContainer.children).forEach((setDiv, i) => { setDiv.querySelector('label').textContent = `Set ${i + 1}`; }); } } if (e.target.classList.contains('remove-exercise-btn')) { e.target.closest('.exercise-editor').remove(); } });
-            document.getElementById('plan-form').addEventListener('submit', (e) => { e.preventDefault(); const planId = document.getElementById('plan-id').value; const planName = document.getElementById('plan-name').value; const selectedDays = Array.from(document.querySelectorAll('#plan-days-selection input[type="checkbox"]:checked')).map(cb => cb.value); const selectedIcon = document.querySelector('input[name="plan-icon"]:checked').value || '⚙️'; const exercises = []; document.querySelectorAll('#exercises-container .exercise-editor').forEach(exDiv => { const exercise = { id: exDiv.dataset.id || generateId(), name: exDiv.querySelector('.exercise-name').value, sets: [] }; exDiv.querySelectorAll('.set-editor').forEach(setDiv => { exercise.sets.push({ reps: parseInt(setDiv.querySelector('.set-reps').value), weight: parseFloat(setDiv.querySelector('.set-weight').value) }); }); exercises.push(exercise); }); if (planId) { const planIndex = db.plans.findIndex(p => p.id === planId); if (planIndex > -1) db.plans[planIndex] = { ...db.plans[planIndex], name: planName, days: selectedDays, icon: selectedIcon, exercises }; } else { db.plans.push({ id: generateId(), name: planName, days: selectedDays, icon: selectedIcon, exercises }); } saveDB(); renderAll(); closeModal('plan-modal'); if (currentPlanId === planId) renderPlanDetailScreen(currentPlanId); else showScreen('plans-screen'); });
-            document.getElementById('workout-plans-list').addEventListener('click', (e) => { const target = e.target; const planId = target.closest('.workout-plan-item')?.dataset.id; if (!planId) return; if (target.classList.contains('edit-plan-btn')) { const plan = db.plans.find(p => p.id === planId); if (plan) { document.getElementById('plan-modal-title').textContent = 'Edit Workout Plan'; document.getElementById('plan-id').value = plan.id; document.getElementById('plan-name').value = plan.name; document.querySelectorAll('#plan-days-selection input[type="checkbox"]').forEach(cb => { cb.checked = plan.days && plan.days.includes(cb.value); }); document.querySelectorAll('input[name="plan-icon"]').forEach(radio => radio.checked = false); const iconToSelect = plan.icon || '💪'; const radioToSelect = document.querySelector(`input[name="plan-icon"][value="${iconToSelect}"]`); if (radioToSelect) radioToSelect.checked = true; else document.getElementById('icon-10').checked = true; const container = document.getElementById('exercises-container'); container.innerHTML = ''; plan.exercises.forEach(addExerciseToForm); showModal('plan-modal'); } } else if (target.classList.contains('delete-plan-btn')) { if (confirm(`Are you sure you want to delete this workout plan? This cannot be undone.`)) { db.plans = db.plans.filter(p => p.id !== planId); saveDB(); renderAll(); if (currentPlanId === planId) { currentPlanId = null; showScreen('plans-screen'); } } } else if (target.closest('.view-plan-details')) { renderPlanDetailScreen(planId); } });
+            
+            document.getElementById('plan-form').addEventListener('submit', async (e) => { 
+                e.preventDefault(); 
+                const planId = document.getElementById('plan-id').value; 
+                const planName = document.getElementById('plan-name').value; 
+                const selectedDays = Array.from(document.querySelectorAll('#plan-days-selection input[type="checkbox"]:checked')).map(cb => cb.value); 
+                const selectedIcon = document.querySelector('input[name="plan-icon"]:checked').value || '⚙️'; 
+                const exercises = []; 
+                document.querySelectorAll('#exercises-container .exercise-editor').forEach(exDiv => { 
+                    const exercise = { id: exDiv.dataset.id || generateId(), name: exDiv.querySelector('.exercise-name').value, sets: [] }; 
+                    exDiv.querySelectorAll('.set-editor').forEach(setDiv => { exercise.sets.push({ reps: parseInt(setDiv.querySelector('.set-reps').value), weight: parseFloat(setDiv.querySelector('.set-weight').value) }); }); 
+                    exercises.push(exercise); 
+                }); 
+
+                if (planId) {
+                    // Update existing plan
+                    const planData = { name: planName, days: selectedDays, icon: selectedIcon, exercises };
+                    const { error } = await supabase.from('plans').update(planData).eq('id', planId);
+                    if (error) console.error("Error updating plan:", error);
+                } else {
+                    // Create new plan
+                    const newPlan = { name: planName, days: selectedDays, icon: selectedIcon, exercises };
+                    const { error } = await supabase.from('plans').insert(newPlan);
+                    if (error) console.error("Error creating plan:", error);
+                }
+                
+                await refreshData();
+                closeModal('plan-modal'); 
+                if (currentPlanId === planId) renderPlanDetailScreen(currentPlanId); 
+                else showScreen('plans-screen'); 
+            });
+
+            document.getElementById('workout-plans-list').addEventListener('click', async (e) => { 
+                const target = e.target; 
+                const planItem = target.closest('.workout-plan-item');
+                if (!planItem) return;
+                const planId = planItem.dataset.id;
+                
+                if (target.classList.contains('edit-plan-btn')) { 
+                    const plan = db.plans.find(p => p.id === planId); 
+                    if (plan) { 
+                        document.getElementById('plan-modal-title').textContent = 'Edit Workout Plan'; 
+                        document.getElementById('plan-id').value = plan.id; 
+                        document.getElementById('plan-name').value = plan.name; 
+                        document.querySelectorAll('#plan-days-selection input[type="checkbox"]').forEach(cb => { cb.checked = plan.days && plan.days.includes(cb.value); }); 
+                        document.querySelectorAll('input[name="plan-icon"]').forEach(radio => radio.checked = false); 
+                        const iconToSelect = plan.icon || '💪'; 
+                        const radioToSelect = document.querySelector(`input[name="plan-icon"][value="${iconToSelect}"]`); 
+                        if (radioToSelect) radioToSelect.checked = true; else document.getElementById('icon-10').checked = true; 
+                        const container = document.getElementById('exercises-container'); 
+                        container.innerHTML = ''; 
+                        plan.exercises.forEach(ex => addExerciseToForm(ex)); 
+                        showModal('plan-modal'); 
+                    } 
+                } else if (target.classList.contains('delete-plan-btn')) { 
+                    if (confirm(`Are you sure you want to delete this workout plan? This cannot be undone.`)) { 
+                        const { error } = await supabase.from('plans').delete().eq('id', planId);
+                        if (error) console.error("Error deleting plan:", error);
+                        else {
+                            await refreshData();
+                            if (currentPlanId === planId) { 
+                                currentPlanId = null; 
+                                showScreen('plans-screen'); 
+                            }
+                        }
+                    } 
+                } else if (target.closest('.view-plan-details')) { 
+                    renderPlanDetailScreen(planId); 
+                } 
+            });
+
             addExerciseToForm = function(exercise = null) { const container = document.getElementById('exercises-container'); const exerciseId = generateId(); const exerciseDiv = document.createElement('div'); exerciseDiv.className = 'exercise-editor'; exerciseDiv.dataset.id = exercise ? exercise.id : exerciseId; exerciseDiv.innerHTML = `<div class="exercise-editor-header"><input type="text" class="exercise-name" placeholder="Exercise Name" value="${exercise ? exercise.name : ''}" required><button type="button" class="btn-danger btn-small remove-exercise-btn">&times;</button></div><div class="sets-container">${exercise ? exercise.sets.map((set, i) => createSetFormHTML(set, i)).join('') : createSetFormHTML(null, 0)}</div><button type="button" class="btn btn-secondary btn-small add-set-btn">+ Add Set</button>`; container.appendChild(exerciseDiv); }
             createSetFormHTML = function(set = null, index = 0) { return `<div class="set-editor"><label>Set ${index + 1}</label><input type="number" class="set-reps" placeholder="Reps" min="0" value="${set ? set.reps : ''}" required><input type="number" class="set-weight" placeholder="Weight (kg)" min="0" value="${set ? set.weight : ''}" required><button type="button" class="btn-danger btn-small remove-set-btn">&times;</button></div>`; }
             
             // --- 7. Initial Load ---
-            loadDB();
+            await loadDB();
             renderAll();
             showScreen('home-screen'); 
         });
