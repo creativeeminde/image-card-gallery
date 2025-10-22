@@ -2,7 +2,22 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+    <link rel="manifest" href="manifest-gym.json">
+
+    <meta name="theme-color" content="#4CAF50">
+
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
+    <meta name="apple-mobile-web-app-title" content="GymTracker">
+
+    <link rel="apple-touch-icon" href="icons/icon-180x180.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="icons/icon2-152x152.png">
+    <link rel="apple-touch-icon" sizes="167x167" href="icons/icon2-167x167.png">
+    
     <title>Gym & Run Tracker</title>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -10,7 +25,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- 1. Add Supabase Client Library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
@@ -30,17 +44,51 @@
             --action-red: #e74c3c;
             --header-height: 105px; /* Calendar height + padding */
             --title-padding: 20px; /* Space for screen titles */
+            
+            /* --- NEW: iOS Safe Area Padding --- */
+            --safe-area-top: env(safe-area-inset-top);
+            --safe-area-bottom: env(safe-area-inset-bottom);
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Poppins', sans-serif; }
-        body { background-color: var(--body-bg); color: var(--text-color); padding-bottom: 90px; padding-top: var(--title-padding); overscroll-behavior: none; transition: padding-top 0.3s ease; }
-        body.show-calendar-header { padding-top: calc(var(--header-height) + var(--title-padding)); }
+        
+        /* --- MODIFIED: Added safe area padding --- */
+        body { 
+            background-color: var(--body-bg); 
+            color: var(--text-color); 
+            /* Add safe area for bottom nav */
+            padding-bottom: calc(70px + var(--safe-area-bottom)); 
+            /* Add safe area for top content */
+            padding-top: calc(var(--title-padding) + var(--safe-area-top)); 
+            overscroll-behavior: none; 
+            transition: padding-top 0.3s ease; 
+        }
+        body.show-calendar-header { 
+            /* Adjust padding when calendar is shown, including safe area */
+            padding-top: calc(var(--header-height) + var(--title-padding) + var(--safe-area-top)); 
+        }
+        
         h1, h2, h3 { font-weight: 600; margin-bottom: 0.5rem; }
         h2 { font-size: 1.6rem; }
         p { color: var(--text-light); line-height: 1.6; }
 
         /* --- 2. Layout & Header --- */
-        header { background-color: var(--card-bg); padding: 0.5rem 0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: var(--header-height); display: none; }
+        /* --- MODIFIED: Added safe area padding to fixed header --- */
+        header { 
+            background-color: var(--card-bg); 
+            padding: 0.5rem 0; 
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            right: 0; 
+            z-index: 100; 
+            /* Adjust height to include safe area */
+            height: calc(var(--header-height) + var(--safe-area-top)); 
+            /* Add padding to content inside header */
+            padding-top: var(--safe-area-top);
+            display: none; 
+        }
         body.show-calendar-header header { display: block; }
         main { padding: 1.5rem 1rem; }
         main > section > h2 { margin-bottom: 1.5rem; }
@@ -51,6 +99,7 @@
         .screen.active { display: block; opacity: 1; }
 
         /* --- 4. Bottom Navigation Bar (Updated) --- */
+        /* --- MODIFIED: Added safe area padding --- */
         .bottom-nav {
             position: fixed;
             bottom: 0;
@@ -62,15 +111,18 @@
             justify-content: space-around;
             border-top: 1px solid var(--border-color);
             z-index: 100;
-            height: 70px; /* Increased height */
+            /* Adjust height to include safe area padding at the bottom */
+            height: calc(70px + var(--safe-area-bottom)); 
             padding: 0 10px;
+            /* Only pad the bottom, let items align to top */
+            padding-bottom: var(--safe-area-bottom); 
         }
         .nav-btn {
             background: none;
             border: none;
             cursor: pointer;
             flex: 1;
-            padding-top: 10px;
+            padding-top: 10px; /* Keep top padding */
             font-size: 0.65rem; /* Smaller text */
             font-weight: 500;
             color: var(--text-light);
@@ -82,6 +134,7 @@
             position: relative;
             transition: color 0.3s ease;
             -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+            height: 70px; /* Set fixed height for the tap area */
         }
         .nav-btn svg {
             width: 24px;
@@ -149,6 +202,22 @@
         .workout-plan-item, .history-item { padding: 1.5rem; }
         .workout-plan-item h3, .history-item h3 { margin-bottom: 0.5rem; }
         .workout-plan-item-actions { margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        
+        /* --- NEW: Offline Indicator --- */
+        .offline-indicator {
+            background-color: var(--action-red);
+            color: white;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-align: center;
+            padding: 0.5rem;
+            border-radius: var(--border-radius-small);
+            margin-bottom: 1rem;
+            display: none; /* Hidden by default */
+        }
+        .offline-indicator.visible {
+            display: block;
+        }
 
         /* --- Daily Calendar View --- */
         .daily-calendar { display: flex; justify-content: space-between; overflow-x: auto; margin-bottom: 0; padding: 0.5rem 0; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
@@ -252,8 +321,18 @@
         .set-grid-row input::-webkit-outer-spin-button, .set-grid-row input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         .btn-set-complete { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--border-color); background: none; cursor: pointer; font-size: 1.2rem; color: var(--border-color); transition: all 0.2s; margin: 0 auto; }
         .btn-set-complete.completed { background-color: var(--primary-color); border-color: var(--primary-color); color: white; }
-        #workout-modal .modal-actions { background-color: var(--card-bg); padding: 1rem; margin: 1rem -2rem -2rem -2rem; border-top: 1px solid var(--border-color); border-bottom-left-radius: var(--border-radius); border-bottom-right-radius: var(--border-radius); }
-
+        
+        /* --- MODIFIED: Modal actions with safe area --- */
+        #workout-modal .modal-actions { 
+            background-color: var(--card-bg); 
+            padding: 1rem; 
+            margin: 1rem -2rem calc(-2rem - var(--safe-area-bottom)) -2rem; /* Adjust bottom margin */
+            border-top: 1px solid var(--border-color); 
+            border-bottom-left-radius: var(--border-radius); 
+            border-bottom-right-radius: var(--border-radius);
+            padding-bottom: calc(1rem + var(--safe-area-bottom)); /* Add safe area padding */
+        }
+        
     </style>
 </head>
 <body>
@@ -265,6 +344,9 @@
     <main>
         <section id="home-screen" class="screen active">
             <h2>Home</h2>
+            <div id="offline-indicator-home" class="offline-indicator">
+                You are offline. Data may be old. Queued actions will sync when you reconnect.
+            </div>
             <div class="stats-grid">
                 <div class="stat-card"><h3 id="stat-total-workouts">0</h3><p>Total Workouts</p></div>
                 <div class="stat-card"><h3 id="stat-this-week">0</h3><p>This Week</p></div>
@@ -289,6 +371,9 @@
         <section id="plans-screen" class="screen">
             <h2>Workout Plans</h2> 
             <div class="card">
+                <div id="offline-indicator-plans" class="offline-indicator">
+                    You are offline. Editing may not be available.
+                </div>
                 <div id="workout-plans-list"></div>
                 <button class="btn btn-primary btn-full" id="add-plan-btn">+ Add Workout Plan</button>
             </div>
@@ -300,6 +385,9 @@
                 <h2 id="plan-detail-title"></h2>
                 <span class="plan-status-indicator"></span>
             </div>
+            <div id="offline-indicator-plan-detail" class="offline-indicator">
+                You are offline. Changes will be saved to a queue and synced later.
+            </div>
             <button class="btn btn-primary btn-start-workout" id="start-workout-from-detail">Start Workout</button>
             <div id="plan-detail-exercises"></div>
             <button class="btn btn-secondary btn-full" id="add-exercise-to-plan-btn" style="margin-top: 1rem;">+ Add Exercise</button>
@@ -307,11 +395,17 @@
         
         <section id="history-screen" class="screen">
             <h2>Workout History</h2>
+            <div id="offline-indicator-history" class="offline-indicator">
+                You are offline. Showing cached history.
+            </div>
             <div id="workout-history-list"></div>
         </section>
 
         <section id="running-screen" class="screen">
             <h2>Running</h2>
+             <div id="offline-indicator-running" class="offline-indicator">
+                You are offline. New runs will be saved to a queue and synced later.
+            </div>
             <div class="card current-run-display">
                  <span id="interval-timer-display">00:00</span> 
                  <div id="interval-info"><p>Set your interval goal below and start!</p></div>
@@ -341,7 +435,6 @@
         
     </main>
 
-    <!-- Updated Navigation Bar -->
     <nav class="bottom-nav">
         <button class="nav-btn active" data-target="home-screen">
             <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
@@ -361,20 +454,29 @@
         </button> 
     </nav>
 
-    <!-- Modals -->
-    <div id="plan-modal" class="modal"> <div class="modal-content"> <div class="modal-header"><h2 id="plan-modal-title">Add Workout Plan</h2><button class="modal-close" data-target="plan-modal">&times;</button></div> <form id="plan-form"> <input type="hidden" id="plan-id"> <div class="form-group"><label for="plan-name">Plan Name</label><input type="text" id="plan-name" placeholder="e.g., Legs Day" required></div> <div class="form-group"><label>Days of the Week</label><div class="day-selection" id="plan-days-selection"><input type="checkbox" id="day-sun" value="SUN"><label for="day-sun">Sun</label><input type="checkbox" id="day-mon" value="MON"><label for="day-mon">Mon</label><input type="checkbox" id="day-tue" value="TUE"><label for="day-tue">Tue</label><input type="checkbox" id="day-wed" value="WED"><label for="day-wed">Wed</label><input type="checkbox" id="day-thu" value="THU"><label for="day-thu">Thu</label><input type="checkbox" id="day-fri" value="FRI"><label for="day-fri">Fri</label><input type="checkbox" id="day-sat" value="SAT"><label for="day-sat">Sat</label></div></div> <div class="form-group"><label>Icon</label><div class="emoji-selection" id="plan-icon-selection"><input type="radio" name="plan-icon" id="icon-1" value="💪" checked><label for="icon-1">💪</label><input type="radio" name="plan-icon" id="icon-2" value="🏋️"><label for="icon-2">🏋️</label><input type="radio" name="plan-icon" id="icon-3" value="🦵"><label for="icon-3">🦵</label><input type="radio" name="plan-icon" id="icon-4" value="🧘"><label for="icon-4">🧘</label><input type="radio" name="plan-icon" id="icon-5" value="🏃"><label for="icon-5">🏃</label><input type="radio" name="plan-icon" id="icon-6" value="🥊"><label for="icon-6">🥊</label><input type="radio" name="plan-icon" id="icon-7" value="🔥"><label for="icon-7">🔥</label><input type="radio" name="plan-icon" id="icon-8" value="🤸"><label for="icon-8">🤸</label><input type="radio" name="plan-icon" id="icon-9" value="🛡️"><label for="icon-9">🛡️</label><input type="radio" name="plan-icon" id="icon-10" value="⚙️"><label for="icon-10">⚙️</label></div></div> <h3>Exercises</h3><div id="exercises-container"></div><button type="button" class="btn btn-secondary btn-small" id="add-exercise-btn">+ Add Exercise</button> <div class="modal-actions"><button type="button" class="btn btn-secondary modal-close" data-target="plan-modal">Cancel</button><button type="submit" class="btn btn-primary">Save Plan</button></div> </form> </div> </div>
+    <div id="plan-modal" class="modal"> <div class="modal-content"> <div class="modal-header"><h2 id="plan-modal-title">Add Workout Plan</h2><button class="modal-close" data-target="plan-modal">&times;</button></div> <form id="plan-form"> <input type="hidden" id="plan-id"> <div class="form-group"><label for="plan-name">Plan Name</label><input type="text" id="plan-name" placeholder="e.g., Legs Day" required></div> <div class="form-group"><label>Days of the Week</label><div class="day-selection" id="plan-days-selection"><input type="checkbox" id="day-sun" value="SUN"><label for="day-sun">Sun</label><input type="checkbox" id="day-mon" value="MON"><label for="day-mon">Mon</label><input type="checkbox" id="day-tue" value="TUE"><label for="day-tue">Tue</label><input type="checkbox" id="day-wed" value="WED"><label for="day-wed">Wed</label><input type="checkbox" id="day-thu" value="THU"><label for="day-thu">Thu</label><input type="checkbox" id="day-fri" value="FRI"><label for="day-fri">Fri</label><input type="checkbox" id="day-sat" value="SAT"><label for="day-sat">Sat</label></div></div> <div class="form-group"><label>Icon</label><div class="emoji-selection" id="plan-icon-selection"><input type="radio" name="plan-icon" id="icon-1" value="💪" checked><label for="icon-1">💪</label><input type="radio" name="plan-icon" id="icon-2" value="🏋️"><label for="icon-2">🏋️</label><input type="radio" name="plan-icon" id="icon-3" value="🦵"><label for="icon-3">🦵</label><input type="radio" name="plan-icon" id="icon-4" value="🧘"><label for="icon-4">🧘</label><input type="radio" name="plan-icon" id="icon-5" value="🏃"><label for="icon-5">🏃</label><input type="radio" name="plan-icon" id="icon-6" value="🥊"><label for="icon-6">🥊</label><input type="radio" name.asp" id="icon-7" value="🔥"><label for="icon-7">🔥</label><input type="radio" name="plan-icon" id="icon-8" value="🤸"><label for="icon-8">🤸</label><input type="radio" name="plan-icon" id="icon-9" value="🛡️"><label for="icon-9">🛡️</label><input type="radio" name="plan-icon" id="icon-10" value="⚙️"><label for="icon-10">⚙️</label></div></div> <h3>Exercises</h3><div id="exercises-container"></div><button type="button" class="btn btn-secondary btn-small" id="add-exercise-btn">+ Add Exercise</button> <div class="modal-actions"><button type="button" class="btn btn-secondary modal-close" data-target="plan-modal">Cancel</button><button type="submit" class="btn btn-primary">Save Plan</button></div> </form> </div> </div>
     <div id="workout-modal" class="modal"> <div class="modal-content"> <div class="modal-header"><h2 id="workout-modal-title">Active Workout</h2><button class="modal-close" data-target="workout-modal">&times;</button></div> <div id="workout-timer">00:00:00</div> <form id="active-workout-form"> <input type="hidden" id="active-plan-id"><div id="active-workout-exercises"></div> <div class="modal-actions"><button type="button" class="btn btn-danger" id="cancel-workout-btn">Cancel</button><button type="submit" class="btn btn-primary">Finish Workout</button></div> </form> </div> </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             
+            // --- NEW: PWA Service Worker Registration ---
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/service-worker-gym.js')
+                .then(registration => {
+                    console.log('Service Worker registered with scope:', registration.scope);
+                })
+                .catch(error => {
+                    console.error('Service Worker registration failed:', error);
+                });
+            }
+
             // --- 1. Supabase & State Management ---
             const SUPABASE_URL = 'https://pqznofnefwdaqkxhweiw.supabase.co';
             const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBxem5vZm5lZndkYXFreGh3ZWl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjExMDMyMTIsImV4cCI6MjA3NjY3OTIxMn0.sLogWOCZndk0AiPc1M_GLkn_sI6rIW41P0ODph-pnH0';
-            // BUG FIX: Renamed the variable to avoid conflict with the global 'supabase' object from the library
             const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-            let db = { plans: [], history: [], runningLog: [] }; // This will hold our data in memory
+            let db = { plans: [], history: [], runningLog: [] }; 
             let workoutTimerInterval; 
             let workoutStartTime; 
             let volumeChart; 
@@ -391,6 +493,129 @@
             const swipeThreshold = 60; 
             const swipeSnapTarget = 80; 
 
+            // --- NEW: Offline Sync Logic ---
+            const OFFLINE_QUEUE_KEY = 'gymTrackerOfflineQueue';
+
+            function getOfflineQueue() {
+                return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || '[]');
+            }
+
+            function addToOfflineQueue(action) {
+                const queue = getOfflineQueue();
+                queue.push(action);
+                localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+                console.log('Action added to offline queue:', action);
+                alert('You are offline. This action has been saved and will sync when you reconnect.');
+                
+                // --- NEW: Optimistic UI updates ---
+                // We update the local 'db' variable immediately
+                // so the UI reflects the change, even offline.
+                switch (action.type) {
+                    case 'createPlan':
+                        db.plans.push(action.payload);
+                        break;
+                    case 'updatePlan':
+                        db.plans = db.plans.map(p => p.id === action.payload.id ? action.payload : p);
+                        break;
+                    case 'deletePlan':
+                        db.plans = db.plans.filter(p => p.id !== action.payload.id);
+                        break;
+                    case 'addHistory':
+                        db.history.push(action.payload);
+                        break;
+                    case 'addRun':
+                        db.runningLog.push(action.payload);
+                        break;
+                }
+                // Re-render the relevant parts of the UI
+                renderAll();
+                // Close modals if the action was a submission
+                if (action.type === 'createPlan' || action.type === 'updatePlan') closeModal('plan-modal');
+                if (action.type === 'addHistory') closeModal('workout-modal');
+            }
+            
+            async function syncOfflineData() {
+                const queue = getOfflineQueue();
+                if (queue.length === 0) {
+                    console.log('Offline queue is empty.');
+                    return;
+                }
+                if (!navigator.onLine) {
+                    console.log('Offline, skipping sync.');
+                    return;
+                }
+
+                console.log(`Syncing ${queue.length} items from offline queue...`);
+                let failedActions = [];
+
+                for (const action of queue) {
+                    let success = false;
+                    try {
+                        let error;
+                        switch (action.type) {
+                            case 'createPlan':
+                                ({ error } = await supabaseClient.from('plans').insert([action.payload]));
+                                break;
+                            case 'updatePlan':
+                                ({ error } = await supabaseClient.from('plans').update(action.payload).eq('id', action.payload.id));
+                                break;
+                            case 'deletePlan':
+                                ({ error } = await supabaseClient.from('plans').delete().eq('id', action.payload.id));
+                                break;
+                            case 'addHistory':
+                                ({ error } = await supabaseClient.from('history').insert(action.payload));
+                                break;
+                            case 'addRun':
+                                ({ error } = await supabaseClient.from('runningLog').insert(action.payload));
+                                break;
+                        }
+                        if (error) throw error;
+                        success = true;
+                        console.log('Synced action:', action.type, action.payload.id);
+                    } catch (err) {
+                        console.error('Failed to sync action:', action, err);
+                        failedActions.push(action);
+                    }
+                }
+
+                // Update localStorage with any actions that failed to sync
+                localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(failedActions));
+                
+                if (failedActions.length === 0) {
+                    console.log('Offline queue synced successfully.');
+                    alert('Offline actions have been successfully synced.');
+                } else {
+                    console.warn('Some offline actions failed to sync.');
+                }
+
+                // Refresh data from server after sync attempt
+                await loadDB();
+            }
+
+            // --- NEW: Offline/Online Event Listeners ---
+            function updateOnlineStatus() {
+                const isOffline = !navigator.onLine;
+                console.log('Online status:', isOffline ? 'OFFLINE' : 'ONLINE');
+                document.querySelectorAll('.offline-indicator').forEach(el => {
+                    el.classList.toggle('visible', isOffline);
+                });
+                
+                // Disable or enable buttons based on online status
+                // We'll allow actions, and they will be queued if offline.
+                // document.querySelectorAll('.btn-primary, .btn-danger').forEach(btn => {
+                //     btn.disabled = isOffline; // Example: uncomment to disable buttons
+                // });
+
+                if (!isOffline) {
+                    // We are back online, try to sync
+                    syncOfflineData();
+                }
+            }
+            window.addEventListener('online', updateOnlineStatus);
+            window.addEventListener('offline', updateOnlineStatus);
+            // --- (End of new offline logic) ---
+
+
             async function loadDB() {
                 try {
                     const { data: plans, error: plansError } = await supabaseClient.from('plans').select('*');
@@ -406,9 +631,45 @@
                     db.runningLog = runningLog || [];
 
                     console.log("Database loaded successfully from Supabase.");
+
+                    // --- NEW: Merge with offline queue for optimistic UI ---
+                    const queue = getOfflineQueue();
+                    if (queue.length > 0) {
+                        console.log("Merging local 'db' with offline queue...");
+                        queue.forEach(action => {
+                            switch (action.type) {
+                                case 'createPlan':
+                                    if (!db.plans.find(p => p.id === action.payload.id)) db.plans.push(action.payload);
+                                    break;
+                                case 'updatePlan':
+                                    db.plans = db.plans.map(p => p.id === action.payload.id ? action.payload : p);
+                                    break;
+                                case 'deletePlan':
+                                    db.plans = db.plans.filter(p => p.id !== action.payload.id);
+                                    break;
+                                case 'addHistory':
+                                    if (!db.history.find(h => h.date === action.payload.date)) db.history.push(action.payload);
+                                    break;
+                                case 'addRun':
+                                    if (!db.runningLog.find(r => r.date === action.payload.date)) db.runningLog.push(action.payload);
+                                    break;
+                            }
+                        });
+                    }
+                    // --- (End of merge logic) ---
+
+                    // --- MODIFIED: Try to sync after a successful load ---
+                    if (navigator.onLine) {
+                        await syncOfflineData();
+                    }
+
                 } catch (error) {
                     console.error("Error loading data from Supabase:", error);
-                    alert("Could not load data. Please check your Supabase setup and network connection.");
+                    // --- MODIFIED: Alert only if offline queue is also empty ---
+                    if (getOfflineQueue().length === 0) {
+                         alert("Could not load new data. Displaying cached data. Check your network connection.");
+                    }
+                    // The service worker will have served stale data, so the app is still usable.
                 }
             }
 
@@ -437,7 +698,7 @@
             function renderPlansScreen() { const todayDayShort = DAYS_OF_WEEK_SHORT[new Date().getDay()]; document.querySelectorAll('.day-card').forEach(card => card.classList.remove('active')); const activeCard = document.querySelector(`.day-card[data-day="${todayDayShort}"]`); if(activeCard) activeCard.classList.add('active'); renderPlansForSelectedDay(todayDayShort); }
             function renderDailyCalendar() { const dailyCalendarEl = document.getElementById('daily-calendar'); dailyCalendarEl.innerHTML = ''; const today = new Date(); const currentDayOfWeek = today.getDay(); for (let i = 0; i < 7; i++) { const date = new Date(today); date.setDate(today.getDate() - currentDayOfWeek + i); const dayShort = DAYS_OF_WEEK_SHORT[date.getDay()]; const dayNumber = date.getDate(); const dayPlans = db.plans.filter(plan => plan.days && plan.days.includes(dayShort)); const planEmojis = dayPlans.map(plan => plan.icon || '🏋️').slice(0, 1); const dayCard = document.createElement('div'); dayCard.className = 'day-card'; dayCard.dataset.day = dayShort; dayCard.innerHTML = `<span class="day-number">${dayNumber}</span><span class="day-name">${dayShort}</span><div class="day-emojis">${planEmojis.join('')}</div>`; dailyCalendarEl.appendChild(dayCard); } }
             document.getElementById('daily-calendar').addEventListener('click', (e) => { const dayCard = e.target.closest('.day-card'); if (dayCard) { const selectedDay = dayCard.dataset.day; document.querySelectorAll('.day-card').forEach(card => card.classList.remove('active')); dayCard.classList.add('active'); if (!document.getElementById('plans-screen').classList.contains('active')) { showScreen('plans-screen'); } renderPlansForSelectedDay(selectedDay); } });
-            function renderPlansForSelectedDay(selectedDay) { const list = document.getElementById('workout-plans-list'); const plansForDay = db.plans.filter(p => p.days && p.days.includes(selectedDay)); if (plansForDay.length === 0) { list.innerHTML = `<p>No workout plans assigned to ${selectedDay}.</p>`; return; } list.innerHTML = plansForDay.map(plan => `<div class="card workout-plan-item view-plan-details" data-id="${plan.id}"><h3>${plan.icon || '🏋️'} ${plan.name}</h3><p>${plan.exercises.length} exercises</p><div class="workout-plan-item-actions"><button class="btn btn-secondary btn-small edit-plan-btn" data-id="${plan.id}">Edit</button><button class="btn btn-danger btn-small delete-plan-btn" data-id="${plan.id}">Delete</button></div></div>`).join(''); }
+            function renderPlansForSelectedDay(selectedDay) { const list = document.getElementById('workout-plans-list'); const plansForDay = db.plans.filter(p => p.days && p.days.includes(selectedDay)); if (plansForDay.length === 0) { list.innerHTML = `<p>No workout plans assigned to ${selectedDay}.</p>`; return; } list.innerHTML = plansForDay.map(plan => `<div class="card workout-plan-item view-plan-details" data-id="${plan.id}"><h3>${plan.icon || '🏋️'} ${plan.name}</h3><p>${(plan.exercises || []).length} exercises</p><div class="workout-plan-item-actions"><button class="btn btn-secondary btn-small edit-plan-btn" data-id="${plan.id}">Edit</button><button class="btn btn-danger btn-small delete-plan-btn" data-id="${plan.id}">Delete</button></div></div>`).join(''); }
             function renderPlanDetailScreen(planId) { const plan = db.plans.find(p => p.id === planId); if (!plan) return; currentPlanId = planId; document.getElementById('plan-detail-title').textContent = plan.name; const exercisesContainer = document.getElementById('plan-detail-exercises'); const exercises = plan.exercises || []; exercisesContainer.innerHTML = exercises.map(exercise => `<div class="exercise-detail-card" data-exercise-id="${exercise.id}"><div class="exercise-detail-card-header"><h3>${exercise.name}</h3><button class="btn-add-set" data-exercise-id="${exercise.id}">+</button></div><div class="sets-display-container">${(exercise.sets || []).map((set, index) => `<div class="set-display-item" data-set-index="${index}"><div class="set-action-layer"><button class="btn-action btn-action-delete">Delete</button><button class="btn-action btn-action-edit">Edit</button></div><div class="set-display-content" draggable="false"><span class="set-number">${index + 1}</span><span class="set-reps">${set.reps} <span>REPS</span></span><span class="set-weight">${set.weight} <span>KG</span></span></div><div class="set-edit-form"><label>${index + 1}</label><input type="number" class="edit-set-reps" value="${set.reps}" placeholder="Reps"><input type="number" class="edit-set-weight" value="${set.weight}" placeholder="Weight (kg)"><button class="btn btn-primary btn-small btn-save-set">Save</button><button class="btn btn-secondary btn-small btn-cancel-edit-set">Cancel</button></div></div>`).join('')}</div></div>`).join(''); document.getElementById('start-workout-from-detail').onclick = () => startWorkout(planId); showScreen('plan-detail-screen'); }
             function renderHistoryScreen() { const list = document.getElementById('workout-history-list'); const sortedHistory = [...db.history].sort((a,b) => new Date(b.date) - new Date(a.date)); if (sortedHistory.length === 0) { list.innerHTML = '<p>No completed workouts found in your history.</p>'; return; } list.innerHTML = sortedHistory.map(w => `<div class="card history-item"><h3>${w.planName}</h3><p><strong>Date:</strong> ${new Date(w.date).toLocaleString()}</p><p><strong>Duration:</strong> ${w.duration} min</p><p><strong>Volume:</strong> ${w.volume.toLocaleString()} kg</p></div>`).join(''); }
             function renderPRs() { const prList = document.getElementById('pr-list'); if (!prList) return; const prs = {}; db.history.forEach(workout => { (workout.sets || []).forEach(set => { const exName = set.exerciseName; if (!prs[exName] || (set.weight > prs[exName].weight) || (set.weight === prs[exName].weight && set.reps > prs[exName].reps)) { prs[exName] = { weight: set.weight, reps: set.reps }; } }); }); if (Object.keys(prs).length === 0) { prList.innerHTML = '<p>No personal records yet. Complete a workout to see your PRs!</p>'; return; } prList.innerHTML = Object.entries(prs).map(([name, pr]) => `<div class="pr-item"><p>${name}</p><span>${pr.weight} kg x ${pr.reps}</span></div>`).join(''); }
@@ -459,12 +720,23 @@
             document.addEventListener('mousemove', handleDragMove); document.addEventListener('touchmove', handleDragMove, { passive: false });
             document.addEventListener('mouseup', handleDragEnd); document.addEventListener('touchend', handleDragEnd); document.addEventListener('mouseleave', handleDragEnd); 
             
+            // --- MODIFIED: 'savePlanToSupabase' now handles offline ---
             async function savePlanToSupabase(plan) {
-                const { error } = await supabaseClient.from('plans').update(plan).eq('id', plan.id);
-                if (error) console.error("Error updating plan:", error);
-                else {
+                try {
+                    // If offline, throw an error to be caught by the catch block
+                    if (!navigator.onLine) throw new Error("Offline: Queuing update.");
+                    
+                    const { error } = await supabaseClient.from('plans').update(plan).eq('id', plan.id);
+                    if (error) throw error; // Throw to be caught
+                    
+                    console.log('Plan updated successfully online.');
+                    // Update local state from DB
                     const planIndex = db.plans.findIndex(p => p.id === plan.id);
-                    if (planIndex > -1) db.plans[planIndex] = plan; // Update local state
+                    if (planIndex > -1) db.plans[planIndex] = plan;
+                } catch (error) {
+                    console.warn("Offline or error updating plan, adding to queue:", error.message);
+                    // --- NEW: Add to offline queue ---
+                    addToOfflineQueue({ type: 'updatePlan', payload: plan });
                 }
             }
             
@@ -475,13 +747,14 @@
                 const plan = db.plans.find(p => p.id === currentPlanId);
                 if (!plan) return;
 
+                // --- MODIFIED: All plan mutations now call savePlanToSupabase ---
                 if (target.classList.contains('btn-add-set')) {
                     const exercise = plan.exercises.find(ex => ex.id === exerciseId);
                     if (exercise) {
                         if(!exercise.sets) exercise.sets = [];
                         exercise.sets.push({ reps: 8, weight: 20 });
-                        await savePlanToSupabase(plan);
-                        renderPlanDetailScreen(currentPlanId);
+                        await savePlanToSupabase(plan); // This now handles offline
+                        renderPlanDetailScreen(currentPlanId); // Re-render from local 'db'
                     }
                 } else if (setItem) {
                     const exercise = plan.exercises.find(ex => ex.id === exerciseId);
@@ -497,7 +770,7 @@
                         }
                         if (exercise && exercise.sets && exercise.sets[setIndex] !== undefined) {
                             exercise.sets.splice(setIndex, 1);
-                            await savePlanToSupabase(plan);
+                            await savePlanToSupabase(plan); // This now handles offline
                             renderPlanDetailScreen(currentPlanId);
                         }
                     } else if (target.classList.contains('btn-cancel-edit-set')) {
@@ -508,7 +781,7 @@
                             const newWeight = parseFloat(setItem.querySelector('.edit-set-weight').value);
                             if (!isNaN(newReps) && !isNaN(newWeight)) {
                                 exercise.sets[setIndex] = { reps: newReps, weight: newWeight };
-                                await savePlanToSupabase(plan);
+                                await savePlanToSupabase(plan); // This now handles offline
                                 renderPlanDetailScreen(currentPlanId);
                             }
                         }
@@ -523,11 +796,11 @@
                 if (newExerciseName && newExerciseName.trim() !== '') {
                     if(!plan.exercises) plan.exercises = [];
                     plan.exercises.push({
-                        id: generateId(),
+                        id: generateId(), // Use client-side ID
                         name: newExerciseName.trim(),
                         sets: [{ reps: 8, weight: 20 }]
                     });
-                    await savePlanToSupabase(plan);
+                    await savePlanToSupabase(plan); // This now handles offline
                     renderPlanDetailScreen(currentPlanId);
                 }
             });
@@ -537,14 +810,105 @@
             document.getElementById('active-workout-form').addEventListener('click', (e) => { if (e.target.classList.contains('btn-set-complete')) { e.preventDefault(); e.target.classList.toggle('completed'); e.target.closest('.set-grid-row').classList.toggle('completed'); } });
             startTimer = function() { workoutStartTime = Date.now(); const timerEl = document.getElementById('workout-timer'); if (workoutTimerInterval) clearInterval(workoutTimerInterval); workoutTimerInterval = setInterval(() => { const elapsed = Date.now() - workoutStartTime; const h = String(Math.floor(elapsed / 3600000)).padStart(2, '0'); const m = String(Math.floor((elapsed % 3600000) / 60000)).padStart(2, '0'); const s = String(Math.floor((elapsed % 60000) / 1000)).padStart(2, '0'); timerEl.textContent = `${h}:${m}:${s}`; }, 1000); }
             stopTimer = function() { clearInterval(workoutTimerInterval); workoutTimerInterval = null; return Math.round((Date.now() - workoutStartTime) / 60000); }
-            document.getElementById('active-workout-form').addEventListener('submit', async (e) => { e.preventDefault(); const duration = stopTimer(); const planId = document.getElementById('active-plan-id').value; const plan = db.plans.find(p => p.id === planId); const completedSets = []; let totalVolume = 0; document.querySelectorAll('#active-workout-exercises .exercise-item').forEach(exDiv => { const exerciseName = exDiv.dataset.exerciseName; exDiv.querySelectorAll('.set-grid-row.completed').forEach(setRow => { const reps = parseInt(setRow.querySelector('.active-set-reps').value); const weight = parseFloat(setRow.querySelector('.active-set-weight').value); if (!isNaN(reps) && !isNaN(weight)) { completedSets.push({ exerciseName, reps, weight }); totalVolume += reps * weight; } }); }); const historyEntry = { planId: plan.id, planName: plan.name, date: new Date().toISOString(), duration: duration, volume: totalVolume, sets: completedSets }; const { error } = await supabaseClient.from('history').insert(historyEntry); if (error) { console.error("Error saving workout history:", error); alert("Failed to save workout."); } else { await refreshData(); closeModal('workout-modal'); showScreen('history-screen'); } });
+            
+            // --- MODIFIED: 'active-workout-form' submit now handles offline ---
+            document.getElementById('active-workout-form').addEventListener('submit', async (e) => { 
+                e.preventDefault(); 
+                const duration = stopTimer(); 
+                const planId = document.getElementById('active-plan-id').value; 
+                const plan = db.plans.find(p => p.id === planId); 
+                const completedSets = []; 
+                let totalVolume = 0; 
+                document.querySelectorAll('#active-workout-exercises .exercise-item').forEach(exDiv => { const exerciseName = exDiv.dataset.exerciseName; exDiv.querySelectorAll('.set-grid-row.completed').forEach(setRow => { const reps = parseInt(setRow.querySelector('.active-set-reps').value); const weight = parseFloat(setRow.querySelector('.active-set-weight').value); if (!isNaN(reps) && !isNaN(weight)) { completedSets.push({ exerciseName, reps, weight }); totalVolume += reps * weight; } }); }); 
+                
+                const historyEntry = { 
+                    planId: plan.id, 
+                    planName: plan.name, 
+                    date: new Date().toISOString(), // Use ISO string as a unique ID
+                    duration: duration, 
+                    volume: totalVolume, 
+                    sets: completedSets 
+                };
+                
+                try {
+                    if (!navigator.onLine) throw new Error("Offline: Queuing workout.");
+                    
+                    const { error } = await supabaseClient.from('history').insert(historyEntry); 
+                    if (error) throw error;
+                    
+                    console.log('Workout saved successfully online.');
+                    await refreshData();
+                    
+                } catch (error) {
+                    console.warn("Offline or error saving workout, adding to queue:", error.message);
+                    // --- NEW: Add to offline queue ---
+                    addToOfflineQueue({ type: 'addHistory', payload: historyEntry });
+                }
+                
+                // --- MODIFIED: This now runs in both online/offline cases
+                // (because addToOfflineQueue updates 'db' optimistically)
+                closeModal('workout-modal'); 
+                showScreen('history-screen'); 
+            });
+
             document.getElementById('cancel-workout-btn').addEventListener('click', () => { if (confirm('Are you sure you want to cancel this workout? Progress will not be saved.')) { stopTimer(); closeModal('workout-modal'); } });
 
             // --- 6. Running Interval Logic ---
             const intervalForm = document.getElementById('interval-form'); const startIntervalBtn = document.getElementById('start-interval-btn'); const stopIntervalBtn = document.getElementById('stop-interval-btn'); const intervalInfo = document.getElementById('interval-info'); const intervalTimerDisplay = document.getElementById('interval-timer-display');
             intervalForm.addEventListener('input', updateTotalIntervalTime);
             startIntervalBtn.addEventListener('click', startCountdown); 
-            stopIntervalBtn.addEventListener('click', async () => { if (!intervalState.running) return; clearInterval(intervalTimer); clearInterval(countdownTimer); intervalTimer = null; countdownTimer = null; if (intervalState.startTime) { const totalRunTimeSeconds = (intervalState.runDuration * intervalState.totalReps) + (intervalState.restDuration * (intervalState.totalReps > 0 ? intervalState.totalReps - 1 : 0)); const logEntry = { date: intervalState.startTime, type: 'Interval', runDuration: intervalState.runDuration, restDuration: intervalState.restDuration, reps: intervalState.totalReps, totalDuration: totalRunTimeSeconds }; const { error } = await supabaseClient.from('runningLog').insert(logEntry); if (error) { console.error("Error saving run log:", error); alert("Failed to save run."); } else { intervalInfo.innerHTML = `<p>Interval finished! Logged.</p>`; await refreshData(); } } else { intervalInfo.innerHTML = `<p>Set your interval goal below and start!</p>`; } intervalState.running = false; intervalState.currentPhase = 'idle'; intervalState.startTime = null; intervalTimerDisplay.textContent = '00:00'; intervalTimerDisplay.style.color = 'var(--text-light)'; startIntervalBtn.style.display = 'inline-block'; stopIntervalBtn.style.display = 'none'; intervalForm.querySelectorAll('input').forEach(input => input.disabled = false); });
+            
+            // --- MODIFIED: 'stop-interval-btn' click now handles offline ---
+            stopIntervalBtn.addEventListener('click', async () => { 
+                if (!intervalState.running) return; 
+                clearInterval(intervalTimer); 
+                clearInterval(countdownTimer); 
+                intervalTimer = null; 
+                countdownTimer = null; 
+                
+                if (intervalState.startTime) { 
+                    const totalRunTimeSeconds = (intervalState.runDuration * intervalState.totalReps) + (intervalState.restDuration * (intervalState.totalReps > 0 ? intervalState.totalReps - 1 : 0)); 
+                    
+                    const logEntry = { 
+                        date: intervalState.startTime, // Use start time as unique ID
+                        type: 'Interval', 
+                        runDuration: intervalState.runDuration, 
+                        restDuration: intervalState.restDuration, 
+                        reps: intervalState.totalReps, 
+                        totalDuration: totalRunTimeSeconds 
+                    }; 
+                    
+                    try {
+                        if (!navigator.onLine) throw new Error("Offline: Queuing run.");
+                        
+                        const { error } = await supabaseClient.from('runningLog').insert(logEntry); 
+                        if (error) throw error;
+                        
+                        console.log('Run saved successfully online.');
+                        intervalInfo.innerHTML = `<p>Interval finished! Logged.</p>`; 
+                        await refreshData();
+                        
+                    } catch (error) {
+                        console.error("Offline or error saving run log, adding to queue:", error.message);
+                        // --- NEW: Add to offline queue ---
+                        addToOfflineQueue({ type: 'addRun', payload: logEntry });
+                        intervalInfo.innerHTML = `<p>Interval finished! Logged (offline).</p>`; 
+                    }
+                    
+                } else { 
+                    intervalInfo.innerHTML = `<p>Set your interval goal below and start!</p>`; 
+                } 
+                
+                intervalState.running = false; 
+                intervalState.currentPhase = 'idle'; 
+                intervalState.startTime = null; 
+                intervalTimerDisplay.textContent = '00:00'; 
+                intervalTimerDisplay.style.color = 'var(--text-light)'; 
+                startIntervalBtn.style.display = 'inline-block'; 
+                stopIntervalBtn.style.display = 'none'; 
+                intervalForm.querySelectorAll('input').forEach(input => input.disabled = false); 
+            });
+
             function startCountdown() { if (intervalState.running) return; const runDuration = parseInt(document.getElementById('run-duration').value); const restDuration = parseInt(document.getElementById('rest-duration').value); const repetitions = parseInt(document.getElementById('repetitions').value); if (isNaN(runDuration) || runDuration <= 0 || isNaN(repetitions) || repetitions <= 0 || isNaN(restDuration) || restDuration < 0) { alert("Please enter valid numbers for run, rest, and repetitions."); return; } intervalState = { running: true, currentPhase: 'countdown', currentTime: 3, currentRep: 0, totalReps: repetitions, runDuration: runDuration, restDuration: restDuration, startTime: null }; startIntervalBtn.style.display = 'none'; stopIntervalBtn.style.display = 'inline-block'; intervalForm.querySelectorAll('input').forEach(input => input.disabled = true); updateIntervalDisplay(); countdownTimer = setInterval(() => { intervalState.currentTime--; updateIntervalDisplay(); if (intervalState.currentTime <= 0) { clearInterval(countdownTimer); countdownTimer = null; intervalState.currentPhase = 'run'; intervalState.currentRep = 1; intervalState.currentTime = intervalState.runDuration; intervalState.startTime = new Date().toISOString(); updateIntervalDisplay(); intervalTimer = setInterval(tickIntervalTimer, 1000); } }, 1000); }
             function tickIntervalTimer() { intervalState.currentTime--; if (intervalState.currentTime < 0) { if (intervalState.currentPhase === 'run') { if (intervalState.currentRep >= intervalState.totalReps) { stopIntervalBtn.click(); return; } else if (intervalState.restDuration > 0) { intervalState.currentPhase = 'rest'; intervalState.currentTime = intervalState.restDuration; } else { intervalState.currentRep++; intervalState.currentPhase = 'run'; intervalState.currentTime = intervalState.runDuration; } } else { intervalState.currentRep++; intervalState.currentPhase = 'run'; intervalState.currentTime = intervalState.runDuration; } } updateIntervalDisplay(); }
             function updateIntervalDisplay() { if (!intervalState.running && intervalState.currentPhase === 'idle') { intervalTimerDisplay.textContent = `00:00`; intervalInfo.innerHTML = `<p>Set your interval goal below and start!</p>`; intervalTimerDisplay.style.color = 'var(--text-light)'; return; } if(intervalState.currentPhase === 'countdown') { intervalTimerDisplay.textContent = `${intervalState.currentTime}`; intervalInfo.innerHTML = `<p style="font-weight: 600;">Get Ready!</p>`; intervalTimerDisplay.style.color = 'var(--action-blue)'; } else { let phaseText = intervalState.currentPhase === 'run' ? 'RUN' : 'REST'; intervalTimerDisplay.textContent = formatTime(intervalState.currentTime); intervalInfo.innerHTML = ` <p>Rep ${intervalState.currentRep} / ${intervalState.totalReps}</p><p class="phase-text">${phaseText}</p> `; intervalTimerDisplay.style.color = intervalState.currentPhase === 'run' ? 'var(--primary-color)' : 'var(--action-red)'; } }
@@ -554,6 +918,7 @@
             document.getElementById('add-exercise-btn').addEventListener('click', () => addExerciseToForm());
             document.getElementById('exercises-container').addEventListener('click', (e) => { if (e.target.classList.contains('add-set-btn')) { const setsContainer = e.target.previousElementSibling; const setIndex = setsContainer.children.length; setsContainer.innerHTML += createSetFormHTML(null, setIndex); } if (e.target.classList.contains('remove-set-btn')) { e.target.closest('.set-editor').remove(); const setsContainer = e.target.closest('.sets-container'); if (setsContainer) { Array.from(setsContainer.children).forEach((setDiv, i) => { setDiv.querySelector('label').textContent = `Set ${i + 1}`; }); } } if (e.target.classList.contains('remove-exercise-btn')) { e.target.closest('.exercise-editor').remove(); } });
             
+            // --- MODIFIED: 'plan-form' submit now handles offline ---
             document.getElementById('plan-form').addEventListener('submit', async (e) => { 
                 e.preventDefault(); 
                 const planId = document.getElementById('plan-id').value; 
@@ -567,24 +932,45 @@
                     exercises.push(exercise); 
                 }); 
 
-                if (planId) {
-                    // Update existing plan
-                    const planData = { name: planName, days: selectedDays, icon: selectedIcon, exercises };
-                    const { error } = await supabaseClient.from('plans').update(planData).eq('id', planId);
-                    if (error) console.error("Error updating plan:", error);
-                } else {
-                    // Create new plan
-                    const newPlan = { name: planName, days: selectedDays, icon: selectedIcon, exercises };
-                    const { error } = await supabaseClient.from('plans').insert([newPlan]);
-                    if (error) console.error("Error creating plan:", error);
+                try {
+                    if (!navigator.onLine) throw new Error("Offline: Queuing plan save.");
+
+                    if (planId) {
+                        // Update existing plan
+                        const planData = { id: planId, name: planName, days: selectedDays, icon: selectedIcon, exercises };
+                        const { error } = await supabaseClient.from('plans').update(planData).eq('id', planId);
+                        if (error) throw error;
+                        console.log('Plan updated successfully online.');
+                    } else {
+                        // Create new plan
+                        // --- MODIFIED: Generate client-side ID for offline sync ---
+                        const newPlan = { id: generateId(), name: planName, days: selectedDays, icon: selectedIcon, exercises };
+                        const { error } = await supabaseClient.from('plans').insert([newPlan]);
+                        if (error) throw error;
+                        console.log('Plan created successfully online.');
+                    }
+                    
+                    await refreshData();
+                    
+                } catch (error) {
+                    console.warn("Offline or error saving plan, adding to queue:", error.message);
+                    // --- NEW: Add to offline queue ---
+                    if (planId) {
+                        const planData = { id: planId, name: planName, days: selectedDays, icon: selectedIcon, exercises };
+                        addToOfflineQueue({ type: 'updatePlan', payload: planData });
+                    } else {
+                        const newPlan = { id: generateId(), name: planName, days: selectedDays, icon: selectedIcon, exercises };
+                        addToOfflineQueue({ type: 'createPlan', payload: newPlan });
+                    }
                 }
                 
-                await refreshData();
+                // --- MODIFIED: This now runs in both online/offline cases ---
                 closeModal('plan-modal'); 
                 if (currentPlanId === planId) renderPlanDetailScreen(currentPlanId); 
                 else showScreen('plans-screen'); 
             });
 
+            // --- MODIFIED: 'delete-plan-btn' click now handles offline ---
             document.getElementById('workout-plans-list').addEventListener('click', async (e) => { 
                 const target = e.target; 
                 const planItem = target.closest('.workout-plan-item');
@@ -609,14 +995,25 @@
                     } 
                 } else if (target.classList.contains('delete-plan-btn')) { 
                     if (confirm(`Are you sure you want to delete this workout plan? This cannot be undone.`)) { 
-                        const { error } = await supabaseClient.from('plans').delete().eq('id', planId);
-                        if (error) console.error("Error deleting plan:", error);
-                        else {
+                        try {
+                            if (!navigator.onLine) throw new Error("Offline: Queuing delete.");
+                            
+                            const { error } = await supabaseClient.from('plans').delete().eq('id', planId);
+                            if (error) throw error;
+                            
+                            console.log('Plan deleted successfully online.');
                             await refreshData();
-                            if (currentPlanId === planId) { 
-                                currentPlanId = null; 
-                                showScreen('plans-screen'); 
-                            }
+                            
+                        } catch (error) {
+                            console.warn("Offline or error deleting plan, adding to queue:", error.message);
+                            // --- NEW: Add to offline queue ---
+                            addToOfflineQueue({ type: 'deletePlan', payload: { id: planId } });
+                        }
+                        
+                        // --- MODIFIED: This now runs in both online/offline cases ---
+                        if (currentPlanId === planId) { 
+                            currentPlanId = null; 
+                            showScreen('plans-screen'); 
                         }
                     } 
                 } else if (target.closest('.view-plan-details')) { 
@@ -628,12 +1025,12 @@
             createSetFormHTML = function(set = null, index = 0) { return `<div class="set-editor"><label>Set ${index + 1}</label><input type="number" class="set-reps" placeholder="Reps" min="0" value="${set ? set.reps : ''}" required><input type="number" class="set-weight" placeholder="Weight (kg)" min="0" value="${set ? set.weight : ''}" required><button type="button" class="btn-danger btn-small remove-set-btn">&times;</button></div>`; }
             
             // --- 7. Initial Load ---
-            await loadDB();
-            renderAll();
+            await loadDB(); // Load initial data
+            renderAll(); // Render UI from 'db' state
+            updateOnlineStatus(); // Set initial online/offline UI
             showScreen('home-screen'); 
         });
     </script>
 
 </body>
 </html>
-
