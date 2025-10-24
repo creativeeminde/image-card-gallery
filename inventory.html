@@ -234,6 +234,14 @@
             padding-bottom: 20px; /* For scrollbar spacing */
             -ms-overflow-style: none; /* IE and Edge */
             scrollbar-width: none; /* Firefox */
+            /* --- NEW: For Dragging --- */
+            cursor: grab;
+            user-select: none; /* Prevent text selection */
+        }
+
+        /* --- NEW: Dragging state --- */
+        .home-carousel.grabbing {
+            cursor: grabbing;
         }
         
         .home-carousel::-webkit-scrollbar {
@@ -295,6 +303,32 @@
             color: rgba(255, 255, 255, 0.8);
         }
         
+        /* --- NEW: "Show All" Card Style --- */
+        .home-hero-card.show-all-card {
+            background-image: none;
+            background-color: var(--card-bg);
+            color: var(--primary-blue);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            font-size: 18px;
+            font-weight: 600;
+            text-align: center;
+        }
+        
+        .home-hero-card.show-all-card i {
+            font-size: 32px;
+            margin-bottom: 15px;
+        }
+        
+        .home-hero-card.show-all-card:hover {
+            background-color: #fff;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+        /* --- End "Show All" Card Style --- */
+
+        
         .no-cards-msg {
             color: var(--medium-gray);
             font-style: italic;
@@ -312,21 +346,11 @@
             border-radius: 30px;
             padding: 10px 20px;
             border: 1px solid var(--glass-border);
-            /* --- REMOVED OVERFLOW --- */
-            /* overflow-x: auto; */
-            /* -ms-overflow-style: none; */
-            /* scrollbar-width: none; */
         }
-        /* .category-filters::-webkit-scrollbar {
-            display: none;
-        } */
-
 
         .category-filters .filter-group {
             display: flex;
             gap: 10px;
-            /* --- MODIFIED --- */
-            /* flex-shrink: 0; */
             flex-wrap: wrap; /* Added this */
             flex-grow: 1; /* Allow group to grow */
         }
@@ -435,7 +459,7 @@
             right: 10px;
             display: flex;
             gap: 8px;
-            z-index: 2;
+            z-index: 4; 
         }
         
         .card-icons button {
@@ -517,6 +541,51 @@
             color: var(--medium-gray);
             font-style: italic;
         }
+
+        /* --- Video Play Button Overlay --- */
+        .movie-card, .home-hero-card {
+            position: relative; /* Ensure parent is relative */
+        }
+
+        .play-btn-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            color: white;
+            font-size: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 15px; /* Match parent card */
+            opacity: 0;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            z-index: 3; /* Above card image/icons */
+        }
+
+        /* Home card has a gradient, so make this one stronger */
+        .home-hero-card .play-btn-overlay {
+            font-size: 36px;
+            background: rgba(0, 0, 0, 0.4);
+        }
+
+        .movie-card:hover .play-btn-overlay,
+        .home-hero-card:hover .play-btn-overlay {
+            opacity: 1;
+        }
+
+        .play-btn-overlay i {
+            transform: scale(0.8);
+            transition: transform 0.2s ease;
+        }
+
+        .play-btn-overlay:hover i {
+            transform: scale(1);
+        }
+
 
         /* Upload Modal */
         .modal-overlay {
@@ -703,7 +772,7 @@
             <div class="search-profile">
                 <div class="search-bar">
                     <i class="fas fa-search"></i>
-                    <input type="text" placeholder="Search">
+                    <input type="text" placeholder="Search" id="search-input-bar">
                 </div>
                 <button class="upload-button" id="open-upload-modal">
                     <i class="fas fa-plus"></i> Upload
@@ -737,11 +806,17 @@
                     <!-- JS will populate this -->
                 </div>
             </section>
+
+            <section class="trending-section" id="search-results-section" style="display: none;">
+                <h3>Search Results</h3>
+                <div class="movie-grid" id="search-results-grid">
+                    <!-- Search results will be populated here -->
+                </div>
+            </section>
         </main>
 
         <!-- PAGE 1: MOVIES (now hidden) -->
         <main id="movie-page" class="page-content" style="display: none;">
-            <!-- === UPDATED HERO SECTION === -->
             <section class="hero-section">
                 <div class="hero-card" id="movie-hero-1">
                     <div class="content">
@@ -777,7 +852,6 @@
 
         <!-- PAGE 2: SERIES -->
         <main id="series-page" class="page-content" style="display: none;">
-            <!-- === NEW HERO SECTION === -->
             <section class="hero-section">
                 <div class="hero-card" id="series-hero-1">
                     <div class="content">
@@ -812,7 +886,6 @@
 
         <!-- PAGE 3: GAMES -->
         <main id="games-page" class="page-content" style="display: none;">
-            <!-- === NEW HERO SECTION === -->
             <section class="hero-section">
                 <div class="hero-card" id="games-hero-1">
                     <div class="content">
@@ -847,7 +920,6 @@
 
         <!-- PAGE 4: BOOKS -->
         <main id="books-page" class="page-content" style="display: none;">
-             <!-- === NEW HERO SECTION === -->
              <section class="hero-section">
                 <div class="hero-card" id="books-hero-1">
                     <div class="content">
@@ -922,7 +994,12 @@
                     <input type="url" id="uploadCoverUrl" required>
                 </div>
                 
-                <div classs="form-actions">
+                <div class="form-group">
+                    <label for="uploadVideoUrl">Video URL (Optional)</label>
+                    <input type="url" id="uploadVideoUrl">
+                </div>
+                
+                <div class="form-actions">
                     <button type="button" class="btn-cancel" id="cancel-upload">Cancel</button>
                     <button type="submit" class="btn-submit" id="submit-upload">Submit Card</button>
                 </div>
@@ -948,6 +1025,52 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // --- Drag-to-scroll for Home Carousels ---
+            const carousels = document.querySelectorAll('.home-carousel');
+            
+            carousels.forEach(carousel => {
+                let isDown = false;
+                let startX;
+                let scrollLeft;
+                
+                const startDrag = (e) => {
+                    // Prevent drag from starting on text, icons etc.
+                    if(e.target.closest('.show-all-card') || e.target.closest('.play-btn-overlay')) return;
+
+                    isDown = true;
+                    carousel.classList.add('grabbing');
+                    startX = (e.pageX || e.touches[0].pageX) - carousel.offsetLeft;
+                    scrollLeft = carousel.scrollLeft;
+                };
+
+                const endDrag = () => {
+                    isDown = false;
+                    carousel.classList.remove('grabbing');
+                };
+
+                const moveDrag = (e) => {
+                    if (!isDown) return;
+                    // Prevent default scrolling/selection behavior
+                    e.preventDefault(); 
+                    const x = (e.pageX || e.touches[0].pageX) - carousel.offsetLeft;
+                    const walk = (x - startX) * 2; // scroll-fast
+                    carousel.scrollLeft = scrollLeft - walk;
+                };
+
+                // Mouse events
+                carousel.addEventListener('mousedown', startDrag);
+                carousel.addEventListener('mouseleave', endDrag);
+                carousel.addEventListener('mouseup', endDrag);
+                carousel.addEventListener('mousemove', moveDrag);
+
+                // Touch events
+                carousel.addEventListener('touchstart', startDrag);
+                carousel.addEventListener('touchend', endDrag);
+                carousel.addEventListener('touchmove', moveDrag);
+            });
+            // --- END: Drag-to-scroll ---
+
+
             // --- LocalStorage Database Key ---
             const DB_KEY = 'flixIdCardsDB';
 
@@ -972,6 +1095,7 @@
             const coverUrlInput = document.getElementById('uploadCoverUrl');
             const genreInput = document.getElementById('uploadGenre');
             const genreDatalist = document.getElementById('genre-list');
+            const videoUrlInput = document.getElementById('uploadVideoUrl'); 
 
             // --- Delete Confirmation Modal Elements ---
             const confirmModalOverlay = document.getElementById('confirm-modal');
@@ -982,7 +1106,14 @@
             // --- Message Element ---
             const messageEl = document.getElementById('custom-message');
 
-            // --- === HELPER: Get Page ID from Category === ---
+            // --- Search Elements ---
+            const searchInput = document.getElementById('search-input-bar');
+            const homeCarousels = document.querySelectorAll('#home-page .home-category');
+            const searchResultsSection = document.getElementById('search-results-section');
+            const searchResultsGrid = document.getElementById('search-results-grid');
+
+
+            // --- HELPER: Get Page ID from Category ---
             function getPageIdForCategory(category) {
                 if (!category) return null;
                 if (category === 'movie' || category === 'series') {
@@ -992,7 +1123,7 @@
                 return `${category}s-page`;
             }
 
-            // --- === HELPER: Get Hero ID from Category === ---
+            // --- HELPER: Get Hero ID from Category ---
             function getHeroIdForCategory(category) {
                 if (!category) return null;
                 if (category === 'movie' || category === 'series') {
@@ -1001,6 +1132,17 @@
                 // Add 's' for game and book
                 return `${category}s`;
             }
+            
+            // --- HELPER: Get Active Page ---
+            function getActivePage() {
+                for (const page of pages) {
+                    if (page.style.display !== 'none' && page.id !== 'home-page') {
+                        return page;
+                    }
+                }
+                return homePage; // Default to home
+            }
+
 
             // --- Genre Definitions ---
             const genresByCategory = {
@@ -1059,7 +1201,7 @@
                 'default': 'fas fa-tag'
             };
 
-            // --- === Default Hero Data === ---
+            // --- Default Hero Data ---
             const defaultHeroData = {
                 movie: {
                     hero1: { title: "The Adventure of Blue Sword", button: "Let Play Moview", icon: "fa-play-circle", image: "url('https://images.unsplash.com/photo-1549725227-825501ce011a?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80')" },
@@ -1087,8 +1229,7 @@
                 const filterGroup = page.querySelector('.filter-group');
                 if (!filterGroup) return;
 
-                // --- MODIFIED: Added "Show All" logic ---
-                const maxVisibleGenres = 6; // 6 genres + 'All' + 'Trending' = 8 items
+                const maxVisibleGenres = 6; 
 
                 let buttonsHTML = `
                     <button class="filter-button active" data-filter="all"><i class="fas fa-grip-horizontal"></i> All</button>
@@ -1099,7 +1240,6 @@
                     const iconKey = genre.toLowerCase();
                     const icon = genreIcons[iconKey] || genreIcons.default;
                     
-                    // Add 'extra-filter' class if index is >= maxVisibleGenres
                     const extraClass = index >= maxVisibleGenres ? 'extra-filter' : '';
                     
                     buttonsHTML += `
@@ -1109,7 +1249,6 @@
                     `;
                 });
 
-                // Add 'Show All' button only if there are hidden genres
                 if (genres.length > maxVisibleGenres) {
                     buttonsHTML += `
                         <button class="filter-button show-all-btn">
@@ -1117,7 +1256,6 @@
                         </button>
                     `;
                 }
-                // --- END MODIFICATION ---
 
                 filterGroup.innerHTML = buttonsHTML;
             }
@@ -1163,6 +1301,11 @@
                     if (targetPage) {
                         targetPage.style.display = 'block';
                     }
+                    
+                    searchInput.value = '';
+                    if (targetPageId !== 'home-page') {
+                        updateHomePageSearch(); 
+                    }
                 });
             });
 
@@ -1171,6 +1314,8 @@
                 navButtons.forEach(btn => btn.classList.remove('active'));
                 pages.forEach(page => page.style.display = 'none');
                 homePage.style.display = 'block';
+
+                searchInput.value = '';
             });
 
             // --- Custom Message Function ---
@@ -1199,7 +1344,14 @@
                 const rating = (Math.random() * 4 + 6).toFixed(1);
                 
                 return `
-                    <div class="movie-card" data-id="${card.id}" data-tags="${card.tags || ''}" data-genre="${(card.genre || '').toLowerCase()}">
+                    <div class="movie-card" 
+                         data-id="${card.id}" 
+                         data-tags="${card.tags || ''}" 
+                         data-genre="${(card.genre || '').toLowerCase()}"
+                         data-video-url="${card.videoUrl || ''}">
+                        
+                        ${card.videoUrl ? '<div class="play-btn-overlay"><i class="fas fa-play"></i></div>' : ''}
+
                         <div class="card-icons">
                             <button class="edit-btn"><i class="fas fa-pencil-alt"></i></button>
                             <button class="delete-btn"><i class="fas fa-trash"></i></button>
@@ -1223,11 +1375,32 @@
                 return `
                     <div class="home-hero-card" 
                          style="background-image: url('${card.coverUrl}'), url('${fallbackImg}')"
-                         data-category="${card.category}">
+                         data-category="${card.category}"
+                         data-video-url="${card.videoUrl || ''}">
+
+                        ${card.videoUrl ? '<div class="play-btn-overlay"><i class="fas fa-play"></i></div>' : ''}
+
                         <div class="content">
                             <div class="title">${card.title}</div>
                             <div class="genre">${card.genre || 'N/A'}</div>
                         </div>
+                    </div>
+                `;
+            }
+
+            // --- FUNCTION: Create "Show All" Card HTML ---
+            function createShowAllCardHTML(category) {
+                let categoryName = category.charAt(0).toUpperCase() + category.slice(1);
+                if (category === 'series') {
+                    categoryName = 'Series'; // Already plural
+                } else {
+                    categoryName = `${categoryName}s`; // Add 's'
+                }
+                
+                return `
+                    <div class="home-hero-card show-all-card" data-category="${category}">
+                        <i class="fas fa-arrow-right"></i>
+                        <span>Show All ${categoryName}</span>
                     </div>
                 `;
             }
@@ -1239,7 +1412,6 @@
                 const allCards = getCardsDB();
                 allCards.forEach(card => {
                     const cardHTML = createCardHTML(card);
-                    // --- FIX for inconsistent page IDs ---
                     const gridId = getPageIdForCategory(card.category);
                     const targetGrid = document.querySelector(`#${gridId} .movie-grid`);
                     
@@ -1257,7 +1429,6 @@
                 const categories = ['movie', 'series', 'game', 'book'];
 
                 categories.forEach(category => {
-                    // --- FIX for 'series' typo ---
                     const carouselId = (category === 'series') ? 'home-series' : `home-${category}s`;
                     const carousel = document.getElementById(carouselId);
                     if (!carousel) {
@@ -1265,31 +1436,31 @@
                         return;
                     }
 
-                    const categoryCards = allCards.filter(c => c.category === category).slice(-5).reverse();
+                    const categoryCardsToShow = allCards.filter(c => c.category === category).slice(-5).reverse();
 
-                    if (categoryCards.length === 0) {
+                    if (categoryCardsToShow.length === 0) {
                         carousel.innerHTML = '<p class="no-cards-msg">No uploads in this category yet.</p>';
                     } else {
-                        carousel.innerHTML = categoryCards.map(createHomeCardHTML).join('');
+                        let html = categoryCardsToShow.map(createHomeCardHTML).join('');
+                        html += createShowAllCardHTML(category);
+                        carousel.innerHTML = html;
                     }
                 });
             }
 
-            // --- === FUNCTION: Update Category Hero === ---
+            // --- FUNCTION: Update Category Hero ---
             function updateCategoryHero(category) {
                 if (!category) return;
 
-                // --- FIX for inconsistent hero IDs (game vs games) ---
                 const heroId = getHeroIdForCategory(category);
                 if (!heroId) return;
 
-                // 1. Find hero elements for this category
                 const heroCard1 = document.getElementById(`${heroId}-hero-1`);
                 const heroCard2 = document.getElementById(`${heroId}-hero-2`);
 
                 if (!heroCard1 || !heroCard2) {
                     console.warn(`Hero cards not found for category: ${category} (using ID: ${heroId})`);
-                    return; // Page doesn't have hero cards
+                    return; 
                 }
 
                 const heroTitle1 = heroCard1.querySelector('.content h2');
@@ -1297,21 +1468,18 @@
                 const heroTitle2 = heroCard2.querySelector('.content h2');
                 const heroButton2 = heroCard2.querySelector('.content .play-button');
 
-                // 2. Get default data
                 const defaults = defaultHeroData[category];
-                if (!defaults) return; // No default data for this category
+                if (!defaults) return; 
 
-                // 3. Get cards for this category, newest first
                 const allCards = getCardsDB();
                 const categoryCards = allCards.filter(card => card.category === category).reverse();
 
-                // 4. Update Hero Card 1 (Last Uploaded)
+                // Update Hero Card 1 (Last Uploaded)
                 if (categoryCards.length > 0) {
                     const lastCard = categoryCards[0];
                     heroTitle1.textContent = lastCard.title;
                     heroButton1.innerHTML = `<i class="fas ${defaults.hero1.icon}"></i> ${defaults.hero1.button}`;
                     
-                    // Set background image with fallback
                     const img1 = new Image();
                     img1.onload = () => heroCard1.style.backgroundImage = `url('${lastCard.coverUrl}')`;
                     img1.onerror = () => heroCard1.style.backgroundImage = defaults.hero1.image;
@@ -1323,13 +1491,12 @@
                     heroCard1.style.backgroundImage = defaults.hero1.image;
                 }
 
-                // 5. Update Hero Card 2 (Second-to-Last Uploaded)
+                // Update Hero Card 2 (Second-to-Last Uploaded)
                 if (categoryCards.length > 1) {
                     const secondLastCard = categoryCards[1];
                     heroTitle2.textContent = secondLastCard.title;
                     heroButton2.innerHTML = `<i class="fas ${defaults.hero2.icon}"></i> ${defaults.hero2.button}`;
                     
-                    // Set background image with fallback
                     const img2 = new Image();
                     img2.onload = () => heroCard2.style.backgroundImage = `url('${secondLastCard.coverUrl}')`;
                     img2.onerror = () => heroCard2.style.backgroundImage = defaults.hero2.image;
@@ -1345,7 +1512,6 @@
             // --- INITIAL LOAD ---
             loadCardsFromLocalStorage();
             populateHomePage();
-            // --- Update all category heroes on load ---
             updateCategoryHero('movie');
             updateCategoryHero('series');
             updateCategoryHero('game');
@@ -1395,7 +1561,8 @@
                     category: categoryInput.value,
                     genre: genreInput.value,
                     tags: tagsInput.value,
-                    coverUrl: coverUrlInput.value
+                    coverUrl: coverUrlInput.value,
+                    videoUrl: videoUrlInput.value
                 };
 
                 let allCards = getCardsDB();
@@ -1408,7 +1575,7 @@
                         
                         allCards = allCards.map(card => {
                             if (card.id === editingCardId) {
-                                oldCategory = card.category; // Store old category
+                                oldCategory = card.category; 
                                 cardToEdit = document.querySelector(`.movie-card[data-id="${editingCardId}"]`);
                                 return { ...card, ...newCard };
                             }
@@ -1424,7 +1591,6 @@
                         
                         cardToEdit.parentNode.replaceChild(newCardElement, cardToEdit);
                         
-                        // --- FIX for inconsistent page IDs ---
                         const oldCategoryPageId = getPageIdForCategory(oldCategory);
                         const newCategoryPageId = getPageIdForCategory(newCard.category);
 
@@ -1442,9 +1608,7 @@
                         allCards.push(newCard);
                         
                         const cardHTML = createCardHTML(newCard);
-                        // --- FIX for inconsistent page IDs ---
                         const gridId = getPageIdForCategory(newCard.category);
-                        
                         const targetGrid = document.querySelector(`#${gridId} .movie-grid`);
                         
                         if (!targetGrid) throw new Error(`Could not find grid for category: ${newCard.category}`);
@@ -1455,10 +1619,9 @@
                     }
 
                     saveCardsDB(allCards);
-                    // --- UPDATED: Update relevant hero(s) ---
                     updateCategoryHero(newCard.category);
                     if (oldCategory && oldCategory !== newCard.category) {
-                        updateCategoryHero(oldCategory); // Update old category hero too if changed
+                        updateCategoryHero(oldCategory); 
                     }
                     populateHomePage();
                     uploadForm.reset();
@@ -1470,19 +1633,127 @@
                 }
             });
 
+            
+            // --- Search Functions ---
+            
+            function checkCardMatch(cardData, term) {
+                if (!term) return true; 
+                const { title, genre, tags } = cardData;
+                return (title && title.toLowerCase().includes(term)) ||
+                       (genre && genre.toLowerCase().includes(term)) ||
+                       (tags && tags.toLowerCase().includes(term));
+            }
 
-            // --- Event Delegation (Edit/Delete/Filter/Home Card) ---
+            function updateCategoryPageSearch(pageElement) {
+                const searchTerm = searchInput.value.toLowerCase();
+                const activeFilterBtn = pageElement.querySelector('.filter-button.active');
+                const activeFilter = activeFilterBtn ? activeFilterBtn.dataset.filter.toLowerCase() : 'all';
+                
+                const grid = pageElement.querySelector('.movie-grid');
+                if (!grid) return;
+                const cards = grid.querySelectorAll('.movie-card');
+
+                cards.forEach(card => {
+                    let matchesFilter = false;
+                    if (activeFilter === 'all') {
+                        matchesFilter = true;
+                    } else if (activeFilter === 'trending') {
+                        matchesFilter = card.dataset.tags.toLowerCase().includes('trending');
+                    } else {
+                        matchesFilter = (card.dataset.genre === activeFilter);
+                    }
+
+                    const cardData = {
+                        title: card.querySelector('.title').textContent,
+                        genre: card.dataset.genre,
+                        tags: card.dataset.tags
+                    };
+                    const matchesSearch = checkCardMatch(cardData, searchTerm);
+
+                    card.style.display = (matchesFilter && matchesSearch) ? 'block' : 'none';
+                });
+            }
+
+            function updateHomePageSearch() {
+                const searchTerm = searchInput.value.toLowerCase();
+
+                if (!searchTerm) {
+                    homeCarousels.forEach(c => c.style.display = 'block');
+                    searchResultsSection.style.display = 'none';
+                    searchResultsGrid.innerHTML = '';
+                } else {
+                    homeCarousels.forEach(c => c.style.display = 'none');
+                    searchResultsSection.style.display = 'block';
+                    
+                    const allCards = getCardsDB();
+                    const searchResults = allCards.filter(card => {
+                        const cardData = { title: card.title, genre: card.genre, tags: card.tags };
+                        return checkCardMatch(cardData, searchTerm);
+                    });
+
+                    if (searchResults.length > 0) {
+                        searchResultsGrid.innerHTML = searchResults.map(createCardHTML).join('');
+                    } else {
+                        searchResultsGrid.innerHTML = '<p class="no-cards-msg">No results found for your search.</p>';
+                    }
+                }
+            }
+
+            // --- Search Input Event Listener ---
+            searchInput.addEventListener('keyup', () => {
+                const activePage = getActivePage();
+                
+                if (activePage.id === 'home-page') {
+                    updateHomePageSearch();
+                } else {
+                    updateCategoryPageSearch(activePage);
+                }
+            });
+            
+
+            // --- Event Delegation (Edit/Delete/Filter/Home Card/Play) ---
             document.querySelector('.container').addEventListener('click', function(event) {
                 const editBtn = event.target.closest('.edit-btn');
                 const deleteBtn = event.target.closest('.delete-btn');
-                // --- MODIFIED: Exclude .show-all-btn from filter logic ---
                 const filterBtn = event.target.closest('.filter-button:not(.show-all-btn)');
                 const homeCard = event.target.closest('.home-hero-card');
-                // --- NEW: Get show-all-btn ---
                 const showAllBtn = event.target.closest('.show-all-btn');
+                const playBtn = event.target.closest('.play-btn-overlay'); 
 
-                // --- NEW: Handle Show All Click ---
-                if (showAllBtn) {
+                // --- MODIFIED: Re-ordered logic to fix bug ---
+                
+                // 1. Handle Video Play Click
+                if (playBtn) {
+                    if(playBtn.closest('.home-carousel.grabbing')) return; 
+
+                    const card = playBtn.closest('[data-video-url]');
+                    if (card) {
+                        const videoUrl = card.dataset.videoUrl;
+                        if (videoUrl) {
+                            // --- CHANGED: Open in new tab ---
+                            window.open(videoUrl, '_blank');
+                        } else {
+                            showMessage('No video URL found for this card.', 'error');
+                        }
+                    }
+                } 
+                
+                // 2. Handle Home Card Click (only if play wasn't clicked)
+                else if (homeCard) {
+                    if(homeCard.closest('.home-carousel.grabbing')) return; 
+
+                    const category = homeCard.dataset.category;
+                    if (category) {
+                        const pageId = getPageIdForCategory(category);
+                        const targetNavButton = document.querySelector(`.main-nav button[data-page="${pageId}"]`);
+                        if (targetNavButton) {
+                            targetNavButton.click();
+                        }
+                    }
+                }
+                
+                // 3. Handle Show All Click
+                else if (showAllBtn) {
                     const filterGroup = showAllBtn.closest('.filter-group');
                     if (filterGroup) {
                         filterGroup.classList.toggle('expanded');
@@ -1492,35 +1763,21 @@
                             : '<i class="fas fa-chevron-down"></i> Show All';
                     }
                 }
-
-                // --- Handle Home Card Click ---
-                if (homeCard) {
-                    const category = homeCard.dataset.category;
-                    if (category) {
-                        // --- FIX for inconsistent page IDs ---
-                        const pageId = getPageIdForCategory(category);
-                        const targetNavButton = document.querySelector(`.main-nav button[data-page="${pageId}"]`);
-                        if (targetNavButton) {
-                            targetNavButton.click();
-                        }
-                    }
-                }
-
-                // --- Handle FILTER Click ---
-                if (filterBtn) {
-                    const filterType = filterBtn.dataset.filter.toLowerCase();
-                    const filterGroup = filterBtn.closest('.filter-group');
+                
+                // 4. Handle FILTER Click
+                else if (filterBtn) {
                     const pageContent = filterBtn.closest('.page-content');
-                    if (!filterGroup || !pageContent) return;
+                    if (!pageContent) return;
 
+                    const filterGroup = filterBtn.closest('.filter-group');
                     filterGroup.querySelectorAll('.filter-button').forEach(btn => btn.classList.remove('active'));
                     filterBtn.classList.add('active');
 
                     const titleElement = pageContent.querySelector('.trending-section h3');
                     if (titleElement) {
+                        const filterType = filterBtn.dataset.filter.toLowerCase();
                         const filterText = filterBtn.textContent.trim();
                         if (filterType === 'all') {
-                            // --- UPDATED: Capitalize page name ---
                             const pageName = pageContent.id.split('-')[0];
                             const capitalPageName = pageName.charAt(0).toUpperCase() + pageName.slice(1);
                             titleElement.textContent = `All ${capitalPageName}`;
@@ -1532,31 +1789,11 @@
                         }
                     }
 
-                    const grid = pageContent.querySelector('.movie-grid');
-                    const cards = grid.querySelectorAll('.movie-card');
-
-                    cards.forEach(card => {
-                        let show = false;
-                        if (filterType === 'all') {
-                            show = true;
-                        } else if (filterType === 'trending') {
-                            const tags = card.dataset.tags.toLowerCase();
-                            if (tags.includes('trending')) {
-                                show = true;
-                            }
-                        } else {
-                            const cardGenre = card.dataset.genre;
-                            if (cardGenre === filterType) {
-                                show = true;
-                            }
-                        }
-                        card.style.display = show ? 'block' : 'none';
-                    });
+                    updateCategoryPageSearch(pageContent);
                 }
-
-
-                // --- Handle EDIT Click ---
-                if (editBtn) {
+                
+                // 5. Handle EDIT Click
+                else if (editBtn) {
                     const card = editBtn.closest('.movie-card');
                     const cardId = card.dataset.id;
                     const allCards = getCardsDB();
@@ -1570,6 +1807,7 @@
                         categoryInput.value = cardData.category;
                         tagsInput.value = cardData.tags;
                         coverUrlInput.value = cardData.coverUrl;
+                        videoUrlInput.value = cardData.videoUrl || '';
                         
                         updateGenreDatalist(cardData.category, false);
                         genreInput.value = cardData.genre;
@@ -1580,9 +1818,8 @@
                     }
                 }
                 
-
-                // --- Handle DELETE Click ---
-                if (deleteBtn) {
+                // 6. Handle DELETE Click
+                else if (deleteBtn) {
                     cardToDelete = deleteBtn.closest('.movie-card');
                     if (cardToDelete) {
                         confirmModalOverlay.classList.add('show');
@@ -1609,7 +1846,6 @@
             confirmDeleteBtn.addEventListener('click', function() {
                 if (cardToDelete) {
                     const cardId = cardToDelete.dataset.id;
-                    // --- NEW: Get category *before* deleting ---
                     let deletedCategory = null;
                     let allCards = getCardsDB();
                     const cardData = allCards.find(c => c.id === cardId);
@@ -1628,7 +1864,6 @@
                             allCards = allCards.filter(card => card.id !== cardId);
                             saveCardsDB(allCards);
                             
-                            // --- UPDATED: Update specific category hero ---
                             if (deletedCategory) {
                                 updateCategoryHero(deletedCategory);
                             }
