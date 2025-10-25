@@ -6,6 +6,9 @@
     <title>Mediverse</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <!-- === ADDED SUPABASE SCRIPT === -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- ============================= -->
     <style>
         :root {
             --primary-blue: #4a90e2;
@@ -1023,56 +1026,20 @@
     <div class="show-message" id="custom-message"></div>
 
 
+    <!-- ================================== -->
+    <!-- === ALL JAVASCRIPT REWRITTEN === -->
+    <!-- ================================== -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // --- Drag-to-scroll for Home Carousels ---
-            const carousels = document.querySelectorAll('.home-carousel');
             
-            carousels.forEach(carousel => {
-                let isDown = false;
-                let startX;
-                let scrollLeft;
-                
-                const startDrag = (e) => {
-                    // Prevent drag from starting on text, icons etc.
-                    if(e.target.closest('.show-all-card') || e.target.closest('.play-btn-overlay')) return;
+            // --- Supabase Setup ---
+            const SUPABASE_URL = 'https://wxcribfgsredterukkzt.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4Y3JpYmZnc3JlZHRlcnVra3p0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA5MjU0NTUsImV4cCI6MjA3NjUwMTQ1NX0.ZRl5Z6MAGAkwhoRmH60-AXue0AbS9HQ1SHtoHuEkbaM';
+            const { createClient } = supabase;
+            const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-                    isDown = true;
-                    carousel.classList.add('grabbing');
-                    startX = (e.pageX || e.touches[0].pageX) - carousel.offsetLeft;
-                    scrollLeft = carousel.scrollLeft;
-                };
-
-                const endDrag = () => {
-                    isDown = false;
-                    carousel.classList.remove('grabbing');
-                };
-
-                const moveDrag = (e) => {
-                    if (!isDown) return;
-                    // Prevent default scrolling/selection behavior
-                    e.preventDefault(); 
-                    const x = (e.pageX || e.touches[0].pageX) - carousel.offsetLeft;
-                    const walk = (x - startX) * 2; // scroll-fast
-                    carousel.scrollLeft = scrollLeft - walk;
-                };
-
-                // Mouse events
-                carousel.addEventListener('mousedown', startDrag);
-                carousel.addEventListener('mouseleave', endDrag);
-                carousel.addEventListener('mouseup', endDrag);
-                carousel.addEventListener('mousemove', moveDrag);
-
-                // Touch events
-                carousel.addEventListener('touchstart', startDrag);
-                carousel.addEventListener('touchend', endDrag);
-                carousel.addEventListener('touchmove', moveDrag);
-            });
-            // --- END: Drag-to-scroll ---
-
-
-            // --- LocalStorage Database Key ---
-            const DB_KEY = 'flixIdCardsDB';
+            // --- App State ---
+            let allCardsCache = []; // Local cache for all cards from Supabase
 
             // --- Page/Modal Elements ---
             const logoBtn = document.getElementById('logo-btn');
@@ -1113,13 +1080,50 @@
             const searchResultsGrid = document.getElementById('search-results-grid');
 
 
+            // --- Drag-to-scroll for Home Carousels ---
+            const carousels = document.querySelectorAll('.home-carousel');
+            carousels.forEach(carousel => {
+                let isDown = false;
+                let startX;
+                let scrollLeft;
+                
+                const startDrag = (e) => {
+                    if(e.target.closest('.show-all-card') || e.target.closest('.play-btn-overlay')) return;
+                    isDown = true;
+                    carousel.classList.add('grabbing');
+                    startX = (e.pageX || e.touches[0].pageX) - carousel.offsetLeft;
+                    scrollLeft = carousel.scrollLeft;
+                };
+
+                const endDrag = () => {
+                    isDown = false;
+                    carousel.classList.remove('grabbing');
+                };
+
+                const moveDrag = (e) => {
+                    if (!isDown) return;
+                    e.preventDefault(); 
+                    const x = (e.pageX || e.touches[0].pageX) - carousel.offsetLeft;
+                    const walk = (x - startX) * 2;
+                    carousel.scrollLeft = scrollLeft - walk;
+                };
+
+                carousel.addEventListener('mousedown', startDrag);
+                carousel.addEventListener('mouseleave', endDrag);
+                carousel.addEventListener('mouseup', endDrag);
+                carousel.addEventListener('mousemove', moveDrag);
+                carousel.addEventListener('touchstart', startDrag);
+                carousel.addEventListener('touchend', endDrag);
+                carousel.addEventListener('touchmove', moveDrag);
+            });
+
+
             // --- HELPER: Get Page ID from Category ---
             function getPageIdForCategory(category) {
                 if (!category) return null;
                 if (category === 'movie' || category === 'series') {
                     return `${category}-page`;
                 }
-                // Add 's' for game and book
                 return `${category}s-page`;
             }
 
@@ -1129,7 +1133,6 @@
                 if (category === 'movie' || category === 'series') {
                     return category;
                 }
-                // Add 's' for game and book
                 return `${category}s`;
             }
             
@@ -1154,50 +1157,9 @@
             
             // --- Icon Definitions ---
             const genreIcons = {
-                // Movie/Series
-                'action': 'fas fa-mask',
-                'adventure': 'fas fa-compass',
-                'animation': 'fas fa-camera-retro',
-                'comedy': 'fas fa-laugh',
-                'crime': 'fas fa-handcuffs',
-                'drama': 'fas fa-theater-masks',
-                'fantasy': 'fas fa-dragon',
-                'horror': 'fas fa-skull',
-                'musical': 'fas fa-music',
-                'mystery': 'fas fa-search',
-                'romance': 'fas fa-heart',
-                'science fiction': 'fas fa-rocket',
-                'thriller': 'fas fa-bolt',
-                'war': 'fas fa-fighter-jet',
-                'western': 'fas fa-hat-cowboy',
-
-                // Game Specific
-                'role-playing game (rpg)': 'fas fa-shield-alt',
-                'shooter (first-person / third-person)': 'fas fa-crosshairs',
-                'simulation': 'fas fa-gamepad',
-                'strategy': 'fas fa-chess',
-                'sports': 'fas fa-football-ball',
-                'racing': 'fas fa-flag-checkered',
-                'fighting': 'fas fa-fist-raised',
-                'puzzle': 'fas fa-puzzle-piece',
-                'platformer': 'fas fa-cube',
-                'horror / survival horror': 'fas fa-ghost',
-                'sandbox / open world': 'fas fa-map-marked-alt',
-                'battle royale': 'fas fa-parachute-box',
-                'mmorpg (massively multiplayer online rpg)': 'fas fa-users',
-
-                // Book Specific
-                'fiction': 'fas fa-book',
-                'science fiction (sci-fi)': 'fas fa-atom',
-                'historical fiction': 'fas fa-landmark',
-                'young adult (ya)': 'fas fa-child',
-                'biography / memoir': 'fas fa-book-open',
-                'self-help': 'fas fa-brain',
-                'non-fiction': 'fas fa-book-reader',
-                'poetry': 'fas fa-feather-alt',
-                'children’s': 'fas fa-shapes',
-                
-                // Default
+                'action': 'fas fa-mask', 'adventure': 'fas fa-compass', 'animation': 'fas fa-camera-retro', 'comedy': 'fas fa-laugh', 'crime': 'fas fa-handcuffs', 'drama': 'fas fa-theater-masks', 'fantasy': 'fas fa-dragon', 'horror': 'fas fa-skull', 'musical': 'fas fa-music', 'mystery': 'fas fa-search', 'romance': 'fas fa-heart', 'science fiction': 'fas fa-rocket', 'thriller': 'fas fa-bolt', 'war': 'fas fa-fighter-jet', 'western': 'fas fa-hat-cowboy',
+                'role-playing game (rpg)': 'fas fa-shield-alt', 'shooter (first-person / third-person)': 'fas fa-crosshairs', 'simulation': 'fas fa-gamepad', 'strategy': 'fas fa-chess', 'sports': 'fas fa-football-ball', 'racing': 'fas fa-flag-checkered', 'fighting': 'fas fa-fist-raised', 'puzzle': 'fas fa-puzzle-piece', 'platformer': 'fas fa-cube', 'horror / survival horror': 'fas fa-ghost', 'sandbox / open world': 'fas fa-map-marked-alt', 'battle royale': 'fas fa-parachute-box', 'mmorpg (massively multiplayer online rpg)': 'fas fa-users',
+                'fiction': 'fas fa-book', 'science fiction (sci-fi)': 'fas fa-atom', 'historical fiction': 'fas fa-landmark', 'young adult (ya)': 'fas fa-child', 'biography / memoir': 'fas fa-book-open', 'self-help': 'fas fa-brain', 'non-fiction': 'fas fa-book-reader', 'poetry': 'fas fa-feather-alt', 'children’s': 'fas fa-shapes',
                 'default': 'fas fa-tag'
             };
 
@@ -1239,9 +1201,7 @@
                 genres.forEach((genre, index) => {
                     const iconKey = genre.toLowerCase();
                     const icon = genreIcons[iconKey] || genreIcons.default;
-                    
                     const extraClass = index >= maxVisibleGenres ? 'extra-filter' : '';
-                    
                     buttonsHTML += `
                         <button class="filter-button ${extraClass}" data-filter="${genre.toLowerCase()}">
                             <i class="${icon}"></i> ${genre}
@@ -1256,7 +1216,6 @@
                         </button>
                     `;
                 }
-
                 filterGroup.innerHTML = buttonsHTML;
             }
 
@@ -1314,8 +1273,8 @@
                 navButtons.forEach(btn => btn.classList.remove('active'));
                 pages.forEach(page => page.style.display = 'none');
                 homePage.style.display = 'block';
-
                 searchInput.value = '';
+                updateHomePageSearch(); // Clear search results on home
             });
 
             // --- Custom Message Function ---
@@ -1330,18 +1289,11 @@
                 }, 3000);
             }
 
-            // --- LocalStorage Functions ---
-            function getCardsDB() {
-                return JSON.parse(localStorage.getItem(DB_KEY)) || [];
-            }
-
-            function saveCardsDB(db) {
-                localStorage.setItem(DB_KEY, JSON.stringify(db));
-            }
-
             // --- FUNCTION: Create Card HTML ---
             function createCardHTML(card) {
-                const rating = (Math.random() * 4 + 6).toFixed(1);
+                // Supabase provides `id` and `created_at`
+                const rating = (Math.random() * 4 + 6).toFixed(1); // Keep random rating for fun
+                const year = new Date(card.created_at).getFullYear();
                 
                 return `
                     <div class="movie-card" 
@@ -1362,7 +1314,7 @@
                             <div class="genre">${card.genre || 'N/A'}</div>
                             <div class="meta">
                                 <span class="rating"><i class="fas fa-star"></i> ${rating}</span>
-                                <span>${new Date().getFullYear()}</span>
+                                <span>${year}</span>
                             </div>
                         </div>
                     </div>
@@ -1391,11 +1343,7 @@
             // --- FUNCTION: Create "Show All" Card HTML ---
             function createShowAllCardHTML(category) {
                 let categoryName = category.charAt(0).toUpperCase() + category.slice(1);
-                if (category === 'series') {
-                    categoryName = 'Series'; // Already plural
-                } else {
-                    categoryName = `${categoryName}s`; // Add 's'
-                }
+                categoryName = (category === 'series') ? 'Series' : `${categoryName}s`;
                 
                 return `
                     <div class="home-hero-card show-all-card" data-category="${category}">
@@ -1405,17 +1353,17 @@
                 `;
             }
 
-            // --- FUNCTION: Load Cards from DB ---
-            function loadCardsFromLocalStorage() {
+            // --- RENDER FUNCTION: Load Cards from Cache ---
+            function loadCardsFromCache() {
                 document.querySelectorAll('.movie-grid').forEach(grid => grid.innerHTML = '');
                 
-                const allCards = getCardsDB();
-                allCards.forEach(card => {
+                allCardsCache.forEach(card => {
                     const cardHTML = createCardHTML(card);
                     const gridId = getPageIdForCategory(card.category);
                     const targetGrid = document.querySelector(`#${gridId} .movie-grid`);
                     
                     if (targetGrid) {
+                        // Data is sorted newest-first, so 'beforeend' renders them in that order.
                         targetGrid.insertAdjacentHTML('beforeend', cardHTML);
                     } else {
                         console.warn(`Could not find grid for category: ${card.category}`);
@@ -1423,9 +1371,8 @@
                 });
             }
 
-            // --- FUNCTION: Populate Home Page ---
-            function populateHomePage() {
-                const allCards = getCardsDB();
+            // --- RENDER FUNCTION: Populate Home Page from Cache ---
+            function populateHomePageFromCache() {
                 const categories = ['movie', 'series', 'game', 'book'];
 
                 categories.forEach(category => {
@@ -1436,7 +1383,10 @@
                         return;
                     }
 
-                    const categoryCardsToShow = allCards.filter(c => c.category === category).slice(-5).reverse();
+                    // Data is pre-sorted newest-first, so just take the first 5
+                    const categoryCardsToShow = allCardsCache
+                        .filter(c => c.category === category)
+                        .slice(0, 5);
 
                     if (categoryCardsToShow.length === 0) {
                         carousel.innerHTML = '<p class="no-cards-msg">No uploads in this category yet.</p>';
@@ -1447,9 +1397,9 @@
                     }
                 });
             }
-
-            // --- FUNCTION: Update Category Hero ---
-            function updateCategoryHero(category) {
+            
+            // --- RENDER FUNCTION: Update Category Hero from Cache ---
+            function updateCategoryHeroFromCache(category) {
                 if (!category) return;
 
                 const heroId = getHeroIdForCategory(category);
@@ -1471,12 +1421,12 @@
                 const defaults = defaultHeroData[category];
                 if (!defaults) return; 
 
-                const allCards = getCardsDB();
-                const categoryCards = allCards.filter(card => card.category === category).reverse();
+                // Data is pre-sorted newest-first
+                const categoryCards = allCardsCache.filter(card => card.category === category);
 
                 // Update Hero Card 1 (Last Uploaded)
                 if (categoryCards.length > 0) {
-                    const lastCard = categoryCards[0];
+                    const lastCard = categoryCards[0]; // [0] is newest
                     heroTitle1.textContent = lastCard.title;
                     heroButton1.innerHTML = `<i class="fas ${defaults.hero1.icon}"></i> ${defaults.hero1.button}`;
                     
@@ -1485,7 +1435,6 @@
                     img1.onerror = () => heroCard1.style.backgroundImage = defaults.hero1.image;
                     img1.src = lastCard.coverUrl;
                 } else {
-                    // Reset to default
                     heroTitle1.textContent = defaults.hero1.title;
                     heroButton1.innerHTML = `<i class="fas ${defaults.hero1.icon}"></i> ${defaults.hero1.button}`;
                     heroCard1.style.backgroundImage = defaults.hero1.image;
@@ -1493,7 +1442,7 @@
 
                 // Update Hero Card 2 (Second-to-Last Uploaded)
                 if (categoryCards.length > 1) {
-                    const secondLastCard = categoryCards[1];
+                    const secondLastCard = categoryCards[1]; // [1] is second newest
                     heroTitle2.textContent = secondLastCard.title;
                     heroButton2.innerHTML = `<i class="fas ${defaults.hero2.icon}"></i> ${defaults.hero2.button}`;
                     
@@ -1502,29 +1451,50 @@
                     img2.onerror = () => heroCard2.style.backgroundImage = defaults.hero2.image;
                     img2.src = secondLastCard.coverUrl;
                 } else {
-                    // Reset to default
                     heroTitle2.textContent = defaults.hero2.title;
                     heroButton2.innerHTML = `<i class="fas ${defaults.hero2.icon}"></i> ${defaults.hero2.button}`;
                     heroCard2.style.backgroundImage = defaults.hero2.image;
                 }
             }
+            
+            // --- RENDER FUNCTION: Helper to update all heroes ---
+            function updateAllCategoryHeroesFromCache() {
+                updateCategoryHeroFromCache('movie');
+                updateCategoryHeroFromCache('series');
+                updateCategoryHeroFromCache('game');
+                updateCategoryHeroFromCache('book');
+            }
+            
+            // --- DATA FUNCTION: Main Async Fetch ---
+            async function fetchAndRenderAllData() {
+                // Show loading state? For now, just fetch.
+                const { data, error } = await db.from('cards')
+                                                 .select('*')
+                                                 .order('created_at', { ascending: false });
+                
+                if (error) {
+                    console.error('Error fetching data:', error);
+                    showMessage('Could not load data from database.', 'error');
+                    return;
+                }
 
-            // --- INITIAL LOAD ---
-            loadCardsFromLocalStorage();
-            populateHomePage();
-            updateCategoryHero('movie');
-            updateCategoryHero('series');
-            updateCategoryHero('game');
-            updateCategoryHero('book');
+                allCardsCache = data; // Update cache
+
+                // Re-render everything
+                loadCardsFromCache();
+                populateHomePageFromCache();
+                updateAllCategoryHeroesFromCache();
+            }
 
 
             // --- Upload Modal Logic ---
-            
             function resetUploadModal() {
                 uploadForm.reset();
                 cardIdInput.value = '';
                 modalTitle.textContent = 'Upload New Card';
                 submitBtn.textContent = 'Submit Card';
+                submitBtn.disabled = false;
+                uploadForm.removeAttribute('data-old-category');
                 updateGenreDatalist('', true);
             }
             
@@ -1534,6 +1504,7 @@
             
             function hideUploadModal() {
                 modalOverlay.classList.remove('show');
+                resetUploadModal(); // Reset form when hiding
             }
 
             openModalBtn.addEventListener('click', () => {
@@ -1550,92 +1521,63 @@
             });
 
             // --- Handle Form Submission (Upload and Edit) ---
-            uploadForm.addEventListener('submit', function(event) {
+            uploadForm.addEventListener('submit', async function(event) {
                 event.preventDefault();
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Saving...';
                 
                 const editingCardId = cardIdInput.value;
                 
-                const newCard = {
-                    id: editingCardId || `card_${new Date().getTime()}`,
+                const cardData = {
                     title: titleInput.value,
                     category: categoryInput.value,
                     genre: genreInput.value,
                     tags: tagsInput.value,
                     coverUrl: coverUrlInput.value,
-                    videoUrl: videoUrlInput.value
+                    videoUrl: videoUrlInput.value || null // Use null for empty
                 };
-
-                let allCards = getCardsDB();
-                let oldCategory = null; 
+                
+                let error;
 
                 try {
                     if (editingCardId) {
                         // --- EDITING ---
-                        let cardToEdit = null;
-                        
-                        allCards = allCards.map(card => {
-                            if (card.id === editingCardId) {
-                                oldCategory = card.category; 
-                                cardToEdit = document.querySelector(`.movie-card[data-id="${editingCardId}"]`);
-                                return { ...card, ...newCard };
-                            }
-                            return card;
-                        });
-                        
-                        if (!cardToEdit) throw new Error("Could not find card element to update.");
-
-                        const newCardHTML = createCardHTML(newCard);
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = newCardHTML.trim();
-                        const newCardElement = tempDiv.firstChild;
-                        
-                        cardToEdit.parentNode.replaceChild(newCardElement, cardToEdit);
-                        
-                        const oldCategoryPageId = getPageIdForCategory(oldCategory);
-                        const newCategoryPageId = getPageIdForCategory(newCard.category);
-
-                        if (oldCategoryPageId !== newCategoryPageId) {
-                            const targetGrid = document.querySelector(`#${newCategoryPageId} .movie-grid`);
-                            if (!targetGrid) throw new Error(`Could not find grid for new category: ${newCard.category}`);
-                            targetGrid.insertAdjacentElement('afterbegin', newCardElement);
-                            showMessage('Card updated and moved!', 'success');
-                        } else {
-                            showMessage('Card updated!', 'success');
-                        }
-
+                        const { error: updateError } = await db.from('cards')
+                                                              .update(cardData)
+                                                              .eq('id', editingCardId);
+                        error = updateError;
                     } else {
                         // --- UPLOADING NEW ---
-                        allCards.push(newCard);
-                        
-                        const cardHTML = createCardHTML(newCard);
-                        const gridId = getPageIdForCategory(newCard.category);
-                        const targetGrid = document.querySelector(`#${gridId} .movie-grid`);
-                        
-                        if (!targetGrid) throw new Error(`Could not find grid for category: ${newCard.category}`);
-                        
-                        targetGrid.insertAdjacentHTML('afterbegin', cardHTML);
-                        
-                        showMessage('Card uploaded successfully!', 'success');
+                        // Supabase adds id and created_at automatically
+                        const { error: insertError } = await db.from('cards')
+                                                              .insert(cardData);
+                        error = insertError;
                     }
 
-                    saveCardsDB(allCards);
-                    updateCategoryHero(newCard.category);
-                    if (oldCategory && oldCategory !== newCard.category) {
-                        updateCategoryHero(oldCategory); 
-                    }
-                    populateHomePage();
-                    uploadForm.reset();
-                    hideUploadModal();
+                    if (error) throw error; // Handle error below
+
+                    // SUCCESS: Re-fetch all data and re-render
+                    await fetchAndRenderAllData(); 
                     
-                } catch (error) {
-                    console.error("Error submitting form:", error);
-                    showMessage(error.message || 'An unknown error occurred.', 'error');
+                    hideUploadModal();
+                    showMessage(editingCardId ? 'Card updated!' : 'Card uploaded!', 'success');
+                    
+                } catch (err) {
+                    console.error("Error submitting form:", err);
+                    showMessage(err.message || 'An unknown error occurred.', 'error');
+                } finally {
+                    // Reset button state even on error
+                    submitBtn.disabled = false;
+                    if (editingCardId) {
+                        submitBtn.textContent = 'Save Changes';
+                    } else {
+                        submitBtn.textContent = 'Submit Card';
+                    }
                 }
             });
 
             
             // --- Search Functions ---
-            
             function checkCardMatch(cardData, term) {
                 if (!term) return true; 
                 const { title, genre, tags } = cardData;
@@ -1685,8 +1627,8 @@
                     homeCarousels.forEach(c => c.style.display = 'none');
                     searchResultsSection.style.display = 'block';
                     
-                    const allCards = getCardsDB();
-                    const searchResults = allCards.filter(card => {
+                    // Use the cache instead of DB
+                    const searchResults = allCardsCache.filter(card => {
                         const cardData = { title: card.title, genre: card.genre, tags: card.tags };
                         return checkCardMatch(cardData, searchTerm);
                     });
@@ -1699,14 +1641,14 @@
                 }
             }
 
-            /* --- Search Input Event Listener --- */
+            // --- Search Input Event Listener ---
             searchInput.addEventListener('keyup', () => {
                 const activePage = getActivePage();
                 
                 if (activePage.id === 'home-page') {
                     updateHomePageSearch();
                 } else {
-                    updateCategoryPageSearch(activePage);
+                    updateCategoryPageSearch(activePage); // Fixed typo here
                 }
             });
             
@@ -1720,7 +1662,6 @@
                 const showAllBtn = event.target.closest('.show-all-btn');
                 const playBtn = event.target.closest('.play-btn-overlay'); 
 
-                // --- MODIFIED: Re-ordered logic to fix bug ---
                 
                 // 1. Handle Video Play Click
                 if (playBtn) {
@@ -1730,7 +1671,6 @@
                     if (card) {
                         const videoUrl = card.dataset.videoUrl;
                         if (videoUrl) {
-                            // --- CHANGED: Open in new tab ---
                             window.open(videoUrl, '_blank');
                         } else {
                             showMessage('No video URL found for this card.', 'error');
@@ -1795,9 +1735,8 @@
                 // 5. Handle EDIT Click
                 else if (editBtn) {
                     const card = editBtn.closest('.movie-card');
-                    const cardId = card.dataset.id;
-                    const allCards = getCardsDB();
-                    const cardData = allCards.find(c => c.id === cardId);
+                    const cardId = parseInt(card.dataset.id, 10);
+                    const cardData = allCardsCache.find(c => c.id === cardId);
                     
                     if (cardData) {
                         modalTitle.textContent = 'Edit Card';
@@ -1808,6 +1747,7 @@
                         tagsInput.value = cardData.tags;
                         coverUrlInput.value = cardData.coverUrl;
                         videoUrlInput.value = cardData.videoUrl || '';
+                        uploadForm.dataset.oldCategory = cardData.category; // Store old category
                         
                         updateGenreDatalist(cardData.category, false);
                         genreInput.value = cardData.genre;
@@ -1829,7 +1769,6 @@
             
 
             // --- Delete Confirmation Logic ---
-            
             function closeConfirmModal() {
                 confirmModalOverlay.classList.remove('show');
                 cardToDelete = null;
@@ -1843,47 +1782,37 @@
                 }
             });
 
-            confirmDeleteBtn.addEventListener('click', function() {
+            confirmDeleteBtn.addEventListener('click', async function() {
                 if (cardToDelete) {
                     const cardId = cardToDelete.dataset.id;
-                    let deletedCategory = null;
-                    let allCards = getCardsDB();
-                    const cardData = allCards.find(c => c.id === cardId);
-                    if (cardData) {
-                        deletedCategory = cardData.category;
-                    }
-
+                    
+                    // Optimistically add deleting class
                     cardToDelete.classList.add('deleting');
                     
-                    setTimeout(() => {
-                        try {
-                            if (cardToDelete && cardToDelete.parentNode) {
-                                cardToDelete.parentNode.removeChild(cardToDelete);
-                            }
-                            
-                            allCards = allCards.filter(card => card.id !== cardId);
-                            saveCardsDB(allCards);
-                            
-                            if (deletedCategory) {
-                                updateCategoryHero(deletedCategory);
-                            }
-                            populateHomePage();
-                            showMessage('Card deleted successfully.', 'success');
-                            
-                        } catch (error) {
-                            console.error('Error during deletion:', error);
-                            showMessage('Error deleting card.', 'error');
-                            if(cardToDelete) cardToDelete.classList.remove('deleting');
-                        } finally {
-                            closeConfirmModal();
-                        }
-                    }, 300);
+                    try {
+                        const { error } = await db.from('cards').delete().eq('id', cardId);
+                        if (error) throw error;
+
+                        // SUCCESS: Re-fetch all data to re-render everything
+                        await fetchAndRenderAllData(); 
+                        showMessage('Card deleted successfully.', 'success');
+                        
+                    } catch (err) {
+                        console.error('Error during deletion:', err);
+                        showMessage(err.message || 'Error deleting card.', 'error');
+                        // Rollback optimistic UI change if error
+                        if(cardToDelete) cardToDelete.classList.remove('deleting');
+                    } finally {
+                        closeConfirmModal();
+                    }
                 }
             });
+            
+            // --- INITIAL DATA LOAD ---
+            fetchAndRenderAllData();
 
         });
     </script>
 </body>
 </html>
-
 
