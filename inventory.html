@@ -23,6 +23,8 @@
             --text-color: #333;
             --danger-red: #e74c3c;
             --danger-red-light: #fbe9e7;
+            /* --- New color for image background --- */
+            --image-bg-color: #424242; 
         }
 
         body {
@@ -493,14 +495,66 @@
             background: var(--danger-red);
         }
 
-
-        .movie-card img {
+        /* --- IMAGE STYLE UPDATED --- */
+        .movie-card .img-container {
             width: 100%;
             height: 250px;
-            object-fit: cover;
-            border-top-left-radius: 15px;
-            border-top-right-radius: 15px;
+            background-color: var(--image-bg-color); /* Dark background */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden; /* <-- CRITICAL FOR POSITIONING */
+            position: relative; /* <-- NEEDED FOR OVERLAY */
         }
+        
+        .movie-card img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; 
+            object-position: 50% 50%; /* Default position */
+            transition: object-position 0.1s ease; /* <-- MODIFIED TRANSITION */
+            border-top-left-radius: 0; 
+            border-top-right-radius: 0;
+            /* transform: scale(1); -- REMOVED */
+        }
+        /* --- END IMAGE UPDATE --- */
+        
+        /* --- MODIFIED ZOOM CONTROLS TO POSITION CONTROLS --- */
+        .position-controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            z-index: 4;
+            display: flex;
+            gap: 5px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .movie-card:hover .position-controls {
+            opacity: 1;
+        }
+
+        .position-btn {
+            background: rgba(0, 0, 0, 0.5);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            width: 25px;
+            height: 25px;
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s ease;
+        }
+        
+        .position-btn:hover {
+            background: rgba(0, 0, 0, 0.8);
+        }
+        /* --- END POSITION CONTROLS --- */
+
 
         .movie-card .details {
             padding: 15px;
@@ -579,6 +633,19 @@
         .home-hero-card:hover .play-btn-overlay {
             opacity: 1;
         }
+        
+        /* Specific override for image container hover */
+        .movie-card .img-container:hover + .play-btn-overlay,
+        .movie-card:hover .play-btn-overlay {
+             opacity: 1;
+        }
+        
+        .movie-card .img-container + .play-btn-overlay {
+             height: 250px; /* Match image container height */
+             border-bottom-left-radius: 0;
+             border-bottom-right-radius: 0;
+        }
+
 
         .play-btn-overlay i {
             transform: scale(0.8);
@@ -1027,7 +1094,7 @@
 
 
     <!-- ================================== -->
-    <!-- === ALL JAVASCRIPT REWRITTEN === -->
+    <!-- === ALL JAVASCRIPT === -->
     <!-- ================================== -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -1302,13 +1369,27 @@
                          data-genre="${(card.genre || '').toLowerCase()}"
                          data-video-url="${card.videoUrl || ''}">
                         
+                        <div class="img-container">
+                            <img src="${card.coverUrl}" 
+                                 alt="${card.title}" 
+                                 style="object-position: 50% ${card.cover_position_y || '50%'}"
+                                 data-position-y="${card.cover_position_y || '50%'}"
+                                 onerror="this.src='https://placehold.co/200x250/dce3eb/333?text=Image+Failed'">
+                            
+                            <!-- MODIFIED ZOOM TO POSITION CONTROLS -->
+                            <div class="position-controls">
+                                <button class="position-btn move-up"><i class="fas fa-arrow-up"></i></button>
+                                <button class="position-btn move-down"><i class="fas fa-arrow-down"></i></button>
+                            </div>
+                        </div>
+
                         ${card.videoUrl ? '<div class="play-btn-overlay"><i class="fas fa-play"></i></div>' : ''}
 
                         <div class="card-icons">
                             <button class="edit-btn"><i class="fas fa-pencil-alt"></i></button>
                             <button class="delete-btn"><i class="fas fa-trash"></i></button>
                         </div>
-                        <img src="${card.coverUrl}" alt="${card.title}" onerror="this.src='https://placehold.co/200x250/dce3eb/333?text=Image+Failed'">
+                        
                         <div class="details">
                             <div class="title">${card.title}</div>
                             <div class="genre">${card.genre || 'N/A'}</div>
@@ -1534,8 +1615,13 @@
                     genre: genreInput.value,
                     tags: tagsInput.value,
                     coverUrl: coverUrlInput.value,
-                    videoUrl: videoUrlInput.value || null // Use null for empty
+                    videoUrl: videoUrlInput.value || null, // Use null for empty
                 };
+
+                // But if it's a new card, set default position
+                if (!editingCardId) {
+                    cardData.cover_position_y = '50%';
+                }
                 
                 let error;
 
@@ -1648,19 +1734,69 @@
                 if (activePage.id === 'home-page') {
                     updateHomePageSearch();
                 } else {
-                    updateCategoryPageSearch(activePage); // Fixed typo here
+                    updateCategoryPageSearch(activePage); 
                 }
             });
             
 
+            // --- REMOVED Image Vertical Drag Logic ---
+
+            // --- NEW: Handle Image Position Click ---
+            async function handleMove(button, direction) {
+                const card = button.closest('.movie-card');
+                const img = card.querySelector('.img-container img');
+                if (!card || !img) return;
+
+                let currentPosition = parseFloat(img.dataset.positionY) || 50;
+                const moveStep = 5; // Move by 5%
+
+                if (direction === 'up') {
+                    currentPosition -= moveStep;
+                } else {
+                    currentPosition += moveStep;
+                }
+                
+                // Constrain between 0% and 100%
+                currentPosition = Math.max(0, Math.min(100, currentPosition)); 
+
+                const newPositionString = `${currentPosition.toFixed(0)}%`;
+
+                img.style.objectPosition = `50% ${newPositionString}`;
+                img.dataset.positionY = newPositionString;
+
+                // Save to Supabase
+                const cardId = card.dataset.id;
+                try {
+                    const { error } = await db.from('cards')
+                                            .update({ cover_position_y: newPositionString })
+                                            .eq('id', cardId);
+                    
+                    if (error) throw error;
+                    
+                    // Also update the local cache
+                    const cachedCard = allCardsCache.find(c => c.id == cardId);
+                    if (cachedCard) {
+                        cachedCard.cover_position_y = newPositionString;
+                    }
+                    
+                } catch (err) {
+                    console.error('Failed to save image position:', err);
+                    showMessage('Error saving image position.', 'error');
+                }
+            }
+
+
             // --- Event Delegation (Edit/Delete/Filter/Home Card/Play) ---
             document.querySelector('.container').addEventListener('click', function(event) {
+                
                 const editBtn = event.target.closest('.edit-btn');
                 const deleteBtn = event.target.closest('.delete-btn');
                 const filterBtn = event.target.closest('.filter-button:not(.show-all-btn)');
                 const homeCard = event.target.closest('.home-hero-card');
                 const showAllBtn = event.target.closest('.show-all-btn');
                 const playBtn = event.target.closest('.play-btn-overlay'); 
+                const moveUpBtn = event.target.closest('.move-up'); // <-- NEW
+                const moveDownBtn = event.target.closest('.move-down'); // <-- NEW
 
                 
                 // 1. Handle Video Play Click
@@ -1765,6 +1901,14 @@
                         confirmModalOverlay.classList.add('show');
                     }
                 }
+                
+                // 7. Handle POSITION Click
+                else if (moveUpBtn) {
+                    handleMove(moveUpBtn, 'up');
+                }
+                else if (moveDownBtn) {
+                    handleMove(moveDownBtn, 'down');
+                }
             });
             
 
@@ -1815,4 +1959,5 @@
     </script>
 </body>
 </html>
+
 
