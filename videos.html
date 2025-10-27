@@ -183,6 +183,7 @@
     
     .gallery-container {
       padding: 20px;
+      min-height: 80vh; /* Ensure container has height */
     }
 
     .gallery {
@@ -471,6 +472,40 @@
       border-top: 1px solid var(--medium-gray);
     }
 
+    /* ############################################# */
+    /* ## NEW PAGINATION STYLES ## */
+    /* ############################################# */
+    .pagination-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 20px 0;
+      margin-top: 20px;
+    }
+    .page-btn {
+      background-color: var(--bg-color);
+      border: 1px solid var(--medium-gray);
+      color: var(--text-color);
+      padding: 8px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+    .page-btn:hover {
+      background-color: #f0f0f0;
+      border-color: #ccc;
+    }
+    .page-btn.active {
+      background-color: var(--primary-color);
+      color: white;
+      border-color: var(--primary-color);
+      font-weight: bold;
+    }
+    /* ############################################# */
+
 
     /* Desktop Styles */
     @media (min-width: 800px) {
@@ -537,6 +572,8 @@
     
     <div class="gallery-container">
         <div class="gallery" id="gallery"></div>
+
+        <div class="pagination-container" id="paginationContainer"></div>
         <div class="related-videos-section" id="relatedVideosSection" style="display: none;">
           <h2>Related Videos</h2>
           <div class="filter-options" id="relatedVideoFilterTags"></div>
@@ -647,6 +684,16 @@
     let currentRelatedVideoTags = [];
     let currentRelatedVideoIndex = 0;
     let currentFilterRelatedTag = null;
+
+    // #############################################
+    // ## NEW GLOBAL VARIABLES FOR PAGINATION ##
+    // #############################################
+    let currentPage = 1;
+    const videosPerPage = 9;
+    let currentFilteredVideos = []; // Holds the list of videos to be paginated
+    // #############################################
+
+
     window.onload = async function () {
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
       try {
@@ -728,14 +775,20 @@
 
     async function loadFilterTags() {
       try {
-        const { data: videos, error: videosError } = await supabase
-          .from('videos')
-          .select('tags, related_videos_with_tags');
-        if (videosError) throw videosError;
+        // We only need tags from videos, which loadCards() now handles.
+        // Let's just use the allLoadedCards data if it exists.
+        if (allLoadedCards.length === 0) {
+            // Fallback if loadCards hasn't run yet (e.g., on init)
+            const { data: videos, error: videosError } = await supabase
+              .from('videos')
+              .select('tags, related_videos_with_tags');
+            if (videosError) throw videosError;
+            allLoadedCards = videos; // temporary
+        }
 
         const allMainTags = new Set();
         const allRelatedTags = new Set();
-        videos.forEach(video => {
+        allLoadedCards.forEach(video => {
           if (video.tags) {
             video.tags.split(',').forEach(tag => {
               if (tag.trim()) allMainTags.add(tag.trim());
@@ -762,7 +815,7 @@
         allButton.className = !currentFilterTag ? 'active' : '';
         allButton.onclick = () => {
           currentFilterTag = null;
-          loadCards();
+          loadCards(); // This will reload cards and reset pagination
           document.querySelectorAll('#filterTags button').forEach(btn => btn.classList.remove('active'));
           allButton.classList.add('active');
         };
@@ -774,13 +827,14 @@
           tagButton.className = currentFilterTag === tag ? 'active' : '';
           tagButton.onclick = () => {
             currentFilterTag = currentFilterTag === tag ? null : tag;
-            loadCards();
+            loadCards(); // This will reload cards and reset pagination
             document.querySelectorAll('#filterTags button').forEach(btn => btn.classList.remove('active'));
             currentFilterTag ? tagButton.classList.add('active') : allButton.classList.add('active');
           };
           filterContainer.appendChild(tagButton);
         });
-      } catch (error) {
+      } catch (error)
+ {
         console.error("Error loading filter tags:", error);
       }
     }
@@ -819,91 +873,145 @@
       document.getElementById('gallery').appendChild(cardElem);
     }
 
+    // #############################################
+    // ## NEW: FUNCTION TO RENDER PAGINATION BUTTONS ##
+    // #############################################
+    function renderPagination() {
+      const paginationContainer = document.getElementById('paginationContainer');
+      paginationContainer.innerHTML = '';
+      
+      const totalVideos = currentFilteredVideos.length;
+      if (totalVideos <= videosPerPage) return; // No pagination needed
+
+      const totalPages = Math.ceil(totalVideos / videosPerPage);
+
+      for (let i = 1; i <= totalPages; i++) {
+        const pageBtn = document.createElement('button');
+        pageBtn.className = 'page-btn';
+        pageBtn.textContent = i;
+        if (i === currentPage) {
+          pageBtn.classList.add('active');
+        }
+        pageBtn.onclick = () => {
+          currentPage = i;
+          displayCurrentPage();
+        };
+        paginationContainer.appendChild(pageBtn);
+      }
+    }
+
+    // #############################################
+    // ## NEW: FUNCTION TO DISPLAY ONLY CURRENT PAGE'S VIDEOS ##
+    // #############################################
+    function displayCurrentPage() {
+      const gallery = document.getElementById('gallery');
+      gallery.innerHTML = '';
+      
+      const from = (currentPage - 1) * videosPerPage;
+      const to = from + videosPerPage;
+      const videosForThisPage = currentFilteredVideos.slice(from, to);
+
+      if (videosForThisPage.length === 0) {
+        gallery.innerHTML = '<p>No videos found.</p>';
+        renderPagination(); // Render empty pagination
+        return;
+      }
+
+      videosForThisPage.forEach(match => {
+        if (match.type === 'main') {
+          // This function appends to the gallery, which is why we cleared it first
+          addCardToPage(match.card);
+        } else {
+          // This is the 'related' card rendering logic from the old loadCards
+          const cardElem = document.createElement('div');
+          cardElem.className = 'card';
+          const tags = match.tags ? match.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+          
+          cardElem.innerHTML = `
+            <video preload="metadata" muted loop playsinline>
+              <source src="${match.url}" type="video/mp4">
+            </video>
+            <div class="card-info">
+              <small>From: ${match.parentCard.title}</small>
+              ${tags.length > 0 ? `
+              <div class="card-tags">
+                ${tags.map(tag => `<span class="tag-bubble">${tag}</span>`).join('')}
+              </div>
+               ` : ''}
+            </div>
+          `;
+          
+          const videoElem = cardElem.querySelector('video');
+          cardElem.addEventListener('mouseenter', () => videoElem.play());
+          cardElem.addEventListener('mouseleave', () => videoElem.pause());
+          
+          cardElem.addEventListener('click', () => {
+              openVideoViewer(match.parentCard);
+              const relatedVideos = match.parentCard.related_videos || [];
+              const videoIndexInRelated = relatedVideos.indexOf(match.url);
+              if (videoIndexInRelated !== -1) {
+                  currentVideoIndex = videoIndexInRelated + 1;
+                  updateViewerVideo();
+              }
+          });
+          gallery.appendChild(cardElem);
+        }
+      });
+
+      renderPagination(); // Re-render pagination buttons
+      window.scrollTo(0, 0); // Scroll to top on page change
+    }
+
+    // #############################################
+    // ## UPDATED: loadCards() NOW MANAGES FILTERING, NOT RENDERING ##
+    // #############################################
     async function loadCards() {
       try {
-        let { data: cards, error } = await supabase
+        // Fetch ALL cards. This is client-side pagination.
+        // This is required for your complex filter logic to work.
+        const { data: cards, error } = await supabase
           .from('videos')
           .select('*')
           .order('created_at', { ascending: false });
         if (error) throw error;
 
-        allLoadedCards = cards;
-
-        document.getElementById('gallery').innerHTML = '';
+        allLoadedCards = cards; // For video viewer and filter tag loading
+        currentFilteredVideos = []; // Reset filtered list
 
         if (!currentFilterTag) {
-          cards.forEach(card => addCardToPage(card));
-          return;
-        }
-
-        const matchingVideos = [];
-        cards.forEach(card => {
-          const mainTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
-          if (mainTags.includes(currentFilterTag)) {
-            matchingVideos.push({ type: 'main', card });
-          }
-
-          if (card.related_videos_with_tags) {
-            card.related_videos_with_tags.forEach(relatedVideo => {
-              const relatedTags = relatedVideo.tags ? relatedVideo.tags.split(',').map(t => t.trim()) : [];
-              if (relatedTags.includes(currentFilterTag)) {
-                matchingVideos.push({
-                  type: 'related',
-                  url: relatedVideo.url,
-                  tags: relatedVideo.tags,
-                  parentCard: card
-                });
-              }
-            });
-          }
-        });
-
-        if (matchingVideos.length === 0) {
-          document.getElementById('gallery').innerHTML = '<p>No videos found with this tag.</p>';
-          return;
-        }
-
-        matchingVideos.forEach(match => {
-          if (match.type === 'main') {
-            addCardToPage(match.card);
-          } else {
-            const cardElem = document.createElement('div');
-            cardElem.className = 'card';
-            const tags = match.tags ? match.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
-            
-            cardElem.innerHTML = `
-              <video preload="metadata" muted loop playsinline>
-                <source src="${match.url}" type="video/mp4">
-              </video>
-              <div class="card-info">
-                <small>From: ${match.parentCard.title}</small>
-                ${tags.length > 0 ? `
-                <div class="card-tags">
-                  ${tags.map(tag => `<span class="tag-bubble">${tag}</span>`).join('')}
-                </div>
-                 ` : ''}
-              </div>
-            `;
-            
-            const videoElem = cardElem.querySelector('video');
-            cardElem.addEventListener('mouseenter', () => videoElem.play());
-            cardElem.addEventListener('mouseleave', () => videoElem.pause());
-            
-            cardElem.addEventListener('click', () => {
-                openVideoViewer(match.parentCard);
-                const relatedVideos = match.parentCard.related_videos || [];
-                const videoIndexInRelated = relatedVideos.indexOf(match.url);
-                if (videoIndexInRelated !== -1) {
-                    // +1 because main video is at index 0
-                    currentVideoIndex = videoIndexInRelated + 1;
-                    updateViewerVideo();
+          // No filter, show all main cards
+          currentFilteredVideos = cards.map(card => ({ type: 'main', card: card }));
+        } else {
+          // Filter is active, build the filtered list
+          const matchingVideos = [];
+          cards.forEach(card => {
+            const mainTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
+            if (mainTags.includes(currentFilterTag)) {
+              matchingVideos.push({ type: 'main', card });
+            }
+            if (card.related_videos_with_tags) {
+              card.related_videos_with_tags.forEach(relatedVideo => {
+                const relatedTags = relatedVideo.tags ? relatedVideo.tags.split(',').map(t => t.trim()) : [];
+                if (relatedTags.includes(currentFilterTag)) {
+                  matchingVideos.push({
+                    type: 'related',
+                    url: relatedVideo.url,
+                    tags: relatedVideo.tags,
+                    parentCard: card
+                  });
                 }
-            });
-            document.getElementById('gallery').appendChild(cardElem);
-          }
-        });
+              });
+            }
+          });
+          currentFilteredVideos = matchingVideos;
+        }
+
+        currentPage = 1; // Reset to page 1 whenever filters change
+        displayCurrentPage(); // Display the first page of results
+
       } catch (error) {
         console.error("Error loading cards:", error);
+        document.getElementById('gallery').innerHTML = '<p>Error loading videos.</p>';
       }
     }
 
@@ -1000,12 +1108,21 @@
       currentFilterTag = tag;
       closeVideoViewer();
       loadCards();
+      // Need to update the filter buttons display as well
       loadFilterTags();
     }
 
     function openVideoViewer(card) {
-      currentViewingCard = card;
+      // Find the card in the *complete* list
+      currentViewingCard = allLoadedCards.find(c => c.id === card.id);
       currentCardIndex = allLoadedCards.findIndex(c => c.id === card.id);
+      
+      if (!currentViewingCard) {
+          console.error("Card not found in allLoadedCards cache.");
+          // Fallback just in case
+          currentViewingCard = card;
+      }
+      
       currentVideoIndex = 0;
       updateViewerVideo();
       document.getElementById('videoViewer').style.display = 'flex';
@@ -1028,6 +1145,7 @@
       const videoCounter = document.getElementById('videoCounter');
       if (videos.length > 0 && currentVideoIndex >= 0 && currentVideoIndex < videos.length) {
         viewerVideo.src = videos[currentVideoIndex];
+        // Use allLoadedCards.length for the total count
         videoCounter.textContent = `${currentCardIndex + 1} / ${allLoadedCards.length}  (Video ${currentVideoIndex + 1}/${videos.length})`;
         viewerVideo.load();
         viewerVideo.play().catch(e => console.error("Autoplay was prevented.", e));
@@ -1039,12 +1157,13 @@
       const videos = [currentViewingCard.main_video_url, ...(currentViewingCard.related_videos || [])];
       currentVideoIndex--;
       if (currentVideoIndex < 0) {
+        // Go to previous card in the main list
         currentCardIndex = (currentCardIndex - 1 + allLoadedCards.length) % allLoadedCards.length;
         const newCard = allLoadedCards[currentCardIndex];
         const newCardVideos = [newCard.main_video_url, ...(newCard.related_videos || [])];
-        currentVideoIndex = newCardVideos.length - 1;
+        
         openVideoViewer(newCard); // This re-inits the viewer
-        currentVideoIndex = newCardVideos.length - 1; // Set index after opening
+        currentVideoIndex = newCardVideos.length - 1; // Set index to last video of new card
       }
       updateViewerVideo();
     }
@@ -1054,10 +1173,11 @@
       const videos = [currentViewingCard.main_video_url, ...(currentViewingCard.related_videos || [])];
       currentVideoIndex++;
       if (currentVideoIndex >= videos.length) {
+        // Go to next card in main list
         currentCardIndex = (currentCardIndex + 1) % allLoadedCards.length;
         const newCard = allLoadedCards[currentCardIndex];
         currentVideoIndex = 0;
-        openVideoViewer(newCard);
+        openVideoViewer(newCard); // This re-inits with the new card
       } else {
         updateViewerVideo();
       }
@@ -1313,7 +1433,8 @@
         if (error) throw error;
 
         closePopup();
-        await loadCards();
+        await loadCards(); // Refresh data
+        await loadFilterTags(); // Refresh tags
       } catch (error) {
         console.error("Error updating card:", error);
         document.getElementById('errorMessage').textContent = error.message;
@@ -1331,7 +1452,8 @@
           .eq('id', cardId);
         if (error) throw error;
 
-        await loadCards();
+        await loadCards(); // Refresh data
+        await loadFilterTags(); // Refresh tags
       } catch (error) {
         console.error("Error deleting card:", error);
         alert("Failed to delete video card");
