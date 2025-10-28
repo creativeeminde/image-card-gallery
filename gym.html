@@ -406,6 +406,7 @@
             const swipeThreshold = 60; 
             const swipeSnapTarget = 80; 
 
+            // --- Utility Functions ---
             async function loadDB() {
                 try {
                     const { data: plans, error: plansError } = await supabaseClient.from('plans').select('*');
@@ -423,14 +424,34 @@
                     console.log("Database loaded successfully from Supabase.");
                 } catch (error) {
                     console.error("Error loading data from Supabase:", error);
-                    alert("Could not load data. Please check your Supabase setup and network connection.");
+                    // Using console.error instead of alert for non-blocking error
+                    console.error("Could not load data. Please check your Supabase setup and network connection.");
                 }
             }
 
-            // A utility to refresh local DB state after an operation
             async function refreshData() {
                 await loadDB();
                 renderAll();
+            }
+            
+            async function savePlanToSupabase(plan) {
+                // Ensure exercises and sets are structured correctly
+                const planData = {
+                    ...plan,
+                    exercises: plan.exercises.map(ex => ({
+                        ...ex,
+                        sets: ex.sets || [] // Ensure sets is always an array
+                    }))
+                };
+            
+                const { error } = await supabaseClient.from('plans').update(planData).eq('id', plan.id);
+                if (error) {
+                    console.error("Error updating plan:", error);
+                } else {
+                    const planIndex = db.plans.findIndex(p => p.id === plan.id);
+                    if (planIndex > -1) db.plans[planIndex] = plan; // Update local state
+                    console.log("Plan updated successfully in local state and DB.");
+                }
             }
 
             function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2); }
@@ -452,9 +473,31 @@
             function renderPlansScreen() { const todayDayShort = DAYS_OF_WEEK_SHORT[new Date().getDay()]; document.querySelectorAll('.day-card').forEach(card => card.classList.remove('active')); const activeCard = document.querySelector(`.day-card[data-day="${todayDayShort}"]`); if(activeCard) activeCard.classList.add('active'); renderPlansForSelectedDay(todayDayShort); }
             function renderDailyCalendar() { const dailyCalendarEl = document.getElementById('daily-calendar'); dailyCalendarEl.innerHTML = ''; const today = new Date(); const currentDayOfWeek = today.getDay(); for (let i = 0; i < 7; i++) { const date = new Date(today); date.setDate(today.getDate() - currentDayOfWeek + i); const dayShort = DAYS_OF_WEEK_SHORT[date.getDay()]; const dayNumber = date.getDate(); const dayPlans = db.plans.filter(plan => plan.days && plan.days.includes(dayShort)); const planEmojis = dayPlans.map(plan => plan.icon || '🏋️').slice(0, 1); const dayCard = document.createElement('div'); dayCard.className = 'day-card'; dayCard.dataset.day = dayShort; dayCard.innerHTML = `<span class="day-number">${dayNumber}</span><span class="day-name">${dayShort}</span><div class="day-emojis">${planEmojis.join('')}</div>`; dailyCalendarEl.appendChild(dayCard); } }
             document.getElementById('daily-calendar').addEventListener('click', (e) => { const dayCard = e.target.closest('.day-card'); if (dayCard) { const selectedDay = dayCard.dataset.day; document.querySelectorAll('.day-card').forEach(card => card.classList.remove('active')); dayCard.classList.add('active'); if (!document.getElementById('plans-screen').classList.contains('active')) { showScreen('plans-screen'); } renderPlansForSelectedDay(selectedDay); } });
-            function renderPlansForSelectedDay(selectedDay) { const list = document.getElementById('workout-plans-list'); const plansForDay = db.plans.filter(p => p.days && p.days.includes(selectedDay)); if (plansForDay.length === 0) { list.innerHTML = `<p>No workout plans assigned to ${selectedDay}.</p>`; return; } list.innerHTML = plansForDay.map(plan => `<div class="card workout-plan-item view-plan-details" data-id="${plan.id}"><h3>${plan.icon || '🏋️'} ${plan.name}</h3><p>${plan.exercises.length} exercises</p><div class="workout-plan-item-actions"><button class="btn btn-secondary btn-small edit-plan-btn" data-id="${plan.id}">Edit</button><button class="btn btn-danger btn-small delete-plan-btn" data-id="${plan.id}">Delete</button></div></div>`).join(''); }
+            function renderPlansForSelectedDay(selectedDay) { const list = document.getElementById('workout-plans-list'); const plansForDay = db.plans.filter(p => p.days && p.days.includes(selectedDay)); if (plansForDay.length === 0) { list.innerHTML = `<p>No workout plans assigned to ${selectedDay}.</p>`; return; } list.innerHTML = plansForDay.map(plan => `<div class="card workout-plan-item view-plan-details" data-id="${plan.id}"><h3>${plan.icon || '🏋️'} ${plan.name}</h3><p>${plan.exercises ? plan.exercises.length : 0} exercises</p><div class="workout-plan-item-actions"><button class="btn btn-secondary btn-small edit-plan-btn" data-id="${plan.id}">Edit</button><button class="btn btn-danger btn-small delete-plan-btn" data-id="${plan.id}">Delete</button></div></div>`).join(''); }
             function renderPlanDetailScreen(planId) { const plan = db.plans.find(p => p.id === planId); if (!plan) return; currentPlanId = planId; document.getElementById('plan-detail-title').textContent = plan.name; const exercisesContainer = document.getElementById('plan-detail-exercises'); const exercises = plan.exercises || []; exercisesContainer.innerHTML = exercises.map(exercise => `<div class="exercise-detail-card" data-exercise-id="${exercise.id}"><div class="exercise-detail-card-header"><h3>${exercise.name}</h3><button class="btn-add-set" data-exercise-id="${exercise.id}">+</button></div><div class="sets-display-container">${(exercise.sets || []).map((set, index) => `<div class="set-display-item" data-set-index="${index}"><div class="set-action-layer"><button class="btn-action btn-action-delete">Delete</button><button class="btn-action btn-action-edit">Edit</button></div><div class="set-display-content" draggable="false"><span class="set-number">${index + 1}</span><span class="set-reps">${set.reps} <span>REPS</span></span><span class="set-weight">${set.weight} <span>KG</span></span></div><div class="set-edit-form"><label>${index + 1}</label><input type="number" class="edit-set-reps" value="${set.reps}" placeholder="Reps"><input type="number" class="edit-set-weight" value="${set.weight}" placeholder="Weight (kg)"><button class="btn btn-primary btn-small btn-save-set">Save</button><button class="btn btn-secondary btn-small btn-cancel-edit-set">Cancel</button></div></div>`).join('')}</div></div>`).join(''); document.getElementById('start-workout-from-detail').onclick = () => startWorkout(planId); showScreen('plan-detail-screen'); }
-            function renderHistoryScreen() { const list = document.getElementById('workout-history-list'); const sortedHistory = [...db.history].sort((a,b) => new Date(b.date) - new Date(a.date)); if (sortedHistory.length === 0) { list.innerHTML = '<p>No completed workouts found in your history.</p>'; return; } list.innerHTML = sortedHistory.map(w => `<div class="card history-item"><h3>${w.planName}</h3><p><strong>Date:</strong> ${new Date(w.date).toLocaleString()}</p><p><strong>Duration:</strong> ${w.duration} min</p><p><strong>Volume:</strong> ${w.volume.toLocaleString()} kg</p></div>`).join(''); }
+            
+            function renderHistoryScreen() { 
+                const list = document.getElementById('workout-history-list'); 
+                const sortedHistory = [...db.history].sort((a,b) => new Date(b.date) - new Date(a.date)); 
+                if (sortedHistory.length === 0) { 
+                    list.innerHTML = '<p>No completed workouts found in your history.</p>'; 
+                    return; 
+                } 
+                list.innerHTML = sortedHistory.map(w => 
+                    `<div class="card history-item" data-id="${w.id}">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div>
+                                <h3>${w.planName}</h3>
+                                <p><strong>Date:</strong> ${new Date(w.date).toLocaleString()}</p>
+                                <p><strong>Duration:</strong> ${w.duration} min</p>
+                                <p><strong>Volume:</strong> ${w.volume.toLocaleString()} kg</p>
+                            </div>
+                            <button class="btn btn-danger btn-small delete-history-btn" data-id="${w.id}" style="flex-shrink: 0;">Delete</button>
+                        </div>
+                     </div>`
+                ).join(''); 
+            }
+            
             function renderPRs() { const prList = document.getElementById('pr-list'); if (!prList) return; const prs = {}; db.history.forEach(workout => { (workout.sets || []).forEach(set => { const exName = set.exerciseName; if (!prs[exName] || (set.weight > prs[exName].weight) || (set.weight === prs[exName].weight && set.reps > prs[exName].reps)) { prs[exName] = { weight: set.weight, reps: set.reps }; } }); }); if (Object.keys(prs).length === 0) { prList.innerHTML = '<p>No personal records yet. Complete a workout to see your PRs!</p>'; return; } prList.innerHTML = Object.entries(prs).map(([name, pr]) => `<div class="pr-item"><p>${name}</p><span>${pr.weight} kg x ${pr.reps}</span></div>`).join(''); }
             function populateProgressChartSelect() { const select = document.getElementById('progress-chart-select'); if (!select) return; select.innerHTML = '<option value="">All Workouts (Total Volume)</option>'; const planNames = [...new Set(db.plans.map(p => p.name))]; planNames.forEach(name => { select.innerHTML += `<option value="${name}">${name}</option>`; }); }
             function renderVolumeChart() { const ctx = document.getElementById('volume-chart')?.getContext('2d'); if (!ctx) return; const selectElement = document.getElementById('progress-chart-select'); const selectedPlan = selectElement ? selectElement.value : ''; let workoutsToShow; let chartLabel = 'Total Volume (kg)'; if (selectedPlan) { workoutsToShow = db.history.filter(w => w.planName === selectedPlan); chartLabel = `${selectedPlan} Volume (kg)`; } else { workoutsToShow = db.history; } workoutsToShow.sort((a, b) => new Date(a.date) - new Date(b.date)); const labels = workoutsToShow.map(w => new Date(w.date).toLocaleDateString()); const data = workoutsToShow.map(w => w.volume); if (volumeChart) volumeChart.destroy(); volumeChart = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: chartLabel, data: data, backgroundColor: 'rgba(76, 175, 80, 0.2)', borderColor: 'rgba(76, 175, 80, 1)', borderWidth: 2, tension: 0.1, fill: true }] }, options: { scales: { y: { beginAtZero: true } }, responsive: true } }); }
@@ -474,15 +517,6 @@
             document.addEventListener('mousemove', handleDragMove); document.addEventListener('touchmove', handleDragMove, { passive: false });
             document.addEventListener('mouseup', handleDragEnd); document.addEventListener('touchend', handleDragEnd); document.addEventListener('mouseleave', handleDragEnd); 
             
-            async function savePlanToSupabase(plan) {
-                const { error } = await supabaseClient.from('plans').update(plan).eq('id', plan.id);
-                if (error) console.error("Error updating plan:", error);
-                else {
-                    const planIndex = db.plans.findIndex(p => p.id === plan.id);
-                    if (planIndex > -1) db.plans[planIndex] = plan; // Update local state
-                }
-            }
-            
             document.getElementById('plan-detail-exercises').addEventListener('click', async e => {
                 const target = e.target;
                 const setItem = target.closest('.set-display-item');
@@ -494,7 +528,9 @@
                     const exercise = plan.exercises.find(ex => ex.id === exerciseId);
                     if (exercise) {
                         if(!exercise.sets) exercise.sets = [];
-                        exercise.sets.push({ reps: 8, weight: 20 });
+                        // Add the new set based on the last set's values, or defaults
+                        const lastSet = exercise.sets[exercise.sets.length - 1] || { reps: 8, weight: 20 };
+                        exercise.sets.push({ reps: lastSet.reps, weight: lastSet.weight });
                         await savePlanToSupabase(plan);
                         renderPlanDetailScreen(currentPlanId);
                     }
@@ -506,14 +542,16 @@
                         setItem.classList.add('editing');
                         setItem.querySelector('.set-display-content').style.transform = 'translateX(0px)';
                     } else if (target.classList.contains('btn-action-delete')) {
-                        if (!confirm('Are you sure you want to delete this set?')) {
+                        // Use a custom modal for confirmation instead of confirm()
+                        // For this example, we'll keep confirm() but it's not ideal
+                        if (confirm('Are you sure you want to delete this set?')) {
+                            if (exercise && exercise.sets && exercise.sets[setIndex] !== undefined) {
+                                exercise.sets.splice(setIndex, 1);
+                                await savePlanToSupabase(plan);
+                                renderPlanDetailScreen(currentPlanId);
+                            }
+                        } else {
                             setItem.querySelector('.set-display-content').style.transform = 'translateX(0px)';
-                            return;
-                        }
-                        if (exercise && exercise.sets && exercise.sets[setIndex] !== undefined) {
-                            exercise.sets.splice(setIndex, 1);
-                            await savePlanToSupabase(plan);
-                            renderPlanDetailScreen(currentPlanId);
                         }
                     } else if (target.classList.contains('btn-cancel-edit-set')) {
                         setItem.classList.remove('editing');
@@ -534,6 +572,8 @@
             document.getElementById('add-exercise-to-plan-btn').addEventListener('click', async () => {
                 const plan = db.plans.find(p => p.id === currentPlanId);
                 if (!plan) return;
+                // Use a custom modal for prompt instead of prompt()
+                // For this example, we'll keep prompt() but it's not ideal
                 const newExerciseName = prompt("Enter the name for the new exercise:");
                 if (newExerciseName && newExerciseName.trim() !== '') {
                     if(!plan.exercises) plan.exercises = [];
@@ -550,24 +590,113 @@
             // --- 5. Active Workout Modal Logic ---
             startWorkout = function(planId) { const plan = db.plans.find(p => p.id === planId); if (!plan) return; document.getElementById('workout-modal-title').textContent = plan.name; document.getElementById('active-plan-id').value = plan.id; const container = document.getElementById('active-workout-exercises'); const exercises = plan.exercises || []; container.innerHTML = exercises.map((ex) => `<div class="exercise-item" data-exercise-name="${ex.name}"><h3>${ex.name}</h3><div class="set-grid-row set-grid-header"><span>Set</span><span style="text-align: left; padding-left: 0.5rem;">Previous</span><span>kg</span><span>Reps</span><span>✓</span></div>${(ex.sets || []).map((set, setIndex) => `<div class="set-grid-row" data-set-index="${setIndex}"><span class="set-number">${setIndex + 1}</span><span class="set-previous">${set.reps} x ${set.weight} kg</span><input type="number" class="active-set-weight" placeholder="kg" min="0" step="0.5" value="${set.weight}"><input type="number" class="active-set-reps" placeholder="Reps" min="0" value="${set.reps}"><button type="button" class="btn-set-complete"></button></div>`).join('')}</div>`).join(''); startTimer(); showModal('workout-modal'); }
             document.getElementById('active-workout-form').addEventListener('click', (e) => { if (e.target.classList.contains('btn-set-complete')) { e.preventDefault(); e.target.classList.toggle('completed'); e.target.closest('.set-grid-row').classList.toggle('completed'); } });
-            startTimer = function() { workoutStartTime = Date.now(); const timerEl = document.getElementById('workout-timer'); if (workoutTimerInterval) clearInterval(workoutTimerInterval); workoutTimerInterval = setInterval(() => { const elapsed = Date.now() - workoutStartTime; const h = String(Math.floor(elapsed / 3600000)).padStart(2, '0'); const m = String(Math.floor((elapsed % 3600000) / 60000)).padStart(2, '0'); const s = String(Math.floor((elapsed % 60000) / 1000)).padStart(2, '0'); timerEl.textContent = `${h}:${m}:${s}`; }, 1000); }
+            startTimer = function() { workoutStartTime = Date.now(); const timerEl = document.getElementById('workout-timer'); if (workoutTimerInterval) clearInterval(workoutTimerInterval); timerEl.textContent = '00:00:00'; workoutTimerInterval = setInterval(() => { const elapsed = Date.now() - workoutStartTime; const h = String(Math.floor(elapsed / 3600000)).padStart(2, '0'); const m = String(Math.floor((elapsed % 3600000) / 60000)).padStart(2, '0'); const s = String(Math.floor((elapsed % 60000) / 1000)).padStart(2, '0'); timerEl.textContent = `${h}:${m}:${s}`; }, 1000); }
             stopTimer = function() { clearInterval(workoutTimerInterval); workoutTimerInterval = null; return Math.round((Date.now() - workoutStartTime) / 60000); }
-            document.getElementById('active-workout-form').addEventListener('submit', async (e) => { e.preventDefault(); const duration = stopTimer(); const planId = document.getElementById('active-plan-id').value; const plan = db.plans.find(p => p.id === planId); const completedSets = []; let totalVolume = 0; document.querySelectorAll('#active-workout-exercises .exercise-item').forEach(exDiv => { const exerciseName = exDiv.dataset.exerciseName; exDiv.querySelectorAll('.set-grid-row.completed').forEach(setRow => { const reps = parseInt(setRow.querySelector('.active-set-reps').value); const weight = parseFloat(setRow.querySelector('.active-set-weight').value); if (!isNaN(reps) && !isNaN(weight)) { completedSets.push({ exerciseName, reps, weight }); totalVolume += reps * weight; } }); }); const historyEntry = { planId: plan.id, planName: plan.name, date: new Date().toISOString(), duration: duration, volume: totalVolume, sets: completedSets }; const { error } = await supabaseClient.from('history').insert(historyEntry); if (error) { console.error("Error saving workout history:", error); alert("Failed to save workout."); } else { await refreshData(); closeModal('workout-modal'); showScreen('history-screen'); } });
-            document.getElementById('cancel-workout-btn').addEventListener('click', () => { if (confirm('Are you sure you want to cancel this workout? Progress will not be saved.')) { stopTimer(); closeModal('workout-modal'); } });
+            
+            // --- *** UPDATED SUBMIT LISTENER *** ---
+            document.getElementById('active-workout-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const duration = stopTimer();
+                const planId = document.getElementById('active-plan-id').value;
+                
+                // 1. Get the plan from the local DB
+                const plan = db.plans.find(p => p.id === planId);
+                if (!plan) {
+                    console.error("Could not find plan to save history or update.");
+                    // alert("Error: Plan not found."); // Avoid alert
+                    return;
+                }
+
+                const completedSets = [];
+                let totalVolume = 0;
+                let planNeedsUpdate = false; // Flag to see if we need to save the plan
+
+                // 2. Iterate through exercise divs in the modal
+                document.querySelectorAll('#active-workout-exercises .exercise-item').forEach(exDiv => {
+                    const exerciseName = exDiv.dataset.exerciseName;
+                    
+                    // 3. Find corresponding exercise in the plan object
+                    const planExercise = plan.exercises.find(ex => ex.name === exerciseName);
+                    if (!planExercise) return; // Skip if exercise not found in plan
+
+                    // Iterate over *all* set rows (not just completed) to update the plan
+                    exDiv.querySelectorAll('.set-grid-row:not(.set-grid-header)').forEach(setRow => {
+                        const setIndex = parseInt(setRow.dataset.setIndex);
+                        const repsInput = setRow.querySelector('.active-set-reps');
+                        const weightInput = setRow.querySelector('.active-set-weight');
+
+                        const reps = parseInt(repsInput.value);
+                        const weight = parseFloat(weightInput.value);
+
+                        // A. Logic for saving history (only completed sets)
+                        if (setRow.classList.contains('completed')) {
+                            if (!isNaN(reps) && !isNaN(weight)) {
+                                completedSets.push({ exerciseName, reps, weight });
+                                totalVolume += reps * weight;
+                            }
+                        }
+
+                        // B. NEW LOGIC: Update the plan object
+                        // Find the corresponding set in the plan
+                        if (planExercise.sets && planExercise.sets[setIndex] !== undefined) {
+                            if (!isNaN(reps) && !isNaN(weight)) {
+                                // Check if values actually changed
+                                if (planExercise.sets[setIndex].reps !== reps || planExercise.sets[setIndex].weight !== weight) {
+                                    planExercise.sets[setIndex].reps = reps;
+                                    planExercise.sets[setIndex].weight = weight;
+                                    planNeedsUpdate = true;
+                                }
+                            }
+                        }
+                    });
+                });
+
+                // 4. NEW LOGIC: Save the updated plan to Supabase if changes were made
+                if (planNeedsUpdate) {
+                    console.log("Updating plan with new weights/reps...", plan);
+                    await savePlanToSupabase(plan);
+                    // savePlanToSupabase already updates the local db.plans object
+                }
+
+                // 5. Save the history entry (existing logic)
+                const historyEntry = { planId: plan.id, planName: plan.name, date: new Date().toISOString(), duration: duration, volume: totalVolume, sets: completedSets };
+                const { error } = await supabaseClient.from('history').insert(historyEntry);
+
+                if (error) {
+                    console.error("Error saving workout history:", error);
+                    // alert("Failed to save workout."); // Avoid alert
+                } else {
+                    // refreshData() re-fetches all data, ensuring local state is 100% synced with DB
+                    // (which now includes the updated plan)
+                    await refreshData();
+                    closeModal('workout-modal');
+                    showScreen('history-screen');
+                }
+            });
+            // --- *** END OF UPDATED SUBMIT LISTENER *** ---
+            
+            document.getElementById('cancel-workout-btn').addEventListener('click', () => {
+                // if (confirm('Are you sure you want to cancel this workout? Progress will not be saved.')) {
+                // Avoid confirm() - for this app, we'll just cancel directly.
+                // A better solution would be a custom modal.
+                stopTimer(); 
+                closeModal('workout-modal'); 
+                // } 
+            });
 
             // --- 6. Running Interval Logic ---
             const intervalForm = document.getElementById('interval-form'); const startIntervalBtn = document.getElementById('start-interval-btn'); const stopIntervalBtn = document.getElementById('stop-interval-btn'); const intervalInfo = document.getElementById('interval-info'); const intervalTimerDisplay = document.getElementById('interval-timer-display');
             intervalForm.addEventListener('input', updateTotalIntervalTime);
             startIntervalBtn.addEventListener('click', startCountdown); 
-            stopIntervalBtn.addEventListener('click', async () => { if (!intervalState.running) return; clearInterval(intervalTimer); clearInterval(countdownTimer); intervalTimer = null; countdownTimer = null; if (intervalState.startTime) { const totalRunTimeSeconds = (intervalState.runDuration * intervalState.totalReps) + (intervalState.restDuration * (intervalState.totalReps > 0 ? intervalState.totalReps - 1 : 0)); const logEntry = { date: intervalState.startTime, type: 'Interval', runDuration: intervalState.runDuration, restDuration: intervalState.restDuration, reps: intervalState.totalReps, totalDuration: totalRunTimeSeconds }; const { error } = await supabaseClient.from('runningLog').insert(logEntry); if (error) { console.error("Error saving run log:", error); alert("Failed to save run."); } else { intervalInfo.innerHTML = `<p>Interval finished! Logged.</p>`; await refreshData(); } } else { intervalInfo.innerHTML = `<p>Set your interval goal below and start!</p>`; } intervalState.running = false; intervalState.currentPhase = 'idle'; intervalState.startTime = null; intervalTimerDisplay.textContent = '00:00'; intervalTimerDisplay.style.color = 'var(--text-light)'; startIntervalBtn.style.display = 'inline-block'; stopIntervalBtn.style.display = 'none'; intervalForm.querySelectorAll('input').forEach(input => input.disabled = false); });
-            function startCountdown() { if (intervalState.running) return; const runDuration = parseInt(document.getElementById('run-duration').value); const restDuration = parseInt(document.getElementById('rest-duration').value); const repetitions = parseInt(document.getElementById('repetitions').value); if (isNaN(runDuration) || runDuration <= 0 || isNaN(repetitions) || repetitions <= 0 || isNaN(restDuration) || restDuration < 0) { alert("Please enter valid numbers for run, rest, and repetitions."); return; } intervalState = { running: true, currentPhase: 'countdown', currentTime: 3, currentRep: 0, totalReps: repetitions, runDuration: runDuration, restDuration: restDuration, startTime: null }; startIntervalBtn.style.display = 'none'; stopIntervalBtn.style.display = 'inline-block'; intervalForm.querySelectorAll('input').forEach(input => input.disabled = true); updateIntervalDisplay(); countdownTimer = setInterval(() => { intervalState.currentTime--; updateIntervalDisplay(); if (intervalState.currentTime <= 0) { clearInterval(countdownTimer); countdownTimer = null; intervalState.currentPhase = 'run'; intervalState.currentRep = 1; intervalState.currentTime = intervalState.runDuration; intervalState.startTime = new Date().toISOString(); updateIntervalDisplay(); intervalTimer = setInterval(tickIntervalTimer, 1000); } }, 1000); }
+            stopIntervalBtn.addEventListener('click', async () => { if (!intervalState.running) return; clearInterval(intervalTimer); clearInterval(countdownTimer); intervalTimer = null; countdownTimer = null; if (intervalState.startTime) { const totalRunTimeSeconds = (intervalState.runDuration * intervalState.totalReps) + (intervalState.restDuration * (intervalState.totalReps > 0 ? intervalState.totalReps - 1 : 0)); const logEntry = { date: intervalState.startTime, type: 'Interval', runDuration: intervalState.runDuration, restDuration: intervalState.restDuration, reps: intervalState.totalReps, totalDuration: totalRunTimeSeconds }; const { error } = await supabaseClient.from('runningLog').insert(logEntry); if (error) { console.error("Error saving run log:", error); } else { intervalInfo.innerHTML = `<p>Interval finished! Logged.</p>`; await refreshData(); } } else { intervalInfo.innerHTML = `<p>Set your interval goal below and start!</p>`; } intervalState.running = false; intervalState.currentPhase = 'idle'; intervalState.startTime = null; intervalTimerDisplay.textContent = '00:00'; intervalTimerDisplay.style.color = 'var(--text-light)'; startIntervalBtn.style.display = 'inline-block'; stopIntervalBtn.style.display = 'none'; intervalForm.querySelectorAll('input').forEach(input => input.disabled = false); });
+            function startCountdown() { if (intervalState.running) return; const runDuration = parseInt(document.getElementById('run-duration').value); const restDuration = parseInt(document.getElementById('rest-duration').value); const repetitions = parseInt(document.getElementById('repetitions').value); if (isNaN(runDuration) || runDuration <= 0 || isNaN(repetitions) || repetitions <= 0 || isNaN(restDuration) || restDuration < 0) { console.error("Invalid interval settings"); return; } intervalState = { running: true, currentPhase: 'countdown', currentTime: 3, currentRep: 0, totalReps: repetitions, runDuration: runDuration, restDuration: restDuration, startTime: null }; startIntervalBtn.style.display = 'none'; stopIntervalBtn.style.display = 'inline-block'; intervalForm.querySelectorAll('input').forEach(input => input.disabled = true); updateIntervalDisplay(); countdownTimer = setInterval(() => { intervalState.currentTime--; updateIntervalDisplay(); if (intervalState.currentTime <= 0) { clearInterval(countdownTimer); countdownTimer = null; intervalState.currentPhase = 'run'; intervalState.currentRep = 1; intervalState.currentTime = intervalState.runDuration; intervalState.startTime = new Date().toISOString(); updateIntervalDisplay(); intervalTimer = setInterval(tickIntervalTimer, 1000); } }, 1000); }
             function tickIntervalTimer() { intervalState.currentTime--; if (intervalState.currentTime < 0) { if (intervalState.currentPhase === 'run') { if (intervalState.currentRep >= intervalState.totalReps) { stopIntervalBtn.click(); return; } else if (intervalState.restDuration > 0) { intervalState.currentPhase = 'rest'; intervalState.currentTime = intervalState.restDuration; } else { intervalState.currentRep++; intervalState.currentPhase = 'run'; intervalState.currentTime = intervalState.runDuration; } } else { intervalState.currentRep++; intervalState.currentPhase = 'run'; intervalState.currentTime = intervalState.runDuration; } } updateIntervalDisplay(); }
             function updateIntervalDisplay() { if (!intervalState.running && intervalState.currentPhase === 'idle') { intervalTimerDisplay.textContent = `00:00`; intervalInfo.innerHTML = `<p>Set your interval goal below and start!</p>`; intervalTimerDisplay.style.color = 'var(--text-light)'; return; } if(intervalState.currentPhase === 'countdown') { intervalTimerDisplay.textContent = `${intervalState.currentTime}`; intervalInfo.innerHTML = `<p style="font-weight: 600;">Get Ready!</p>`; intervalTimerDisplay.style.color = 'var(--action-blue)'; } else { let phaseText = intervalState.currentPhase === 'run' ? 'RUN' : 'REST'; intervalTimerDisplay.textContent = formatTime(intervalState.currentTime); intervalInfo.innerHTML = ` <p>Rep ${intervalState.currentRep} / ${intervalState.totalReps}</p><p class="phase-text">${phaseText}</p> `; intervalTimerDisplay.style.color = intervalState.currentPhase === 'run' ? 'var(--primary-color)' : 'var(--action-red)'; } }
 
             // --- Other Event Listeners & Functions ---
             document.getElementById('add-plan-btn').addEventListener('click', () => { document.getElementById('plan-form').reset(); document.getElementById('plan-id').value = ''; document.getElementById('plan-modal-title').textContent = 'Add Workout Plan'; document.getElementById('exercises-container').innerHTML = ''; document.querySelectorAll('#plan-days-selection input[type="checkbox"]').forEach(cb => cb.checked = false); document.querySelectorAll('input[name="plan-icon"]').forEach(radio => radio.checked = false); document.getElementById('icon-1').checked = true; addExerciseToForm(); showModal('plan-modal'); });
             document.getElementById('add-exercise-btn').addEventListener('click', () => addExerciseToForm());
-            document.getElementById('exercises-container').addEventListener('click', (e) => { if (e.target.classList.contains('add-set-btn')) { const setsContainer = e.target.previousElementSibling; const setIndex = setsContainer.children.length; setsContainer.innerHTML += createSetFormHTML(null, setIndex); } if (e.target.classList.contains('remove-set-btn')) { e.target.closest('.set-editor').remove(); const setsContainer = e.target.closest('.sets-container'); if (setsContainer) { Array.from(setsContainer.children).forEach((setDiv, i) => { setDiv.querySelector('label').textContent = `Set ${i + 1}`; }); } } if (e.target.classList.contains('remove-exercise-btn')) { e.target.closest('.exercise-editor').remove(); } });
+            document.getElementById('exercises-container').addEventListener('click', (e) => { if (e.target.classList.contains('add-set-btn')) { const setsContainer = e.target.previousElementSibling; const setIndex = setsContainer.children.length; const lastSetEl = setsContainer.children[setIndex - 1]; let newSet = { reps: 8, weight: 20 }; if (lastSetEl) { const lastReps = parseInt(lastSetEl.querySelector('.set-reps').value) || 8; const lastWeight = parseFloat(lastSetEl.querySelector('.set-weight').value) || 20; newSet = { reps: lastReps, weight: lastWeight }; } setsContainer.innerHTML += createSetFormHTML(newSet, setIndex); } if (e.target.classList.contains('remove-set-btn')) { e.target.closest('.set-editor').remove(); const setsContainer = e.target.closest('.sets-container'); if (setsContainer) { Array.from(setsContainer.children).forEach((setDiv, i) => { setDiv.querySelector('label').textContent = `Set ${i + 1}`; }); } } if (e.target.classList.contains('remove-exercise-btn')) { e.target.closest('.exercise-editor').remove(); } });
             
             document.getElementById('plan-form').addEventListener('submit', async (e) => { 
                 e.preventDefault(); 
@@ -578,18 +707,29 @@
                 const exercises = []; 
                 document.querySelectorAll('#exercises-container .exercise-editor').forEach(exDiv => { 
                     const exercise = { id: exDiv.dataset.id || generateId(), name: exDiv.querySelector('.exercise-name').value, sets: [] }; 
-                    exDiv.querySelectorAll('.set-editor').forEach(setDiv => { exercise.sets.push({ reps: parseInt(setDiv.querySelector('.set-reps').value), weight: parseFloat(setDiv.querySelector('.set-weight').value) }); }); 
+                    exDiv.querySelectorAll('.set-editor').forEach(setDiv => { 
+                        const reps = parseInt(setDiv.querySelector('.set-reps').value);
+                        const weight = parseFloat(setDiv.querySelector('.set-weight').value);
+                        if (!isNaN(reps) && !isNaN(weight)) {
+                            exercise.sets.push({ reps: reps, weight: weight }); 
+                        }
+                    }); 
                     exercises.push(exercise); 
                 }); 
 
                 if (planId) {
                     // Update existing plan
-                    const planData = { name: planName, days: selectedDays, icon: selectedIcon, exercises };
-                    const { error } = await supabaseClient.from('plans').update(planData).eq('id', planId);
-                    if (error) console.error("Error updating plan:", error);
+                    const plan = db.plans.find(p => p.id === planId);
+                    if (plan) {
+                        plan.name = planName;
+                        plan.days = selectedDays;
+                        plan.icon = selectedIcon;
+                        plan.exercises = exercises;
+                        await savePlanToSupabase(plan);
+                    }
                 } else {
                     // Create new plan
-                    const newPlan = { name: planName, days: selectedDays, icon: selectedIcon, exercises };
+                    const newPlan = { name: planName, days: selectedDays, icon: selectedIcon, exercises: exercises };
                     const { error } = await supabaseClient.from('plans').insert([newPlan]);
                     if (error) console.error("Error creating plan:", error);
                 }
@@ -623,7 +763,8 @@
                         showModal('plan-modal'); 
                     } 
                 } else if (target.classList.contains('delete-plan-btn')) { 
-                    if (confirm(`Are you sure you want to delete this workout plan? This cannot be undone.`)) { 
+                    // if (confirm(`Are you sure you want to delete this workout plan? This cannot be undone.`)) { 
+                    // Avoid confirm()
                         const { error } = await supabaseClient.from('plans').delete().eq('id', planId);
                         if (error) console.error("Error deleting plan:", error);
                         else {
@@ -631,21 +772,42 @@
                             if (currentPlanId === planId) { 
                                 currentPlanId = null; 
                                 showScreen('plans-screen'); 
+                            } else {
+                                // Re-render the current day's plans
+                                const activeDayCard = document.querySelector('.day-card.active');
+                                const selectedDay = activeDayCard ? activeDayCard.dataset.day : DAYS_OF_WEEK_SHORT[new Date().getDay()];
+                                renderPlansForSelectedDay(selectedDay);
                             }
                         }
-                    } 
+                    // } 
                 } else if (target.closest('.view-plan-details')) { 
                     renderPlanDetailScreen(planId); 
                 } 
             });
 
-            addExerciseToForm = function(exercise = null) { const container = document.getElementById('exercises-container'); const exerciseId = generateId(); const exerciseDiv = document.createElement('div'); exerciseDiv.className = 'exercise-editor'; exerciseDiv.dataset.id = exercise ? exercise.id : exerciseId; exerciseDiv.innerHTML = `<div class="exercise-editor-header"><input type="text" class="exercise-name" placeholder="Exercise Name" value="${exercise ? exercise.name : ''}" required><button type="button" class="btn-danger btn-small remove-exercise-btn">&times;</button></div><div class="sets-container">${exercise && exercise.sets ? exercise.sets.map((set, i) => createSetFormHTML(set, i)).join('') : createSetFormHTML(null, 0)}</div><button type="button" class="btn btn-secondary btn-small add-set-btn">+ Add Set</button>`; container.appendChild(exerciseDiv); }
-            createSetFormHTML = function(set = null, index = 0) { return `<div class="set-editor"><label>Set ${index + 1}</label><input type="number" class="set-reps" placeholder="Reps" min="0" value="${set ? set.reps : ''}" required><input type="number" class="set-weight" placeholder="Weight (kg)" min="0" value="${set ? set.weight : ''}" required><button type="button" class="btn-danger btn-small remove-set-btn">&times;</button></div>`; }
+            addExerciseToForm = function(exercise = null) { const container = document.getElementById('exercises-container'); const exerciseId = generateId(); const exerciseDiv = document.createElement('div'); exerciseDiv.className = 'exercise-editor'; exerciseDiv.dataset.id = exercise ? exercise.id : exerciseId; exerciseDiv.innerHTML = `<div class="exercise-editor-header"><input type="text" class="exercise-name" placeholder="Exercise Name" value="${exercise ? exercise.name : ''}" required><button type="button" class="btn-danger btn-small remove-exercise-btn">&times;</button></div><div class="sets-container">${exercise && exercise.sets ? exercise.sets.map((set, i) => createSetFormHTML(set, i)).join('') : createSetFormHTML({reps: 8, weight: 20}, 0)}</div><button type="button" class="btn btn-secondary btn-small add-set-btn">+ Add Set</button>`; container.appendChild(exerciseDiv); }
+            createSetFormHTML = function(set = null, index = 0) { return `<div class="set-editor"><label>Set ${index + 1}</label><input type="number" class="set-reps" placeholder="Reps" min="0" value="${set ? set.reps : ''}" required><input type="number" class="set-weight" placeholder="Weight (kg)" min="0" step="0.5" value="${set ? set.weight : ''}" required><button type="button" class="btn-danger btn-small remove-set-btn">&times;</button></div>`; }
             
             // --- 7. Initial Load ---
             await loadDB();
             renderAll();
             showScreen('home-screen'); 
+
+            // --- New Event Listener for History Deletion ---
+            document.getElementById('workout-history-list').addEventListener('click', async (e) => {
+                if (e.target.classList.contains('delete-history-btn')) {
+                    const historyId = e.target.dataset.id;
+                    // Bypassing confirm() for a smoother experience in this environment
+                    try {
+                        const { error } = await supabaseClient.from('history').delete().eq('id', historyId);
+                        if (error) throw error;
+                        await refreshData(); // Refresh all data and re-render
+                        showScreen('history-screen'); // Stay on the history screen
+                    } catch (error) {
+                        console.error("Error deleting workout history:", error);
+                    }
+                }
+            });
         });
     </script>
 
