@@ -6,7 +6,6 @@
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
     <title>TaskMaster</title>
 
-    <!-- PWA & iOS Specific Tags -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#101922"/>
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -14,9 +13,6 @@
     <meta name="apple-mobile-web-app-title" content="TaskMaster">
     <link rel="apple-touch-icon" href="icons/icon-180x180.png">
     
-    <!-- NOTE: For a production app, you would add splash screens for all devices. This is a sample. -->
-    <!-- <link rel="apple-touch-startup-image" href="/splash/iphone14.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)"> -->
-
     <link id="favicon" rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%23137fec'/%3E%3C/svg%3E">
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -70,7 +66,7 @@
     
     <style>
         /* Ensures tap feedback on iOS */
-        [onclick], [data-view] {
+        [onclick], [data-view], .load-template-btn, .edit-template-btn, .delete-template-btn {
           cursor: pointer;
         }
     </style>
@@ -78,10 +74,8 @@
 
 <body class="bg-background-light dark:bg-background-dark font-display text-slate-800 dark:text-slate-200 pb-16 md:pb-0">
 
-    <!-- MODIFICATION: Added 'transition-transform' and 'duration-300' for smooth hiding/showing -->
     <header class="flex items-center justify-between px-6 py-3 border-b border-slate-200 dark:border-slate-800 sticky top-0 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-sm z-50 transition-transform duration-300">
         <div class="flex items-center gap-4">
-            <!-- Online Status Indicator -->
             <div id="online-status" class="size-3 rounded-full bg-green-500" title="Online"></div>
             <div class="text-primary size-7"><svg fill="currentColor" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M6 6H42L36 24L42 42H6L12 24L6 6Z"></path></svg></div>
             <h1 class="text-xl font-bold text-slate-900 dark:text-white">TaskMaster</h1>
@@ -99,8 +93,6 @@
             <img alt="User avatar" class="size-10 rounded-full cursor-pointer" id="profile-pic" src="https://i.pravatar.cc/150?u=a042581f4e29026704d"/>
         </div>
     </header>
-
-    <!-- The rest of your <body> content remains exactly the same... -->
 
     <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-background-light dark:bg-background-dark border-t border-slate-200 dark:border-slate-800 z-50 flex justify-around">
         <a data-view="#schedule-view" class="nav-link flex flex-col items-center text-center p-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary cursor-pointer">
@@ -124,18 +116,20 @@
             <span>Pomodoro</span>
         </a>
     </nav>
+    
     <div id="load-template-modal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
         <div class="bg-background-light dark:bg-background-dark rounded-lg shadow-xl w-full max-w-md">
             <div class="flex items-center justify-between p-4 border-b dark:border-slate-800">
-                <h3 class="text-lg font-bold">Load a Template</h3>
+                <h3 class="text-lg font-bold">Load or Edit Template</h3>
                 <button id="close-template-modal-btn" class="p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
-            <div id="template-list" class="p-4 max-h-80 overflow-y-auto">
+            <div id="template-list" class="p-4 max-h-80 overflow-y-auto space-y-2">
                 </div>
         </div>
     </div>
+    
     <div id="views-container">
         <div id="schedule-view" class="hidden"><main class="flex-1 px-10 py-8"><div class="mx-auto max-w-5xl"><div class="flex items-center justify-between mb-8"><div><h1 id="schedule-title" class="text-3xl font-bold"></h1><p id="current-date" class="text-slate-500"></p></div>
         <div class="flex items-center gap-2">
@@ -167,6 +161,76 @@
                 </div>
             </div>
         </form></div></main></div>
+
+        <div id="template-editor-view" class="hidden">
+            <main class="flex-1 px-10 py-8">
+                <div class="mx-auto max-w-5xl">
+                    <div class="flex items-center justify-between mb-8">
+                        <div>
+                            <h1 id="template-editor-title" class="text-3xl font-bold">Edit Template</h1>
+                            <p id="template-editor-name" class="text-slate-500"></p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button id="close-template-editor-btn" class="px-4 py-2 text-sm font-semibold rounded-lg border bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700">&larr; Back to Schedule</button>
+                        </div>
+                    </div>
+                    <div class="relative">
+                        <div id="template-hour-grid" class="grid grid-cols-[auto_1fr] gap-x-4"></div>
+                        <div id="template-events-container" class="absolute top-0 left-[60px] right-0 bottom-0"></div>
+                    </div>
+                </div>
+            </main>
+            <div class="fixed bottom-10 right-10 md:bottom-10">
+                <button id="add-template-event-btn" class="flex items-center justify-center rounded-full size-14 bg-primary text-white shadow-lg">
+                    <span class="material-symbols-outlined">add</span>
+                </button>
+            </div>
+        </div>
+
+        <div id="template-form-view" class="hidden">
+            <main class="w-full max-w-2xl px-4 py-8 mx-auto">
+                <div class="space-y-8">
+                    <div>
+                        <h2 class="text-3xl font-bold">New Template Event</h2>
+                        <p class="mt-2 text-slate-500">Create a new event for your template.</p>
+                    </div>
+                    <form id="template-event-form" class="space-y-6">
+                        <div>
+                            <label class="block text-sm font-medium" for="template-title">Title</label>
+                            <input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="template-title" name="title" type="text" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium" for="template-category">Category</label>
+                            <select required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="template-category" name="category">
+                                <option>Work</option>
+                                <option>Personal</option>
+                                <option>Spiritual</option>
+                                <option>Education</option>
+                                <option>Entertainment</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-medium" for="template-start-time">Start Time</label>
+                                <input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 [color-scheme:dark]" id="template-start-time" name="start_time" type="time" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium" for="template-end-time">End Time</label>
+                                <input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 [color-scheme:dark]" id="template-end-time" name="end_time" type="time" />
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center pt-4">
+                            <button id="delete-template-event-btn" class="px-6 py-3 rounded-lg text-red-500 hover:bg-red-500/10 hidden" type="button">Delete Event</button>
+                            <div class="flex gap-3">
+                                <button id="cancel-template-btn" class="px-6 py-3 rounded-lg border bg-white dark:bg-slate-800" type="button">Cancel</button>
+                                <button class="px-6 py-3 rounded-lg text-white bg-primary" type="submit">Create Event</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </main>
+        </div>
+        
         <div id="calendar-view" class="hidden"><main class="container mx-auto px-4 py-8"><div class="flex flex-col lg:flex-row justify-center gap-8"><div class="w-full lg:max-w-md bg-white dark:bg-slate-900/50 p-4 rounded-lg"><div class="flex items-center justify-between mb-4"><button id="cal1-prev-btn" class="p-2 rounded-full"><span class="material-symbols-outlined">chevron_left</span></button><h2 id="cal1-month-year" class="text-lg font-semibold"></h2><button class="opacity-0 p-2"><span class="material-symbols-outlined">chevron_right</span></button></div><div class="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-500 py-2"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div><div id="cal1-body" class="grid grid-cols-7 gap-1 text-center"></div></div><div class="w-full lg:max-w-md bg-white dark:bg-slate-900/50 p-4 rounded-lg"><div class="flex items-center justify-between mb-4"><button class="opacity-0 p-2"><span class="material-symbols-outlined">chevron_left</span></button><h2 id="cal2-month-year" class="text-lg font-semibold"></h2><button id="cal2-next-btn" class="p-2 rounded-full"><span class="material-symbols-outlined">chevron_right</span></button></div><div class="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-500 py-2"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div><div id="cal2-body" class="grid grid-cols-7 gap-1 text-center"></div></div></div></main></div>
         
         <div id="todo-view" class="hidden"><main class="container mx-auto px-4 py-8"><div class="max-w-4xl mx-auto"><div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-bold">My To-Do List</h2><button id="new-task-btn" class="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg font-semibold"><span class="material-symbols-outlined">add_circle</span>New Task</button></div><div class="bg-white/50 dark:bg-white/5 rounded-lg p-6 mb-8"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">Today's Progress</h3><span id="progress-text" class="text-sm font-medium"></span></div><div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5"><div id="progress-bar" class="bg-primary h-2.5 rounded-full" style="width:0%"></div></div><div class="grid grid-cols-3 gap-4 text-center mt-4" id="stats-container"></div></div>
@@ -201,7 +265,6 @@
                     <button id="pomodoro-long-break-btn" class="px-4 py-2 rounded-lg text-sm font-semibold transition-colors timer-session-btn bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600" data-session="longBreak">Long Break</button>
                 </div>
                 
-                <!-- MODIFICATION: Replaced 'text-9xl' with responsive classes -->
                 <div id="pomodoro-timer-display" class="text-7xl sm:text-8xl md:text-9xl font-mono font-bold text-slate-900 dark:text-white">25:00</div>
                 
                 <div class="flex justify-center gap-6">
@@ -239,7 +302,6 @@
         </div></main></div>
         </div>
 
-    <!-- The entire <script> tag with all your JS logic remains here... -->
     <script>
         // === SUPABASE & STATE SETUP ===
         const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
@@ -253,6 +315,10 @@
         let editingTaskId = null;
         let editingEventId = null;
         let editingTodoId = null;
+        
+        // === NEW TEMPLATE EDITING STATE ===
+        let editingTemplateId = null;
+        let editingTemplateEventId = null;
         
         // === POMODORO STATE ===
         let timerInterval = null;
@@ -298,6 +364,13 @@
             document.querySelectorAll('#views-container > div').forEach(v => v.classList.add('hidden'));
             document.querySelector(viewId).classList.remove('hidden');
             updateActiveLink(viewId);
+            
+            // Clear editing states when switching views
+            if (viewId !== '#form-view') editingEventId = null;
+            if (viewId !== '#new-task-view') editingTodoId = null;
+            if (viewId !== '#new-project-task-view') editingTaskId = null;
+            if (viewId !== '#template-form-view') editingTemplateEventId = null;
+            
             if (viewId === '#schedule-view') displayEvents(selectedDate);
             if (viewId === '#calendar-view') initializeCalendarView();
             if (viewId === '#todo-view') displayTodos();
@@ -341,6 +414,18 @@
                 grid.innerHTML += `<div class="text-right text-sm text-slate-500 h-16 pt-2 border-b dark:border-slate-800">${time}</div><div class="border-b dark:border-slate-800"></div>`;
             }
         }
+        
+        // === NEW: TEMPLATE EDITOR GRID RENDER ===
+        function renderTemplateEditorGrid() {
+            const grid = document.getElementById('template-hour-grid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            for (let i = 0; i < 24; i++) {
+                const time = new Date(0, 0, 0, i).toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
+                grid.innerHTML += `<div class="text-right text-sm text-slate-500 h-16 pt-2 border-b dark:border-slate-800">${time}</div><div class="border-b dark:border-slate-800"></div>`;
+            }
+        }
+        
         async function displayEvents(date) {
             const eventsContainer = document.getElementById('events-container');
             const scheduleTitle = document.getElementById('schedule-title');
@@ -818,7 +903,7 @@
                 });
             });
         }
-        // === TEMPLATE FUNCTIONS ===
+        // === TEMPLATE FUNCTIONS (MODIFIED) ===
         function scheduleForTomorrow() {
             selectedDate.setDate(selectedDate.getDate() + 1);
             displayEvents(selectedDate);
@@ -865,6 +950,8 @@
                 alert(`Template "${templateName}" saved successfully!`);
             }
         }
+        
+        // MODIFIED: Renders buttons for Load, Edit, Delete
         async function showLoadTemplateModal() {
             const { data: templates, error } = await db.from('schedule_templates').select('*');
             if (error) {
@@ -878,16 +965,27 @@
                 templateList.innerHTML = '<p class="text-slate-500">No saved templates found.</p>';
             } else {
                 templates.forEach(template => {
-                    const button = document.createElement('button');
-                    button.className = 'w-full text-left p-3 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 block';
-                    button.textContent = template.name;
-                    button.onclick = () => loadTemplate(template.id);
-                    templateList.appendChild(button);
+                    const el = document.createElement('div');
+                    el.className = 'flex items-center justify-between p-3 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700';
+                    el.innerHTML = `
+                        <span class="font-medium load-template-btn" data-load-id="${template.id}">${template.name}</span>
+                        <div class="flex gap-2">
+                            <button class="edit-template-btn p-2 rounded-full hover:bg-slate-300 dark:hover:bg-slate-600" data-edit-id="${template.id}" title="Edit Template">
+                                <span class="material-symbols-outlined text-sm">edit</span>
+                            </button>
+                            <button class="delete-template-btn p-2 rounded-full hover:bg-red-500/20 text-red-500" data-delete-id="${template.id}" title="Delete Template">
+                                <span class="material-symbols-outlined text-sm">delete</span>
+                            </button>
+                        </div>
+                    `;
+                    templateList.appendChild(el);
                 });
             }
             document.getElementById('load-template-modal').classList.remove('hidden');
             document.getElementById('load-template-modal').classList.add('flex');
         }
+        
+        // This function remains the same
         async function loadTemplate(templateId) {
             if (!navigator.onLine) {
                 alert("You are offline. Please reconnect to load templates.");
@@ -924,6 +1022,139 @@
             }
         }
         
+        // === NEW TEMPLATE EDITOR FUNCTIONS ===
+        async function deleteTemplate(templateId) {
+            if (!navigator.onLine) {
+                alert("You are offline. Please reconnect to delete templates.");
+                return;
+            }
+            if (!confirm('Are you sure you want to delete this template and all its events? This cannot be undone.')) {
+                return;
+            }
+            
+            // Delete child events first
+            const { error: eventsError } = await db.from('template_events').delete().eq('template_id', templateId);
+            if (eventsError) {
+                alert('Error deleting template events: ' + eventsError.message);
+                return;
+            }
+            
+            // Delete parent template
+            const { error: templateError } = await db.from('schedule_templates').delete().eq('id', templateId);
+            if (templateError) {
+                alert('Error deleting template: ' + templateError.message);
+                return;
+            }
+            
+            // Refresh the modal
+            showLoadTemplateModal();
+        }
+        
+        async function showTemplateEditor(templateId) {
+            editingTemplateId = templateId;
+            const { data: template, error } = await db.from('schedule_templates').select('name').eq('id', templateId).single();
+            if (error) {
+                alert('Error fetching template details: ' + error.message);
+                return;
+            }
+            
+            document.getElementById('template-editor-name').textContent = template.name;
+            document.getElementById('load-template-modal').classList.add('hidden');
+            document.getElementById('load-template-modal').classList.remove('flex');
+            showView('#template-editor-view');
+            displayTemplateEvents(templateId);
+        }
+        
+        async function displayTemplateEvents(templateId) {
+            const eventsContainer = document.getElementById('template-events-container');
+            eventsContainer.innerHTML = `<p class="text-center text-slate-500 pt-4">Loading template events...</p>`;
+            
+            const { data: events, error } = await db.from('template_events').select('*').eq('template_id', templateId);
+            
+            eventsContainer.innerHTML = '';
+            if (error) {
+                console.error('Error fetching template events:', error);
+                eventsContainer.innerHTML = `<p class="text-center text-red-500 pt-4">Could not load events.</p>`;
+                return;
+            }
+            if (!events || events.length === 0) {
+                eventsContainer.innerHTML = `<p class="text-center text-slate-500 pt-4">No events in this template.</p>`;
+                return;
+            }
+            
+            events.forEach(event => {
+                const start = timeToDecimal(event.start_time);
+                const end = timeToDecimal(event.end_time);
+                const eventEl = document.createElement('div');
+                const colorClasses = getCategoryClasses(event.category);
+                
+                eventEl.className = `absolute p-2 rounded-lg overflow-hidden cursor-pointer ${colorClasses} hover:opacity-80`;
+                eventEl.style.cssText = `top:calc(${start}*4rem);height:calc(${(end-start)}*4rem);left:.5rem;right:.5rem;`;
+                eventEl.innerHTML = `<p class="font-bold text-sm truncate">${event.title}</p><p class="text-xs opacity-80">${formatTime(event.start_time)}</p>`;
+                
+                eventEl.addEventListener('click', () => editTemplateEvent(event));
+                eventsContainer.appendChild(eventEl);
+            });
+        }
+        
+        function editTemplateEvent(event) {
+            editingTemplateEventId = event.id;
+            // Populate template form
+            document.getElementById('template-title').value = event.title;
+            document.getElementById('template-category').value = event.category;
+            document.getElementById('template-start-time').value = event.start_time;
+            document.getElementById('template-end-time').value = event.end_time;
+            
+            // Update UI for editing
+            document.querySelector('#template-form-view h2').textContent = 'Edit Template Event';
+            document.querySelector('#template-event-form button[type="submit"]').textContent = 'Update Event';
+            document.getElementById('delete-template-event-btn').classList.remove('hidden');
+            
+            showView('#template-form-view');
+        }
+        
+        async function handleTemplateEventFormSubmit(e) {
+            e.preventDefault();
+            if (!navigator.onLine) {
+                alert("You are offline. Please reconnect to save changes.");
+                return;
+            }
+            const form = e.target;
+            const formData = new FormData(form);
+            const eventData = Object.fromEntries(formData.entries());
+            if (eventData.start_time.length === 5) eventData.start_time += ':00';
+            if (eventData.end_time.length === 5) eventData.end_time += ':00';
+            
+            let response;
+            if (editingTemplateEventId) {
+                response = await db.from('template_events').update(eventData).eq('id', editingTemplateEventId);
+            } else {
+                eventData.template_id = editingTemplateId;
+                response = await db.from('template_events').insert([eventData]);
+            }
+            if (response.error) {
+                alert('Error: ' + response.error.message);
+            } else {
+                showTemplateEditor(editingTemplateId);
+            }
+        }
+        
+        async function deleteTemplateEvent() {
+            if (!editingTemplateEventId || !confirm('Are you sure you want to delete this event from the template?')) {
+                return;
+            }
+            if (!navigator.onLine) {
+                alert("You are offline. Please reconnect to delete the event.");
+                return;
+            }
+            const { error } = await db.from('template_events').delete().eq('id', editingTemplateEventId);
+            if (error) {
+                alert('Error deleting event: ' + error.message);
+            } else {
+                showTemplateEditor(editingTemplateId);
+            }
+        }
+
         // === POMODORO TIMER LOGIC (UPDATED) ===
         function stopAlerts() {
             if (flashingInterval) {
@@ -1130,6 +1361,7 @@
             flatpickr('#project-task-due-date', { defaultDate: 'today', dateFormat: 'Y-m-d' });
             
             renderHourGrid();
+            renderTemplateEditorGrid(); // NEW: Render the grid for the new editor
             
             // --- NEW NAVIGATION LOGIC ---
             // This handles both desktop and the new mobile navigation
@@ -1155,6 +1387,7 @@
             document.getElementById('new-task-form').addEventListener('submit', handleTaskFormSubmit);
             document.getElementById('new-project-form').addEventListener('submit', handleProjectFormSubmit);
             document.getElementById('new-project-task-form').addEventListener('submit', handleProjectTaskFormSubmit);
+            document.getElementById('template-event-form').addEventListener('submit', handleTemplateEventFormSubmit); // NEW
             
             // Button clicks
             document.getElementById('delete-event-btn').addEventListener('click', deleteEvent);
@@ -1198,6 +1431,38 @@
                 document.getElementById('load-template-modal').classList.add('hidden');
                 document.getElementById('load-template-modal').classList.remove('flex');
             });
+            
+            // === NEW: TEMPLATE EDITOR/FORM LISTENERS ===
+            document.getElementById('close-template-editor-btn').addEventListener('click', () => showView('#schedule-view'));
+            document.getElementById('add-template-event-btn').addEventListener('click', () => {
+                editingTemplateEventId = null; // Ensure we are creating new
+                document.getElementById('template-event-form').reset();
+                document.querySelector('#template-form-view h2').textContent = 'New Template Event';
+                document.querySelector('#template-event-form button[type="submit"]').textContent = 'Create Event';
+                document.getElementById('delete-template-event-btn').classList.add('hidden');
+                showView('#template-form-view');
+            });
+            document.getElementById('delete-template-event-btn').addEventListener('click', deleteTemplateEvent);
+            document.getElementById('cancel-template-btn').addEventListener('click', () => {
+                // Go back to the template editor
+                showTemplateEditor(editingTemplateId);
+            });
+            
+            // === NEW: Event delegation for template modal ===
+            document.getElementById('template-list').addEventListener('click', (e) => {
+                const loadBtn = e.target.closest('.load-template-btn');
+                const editBtn = e.target.closest('.edit-template-btn');
+                const deleteBtn = e.target.closest('.delete-template-btn');
+                
+                if (loadBtn) {
+                    loadTemplate(loadBtn.dataset.loadId);
+                } else if (editBtn) {
+                    showTemplateEditor(editBtn.dataset.editId);
+                } else if (deleteBtn) {
+                    deleteTemplate(deleteBtn.dataset.deleteId);
+                }
+            });
+
             // Global event listeners for dynamic content
             document.addEventListener('change', async (e) => {
                 if (e.target.matches('#today-tasks input[type="checkbox"], #upcoming-tasks input[type="checkbox"], #overdue-tasks input[type="checkbox"]')) {
@@ -1252,7 +1517,6 @@
         });
     </script>
     
-    <!-- PWA Service Worker Registration -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
@@ -1268,4 +1532,3 @@
     </script>
 </body>
 </html>
-
