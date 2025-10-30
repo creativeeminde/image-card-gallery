@@ -210,6 +210,29 @@
         .set-display-item.editing .set-display-content { display: none; }
         .set-display-item.editing .set-edit-form { display: flex; }
         
+        /* --- Drag and Drop Styles for Exercises --- */
+        .exercise-detail-card {
+            transition: box-shadow 0.2s ease, transform 0.2s ease;
+        }
+        .exercise-detail-card.exercise-dragging {
+            position: fixed;
+            z-index: 2000;
+            opacity: 0.95;
+            transform: scale(1.03);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            pointer-events: none; /* So it doesn't block 'elementFromPoint' */
+            cursor: grabbing;
+        }
+        .exercise-placeholder {
+            height: 100px; /* Will be set dynamically */
+            background-color: rgba(76, 175, 80, 0.05);
+            border: 2px dashed var(--primary-color);
+            border-radius: var(--border-radius);
+            margin-bottom: 1.5rem;
+            box-sizing: border-box;
+            transition: height 0.2s ease;
+        }
+
         /* --- 8. Running Screen --- */
         #running-screen .current-run-display { text-align: center; margin-bottom: 2rem; }
         #running-screen .current-run-display div { margin-bottom: 0.5rem; }
@@ -406,6 +429,15 @@
             const swipeThreshold = 60; 
             const swipeSnapTarget = 80; 
 
+            // --- NEW: State variables for exercise drag-and-drop ---
+            let longPressTimer = null;
+            let isDraggingExercise = false;
+            let draggedExerciseEl = null;
+            let placeholderEl = null;
+            let startYOffset = 0;
+            let exerciseDragStartX = 0;
+            let exerciseDragStartY = 0;
+
             // --- Utility Functions ---
             async function loadDB() {
                 try {
@@ -517,6 +549,165 @@
             document.addEventListener('mousemove', handleDragMove); document.addEventListener('touchmove', handleDragMove, { passive: false });
             document.addEventListener('mouseup', handleDragEnd); document.addEventListener('touchend', handleDragEnd); document.addEventListener('mouseleave', handleDragEnd); 
             
+            // --- NEW: Event Listeners for Exercise Drag-and-Drop ---
+
+            function handleExercisePressStart(e) {
+                // Only trigger on the exercise card itself, not on buttons or set items
+                const targetCard = e.target.closest('.exercise-detail-card');
+                if (!targetCard || e.target.closest('button, .set-display-content, .set-edit-form, input')) {
+                    return;
+                }
+                
+                draggedExerciseEl = targetCard;
+                const pointer = e.type === 'touchstart' ? e.touches[0] : e;
+                exerciseDragStartX = pointer.clientX;
+                exerciseDragStartY = pointer.clientY;
+                
+                // Add listeners *immediately* to check for scroll vs. long-press
+                document.addEventListener('mousemove', handleExerciseDragMove, { passive: false });
+                document.addEventListener('touchmove', handleExerciseDragMove, { passive: false });
+                document.addEventListener('mouseup', handleExerciseDragEnd);
+                document.addEventListener('touchend', handleExerciseDragEnd);
+
+                longPressTimer = setTimeout(() => {
+                    // Timer fired, start the drag
+                    longPressTimer = null; // Clear timer
+                    isDraggingExercise = true;
+                    
+                    const rect = draggedExerciseEl.getBoundingClientRect();
+                    startYOffset = exerciseDragStartY - rect.top;
+
+                    // Create placeholder
+                    placeholderEl = document.createElement('div');
+                    placeholderEl.className = 'exercise-placeholder';
+                    placeholderEl.style.height = rect.height + 'px';
+                    
+                    // Style and position the dragged element "fixed"
+                    draggedExerciseEl.classList.add('exercise-dragging');
+                    draggedExerciseEl.style.width = rect.width + 'px';
+                    draggedExerciseEl.style.left = rect.left + 'px';
+                    draggedExerciseEl.style.top = rect.top + 'px';
+                    
+                    // Insert placeholder in the DOM
+                    draggedExerciseEl.parentNode.insertBefore(placeholderEl, draggedExerciseEl.nextSibling);
+
+                }, 500); // 500ms long-press
+            }
+            
+            function handleExerciseDragMove(e) {
+                if (!draggedExerciseEl) return; // Not initiated by our listener
+
+                if (isDraggingExercise) {
+                    // --- Drag is active ---
+                    e.preventDefault(); // Prevent page scrolling
+                    
+                    const pointer = e.type === 'touchmove' ? e.touches[0] : e;
+                    const newTop = pointer.clientY - startYOffset;
+                    draggedExerciseEl.style.top = newTop + 'px';
+                    
+                    // Hide draggedEl so elementFromPoint can find what's underneath
+                    draggedExerciseEl.style.display = 'none';
+                    const overElement = document.elementFromPoint(pointer.clientX, pointer.clientY);
+                    draggedExerciseEl.style.display = '';
+
+                    if (!overElement) return;
+
+                    // Find the closest card or placeholder to swap with
+                    const target = overElement.closest('.exercise-detail-card:not(.exercise-dragging), .exercise-placeholder');
+                    
+                    if (target && target !== placeholderEl) {
+                        const rect = target.getBoundingClientRect();
+                        const midY = rect.top + rect.height / 2;
+                        
+                        if (pointer.clientY < midY) {
+                            // Insert placeholder *before* the target
+                            target.parentNode.insertBefore(placeholderEl, target);
+                        } else {
+                            // Insert placeholder *after* the target
+                            target.parentNode.insertBefore(placeholderEl, target.nextSibling);
+                        }
+                    }
+                } else if (longPressTimer) {
+                    // --- Drag not active, check for scroll to cancel long-press ---
+                    const pointer = e.type === 'touchmove' ? e.touches[0] : e;
+                    const diffX = Math.abs(pointer.clientX - exerciseDragStartX);
+                    const diffY = Math.abs(pointer.clientY - exerciseDragStartY);
+                    
+                    if (diffX > 10 || diffY > 10) {
+                        // User moved too much, cancel long-press
+                        clearTimeout(longPressTimer);
+                        longPressTimer = null;
+                        // And remove the listeners
+                        handleExerciseDragEnd(e); // Call end to clean up
+                    }
+                }
+            }
+
+            async function handleExerciseDragEnd(e) {
+                if (longPressTimer) {
+                    // Short click, not a long press
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
+                
+                // Always remove document listeners
+                document.removeEventListener('mousemove', handleExerciseDragMove);
+                document.removeEventListener('touchmove', handleExerciseDragMove);
+                document.removeEventListener('mouseup', handleExerciseDragEnd);
+                document.removeEventListener('touchend', handleExerciseDragEnd);
+                
+                if (!isDraggingExercise) {
+                    draggedExerciseEl = null; // Clear reference
+                    return; // Drag never started
+                }
+
+                isDraggingExercise = false;
+
+                const plan = db.plans.find(p => p.id === currentPlanId);
+                const oldIdOrder = plan ? plan.exercises.map(ex => ex.id) : [];
+
+                // Put the dragged element back in the flow, replacing the placeholder
+                if (placeholderEl && placeholderEl.parentNode) {
+                    placeholderEl.parentNode.replaceChild(draggedExerciseEl, placeholderEl);
+                }
+                
+                // Clean up styles
+                draggedExerciseEl.classList.remove('exercise-dragging');
+                draggedExerciseEl.style = ''; // Reset all inline styles
+                
+                const container = document.getElementById('plan-detail-exercises');
+                const newExerciseElements = Array.from(container.querySelectorAll('.exercise-detail-card'));
+                const newIdOrder = newExerciseElements.map(el => el.dataset.exerciseId);
+
+                // Check if order actually changed
+                const orderChanged = JSON.stringify(oldIdOrder) !== JSON.stringify(newIdOrder);
+                
+                if (orderChanged && plan) {
+                    // Re-order the data array based on the new DOM order
+                    plan.exercises.sort((a, b) => newIdOrder.indexOf(a.id) - newIdOrder.indexOf(b.id));
+                    
+                    console.log("Saving new exercise order...");
+                    await savePlanToSupabase(plan);
+                    
+                    // Re-render from the saved data to ensure 100% consistency
+                    renderPlanDetailScreen(currentPlanId);
+                }
+
+                // Final cleanup
+                draggedExerciseEl = null;
+                placeholderEl = null;
+                startYOffset = 0;
+                exerciseDragStartX = 0;
+                exerciseDragStartY = 0;
+            }
+
+            // Add the main press listener to the exercise container
+            detailExercises.addEventListener('mousedown', handleExercisePressStart);
+            detailExercises.addEventListener('touchstart', handleExercisePressStart, { passive: false });
+
+            // --- End of new Exercise Drag-and-Drop listeners ---
+
+
             document.getElementById('plan-detail-exercises').addEventListener('click', async e => {
                 const target = e.target;
                 const setItem = target.closest('.set-display-item');
@@ -813,4 +1004,5 @@
 
 </body>
 </html>
+
 
