@@ -172,6 +172,11 @@
     <nav class="container mx-auto px-6 py-4 flex justify-between items-center">
       <div class="flex items-center space-x-6">
         <a href="#" onclick="showAllModels(event)" class="text-lg font-semibold text-white hover:text-gray-300">Home</a>
+        
+        <!-- START: New Total Count Element -->
+        <span class="text-sm text-gray-500" id="total-card-count">(...)</span>
+        <!-- END: New Total Count Element -->
+        
         <a href="#" onclick="showFavorites(event)" class="text-sm text-gray-400 hover:text-white">Favorites</a>
         <a href="#" onclick="showNsfw(event)" id="nsfwBtn" class="text-sm text-gray-400 hover:text-white">NSFW</a>
         
@@ -454,6 +459,7 @@
       
       // Initial Load
       await loadTags();
+      await loadTotalCardCount(); // <-- Load the total count on startup
       await loadCards(true); // Start with a new query
       
       // Event Listeners
@@ -489,6 +495,29 @@
     
     // --- Data Loading ---
 
+    // START: New function to load total card count
+    async function loadTotalCardCount() {
+      const countEl = document.getElementById('total-card-count');
+      try {
+        // Use a head request with 'exact' count for performance
+        const { count, error } = await supabase
+          .from('models')
+          .select('*', { head: true, count: 'exact' });
+          
+        if (error) throw error;
+        
+        if (countEl) {
+          countEl.textContent = `(${count} total)`;
+        }
+      } catch (error) {
+        console.error("Error loading total card count:", error);
+        if (countEl) {
+          countEl.textContent = `(Error)`;
+        }
+      }
+    }
+    // END: New function
+    
     async function loadTags() {
       const tagsDropdownMenu = document.getElementById('tags-dropdown-menu');
       try {
@@ -1287,6 +1316,7 @@
         if (error) throw error;
 
         closePopup();
+        await loadTotalCardCount(); // <-- Refresh count after adding
         showAllModels(); // Refresh view
       } catch (error) {
         console.error("Error adding card:", error);
@@ -1352,6 +1382,7 @@
       try {
         const { error } = await supabase.from('models').delete().eq('id', cardId);
         if (error) throw error;
+        await loadTotalCardCount(); // <-- Refresh count after deleting
         loadCards(true); // Force a full refresh
       } catch (error) {
         console.error("Error deleting card:", error);
