@@ -600,14 +600,14 @@
       if (isNewQuery) {
         currentPage = 0;
         // Reset noMoreResults based on sort order. Shuffle mode disables pagination.
-        noMoreResults = false; // <-- CHANGED: Shuffle now supports pagination
+        noMoreResults = (currentSortOrder === 'shuffle');
         gallery.innerHTML = ''; // Clear gallery for new search
         displayedCards = []; // Clear displayed cards array
         noResults.style.display = 'none';
         searchStatus.style.display = 'none';
         loader.style.display = 'flex';
         // Only show scroll loader if we are NOT in shuffle mode
-        scrollLoader.style.display = 'flex'; // <-- CHANGED: Always show, as shuffle is now paginated
+        scrollLoader.style.display = (currentSortOrder === 'shuffle') ? 'none' : 'flex';
       } else {
         // This block is for infinite scroll, which shuffle mode doesn't use
         scrollLoader.style.display = 'flex';
@@ -646,11 +646,15 @@
 
         // Add pagination & ordering
         if (currentSortOrder === 'shuffle') {
-          // For shuffle, we use standard pagination but DON'T apply an order
-          const from = currentPage * PAGE_SIZE;
-          const to = from + PAGE_SIZE - 1;
-          query = query.range(from, to);
-          // Not applying .order() lets the DB return items in its default (likely 'id') order
+          // For shuffle, we fetch one large page (e.g., 100) and disable pagination
+          // We also don't apply a database order. This only runs on a new query.
+          if (isNewQuery) {
+            query = query.limit(100); // Fetch a single large batch
+          } else {
+            // This shouldn't be called, but as a fallback, ensure no cards are loaded
+            cards = [];
+            noMoreResults = true;
+          }
         } else {
           // Standard pagination and ordering
           const from = currentPage * PAGE_SIZE;
@@ -719,7 +723,9 @@
           // --- End new logic ---
           
           // Only increment page if we are NOT in shuffle mode
-          currentPage++; // Increment page for next fetch
+          if (currentSortOrder !== 'shuffle') {
+            currentPage++; // Increment page for next fetch
+          }
         } else {
           noMoreResults = true;
           if (isNewQuery) {
@@ -816,7 +822,7 @@
       if (imageViewer.style.display === 'flex' || document.getElementById('popup').style.display === 'flex' || document.getElementById('quick-edit-modal').style.display === 'flex') return;
       
       // START: Disable infinite scroll if in shuffle mode
-      // if (currentSortOrder === 'shuffle') return; // <-- REMOVED
+      if (currentSortOrder === 'shuffle') return;
       // END: Disable
       
       const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
