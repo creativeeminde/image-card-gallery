@@ -8,6 +8,10 @@
   <title>Model Gallery | Visual Search</title>
   <!-- Load Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- START: Added Masonry & imagesLoaded -->
+  <script src="https://unpkg.com/imagesloaded@5/imagesloaded.pkgd.min.js"></script>
+  <script src="https://unpkg.com/masonry-layout@4/dist/masonry.pkgd.min.js"></script>
+  <!-- END: Added Masonry & imagesLoaded -->
   <style>
     /* Custom scrollbar for a cleaner look */
     ::-webkit-scrollbar {
@@ -68,28 +72,47 @@
     
     /* Masonry Layout */
     #gallery {
-      column-count: 2;
-      column-gap: 8px; /* Tailwind gap-2 */
+      /* Reverted back to column-count for masonry layout */
+      /* REMOVED: column-count, column-gap. Masonry.js will handle this. */
+      position: relative; /* Required for Masonry.js positioning */
     }
-    @media (min-width: 768px) { /* md */
+    /*
+    @media (min-width: 768px) { 
       #gallery { column-count: 3; }
     }
-    @media (min-width: 1024px) { /* lg */
+    @media (min-width: 1024px) { 
       #gallery { column-count: 4; }
     }
-    @media (min-width: 1280px) { /* xl */
+    @media (min-width: 1280px) { 
       #gallery { column-count: 5; }
     }
-    @media (min-width: 1536px) { /* 2xl */
+    @media (min-width: 1536px) { 
       #gallery { column-count: 6; }
     }
+    */
     
     .masonry-item {
-      display: inline-block;
-      width: 100%;
+      /* Re-instated properties for masonry items */
+      /* REMOVED: display: inline-block; */
+      /* ADDED: Widths for Masonry.js to calculate columns */
+      width: 49%; /* 2 columns mobile (with a 2% gap) */
       margin-bottom: 8px; /* Replaces gap-2 */
-      break-inside: avoid;
+      /* REMOVED: break-inside: avoid; */
     }
+    /* ADDED: Responsive widths for Masonry.js */
+    @media (min-width: 768px) { /* md */
+      .masonry-item { width: 32%; } /* 3 cols */
+    }
+    @media (min-width: 1024px) { /* lg */
+      .masonry-item { width: 24%; } /* 4 cols */
+    }
+    @media (min-width: 1280px) { /* xl */
+      .masonry-item { width: 19%; } /* 5 cols */
+    }
+    @media (min-width: 1536px) { /* 2xl */
+      .masonry-item { width: 16%; } /* 6 cols */
+    }
+    
 
     /* Card item hover effect (renamed from .grid-item) */
     .masonry-item .overlay {
@@ -295,6 +318,44 @@
     </div>
   </div>
   
+  <!-- START: Quick Edit Modal -->
+  <div id="quick-edit-modal" class="fixed inset-0 z-[101] flex items-center justify-center bg-black bg-opacity-80 p-4" style="display: none;">
+    <div class="bg-gray-900 p-6 rounded-lg shadow-xl w-full max-w-md border border-gray-700">
+      <h3 class="text-xl font-semibold text-white mb-4">Edit Model</h3>
+      <form id="quickEditForm">
+        <!-- Hidden input to store the card ID being edited -->
+        <input type="hidden" id="quickEditCardId">
+        
+        <div class="mb-4">
+          <label for="quickEditModelUrl" class="text-sm text-gray-400 mb-2 block">Image URL</label>
+          <input type="url" id="quickEditModelUrl" class="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" required>
+        </div>
+        
+        <div class="mb-4">
+          <label class="text-sm text-gray-400 mb-2 block">Tags</label>
+          <div id="quickEditSelectedTagsContainer" class="flex flex-wrap gap-2 p-2 bg-gray-800 border border-gray-700 rounded-lg min-h-[40px]">
+            <!-- Selected tags injected by JS -->
+          </div>
+        </div>
+        
+        <div class="flex gap-2 mt-2 mb-4">
+          <select id="quickEditAvailableTags" class="flex-grow p-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500">
+            <option value="">Select tags to add</option>
+          </select>
+          <button type="button" onclick="addTagToQuickEdit()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">Add</button>
+        </div>
+
+        <div id="quickEditErrorMessage" class="text-red-400 text-sm mb-4" style="display: none;"></div>
+        
+        <div class="mt-6 flex justify-end space-x-3">
+          <button type="button" class="cancel-btn px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors" onclick="closeQuickEditModal()">Cancel</button>
+          <button type="submit" class="px-5 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <!-- END: Quick Edit Modal -->
+  
   <!-- Custom Context Menu -->
   <div id="context-menu">
     <button id="context-edit">✏️ Edit</button>
@@ -309,8 +370,10 @@
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
 
     let selectedTags = [];
+    let quickEditSelectedTags = []; // For the new quick edit modal
     let allTags = [];
     let currentlyEditingCardId = null;
+    let msnry; // <-- ADDED: Masonry instance
     let currentFilter = {
       type: 'all', // 'all', 'favorites', 'nsfw', 'tags'
       value: null
@@ -376,6 +439,14 @@
       searchStatus = document.getElementById('search-status');
       scrollLoader = document.getElementById('scroll-loader');
       
+      // --- ADDED: Initialize Masonry ---
+      msnry = new Masonry( gallery, {
+        itemSelector: '.masonry-item',
+        percentPosition: true,
+        transitionDuration: 0 // Disable animation for instant loading
+      });
+      // ---------------------------------
+      
       // Setup context menu
       setupContextMenu();
       
@@ -388,6 +459,7 @@
         if (e.key === "Escape") {
           closePopup();
           closeImageViewer();
+          closeQuickEditModal(); // Also close the new modal
         }
         // Keyboard nav for viewer
         if (imageViewer.style.display === 'flex') {
@@ -405,6 +477,12 @@
       
       // Add scroll event listener for infinite loading
       window.addEventListener('scroll', handleScroll);
+      
+      // Add submit listener for the new quick edit form
+      document.getElementById('quickEditForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await handleQuickUpdate();
+      });
     };
     
     // --- Data Loading ---
@@ -425,7 +503,7 @@
         if (error) throw error;
         
         allTags = tags.map(tag => tag.name);
-        updateTagDisplays(); // This is for the popup
+        updateTagDisplays(); // This is for the main upload popup
         
         // Populate header dropdown
         tagsDropdownMenu.innerHTML = ''; // Clear 'Loading...'
@@ -529,11 +607,38 @@
         
         if (cards && cards.length > 0) {
           noResults.style.display = 'none';
+          
+          const fragment = document.createDocumentFragment();
+          const newElements = []; // Keep track of new DOM elements
+          
           cards.forEach(card => {
             const index = displayedCards.length; // Get index before adding
             displayedCards.push(card); // Store card
-            addCardToGrid(card, index); // Pass index
+            
+            // Create element but don't append to gallery yet
+            const cardElem = createCardElement(card, index); 
+            fragment.appendChild(cardElem); // Add to fragment
+            newElements.push(cardElem);     // Add to array
           });
+          
+          // Append all new elements to the gallery at once
+          gallery.appendChild(fragment);
+
+          // --- New Masonry/imagesLoaded logic ---
+          // Wait for images in the *new* elements to load
+          imagesLoaded(newElements, function() {
+            if (isNewQuery) {
+              // For a new search, just reload all items
+              msnry.reloadItems();
+            } else {
+              // For infinite scroll, append the new items
+              msnry.addItems(newElements);
+            }
+            // Trigger Masonry layout
+            msnry.layout();
+          });
+          // --- End new logic ---
+          
           currentPage++; // Increment page for next fetch
         } else {
           noMoreResults = true;
@@ -552,9 +657,13 @@
       isLoadingMore = false;
     }
     
-    function addCardToGrid(card, index) { // Added index
+    // --- This function creates the card element ---
+    function createCardElement(card, index) { // Added index
       const cardElem = document.createElement('div');
+      // Added `group` class for hover effect on new edit button
       cardElem.className = 'masonry-item bg-gray-900 rounded-lg overflow-hidden relative group cursor-pointer';
+      // Add an ID to the element for easy updating later
+      cardElem.id = `card-dom-${card.id}`;
       
       const img = document.createElement('img');
       img.src = card.main_model_url.includes('ik.imagekit.io')
@@ -571,9 +680,24 @@
       tagIcon.className = "text-white text-3xl";
       tagIcon.innerHTML = "&#9776;"; // Simple list icon
       
+      // START: New Edit Button
+      const editButton = document.createElement('button');
+      editButton.className = "absolute top-2 right-2 z-10 p-1.5 bg-black/50 rounded-full text-white hover:bg-blue-600 opacity-0 group-hover:opacity-100 transition-opacity";
+      editButton.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z" />
+        </svg>
+      `;
+      editButton.onclick = (e) => {
+        e.stopPropagation(); // Prevent opening the image viewer
+        openQuickEditModal(card.id);
+      };
+      // END: New Edit Button
+      
       overlay.appendChild(tagIcon);
       cardElem.appendChild(img);
       cardElem.appendChild(overlay);
+      cardElem.appendChild(editButton); // Add the edit button to the card
 
       // Main click action: Open Image Viewer
       cardElem.addEventListener('click', () => {
@@ -586,14 +710,15 @@
         showContextMenu(e, card.id);
       });
       
-      gallery.appendChild(cardElem);
+      // gallery.appendChild(cardElem); // <-- REMOVED: Will be appended in loadCards
+      return cardElem; // <-- ADDED: Return the element
     }
 
     // --- Infinite Scroll ---
     
     function handleScroll() {
-      // Don't load if viewer is open
-      if (imageViewer.style.display === 'flex') return;
+      // Don't load if any modal is open
+      if (imageViewer.style.display === 'flex' || document.getElementById('popup').style.display === 'flex' || document.getElementById('quick-edit-modal').style.display === 'flex') return;
       
       const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
       if (scrollTop + clientHeight >= scrollHeight - 300) {
@@ -1227,7 +1352,7 @@
       }
     });
 
-    // --- Tag Selection UI ---
+    // --- Tag Selection UI (Main Upload) ---
 
     function updateTagDisplays() {
       const availableTagsSelect = document.getElementById('availableTags');
@@ -1272,6 +1397,145 @@
       updateSelectedTagsDisplay();
       updateTagDisplays(); // Re-populates the dropdown
     }
+    
+    // --- START: Quick Edit Modal Functions ---
+    
+    async function openQuickEditModal(cardId) {
+      try {
+        const { data: card, error } = await supabase.from('models').select('*').eq('id', cardId).single();
+        if (error) throw error;
+
+        document.getElementById('quickEditCardId').value = card.id;
+        document.getElementById('quickEditModelUrl').value = card.main_model_url;
+        
+        quickEditSelectedTags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+        
+        updateQuickEditSelectedTagsDisplay();
+        updateQuickEditAvailableTags();
+        
+        document.getElementById('quickEditErrorMessage').style.display = 'none';
+        document.getElementById('quick-edit-modal').style.display = 'flex';
+      } catch (error) {
+        console.error("Error loading card for quick edit:", error);
+        alert("Failed to load card for editing");
+      }
+    }
+    
+    function closeQuickEditModal() {
+      document.getElementById('quick-edit-modal').style.display = 'none';
+      document.getElementById('quickEditForm').reset();
+      quickEditSelectedTags = [];
+      document.getElementById('quickEditErrorMessage').style.display = 'none';
+    }
+    
+    async function handleQuickUpdate() {
+      const cardId = document.getElementById('quickEditCardId').value;
+      const newUrl = document.getElementById('quickEditModelUrl').value.trim();
+      const newTags = quickEditSelectedTags.join(', ');
+      const errorMsg = document.getElementById('quickEditErrorMessage');
+
+      if (!newUrl) {
+        errorMsg.textContent = "Image URL is required.";
+        errorMsg.style.display = 'block';
+        return;
+      }
+      
+      try {
+        // Update the database and get the updated row back
+        const { data: updatedCard, error } = await supabase
+          .from('models')
+          .update({ 
+            main_model_url: newUrl,
+            tags: newTags
+          })
+          .eq('id', cardId)
+          .select()
+          .single(); // .select().single() returns the updated row
+        
+        if (error) throw error;
+
+        // --- Start Local Data & UI Update ---
+        
+        // 1. Update the main `displayedCards` array
+        const index = displayedCards.findIndex(c => c.id == cardId);
+        if (index !== -1) {
+          displayedCards[index] = updatedCard;
+        }
+        
+        // 2. Update the card in the gallery grid
+        const cardElem = document.getElementById(`card-dom-${cardId}`);
+        if (cardElem) {
+          const img = cardElem.querySelector('img');
+          if (img) {
+            img.src = updatedCard.main_model_url.includes('ik.imagekit.io')
+              ? `${updatedCard.main_model_url}?tr=w-500,q-70`
+              : updatedCard.main_model_url;
+          }
+        }
+        
+        // 3. Update the viewer IF it's open and showing this card
+        if (imageViewer.style.display === 'flex' && currentViewerIndex === index) {
+          displayCardInViewer(updatedCard);
+        }
+        
+        // --- End Local Data & UI Update ---
+
+        closeQuickEditModal();
+        
+      } catch (error) {
+        console.error("Error updating card:", error);
+        errorMsg.textContent = `Failed to update: ${error.message}`;
+        errorMsg.style.display = 'block';
+      }
+    }
+    
+    // --- Tag Helpers for Quick Edit Modal ---
+    
+    function updateQuickEditAvailableTags() {
+      const availableTagsSelect = document.getElementById('quickEditAvailableTags');
+      availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
+      allTags.forEach(tag => {
+        if (!quickEditSelectedTags.includes(tag)) {
+          const option = document.createElement('option');
+          option.value = tag;
+          option.textContent = tag;
+          availableTagsSelect.appendChild(option);
+        }
+      });
+    }
+
+    function addTagToQuickEdit() {
+      const select = document.getElementById('quickEditAvailableTags');
+      const selectedTag = select.value;
+      if (!selectedTag || quickEditSelectedTags.includes(selectedTag)) return;
+      
+      quickEditSelectedTags.push(selectedTag);
+      updateQuickEditSelectedTagsDisplay();
+      updateQuickEditAvailableTags();
+      select.value = "";
+    }
+    
+    function updateQuickEditSelectedTagsDisplay() {
+      const container = document.getElementById('quickEditSelectedTagsContainer');
+      container.innerHTML = '';
+      quickEditSelectedTags.forEach(tag => {
+        const tagElem = document.createElement('span');
+        tagElem.className = 'px-3 py-1 bg-blue-600 text-white text-sm rounded-full flex items-center gap-2';
+        tagElem.innerHTML = `
+          ${tag}
+          <button type="button" class="text-blue-200 hover:text-white" onclick="removeQuickEditSelectedTag('${tag}')">&times;</button>
+        `;
+        container.appendChild(tagElem);
+      });
+    }
+
+    function removeQuickEditSelectedTag(tagToRemove) {
+      quickEditSelectedTags = quickEditSelectedTags.filter(tag => tag !== tagToRemove);
+      updateQuickEditSelectedTagsDisplay();
+      updateQuickEditAvailableTags();
+    }
+    
+    // --- END: Quick Edit Modal Functions ---
 
   </script>
 </body>
