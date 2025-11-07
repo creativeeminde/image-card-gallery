@@ -70,6 +70,18 @@
       color: white;
     }
     
+    /* Style for the new sort dropdown */
+    #sort-order {
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='currentColor' aria-hidden='true'%3e%3cpath fill-rule='evenodd' d='M10 3a.75.75 0 01.55.24l3.25 3.5a.75.75 0 11-1.1 1.02L10 4.852 7.3 7.76a.75.75 0 01-1.1-1.02l3.25-3.5A.75.75 0 0110 3zm-3.7 9.24a.75.75 0 011.1 1.02L10 15.148l2.7-2.888a.75.75 0 111.1 1.02l-3.25 3.5a.75.75 0 01-1.1 0l-3.25-3.5a.75.75 0 010-1.02z' clip-rule='evenodd'/%3e%3c/svg%3e");
+      background-size: 1.25rem;
+      background-repeat: no-repeat;
+      background-position: right 0.5rem center;
+      padding-right: 2.25rem; /* Make space for icon */
+    }
+    
     /* Masonry Layout */
     #gallery {
       /* Reverted back to column-count for masonry layout */
@@ -191,6 +203,16 @@
           </div>
         </div>
         <!-- END Tags Dropdown -->
+        
+        <!-- START: Sort Order Dropdown -->
+        <div class="relative">
+          <select id="sort-order" class="text-sm text-gray-400 hover:text-white focus:outline-none bg-transparent border-0 focus:ring-0">
+            <option value="last_uploaded" class="bg-gray-800">Last uploaded</option>
+            <option value="first_uploaded" class="bg-gray-800">First uploaded</option>
+            <option value="shuffle" class="bg-gray-800">Shuffle</option>
+          </select>
+        </div>
+        <!-- END: Sort Order Dropdown -->
         
       </div>
       <button onclick="openPopup()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
@@ -381,6 +403,7 @@
     let allTags = [];
     let currentlyEditingCardId = null;
     let msnry; // <-- ADDED: Masonry instance
+    let currentSortOrder = 'last_uploaded'; // <-- ADDED: Sort order state
     let currentFilter = {
       type: 'all', // 'all', 'favorites', 'nsfw', 'tags'
       value: null
@@ -486,6 +509,13 @@
       // Add scroll event listener for infinite loading
       window.addEventListener('scroll', handleScroll);
       
+      // START: Add change listener for sort order
+      document.getElementById('sort-order').addEventListener('change', (event) => {
+        currentSortOrder = event.target.value;
+        loadCards(true); // Trigger a new search with the new sort order
+      });
+      // END: Add change listener
+      
       // Add submit listener for the new quick edit form
       document.getElementById('quickEditForm').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -569,14 +599,17 @@
       isLoadingMore = true;
       if (isNewQuery) {
         currentPage = 0;
-        noMoreResults = false;
+        // Reset noMoreResults based on sort order. Shuffle mode disables pagination.
+        noMoreResults = (currentSortOrder === 'shuffle');
         gallery.innerHTML = ''; // Clear gallery for new search
         displayedCards = []; // Clear displayed cards array
         noResults.style.display = 'none';
         searchStatus.style.display = 'none';
         loader.style.display = 'flex';
-        scrollLoader.style.display = 'none';
+        // Only show scroll loader if we are NOT in shuffle mode
+        scrollLoader.style.display = (currentSortOrder === 'shuffle') ? 'none' : 'flex';
       } else {
+        // This block is for infinite scroll, which shuffle mode doesn't use
         scrollLoader.style.display = 'flex';
       }
 
@@ -611,16 +644,38 @@
             break;
         }
 
-        // Add pagination
-        const from = currentPage * PAGE_SIZE;
-        const to = from + PAGE_SIZE - 1;
-        query = query.range(from, to);
-        
-        // Order by creation date
-        query = query.order('created_at', { ascending: false });
+        // Add pagination & ordering
+        if (currentSortOrder === 'shuffle') {
+          // For shuffle, we fetch one large page (e.g., 100) and disable pagination
+          // We also don't apply a database order. This only runs on a new query.
+          if (isNewQuery) {
+            query = query.limit(100); // Fetch a single large batch
+          } else {
+            // This shouldn't be called, but as a fallback, ensure no cards are loaded
+            cards = [];
+            noMoreResults = true;
+          }
+        } else {
+          // Standard pagination and ordering
+          const from = currentPage * PAGE_SIZE;
+          const to = from + PAGE_SIZE - 1;
+          query = query.range(from, to);
+          
+          if (currentSortOrder === 'first_uploaded') {
+            query = query.order('created_at', { ascending: true });
+          } else { // default is 'last_uploaded'
+            query = query.order('created_at', { ascending: false });
+          }
+        }
 
         let { data: cards, error } = await query;
         if (error) throw error;
+        
+        // START: Shuffle cards client-side if that option is selected
+        if (currentSortOrder === 'shuffle' && cards) {
+          shuffleArray(cards);
+        }
+        // END: Shuffle
         
         // Client-side filter for exact tag match (Supabase 'or' is broad)
         if (currentFilter.type === 'tags') {
@@ -639,22 +694,19 @@
         if (cards && cards.length > 0) {
           noResults.style.display = 'none';
           
-          const fragment = document.createDocumentFragment();
-          const newElements = []; // Keep track of new DOM elements
+          // START: Fix for newElements error
+          const newElements = []; // Define the array
           
+          // Create elements, add them to DOM and newElements array
           cards.forEach(card => {
             const index = displayedCards.length; // Get index before adding
             displayedCards.push(card); // Store card
-            
-            // Create element but don't append to gallery yet
-            const cardElem = createCardElement(card, index); 
-            fragment.appendChild(cardElem); // Add to fragment
-            newElements.push(cardElem);     // Add to array
+            const cardElem = createCardElement(card, index); // Create the element
+            gallery.appendChild(cardElem); // Add it to the DOM
+            newElements.push(cardElem); // Add to array for imagesLoaded
           });
+          // END: Fix for newElements error
           
-          // Append all new elements to the gallery at once
-          gallery.appendChild(fragment);
-
           // --- New Masonry/imagesLoaded logic ---
           // Wait for images in the *new* elements to load
           imagesLoaded(newElements, function() {
@@ -670,7 +722,10 @@
           });
           // --- End new logic ---
           
-          currentPage++; // Increment page for next fetch
+          // Only increment page if we are NOT in shuffle mode
+          if (currentSortOrder !== 'shuffle') {
+            currentPage++; // Increment page for next fetch
+          }
         } else {
           noMoreResults = true;
           if (isNewQuery) {
@@ -765,6 +820,10 @@
     function handleScroll() {
       // Don't load if any modal is open
       if (imageViewer.style.display === 'flex' || document.getElementById('popup').style.display === 'flex' || document.getElementById('quick-edit-modal').style.display === 'flex') return;
+      
+      // START: Disable infinite scroll if in shuffle mode
+      if (currentSortOrder === 'shuffle') return;
+      // END: Disable
       
       const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
       if (scrollTop + clientHeight >= scrollHeight - 300) {
@@ -1584,6 +1643,26 @@
     }
     
     // --- END: Quick Edit Modal Functions ---
+    
+    // --- START: Shuffle Utility Function ---
+    /**
+     * Shuffles an array in place using the Fisher-YATES algorithm.
+     * @param {Array} array The array to shuffle.
+     */
+    function shuffleArray(array) {
+      let currentIndex = array.length,  randomIndex;
+      // While there remain elements to shuffle.
+      while (currentIndex != 0) {
+        // Pick a remaining element.
+        randomIndex = Math.floor(Math.random() * currentIndex);
+        currentIndex--;
+        // And swap it with the current element.
+        [array[currentIndex], array[randomIndex]] = [
+          array[randomIndex], array[currentIndex]];
+      }
+      return array;
+    }
+    // --- END: Shuffle Utility Function ---
 
   </script>
 </body>
