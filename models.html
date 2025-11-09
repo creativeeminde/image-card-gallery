@@ -453,6 +453,7 @@
     let selectedTags = [];
     let quickEditSelectedTags = []; // For the new quick edit modal
     let allTags = [];
+    let tagCountMap = {}; // <-- ADDED
     let currentlyEditingCardId = null;
     let msnry; // <-- ADDED: Masonry instance
     let currentSortOrder = 'last_uploaded'; // <-- ADDED: Sort order state
@@ -533,6 +534,7 @@
       setupContextMenu();
       
       // Initial Load
+      await loadTagCounts(); // <-- ADDED: Load counts first
       await loadTags();
       await loadTotalCardCount(); // <-- Load the total count on startup
       await loadCards(true); // Start with a new query
@@ -585,6 +587,34 @@
     
     // --- Data Loading ---
 
+    // START: New function to load tag counts
+    async function loadTagCounts() {
+      console.log("Loading tag counts...");
+      try {
+        const { data: models, error } = await supabase
+          .from('models')
+          .select('tags'); // Only get the tags column
+
+        if (error) throw error;
+
+        const counts = {};
+        models.forEach(model => {
+          if (model.tags) {
+            const tags = model.tags.split(',').map(t => t.trim()).filter(t => t);
+            tags.forEach(tag => {
+              counts[tag] = (counts[tag] || 0) + 1;
+            });
+          }
+        });
+        
+        tagCountMap = counts; // Store globally
+        console.log("Tag counts loaded:", tagCountMap);
+      } catch (error) {
+        console.error("Error loading tag counts:", error);
+      }
+    }
+    // END: New function
+
     // START: New function to load total card count
     async function loadTotalCardCount() {
       const countEl = document.getElementById('total-card-count');
@@ -633,7 +663,12 @@
             const tagLink = document.createElement('a');
             tagLink.href = "#";
             tagLink.className = "block px-4 py-2 text-sm text-gray-300 hover:bg-blue-600 hover:text-white";
-            tagLink.textContent = tag;
+            
+            // START: MODIFIED
+            const count = tagCountMap[tag] || 0;
+            tagLink.textContent = `${tag} (${count})`;
+            // END: MODIFIED
+            
             tagLink.onclick = (e) => {
               e.preventDefault();
               searchByTag(tag);
@@ -694,7 +729,18 @@
             const t = currentFilter.value.trim().replace(/"/g, '""');
             const orExpr = `tags.eq."${t}",tags.ilike."${t},%",tags.ilike."%,${t}",tags.ilike."%,${t},%"`;
             query = query.or(orExpr);
-            searchStatus.innerHTML = `<h2 class="text-xl">Tag: <span class="px-3 py-1 bg-gray-700 text-white text-lg rounded-full">${currentFilter.value}</span></h2>`;
+            
+            // START: MODIFIED
+            const count = tagCountMap[currentFilter.value] || 0;
+            const countText = count === 1 ? 'model' : 'models'; // Handle plural
+            searchStatus.innerHTML = `
+              <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+                <h2 class="text-xl">Tag: <span class="px-3 py-1 bg-gray-700 text-white text-lg rounded-full">${currentFilter.value}</span></h2>
+                <span class="text-gray-500 text-lg">(${count} ${countText})</span>
+              </div>
+            `;
+            // END: MODIFIED
+            
             searchStatus.style.display = 'flex';
             updateNavActiveState('tags');
             break;
@@ -1463,6 +1509,7 @@
 
         closePopup();
         await loadTotalCardCount(); // <-- Refresh count after adding
+        await refreshTagData(); // <-- ADDED
         showAllModels(); // Refresh view
       } catch (error) {
         console.error("Error adding card:", error);
@@ -1515,6 +1562,7 @@
         if (error) throw error;
         
         closePopup();
+        await refreshTagData(); // <-- ADDED
         loadCards(true); // Force a full refresh
       } catch (error) {
         console.error("Error updating card:", error);
@@ -1529,6 +1577,7 @@
         const { error } = await supabase.from('models').delete().eq('id', cardId);
         if (error) throw error;
         await loadTotalCardCount(); // <-- Refresh count after deleting
+        await refreshTagData(); // <-- ADDED
         loadCards(true); // Force a full refresh
       } catch (error) {
         console.error("Error deleting card:", error);
@@ -1758,7 +1807,7 @@
         
         // Success
         input.value = ''; // Clear input
-        await loadTags(); // Reload allTags and all dropdowns
+        await refreshTagData(); // <-- REPLACED loadTags()
         await loadTagsForManagement(); // Refresh the list in the modal
         
       } catch (error) {
@@ -1819,7 +1868,7 @@
         }
         
         // 3. Success
-        await loadTags(); // Reload allTags and all dropdowns
+        await refreshTagData(); // <-- REPLACED loadTags()
         await loadTagsForManagement(); // Refresh the list in the modal
         loadCards(true); // Refresh main gallery in case tags changed
         
@@ -1897,7 +1946,7 @@
         }
         
         // 3. Success
-        await loadTags(); // Reload allTags and all dropdowns
+        await refreshTagData(); // <-- REPLACED loadTags()
         await loadTagsForManagement(); // Refresh the list in the modal
         loadCards(true); // Refresh main gallery in case tags changed
         
@@ -1970,33 +2019,10 @@
         
         if (error) throw error;
 
-        // --- Start Local Data & UI Update ---
-        
-        // 1. Update the main `displayedCards` array
-        const index = displayedCards.findIndex(c => c.id == cardId);
-        if (index !== -1) {
-          displayedCards[index] = updatedCard;
-        }
-        
-        // 2. Update the card in the gallery grid
-        const cardElem = document.getElementById(`card-dom-${cardId}`);
-        if (cardElem) {
-          const img = cardElem.querySelector('img');
-          if (img) {
-            img.src = updatedCard.main_model_url.includes('ik.imagekit.io')
-              ? `${updatedCard.main_model_url}?tr=w-500,q-70`
-              : updatedCard.main_model_url;
-          }
-        }
-        
-        // 3. Update the viewer IF it's open and showing this card
-        if (imageViewer.style.display === 'flex' && currentViewerIndex === index) {
-          displayCardInViewer(updatedCard);
-        }
-        
-        // --- End Local Data & UI Update ---
-
+        // REPLACED local update with a full refresh for consistency
         closeQuickEditModal();
+        await refreshTagData();
+        loadCards(true); // This will refresh the gallery with all changes
         
       } catch (error) {
         console.error("Error updating card:", error);
@@ -2072,6 +2098,13 @@
       return array;
     }
     // --- END: Shuffle Utility Function ---
+
+    // START: New Tag Refresh Function
+    async function refreshTagData() {
+      await loadTagCounts();
+      await loadTags(); // loadTags will now use the new tagCountMap
+    }
+    // END: New Tag Refresh Function
 
   </script>
 </body>
