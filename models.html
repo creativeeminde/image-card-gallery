@@ -1796,9 +1796,11 @@
         // 2. Remove tags from all models
         // We need to do this for each tag
         for (const tagToDelete of selectedTags) {
-            const orQuery = `tags.eq."${tagToDelete}",tags.ilike."${tagToDelete},%",tags.ilike."%,${tagToDelete}",tags.ilike."%,${tagToDelete},%"`;
+            // UPDATED: Changed .eq. to .ilike. for case-insensitivity
+            const orQuery = `tags.ilike."${tagToDelete}",tags.ilike."${tagToDelete},%",tags.ilike."%,${tagToDelete}",tags.ilike."%,${tagToDelete},%"`;
             const { data: models, error: fetchModelsError } = await supabase
                 .from('models')
+                .select() // <-- ADDED .select()
                 .or(orQuery);
 
             if (fetchModelsError) throw new Error(`Error fetching models for tag ${tagToDelete}: ${fetchModelsError.message}`);
@@ -1852,7 +1854,9 @@
       const trimmedNewName = newTagName.trim();
       
       // Check if new tag name already exists
-      if (allTags.map(t => t.toLowerCase()).includes(trimmedNewName.toLowerCase())) {
+      // UPDATED: Logic fixed to ignore the tag being renamed
+      const otherTagsLower = allTags.map(t => t.toLowerCase()).filter(t => t !== oldTagName.toLowerCase());
+      if (otherTagsLower.includes(trimmedNewName.toLowerCase())) {
           errorMsg.textContent = `Tag "${trimmedNewName}" already exists.`;
           errorMsg.style.display = 'block';
           return;
@@ -1870,9 +1874,11 @@
         if (updateTagError) throw updateTagError;
         
         // 2. Update tag in all models
-        const orQuery = `tags.eq."${oldTagName}",tags.ilike."${oldTagName},%",tags.ilike."%,${oldTagName}",tags.ilike."%,${oldTagName},%"`;
+        // UPDATED: Changed .eq. to .ilike. for case-insensitivity
+        const orQuery = `tags.ilike."${oldTagName}",tags.ilike."${oldTagName},%",tags.ilike."%,${oldTagName}",tags.ilike."%,${oldTagName},%"`;
         const { data: models, error: fetchModelsError } = await supabase
             .from('models')
+            .select() // <-- ADDED .select()
             .or(orQuery);
         
         if (fetchModelsError) throw new Error(`Error fetching models for tag ${oldTagName}: ${fetchModelsError.message}`);
