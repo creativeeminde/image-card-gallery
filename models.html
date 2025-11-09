@@ -215,9 +215,16 @@
         <!-- END: Sort Order Dropdown -->
         
       </div>
-      <button onclick="openPopup()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
-        Upload
-      </button>
+      <!-- START: Updated button group -->
+      <div class="flex items-center space-x-3">
+        <button onclick="openManageTagsPopup()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors">
+          Add Tags
+        </button>
+        <button onclick="openPopup()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+          Upload
+        </button>
+      </div>
+      <!-- END: Updated button group -->
     </nav>
   </header>
 
@@ -392,6 +399,44 @@
   </div>
   <!-- END: Quick Edit Modal -->
   
+  <!-- START: Add Tags Modal -->
+  <div id="manage-tags-popup" class="fixed inset-0 z-[101] flex items-center justify-center bg-black bg-opacity-80 p-4" style="display: none;">
+    <div class="bg-gray-900 p-6 rounded-lg shadow-xl w-full max-w-md border border-gray-700">
+      <h3 class="text-xl font-semibold text-white mb-4">Manage Tags</h3>
+      
+      <!-- Form to add new tag -->
+      <form id="addTagForm" class="flex flex-col gap-2 mb-4">
+        <div class="flex gap-2">
+          <input type="text" id="newTagName" class="flex-grow p-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" placeholder="Enter new tag name" required>
+          <button type="submit" class="px-5 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors">Add</button>
+        </div>
+        <div id="manageTagsErrorMessage" class="text-red-400 text-sm" style="display: none;"></div>
+      </form>
+
+      <!-- START: Action Buttons -->
+      <div class="flex items-center gap-2 mb-2">
+        <button type="button" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded-lg" onclick="selectAllManageTags(true)">Select All</button>
+        <button type="button" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded-lg" onclick="selectAllManageTags(false)">Deselect All</button>
+        <div class="flex-grow"></div>
+        <button type="button" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg" onclick="handleRenameSelectedTag()">Rename Selected</button>
+        <button type="button" class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg" onclick="handleDeleteSelectedTags()">Delete Selected</button>
+      </div>
+      <!-- END: Action Buttons -->
+
+      <!-- List of existing tags -->
+      <h4 class="text-md font-semibold text-gray-300 mb-2">Existing Tags</h4>
+      <div id="existingTagsListContainer" class="max-h-64 overflow-y-auto bg-gray-800 border border-gray-700 rounded-lg p-2">
+        <!-- Tags will be loaded here -->
+        <span class="text-gray-500">Loading...</span>
+      </div>
+      
+      <div class="mt-6 flex justify-end">
+        <button type="button" class="cancel-btn px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors" onclick="closeManageTagsPopup()">Close</button>
+      </div>
+    </div>
+  </div>
+  <!-- END: Add Tags Modal -->
+  
   <!-- Custom Context Menu -->
   <div id="context-menu">
     <button id="context-edit">✏️ Edit</button>
@@ -498,6 +543,7 @@
           closePopup();
           closeImageViewer();
           closeQuickEditModal(); // Also close the new modal
+          closeManageTagsPopup(); // <-- ADDED
         }
         // Keyboard nav for viewer
         if (imageViewer.style.display === 'flex') {
@@ -528,6 +574,13 @@
         e.preventDefault();
         await handleQuickUpdate();
       });
+      
+      // START: Add submit listener for the new tag management form
+      document.getElementById('addTagForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          await handleAddNewTag();
+      });
+      // END: Add submit listener
     };
     
     // --- Data Loading ---
@@ -849,7 +902,7 @@
     
     function handleScroll() {
       // Don't load if any modal is open
-      if (imageViewer.style.display === 'flex' || document.getElementById('popup').style.display === 'flex' || document.getElementById('quick-edit-modal').style.display === 'flex') return;
+      if (imageViewer.style.display === 'flex' || document.getElementById('popup').style.display === 'flex' || document.getElementById('quick-edit-modal').style.display === 'flex' || document.getElementById('manage-tags-popup').style.display === 'flex') return; // <-- ADDED
       
       // START: Disable infinite scroll if in shuffle mode
       if (currentSortOrder === 'shuffle') return;
@@ -1603,6 +1656,254 @@
       updateSelectedTagsDisplay();
       updateTagDisplays(); // Re-populates the dropdown
     }
+    
+    // --- START: Tag Management Modal Functions ---
+
+    function openManageTagsPopup() {
+      document.getElementById('manage-tags-popup').style.display = 'flex';
+      document.getElementById('manageTagsErrorMessage').style.display = 'none';
+      document.getElementById('newTagName').value = '';
+      loadTagsForManagement();
+    }
+
+    function closeManageTagsPopup() {
+      document.getElementById('manage-tags-popup').style.display = 'none';
+    }
+
+    async function loadTagsForManagement() {
+      const container = document.getElementById('existingTagsListContainer');
+      container.innerHTML = '<span class="text-gray-500">Loading...</span>';
+      
+      try {
+        // Fetch fresh tags list
+        const { data: tags, error } = await supabase
+          .from('tags')
+          .select('name')
+          .order('name', { ascending: true });
+          
+        if (error) throw error;
+
+        if (!tags || tags.length === 0) {
+          container.innerHTML = '<span class="text-gray-500">No tags found.</span>';
+          return;
+        }
+
+        container.innerHTML = ''; // Clear loading
+        
+        tags.forEach(tagObj => {
+          const tag = tagObj.name; // Get the name string
+          const tagRow = document.createElement('div');
+          tagRow.className = 'flex items-center gap-2 p-2 rounded hover:bg-gray-700';
+          
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.value = tag;
+          checkbox.className = 'manage-tag-checkbox w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-600 focus:ring-2 focus:ring-blue-500';
+          checkbox.id = `tag-cb-${tag}`;
+          
+          const tagNameLabel = document.createElement('label');
+          tagNameLabel.className = 'text-sm text-gray-300 cursor-pointer';
+          tagNameLabel.textContent = tag;
+          tagNameLabel.htmlFor = `tag-cb-${tag}`;
+          
+          tagRow.appendChild(checkbox);
+          tagRow.appendChild(tagNameLabel);
+          container.appendChild(tagRow);
+        });
+        
+      } catch (error) {
+        console.error("Error loading tags for management:", error);
+        container.innerHTML = '<span class="text-red-400">Error loading tags.</span>';
+      }
+    }
+    
+    // START: New helper functions for multi-select
+    function getSelectedManageTags() {
+      const checkboxes = document.querySelectorAll('#existingTagsListContainer .manage-tag-checkbox:checked');
+      return Array.from(checkboxes).map(cb => cb.value);
+    }
+
+    function selectAllManageTags(isSelected) {
+      const checkboxes = document.querySelectorAll('#existingTagsListContainer .manage-tag-checkbox');
+      checkboxes.forEach(cb => cb.checked = isSelected);
+    }
+    // END: New helper functions
+
+    async function handleAddNewTag() {
+      const input = document.getElementById('newTagName');
+      const errorMsg = document.getElementById('manageTagsErrorMessage');
+      const newTagName = input.value.trim();
+
+      if (!newTagName) {
+        errorMsg.textContent = 'Tag name cannot be empty.';
+        errorMsg.style.display = 'block';
+        return;
+      }
+      
+      // We must check against allTags, which is kept in sync by loadTags()
+      if (allTags.map(t => t.toLowerCase()).includes(newTagName.toLowerCase())) {
+        errorMsg.textContent = 'This tag already exists.';
+        errorMsg.style.display = 'block';
+        return;
+      }
+
+      try {
+        errorMsg.style.display = 'none';
+        
+        const { error } = await supabase
+          .from('tags')
+          .insert({ name: newTagName });
+          
+        if (error) throw error;
+        
+        // Success
+        input.value = ''; // Clear input
+        await loadTags(); // Reload allTags and all dropdowns
+        await loadTagsForManagement(); // Refresh the list in the modal
+        
+      } catch (error) {
+        console.error("Error adding new tag:", error);
+        errorMsg.textContent = `Failed to add tag: ${error.message}`;
+        errorMsg.style.display = 'block';
+      }
+    }
+
+    // START: Replaced deleteTag with multi-delete
+    async function handleDeleteSelectedTags() {
+      const selectedTags = getSelectedManageTags();
+      const errorMsg = document.getElementById('manageTagsErrorMessage');
+      if (selectedTags.length === 0) {
+        errorMsg.textContent = 'Please select at least one tag to delete.';
+        errorMsg.style.display = 'block';
+        return;
+      }
+
+      if (!confirm(`Are you sure you want to delete ${selectedTags.length} tag(s)? This will also remove the tag from all models.`)) {
+        return;
+      }
+
+      try {
+        errorMsg.style.display = 'none';
+        
+        // 1. Delete from 'tags' table
+        const { error: deleteTagsError } = await supabase
+          .from('tags')
+          .delete()
+          .in('name', selectedTags);
+          
+        if (deleteTagsError) throw deleteTagsError;
+
+        // 2. Remove tags from all models
+        // We need to do this for each tag
+        for (const tagToDelete of selectedTags) {
+            const orQuery = `tags.eq."${tagToDelete}",tags.ilike."${tagToDelete},%",tags.ilike."%,${tagToDelete}",tags.ilike."%,${tagToDelete},%"`;
+            const { data: models, error: fetchModelsError } = await supabase
+                .from('models')
+                .or(orQuery);
+
+            if (fetchModelsError) throw new Error(`Error fetching models for tag ${tagToDelete}: ${fetchModelsError.message}`);
+
+            if (models && models.length > 0) {
+                const updates = models.map(model => {
+                    let modelTags = (model.tags || '').split(',').map(t => t.trim()).filter(t => t);
+                    // Filter out the tag to be deleted (case-insensitive)
+                    modelTags = modelTags.filter(t => t.toLowerCase() !== tagToDelete.toLowerCase());
+                    const newTagsString = modelTags.join(', ');
+                    
+                    return supabase.from('models').update({ tags: newTagsString }).eq('id', model.id);
+                });
+                await Promise.all(updates);
+            }
+        }
+        
+        // 3. Success
+        await loadTags(); // Reload allTags and all dropdowns
+        await loadTagsForManagement(); // Refresh the list in the modal
+        loadCards(true); // Refresh main gallery in case tags changed
+        
+      } catch (error) {
+        console.error("Error deleting tags:", error);
+        errorMsg.textContent = `Failed to delete tags: ${error.message}.`;
+        errorMsg.style.display = 'block';
+      }
+    }
+    // END: Replaced deleteTag
+
+    // START: New function to rename a tag
+    async function handleRenameSelectedTag() {
+      const selectedTags = getSelectedManageTags();
+      const errorMsg = document.getElementById('manageTagsErrorMessage');
+      
+      if (selectedTags.length !== 1) {
+        errorMsg.textContent = 'Please select exactly one tag to rename.';
+        errorMsg.style.display = 'block';
+        return;
+      }
+
+      const oldTagName = selectedTags[0];
+      const newTagName = prompt(`Enter new name for "${oldTagName}":`, oldTagName);
+
+      if (!newTagName || newTagName.trim() === '' || newTagName.trim() === oldTagName) {
+        errorMsg.textContent = 'Rename cancelled or name unchanged.';
+        errorMsg.style.display = 'block';
+        return;
+      }
+      
+      const trimmedNewName = newTagName.trim();
+      
+      // Check if new tag name already exists
+      if (allTags.map(t => t.toLowerCase()).includes(trimmedNewName.toLowerCase())) {
+          errorMsg.textContent = `Tag "${trimmedNewName}" already exists.`;
+          errorMsg.style.display = 'block';
+          return;
+      }
+
+      try {
+        errorMsg.style.display = 'none';
+
+        // 1. Update 'tags' table
+        const { error: updateTagError } = await supabase
+          .from('tags')
+          .update({ name: trimmedNewName })
+          .eq('name', oldTagName);
+          
+        if (updateTagError) throw updateTagError;
+        
+        // 2. Update tag in all models
+        const orQuery = `tags.eq."${oldTagName}",tags.ilike."${oldTagName},%",tags.ilike."%,${oldTagName}",tags.ilike."%,${oldTagName},%"`;
+        const { data: models, error: fetchModelsError } = await supabase
+            .from('models')
+            .or(orQuery);
+        
+        if (fetchModelsError) throw new Error(`Error fetching models for tag ${oldTagName}: ${fetchModelsError.message}`);
+
+        if (models && models.length > 0) {
+            const updates = models.map(model => {
+                let modelTags = (model.tags || '').split(',').map(t => t.trim()).filter(t => t);
+                // Find and replace the tag (case-insensitive)
+                modelTags = modelTags.map(t => t.toLowerCase() === oldTagName.toLowerCase() ? trimmedNewName : t);
+                // Remove duplicates just in case
+                const newTagsString = [...new Set(modelTags)].join(', '); 
+                
+                return supabase.from('models').update({ tags: newTagsString }).eq('id', model.id);
+            });
+            await Promise.all(updates);
+        }
+        
+        // 3. Success
+        await loadTags(); // Reload allTags and all dropdowns
+        await loadTagsForManagement(); // Refresh the list in the modal
+        loadCards(true); // Refresh main gallery in case tags changed
+        
+      } catch (error) {
+        console.error("Error renaming tag:", error);
+        errorMsg.textContent = `Failed to rename tag: ${error.message}.`;
+        errorMsg.style.display = 'block';
+      }
+    }
+    // END: New function to rename a tag
+    
+    // --- END: Tag Management Modal Functions ---
     
     // --- START: Quick Edit Modal Functions ---
     
