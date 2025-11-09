@@ -175,6 +175,29 @@
       margin-bottom: 8px; /* Match main gallery gap */
       break-inside: avoid;
     }
+    
+    /* START: Styles for Multi-Select */
+    .masonry-item.selected {
+      outline: 4px solid #3b82f6; /* Tailwind blue-500 */
+      outline-offset: -2px;
+      box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+    }
+    
+    /* Hide card overlay buttons when in selection mode */
+    body.selection-mode .masonry-item .group-hover\:opacity-100 {
+      opacity: 0 !important;
+    }
+    /* ...but still allow selection hover effect */
+    body.selection-mode .masonry-item:hover .overlay {
+       opacity: 1;
+    }
+    
+    /* Style for active select button */
+    #select-mode-toggle.active {
+      background-color: #3b82f6; /* blue-600 */
+      color: white;
+    }
+    /* END: Styles for Multi-Select */
   </style>
 </head>
 <body class="bg-black text-gray-300 font-sans antialiased">
@@ -220,6 +243,11 @@
         <button onclick="openManageTagsPopup()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors">
           Add Tags
         </button>
+        <!-- START: Added Select Button -->
+        <button id="select-mode-toggle" onclick="toggleSelectionMode()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors">
+          Select
+        </button>
+        <!-- END: Added Select Button -->
         <button onclick="openPopup()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
           Upload
         </button>
@@ -230,6 +258,23 @@
 
   <!-- Main Content Area -->
   <main class="pt-24 pb-12 px-4 md:px-6">
+    
+    <!-- START: Bulk Action Bar -->
+    <div id="bulk-action-bar" class="sticky top-24 z-40 bg-blue-900 bg-opacity-90 backdrop-blur-sm p-4 rounded-lg container mx-auto flex justify-between items-center mb-4" style="display: none;">
+      <span id="bulk-action-count" class="font-semibold text-white">X items selected</span>
+      <div class="flex items-center space-x-3">
+        <button onclick="openBulkEditModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+          ✏️ Edit Selected
+        </button>
+        <button onclick="handleBulkDelete()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors">
+          🗑️ Delete Selected
+        </button>
+        <button onclick="clearSelection()" class="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium rounded-lg transition-colors">
+          &times; Clear
+        </button>
+      </div>
+    </div>
+    <!-- END: Bulk Action Bar -->
     
     <!-- Search/Filter Status -->
     <div id="search-status" class="container mx-auto mb-6 h-16 flex items-center justify-center text-gray-400" style="display: none;">
@@ -398,6 +443,46 @@
     </div>
   </div>
   <!-- END: Quick Edit Modal -->
+
+  <!-- START: Bulk Edit Modal -->
+  <div id="bulk-edit-modal" class="fixed inset-0 z-[101] flex items-center justify-center bg-black bg-opacity-80 p-4" style="display: none;">
+    <div class="bg-gray-900 p-6 rounded-lg shadow-xl w-full max-w-md border border-gray-700">
+      <h3 id="bulkEditTitle" class="text-xl font-semibold text-white mb-4">Bulk Edit (X items)</h3>
+      <form id="bulkEditForm">
+        
+        <div class="mb-4">
+          <label class="text-sm text-gray-400 mb-2 block">Add Tags</label>
+          <div id="bulkEditSelectedTagsContainer" class="flex flex-wrap gap-2 p-2 bg-gray-800 border border-gray-700 rounded-lg min-h-[40px]">
+            <!-- Selected tags to add -->
+          </div>
+        </div>
+        
+        <div class="flex gap-2 mt-2 mb-4">
+          <select id="bulkEditAvailableTags" class="flex-grow p-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500">
+            <option value="">Select tags to add</option>
+          </select>
+          <button type="button" onclick="addTagToBulkEdit()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">Add</button>
+        </div>
+        
+        <div class="mb-4">
+          <label for="bulkEditNsfw" class="text-sm text-gray-400 mb-2 block">Set NSFW Status</label>
+          <select id="bulkEditNsfw" class="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500">
+            <option value="no_change">No Change</option>
+            <option value="mark_nsfw">Mark as NSFW</option>
+            <option value="mark_sfw">Mark as SFW</option>
+          </select>
+        </div>
+
+        <div id="bulkEditErrorMessage" class="text-red-400 text-sm mb-4" style="display: none;"></div>
+        
+        <div class="mt-6 flex justify-end space-x-3">
+          <button type="button" class="cancel-btn px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors" onclick="closeBulkEditModal()">Cancel</button>
+          <button type="submit" class="px-5 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors">Apply Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <!-- END: Bulk Edit Modal -->
   
   <!-- START: Add Tags Modal -->
   <div id="manage-tags-popup" class="fixed inset-0 z-[101] flex items-center justify-center bg-black bg-opacity-80 p-4" style="display: none;">
@@ -502,6 +587,13 @@
     let touchStartX = 0;
     let touchEndX = 0;
     
+    // START: Bulk Selection State
+    let isSelectionMode = false;
+    let selectedCardIds = new Set();
+    let bulkEditSelectedTags = []; // For the new bulk edit modal
+    let bulkActionBar, bulkActionCount, selectModeToggle;
+    // END: Bulk Selection State
+    
     // --- Initialization ---
 
     window.onload = async function () {
@@ -520,6 +612,12 @@
       noResults = document.getElementById('no-results');
       searchStatus = document.getElementById('search-status');
       scrollLoader = document.getElementById('scroll-loader');
+      
+      // START: Assign Bulk Edit DOM Elements
+      bulkActionBar = document.getElementById('bulk-action-bar');
+      bulkActionCount = document.getElementById('bulk-action-count');
+      selectModeToggle = document.getElementById('select-mode-toggle');
+      // END: Assign Bulk Edit DOM Elements
       
       // --- ADDED: Initialize Masonry ---
       msnry = new Masonry( gallery, {
@@ -544,6 +642,8 @@
           closeImageViewer();
           closeQuickEditModal(); // Also close the new modal
           closeManageTagsPopup(); // <-- ADDED
+          closeBulkEditModal(); // <-- ADDED
+          clearSelection(); // <-- ADDED
         }
         // Keyboard nav for viewer
         if (imageViewer.style.display === 'flex') {
@@ -579,6 +679,13 @@
       document.getElementById('addTagForm').addEventListener('submit', async (e) => {
           e.preventDefault();
           await handleAddNewTag();
+      });
+      // END: Add submit listener
+      
+      // START: Add submit listener for the new bulk edit form
+      document.getElementById('bulkEditForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await handleBulkUpdate();
       });
       // END: Add submit listener
     };
@@ -658,6 +765,7 @@
       
       isLoadingMore = true;
       if (isNewQuery) {
+        clearSelection(); // Clear selection on new search
         currentPage = 0;
         // Reset noMoreResults based on sort order. Shuffle mode disables pagination.
         noMoreResults = (currentSortOrder === 'shuffle');
@@ -836,6 +944,7 @@
       `;
       editButton.onclick = (e) => {
         e.stopPropagation(); // Prevent opening the image viewer
+        if (isSelectionMode) return; // Do nothing in selection mode
         openQuickEditModal(card.id);
       };
       // END: New Edit Button
@@ -850,6 +959,7 @@
       `;
       deleteButton.onclick = (e) => {
         e.stopPropagation(); // Prevent opening the image viewer
+        if (isSelectionMode) return; // Do nothing in selection mode
         deleteCard(card.id); // This function already has a confirm()
       };
       // END: New Delete Button
@@ -870,6 +980,7 @@
       
       favoriteButton.onclick = (e) => {
         e.stopPropagation(); // Prevent opening the image viewer
+        if (isSelectionMode) return; // Do nothing in selection mode
         // Find the current status from the displayedCards array, in case it was updated
         const currentCard = displayedCards.find(c => c.id === card.id);
         toggleFavorite(e, card.id, currentCard ? currentCard.favorited : card.favorited);
@@ -883,9 +994,13 @@
       cardElem.appendChild(deleteButton); // Add the delete button to the card
       cardElem.appendChild(favoriteButton); // Add the favorite button to the card
 
-      // Main click action: Open Image Viewer
+      // Main click action: Select or Open Viewer
       cardElem.addEventListener('click', () => {
-        openImageViewer(index); // Pass index
+        if (isSelectionMode) {
+          toggleCardSelection(card.id, cardElem);
+        } else {
+          openImageViewer(index); // Pass index
+        }
       });
       
       // Right-click for context menu
@@ -902,7 +1017,7 @@
     
     function handleScroll() {
       // Don't load if any modal is open
-      if (imageViewer.style.display === 'flex' || document.getElementById('popup').style.display === 'flex' || document.getElementById('quick-edit-modal').style.display === 'flex' || document.getElementById('manage-tags-popup').style.display === 'flex') return; // <-- ADDED
+      if (imageViewer.style.display === 'flex' || document.getElementById('popup').style.display === 'flex' || document.getElementById('quick-edit-modal').style.display === 'flex' || document.getElementById('manage-tags-popup').style.display === 'flex' || document.getElementById('bulk-edit-modal').style.display === 'flex') return; // <-- ADDED
       
       // START: Disable infinite scroll if in shuffle mode
       if (currentSortOrder === 'shuffle') return;
@@ -2072,6 +2187,231 @@
       return array;
     }
     // --- END: Shuffle Utility Function ---
+    
+    // --- START: Bulk Selection & Edit Functions ---
+
+    function toggleSelectionMode() {
+      isSelectionMode = !isSelectionMode;
+      
+      if (isSelectionMode) {
+        selectModeToggle.classList.add('active');
+        document.body.classList.add('selection-mode');
+      } else {
+        clearSelection(); // Exiting selection mode clears the selection
+      }
+    }
+    window.toggleSelectionMode = toggleSelectionMode;
+
+    function toggleCardSelection(cardId, cardElem) {
+      if (selectedCardIds.has(cardId)) {
+        selectedCardIds.delete(cardId);
+        cardElem.classList.remove('selected');
+      } else {
+        selectedCardIds.add(cardId);
+        cardElem.classList.add('selected');
+      }
+      updateBulkActionBar();
+    }
+
+    function updateBulkActionBar() {
+      const count = selectedCardIds.size;
+      if (count > 0) {
+        bulkActionCount.textContent = `${count} item${count > 1 ? 's' : ''} selected`;
+        bulkActionBar.style.display = 'flex';
+      } else {
+        bulkActionBar.style.display = 'none';
+      }
+    }
+
+    function clearSelection() {
+      isSelectionMode = false;
+      selectedCardIds.clear();
+      
+      document.querySelectorAll('.masonry-item.selected').forEach(el => {
+        el.classList.remove('selected');
+      });
+      
+      updateBulkActionBar();
+      if (selectModeToggle) selectModeToggle.classList.remove('active');
+      document.body.classList.remove('selection-mode');
+    }
+    window.clearSelection = clearSelection;
+
+    async function handleBulkDelete() {
+      const count = selectedCardIds.size;
+      if (count === 0) return;
+      
+      if (!confirm(`Are you sure you want to delete ${count} model${count > 1 ? 's' : ''}?`)) return;
+
+      try {
+        const { error } = await supabase
+          .from('models')
+          .delete()
+          .in('id', [...selectedCardIds]);
+          
+        if (error) throw error;
+        
+        await loadTotalCardCount(); // Refresh count
+        clearSelection();
+        loadCards(true); // Force a full refresh
+        
+      } catch (error) {
+        console.error("Error deleting bulk cards:", error);
+        alert("Failed to delete selected cards.");
+      }
+    }
+    window.handleBulkDelete = handleBulkDelete;
+
+    // --- Bulk Edit Modal Functions ---
+
+    function openBulkEditModal() {
+      const count = selectedCardIds.size;
+      if (count === 0) return;
+
+      document.getElementById('bulkEditTitle').textContent = `Bulk Edit (${count} item${count > 1 ? 's' : ''})`;
+      
+      // Reset form
+      bulkEditSelectedTags = [];
+      updateBulkEditSelectedTagsDisplay();
+      updateBulkEditAvailableTags();
+      document.getElementById('bulkEditNsfw').value = 'no_change';
+      document.getElementById('bulkEditErrorMessage').style.display = 'none';
+      
+      document.getElementById('bulk-edit-modal').style.display = 'flex';
+    }
+    window.openBulkEditModal = openBulkEditModal;
+
+    function closeBulkEditModal() {
+      document.getElementById('bulk-edit-modal').style.display = 'none';
+    }
+    window.closeBulkEditModal = closeBulkEditModal;
+
+    async function handleBulkUpdate() {
+      const errorMsg = document.getElementById('bulkEditErrorMessage');
+      errorMsg.style.display = 'none';
+      
+      const tagsToAdd = bulkEditSelectedTags;
+      const nsfwAction = document.getElementById('bulkEditNsfw').value;
+      const idsToUpdate = [...selectedCardIds];
+      
+      if (tagsToAdd.length === 0 && nsfwAction === 'no_change') {
+        errorMsg.textContent = "No changes to apply.";
+        errorMsg.style.display = 'block';
+        return;
+      }
+      
+      // Show loading indicator on submit button
+      const submitBtn = document.querySelector('#bulkEditForm button[type="submit"]');
+      const originalBtnText = submitBtn.textContent;
+      submitBtn.textContent = 'Applying...';
+      submitBtn.disabled = true;
+
+      try {
+        // 1. Fetch all cards to be updated
+        const { data: cards, error: fetchError } = await supabase
+          .from('models')
+          .select('id, tags, nsfw') // also select nsfw
+          .in('id', idsToUpdate);
+          
+        if (fetchError) throw fetchError;
+        
+        // 2. Prepare updates
+        const updatePromises = cards.map(card => {
+          let newTags = (card.tags || '').split(',').map(t => t.trim()).filter(t => t);
+          
+          // Add new tags
+          tagsToAdd.forEach(tag => {
+            if (!newTags.includes(tag)) {
+              newTags.push(tag);
+            }
+          });
+          
+          const newTagsString = newTags.join(', ');
+          const updateData = { tags: newTagsString };
+          
+          // Apply NSFW changes
+          if (nsfwAction === 'mark_nsfw') {
+            updateData.nsfw = true;
+          } else if (nsfwAction === 'mark_sfw') {
+            updateData.nsfw = false;
+          }
+          // if no_change, we don't add the nsfw key, so it's unchanged
+          
+          return supabase.from('models').update(updateData).eq('id', card.id);
+        });
+
+        // 3. Execute all updates
+        const results = await Promise.all(updatePromises);
+        const aFailedUpdate = results.find(res => res.error);
+        
+        if (aFailedUpdate) {
+          throw aFailedUpdate.error;
+        }
+
+        // 4. Success
+        closeBulkEditModal();
+        clearSelection();
+        loadCards(true); // Refresh everything
+        
+      } catch (error) {
+        console.error("Error in bulk update:", error);
+        errorMsg.textContent = `Failed to apply changes: ${error.message}`;
+        errorMsg.style.display = 'block';
+      } finally {
+        submitBtn.textContent = originalBtnText;
+        submitBtn.disabled = false;
+      }
+    }
+
+    // --- Tag Helpers for Bulk Edit Modal ---
+    
+    function updateBulkEditAvailableTags() {
+      const availableTagsSelect = document.getElementById('bulkEditAvailableTags');
+      availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
+      allTags.forEach(tag => {
+        if (!bulkEditSelectedTags.includes(tag)) {
+          const option = document.createElement('option');
+          option.value = tag;
+          option.textContent = tag;
+          availableTagsSelect.appendChild(option);
+        }
+      });
+    }
+
+    function addTagToBulkEdit() {
+      const select = document.getElementById('bulkEditAvailableTags');
+      const selectedTag = select.value;
+      if (!selectedTag || bulkEditSelectedTags.includes(selectedTag)) return;
+      
+      bulkEditSelectedTags.push(selectedTag);
+      updateBulkEditSelectedTagsDisplay();
+      updateBulkEditAvailableTags();
+      select.value = "";
+    }
+    window.addTagToBulkEdit = addTagToBulkEdit;
+    
+    function updateBulkEditSelectedTagsDisplay() {
+      const container = document.getElementById('bulkEditSelectedTagsContainer');
+      container.innerHTML = '';
+      bulkEditSelectedTags.forEach(tag => {
+        const tagElem = document.createElement('span');
+        tagElem.className = 'px-3 py-1 bg-blue-600 text-white text-sm rounded-full flex items-center gap-2';
+        tagElem.innerHTML = `
+          ${tag}
+          <button type="button" class="text-blue-200 hover:text-white" onclick="removeBulkEditSelectedTag('${tag}')">&times;</button>
+        `;
+        container.appendChild(tagElem);
+      });
+    }
+
+    function removeBulkEditSelectedTag(tagToRemove) {
+      bulkEditSelectedTags = bulkEditSelectedTags.filter(tag => tag !== tagToRemove);
+      updateBulkEditSelectedTagsDisplay();
+      updateBulkEditAvailableTags();
+    }
+    window.removeBulkEditSelectedTag = removeBulkEditSelectedTag;
+    
+    // --- END: Bulk Selection & Edit Functions ---
 
   </script>
 </body>
