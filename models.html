@@ -213,6 +213,8 @@
             <select id="sort-order" class="text-sm text-gray-400 hover:text-white focus:outline-none bg-transparent border-0 focus:ring-0">
               <option value="last_uploaded" class="bg-gray-800">Last uploaded</option>
               <option value="first_uploaded" class="bg-gray-800">First uploaded</option>
+              <option value="highest_rated" class="bg-gray-800">Highest Rated</option>
+              <option value="lowest_rated" class="bg-gray-800">Lowest Rated</option>
               <option value="shuffle" class="bg-gray-800">Shuffle</option>
             </select>
           </div>
@@ -262,6 +264,8 @@
           <select id="mobile-sort-order" class="text-lg text-gray-300 hover:text-white focus:outline-none bg-transparent border-0 focus:ring-0 p-1">
             <option value="last_uploaded" class="bg-gray-800">Last uploaded</option>
             <option value="first_uploaded" class="bg-gray-800">First uploaded</option>
+            <option value="highest_rated" class="bg-gray-800">Highest Rated</option>
+            <option value="lowest_rated" class="bg-gray-800">Lowest Rated</option>
             <option value="shuffle" class="bg-gray-800">Shuffle</option>
           </select>
         </div>
@@ -315,13 +319,24 @@
       <div class="relative w-full h-[80vh] bg-black mt-8 md:mt-12">
         <!-- Image Header with Tags -->
         <div id="viewer-header" class="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/70 to-transparent z-[105]">
-          <div class="flex items-center gap-4 mb-2">
-            <h3 class="text-lg font-semibold text-white">Tags</h3>
-            <span id="viewer-nsfw-label" class="px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded-full" style="display: none;">NSFW</span>
+          <!-- START: Modified for Rating -->
+          <div class="flex items-start justify-between">
+            <!-- Left side: Tags -->
+            <div>
+              <div class="flex items-center gap-4 mb-2">
+                <h3 class="text-lg font-semibold text-white">Tags</h3>
+                <span id="viewer-nsfw-label" class="px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded-full" style="display: none;">NSFW</span>
+              </div>
+              <div id="viewer-tags" class="flex flex-wrap gap-2">
+                <!-- Tags injected by JS -->
+              </div>
+            </div>
+            <!-- Right side: Rating -->
+            <div id="viewer-rating" class="flex-shrink-0 ml-4">
+              <!-- Stars injected by JS -->
+            </div>
           </div>
-          <div id="viewer-tags" class="flex flex-wrap gap-2">
-            <!-- Tags injected by JS -->
-          </div>
+          <!-- END: Modified for Rating -->
         </div>
         
         <!-- Loader for modal image -->
@@ -878,11 +893,19 @@
           const to = from + PAGE_SIZE - 1;
           query = query.range(from, to);
           
+          // START: Updated sort logic
           if (currentSortOrder === 'first_uploaded') {
             query = query.order('created_at', { ascending: true });
+          } else if (currentSortOrder === 'highest_rated') {
+            // Order by rating descending, nulls last
+            query = query.order('rating', { ascending: false, nullsFirst: false });
+          } else if (currentSortOrder === 'lowest_rated') {
+             // Order by rating ascending, nulls first
+            query = query.order('rating', { ascending: true, nullsFirst: true });
           } else { // default is 'last_uploaded'
             query = query.order('created_at', { ascending: false });
           }
+          // END: Updated sort logic
         }
 
         let { data: cards, error } = await query;
@@ -1096,6 +1119,7 @@
       cardElem.appendChild(editButton); // Add the edit button to the card
       cardElem.appendChild(deleteButton); // Add the delete button to the card
       cardElem.appendChild(favoriteButton); // Add the favorite button to the card
+      cardElem.appendChild(createGalleryRatingElement(card)); // <-- START: Add Rating Display
 
       // Main click action: Open Image Viewer
       cardElem.addEventListener('click', () => {
@@ -1130,19 +1154,7 @@
       }
     }
     
-    // Infinite scroll for RELATED items (listens to modal scroll)
-    function handleRelatedScroll() {
-      // START: Check if currentRelatedCard is null or an album
-      if (!currentRelatedCard || currentRelatedCard.isAlbum) return;
-      // END
-      
-      const { scrollTop, scrollHeight, clientHeight } = imageViewer;
-      if (scrollTop + clientHeight >= scrollHeight - 300) {
-        if (!relatedIsLoadingMore && !relatedNoMoreResults) {
-          loadRelatedImages(currentRelatedCard, false); // false = not a new query
-        }
-      }
-    }
+    // --- START: Re-adding missing functions ---
     
     // --- Navigation & Filtering ---
     
@@ -1211,7 +1223,30 @@
       loadCards(true);
     }
     
-    // END: ADDED MISSING FUNCTIONS
+    // --- END: Re-adding missing functions ---
+
+    
+    // --- START: New Rating Helper ---
+    /**
+     * Creates the read-only rating element for the gallery card.
+     */
+    function createGalleryRatingElement(card) {
+      const rating = card.rating || 0;
+      const ratingEl = document.createElement('div');
+      ratingEl.id = `rating-display-${card.id}`;
+      // Positioned below favorite at top-[6.5rem]
+      ratingEl.className = 'absolute top-[6.5rem] right-2 z-10 flex items-center gap-1 px-1.5 py-0.5 bg-black/50 rounded-full text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity';
+      
+      const starSvg = `
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 ${rating > 0 ? 'text-yellow-400' : 'text-gray-500'}" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27z"/>
+        </svg>
+      `;
+      ratingEl.innerHTML = `${starSvg} <span>${rating > 0 ? rating : '-'}</span>`;
+      return ratingEl;
+    }
+    // --- END: New Rating Helper ---
+
 
     // --- START: Mobile Menu Functions ---
     function toggleMobileMenu() {
@@ -1407,6 +1442,10 @@
         viewerTags.innerHTML = `<span class="text-gray-400 text-sm">No tags for this model.</span>`;
       }
       
+      // START: Render rating stars in viewer
+      renderViewerRating(card);
+      // END: Render rating
+      
       // START: Modified to load album or related
       const addToAlbumBtn = document.getElementById('add-to-album-btn');
       const relatedTitle = document.getElementById('viewer-related-container').querySelector('h4');
@@ -1579,6 +1618,16 @@
       relatedIsLoadingMore = false;
     }
     
+    // Infinite scroll for RELATED items (listens to modal scroll)
+    function handleRelatedScroll() {
+      const { scrollTop, scrollHeight, clientHeight } = imageViewer;
+      if (scrollTop + clientHeight >= scrollHeight - 300) {
+        if (!relatedIsLoadingMore && !relatedNoMoreResults) {
+          loadRelatedImages(currentRelatedCard, false); // false = not a new query
+        }
+      }
+    }
+    
     // Function to create and add a related card to the new grid
     function addRelatedCardToGrid(relatedCard, index = -1, isAlbumItem = false) {
       const cardElem = document.createElement('div');
@@ -1639,6 +1688,105 @@
       viewerRelatedGrid.appendChild(cardElem);
     }
     
+    // --- START: Rating Functions ---
+    /**
+     * Renders the 5-star interactive rating widget in the image viewer.
+     */
+    function renderViewerRating(card) {
+      const container = document.getElementById('viewer-rating');
+      if (!container) return;
+      container.innerHTML = '';
+      const currentRating = card.rating || 0;
+      
+      // Set mouseleave on the container to reset hover states
+      container.onmouseleave = () => {
+        const stars = container.querySelectorAll('.star');
+        stars.forEach((s, index) => {
+          s.classList.toggle('text-yellow-400', index < currentRating);
+          s.classList.toggle('text-gray-600', index >= currentRating);
+          s.classList.remove('text-yellow-300'); // remove hover state
+        });
+      };
+
+      for (let i = 1; i <= 5; i++) {
+        const star = document.createElement('span');
+        star.className = `star text-3xl cursor-pointer ${i <= currentRating ? 'text-yellow-400' : 'text-gray-600'} transition-colors`;
+        star.innerHTML = '&#9733;'; // HTML star
+        star.dataset.rating = i;
+        
+        star.onclick = (e) => {
+          e.stopPropagation();
+          const newRating = (i === currentRating) ? 0 : i; // Click same star to un-rate
+          setRating(card.id, newRating);
+        };
+        
+        star.onmouseenter = () => {
+          // Highlight stars up to this one on hover
+          const stars = container.querySelectorAll('.star');
+          stars.forEach((s, index) => {
+            s.classList.toggle('text-yellow-300', index < i);
+            s.classList.toggle('text-gray-600', index >= i);
+          });
+        };
+
+        container.appendChild(star);
+      }
+    }
+    
+    /**
+     * Updates the rating in the database and optimistically updates the UI.
+     */
+    async function setRating(cardId, newRating) {
+      try {
+        // 1. Optimistic UI update in the viewer
+        const card = currentRelatedCard;
+        if (card.id !== cardId) return; // Safety check
+        
+        card.rating = newRating; // Update in-memory card
+        renderViewerRating(card); // Re-render stars in viewer
+
+        // 2. Update the gallery card UI (optimistic)
+        const galleryRatingEl = document.getElementById(`rating-display-${cardId}`);
+        if (galleryRatingEl) {
+          const textEl = galleryRatingEl.querySelector('span');
+          if (textEl) {
+            textEl.textContent = newRating > 0 ? newRating : '-';
+          }
+          const starSvg = galleryRatingEl.querySelector('svg');
+          if(starSvg) {
+              starSvg.classList.toggle('text-yellow-400', newRating > 0);
+              starSvg.classList.toggle('text-gray-500', !(newRating > 0));
+          }
+        }
+    
+        // 3. Update the database
+        const { data: updatedCard, error } = await supabase
+          .from('models')
+          .update({ rating: newRating })
+          .eq('id', cardId)
+          .select()
+          .single();
+    
+        if (error) throw error;
+    
+        // 4. Update the `displayedCards` array with confirmed data
+        const index = displayedCards.findIndex(c => c.id == cardId);
+        if (index !== -1) {
+          displayedCards[index].rating = updatedCard.rating;
+        }
+        
+        // 5. Update viewer card (in case it drifted)
+        currentRelatedCard.rating = updatedCard.rating;
+        renderViewerRating(currentRelatedCard);
+        
+      } catch (error)
+ {
+        console.error("Error setting rating:", error);
+        // Could add error handling to revert UI here
+      }
+    }
+    // --- END: Rating Functions ---
+
     // --- Viewer Navigation ---
     
     function prevImage(event = null) {
@@ -1883,17 +2031,62 @@
       document.getElementById('modelNsfw').checked = false;
       updateSelectedTagsDisplay();
       updateTagDisplays();
-      document.getElementById('errorMessage').textContent = '';
+      
+      // START: Clear error message and re-enable button
+      const errorMsg = document.getElementById('errorMessage');
+      errorMsg.textContent = '';
+      errorMsg.style.display = 'none';
+      errorMsg.classList.remove('text-green-400');
+      errorMsg.classList.add('text-red-400');
+      // Re-enable submit button
+      const submitButton = document.getElementById('cardForm').querySelector('button[type="submit"]');
+      if (submitButton) {
+        submitButton.disabled = false;
+      }
+      // END: Clear error message
     }
 
     async function addCard() {
       const errorMessage = document.getElementById('errorMessage');
+      // START: Get submit button
+      const submitButton = document.getElementById('cardForm').querySelector('button[type="submit"]');
+      
       try {
+        submitButton.disabled = true;
+        errorMessage.textContent = 'Checking for duplicates...';
+        errorMessage.style.display = 'block';
+        errorMessage.classList.remove('text-green-400');
+        errorMessage.classList.add('text-red-400');
+        // END: Get submit button
+        
         const modelUrlsText = document.getElementById('modelUrl').value.trim();
         if (!modelUrlsText) throw new Error("Image URL(s) are required.");
 
         const urls = modelUrlsText.split(',').map(url => url.trim()).filter(url => url.length > 0);
         if (urls.length === 0) throw new Error("Please provide at least one valid image URL.");
+        
+        // --- START: Duplicate Check ---
+        const { data: existingModels, error: checkError } = await supabase
+          .from('models')
+          .select('main_model_url')
+          .in('main_model_url', urls);
+          
+        if (checkError) throw checkError;
+
+        const existingUrls = existingModels.map(model => model.main_model_url);
+        const newUrls = urls.filter(url => !existingUrls.includes(url));
+        const duplicateUrls = urls.filter(url => existingUrls.includes(url));
+
+        if (newUrls.length === 0) {
+          if (duplicateUrls.length > 0) {
+            errorMessage.textContent = `Upload failed. All ${duplicateUrls.length} image(s) are already in the gallery.`;
+          } else {
+            errorMessage.textContent = 'No new images to upload.';
+          }
+          submitButton.disabled = false;
+          return;
+        }
+        // --- END: Duplicate Check ---
         
         // START: Album logic
         const albumName = document.getElementById('modelAlbumName').value.trim();
@@ -1925,7 +2118,8 @@
         const isNsfw = document.getElementById('modelNsfw').checked;
         const tagsString = selectedTags.join(', ');
 
-        const newCards = urls.map(url => ({
+        // START: Use newUrls instead of urls
+        const newCards = newUrls.map(url => ({
           tags: tagsString,
           main_model_url: url,
           related_models: [], // These are old/unused but good to init
@@ -1933,25 +2127,38 @@
           favorited: false,
           nsfw: isNsfw
         }));
+        // END: Use newUrls
 
         const { error } = await supabase.from('models').insert(newCards);
         if (error) throw error;
 
-        closePopup();
-        await loadTotalCardCount(); // <-- Refresh count after adding
-        await refreshTagData(); // <-- ADDED
+        // --- START: New Success/Report Logic ---
+        const successMessage = `Success! Added ${newUrls.length} new images.`;
+        const duplicateMessage = duplicateUrls.length > 0 ? ` Skipped ${duplicateUrls.length} duplicates.` : '';
         
-        // START: Go to the right view
-        if (albumName) {
-            showAllAlbums(); // Go to albums view
-        } else {
-            showAllModels(); // Refresh singles view
-        }
-        // END: Go to the right view
+        errorMessage.textContent = successMessage + duplicateMessage;
+        errorMessage.classList.remove('text-red-400');
+        errorMessage.classList.add('text-green-400');
+        
+        await loadTotalCardCount(); // Refresh counts
+        await refreshTagData(); // Refresh tags
+        
+        setTimeout(() => {
+          closePopup(); // This will re-enable the button via resetForm
+          
+          // Go to the right view after closing
+          if (albumName) {
+              showAllAlbums(); // Go to albums view
+          } else {
+              showAllModels(); // Refresh singles view
+          }
+        }, 2500); // Wait 2.5 seconds
+        // --- END: New Success/Report Logic ---
         
       } catch (error) {
         console.error("Error adding card:", error);
         errorMessage.textContent = `Failed to add model(s): ${error.message}`;
+        submitButton.disabled = false; // Re-enable on failure
       }
     }
     
@@ -1981,7 +2188,11 @@
 
     async function updateCard() {
       const errorMessage = document.getElementById('errorMessage');
+      // START: Add submit button logic
+      const submitButton = document.getElementById('cardForm').querySelector('button[type="submit"]');
       try {
+        submitButton.disabled = true;
+        // END: Add submit button logic
         const modelUrl = document.getElementById('modelUrl').value.trim();
         if (!modelUrl || modelUrl.includes(',')) {
             throw new Error("A single, valid Model URL is required when editing.");
@@ -2007,6 +2218,7 @@
       } catch (error) {
         console.error("Error updating card:", error);
         errorMessage.textContent = error.message;
+        submitButton.disabled = false; // Re-enable on failure
       }
     }
 
@@ -2460,6 +2672,13 @@
       document.getElementById('quickEditForm').reset();
       quickEditSelectedTags = [];
       document.getElementById('quickEditErrorMessage').style.display = 'none';
+      
+      // START: Re-enable submit button
+      const submitButton = document.getElementById('quickEditForm').querySelector('button[type="submit"]');
+      if (submitButton) {
+        submitButton.disabled = false;
+      }
+      // END: Re-enable submit button
     }
     
     async function handleQuickUpdate() {
@@ -2468,6 +2687,8 @@
       const newTags = quickEditSelectedTags.join(', ');
       const newNsfw = document.getElementById('quickEditModelNsfw').checked; // <-- ADDED
       const errorMsg = document.getElementById('quickEditErrorMessage');
+      // START: Add submit button logic
+      const submitButton = document.getElementById('quickEditForm').querySelector('button[type="submit"]');
 
       if (!newUrl) {
         errorMsg.textContent = "Image URL is required.";
@@ -2476,6 +2697,9 @@
       }
       
       try {
+        submitButton.disabled = true;
+        // END: Add submit button logic
+        
         // Update the database and get the updated row back
         const { data: updatedCard, error } = await supabase
           .from('models')
@@ -2514,6 +2738,7 @@
         console.error("Error updating card:", error);
         errorMsg.textContent = `Failed to update: ${error.message}`;
         errorMsg.style.display = 'block';
+        submitButton.disabled = false; // Re-enable on failure
       }
     }
     
@@ -2577,7 +2802,7 @@
     
     // --- START: New function to add to album ---
     function openUploadForAlbum() {
-      const card = displayedCards[currentViewerIndex];
+      const card = currentRelatedCard; // <-- Use currentRelatedCard
       if (!card || !card.isAlbum || !card.albumName) {
         console.error("Cannot add to album, card data missing.", card);
         return;
