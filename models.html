@@ -556,6 +556,11 @@
     let displayedCards = []; // Stores all cards loaded *in the gallery*
     let currentViewerIndex = 0;
     
+    // START: Add state for album viewer
+    let currentAlbumViewerList = [];
+    let currentAlbumViewerIndex = 0;
+    // END: Add state for album viewer
+    
     // Related items state
     let relatedCurrentPage = 0;
     let relatedIsLoadingMore = false;
@@ -1307,6 +1312,15 @@
       currentViewerIndex = index;
       const card = displayedCards[index];
       if (card) {
+        // START: Initialize album viewer state if it's an album
+        if (card.isAlbum) {
+          currentAlbumViewerList = [card]; // Start list with the cover image
+          currentAlbumViewerIndex = 0; // We are viewing the first image (the cover)
+        } else {
+          currentAlbumViewerList = []; // Clear album list
+          currentAlbumViewerIndex = 0;
+        }
+        // END: Initialize
         displayCardInViewer(card);
       } else {
         console.error("Could not find card at index:", index);
@@ -1339,6 +1353,7 @@
     
     // Display card data in the (already open) viewer
     function displayCardInViewer(card) {
+      currentRelatedCard = card; // <-- SET THIS AT THE TOP
       imageViewer.scrollTop = 0; // Scroll to top when loading new image
       resetZoom(); // Reset zoom/pan for new image
       viewerLoader.style.display = 'flex';
@@ -1405,6 +1420,12 @@
         // This is an individual card, load related by tags
         relatedTitle.textContent = 'Related Models';
         addToAlbumBtn.style.display = 'none'; // <-- HIDE BUTTON
+        
+        // START: Clear album list
+        currentAlbumViewerList = [];
+        currentAlbumViewerIndex = 0;
+        // END: Clear album list
+        
         loadRelatedImages(card, true); // true = new query
       }
       // END: Modified
@@ -1415,7 +1436,7 @@
       if (!albumTag) { return; }
       
       // Store card to prevent related scroll
-      currentRelatedCard = { isAlbum: true }; 
+      currentRelatedCard.isAlbum = true; // Ensure this is set
       
       relatedIsLoadingMore = true; // Prevent other loads
       relatedCurrentPage = 0; // Reset
@@ -1443,8 +1464,27 @@
         if (albumCards.length === 0) {
           viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">No other images found in this album.</span>';
         } else {
-          // Re-use the existing function to add cards to the grid
-          albumCards.forEach(addRelatedCardToGrid); 
+          // START: Update album viewer list and add cards to grid
+          
+          // --- FIX: Add album flags to all cards ---
+          const processedAlbumCards = albumCards.map(card => {
+            return {
+              ...card,
+              isAlbum: true,
+              albumTag: albumTag,
+              albumName: currentAlbumViewerList[0].albumName // Inherit album name from cover
+            };
+          });
+          // --- END FIX ---
+
+          // We already have the cover image at index 0
+          currentAlbumViewerList = [currentAlbumViewerList[0], ...processedAlbumCards]; // Combine cover + rest
+          
+          processedAlbumCards.forEach((albumCard, index) => { // Use processed cards
+            // Pass 'index + 1' because index 0 is the cover
+            addRelatedCardToGrid(albumCard, index + 1, true); // true = isAlbumItem
+          });
+          // END: Update
         }
         
       } catch (error) {
@@ -1470,6 +1510,7 @@
       
       // Store the card we're basing this search on
       currentRelatedCard = card; 
+      currentRelatedCard.isAlbum = false; // <-- FIX: Explicitly set to false for related
       
       if (isNewQuery) {
         relatedCurrentPage = 0;
@@ -1539,7 +1580,7 @@
     }
     
     // Function to create and add a related card to the new grid
-    function addRelatedCardToGrid(relatedCard) {
+    function addRelatedCardToGrid(relatedCard, index = -1, isAlbumItem = false) {
       const cardElem = document.createElement('div');
       cardElem.className = 'related-masonry-item bg-gray-900 rounded-lg overflow-hidden relative group cursor-pointer';
       
@@ -1554,26 +1595,45 @@
       cardElem.appendChild(img);
       
       cardElem.onclick = () => {
-        // START: Find index in *gallery* list first
-        const relatedIndex = displayedCards.findIndex(card => card.id === relatedCard.id);
-        
-        // Find album tag
-        const albumTag = (relatedCard.tags || '').split(',').map(t => t.trim()).find(t => t.startsWith('album:'));
-        if (albumTag) {
-          relatedCard.isAlbum = true;
-          relatedCard.albumTag = albumTag;
-        }
-        // END: Find album tag
-        
-        if (relatedIndex !== -1) {
-          // If it's in our main gallery list, just jump to it
-          currentViewerIndex = relatedIndex;
-          displayCardInViewer(displayedCards[relatedIndex]); // Use the full object
+        // START: Check if this is an album item or related item
+        if (isAlbumItem) {
+          // This is an item from the album grid
+          currentAlbumViewerIndex = index;
+          displayCardInViewer(currentAlbumViewerList[currentAlbumViewerIndex]);
         } else {
-          // If it's not in the main list, just display its data
-          // (Next/Prev will still be tied to the main gallery)
-          displayCardInViewer(relatedCard);
-        }
+          // This is an item from the "Related Models" grid
+          const relatedIndex = displayedCards.findIndex(card => card.id === relatedCard.id);
+          
+          // Find album tag
+          // START: Add album flags if clicking on a related album cover
+          const allCardTags = (relatedCard.tags || '').split(',').map(t => t.trim()).filter(t => t);
+          const albumTag = allCardTags.find(t => t.startsWith('album:'));
+          if (albumTag) {
+            relatedCard.isAlbum = true;
+            relatedCard.albumTag = albumTag;
+            // Try to find the matching display name tag
+            const albumSlug = albumTag.substring(6); // e.g., "my-model"
+            relatedCard.albumName = allCardTags.find(t => 
+              !t.startsWith('album:') && // Must not be the album: tag itself
+              t.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === albumSlug
+            );
+            // Fallback just in case the original tag was removed
+            if (!relatedCard.albumName) {
+              relatedCard.albumName = albumSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            }
+          }
+          // END: Add album flags
+        
+          if (relatedIndex !== -1) {
+            // If it's in our main gallery list, just jump to it
+            currentViewerIndex = relatedIndex;
+            displayCardInViewer(displayedCards[relatedIndex]); // Use the full object
+          } else {
+            // If it's not in the main list, just display its data
+            // (Next/Prev will still be tied to the main gallery)
+            displayCardInViewer(relatedCard);
+          }
+        } // <-- START: Added missing closing brace
       };
       
       viewerRelatedGrid.appendChild(cardElem);
@@ -1583,14 +1643,36 @@
     
     function prevImage(event = null) {
       if(event) event.stopPropagation();
-      currentViewerIndex = (currentViewerIndex - 1 + displayedCards.length) % displayedCards.length;
-      displayCardInViewer(displayedCards[currentViewerIndex]);
+      
+      // START: Check if in album mode
+      const card = currentRelatedCard;
+      if (card && card.isAlbum) {
+        // Album navigation
+        currentAlbumViewerIndex = (currentAlbumViewerIndex - 1 + currentAlbumViewerList.length) % currentAlbumViewerList.length;
+        displayCardInViewer(currentAlbumViewerList[currentAlbumViewerIndex]);
+      } else {
+        // Main gallery navigation
+        currentViewerIndex = (currentViewerIndex - 1 + displayedCards.length) % displayedCards.length;
+        displayCardInViewer(displayedCards[currentViewerIndex]);
+      }
+      // END: Check
     }
     
     function nextImage(event = null) {
       if(event) event.stopPropagation();
-      currentViewerIndex = (currentViewerIndex + 1) % displayedCards.length;
-      displayCardInViewer(displayedCards[currentViewerIndex]);
+
+      // START: Check if in album mode
+      const card = currentRelatedCard;
+      if (card && card.isAlbum) {
+        // Album navigation
+        currentAlbumViewerIndex = (currentAlbumViewerIndex + 1) % currentAlbumViewerList.length;
+        displayCardInViewer(currentAlbumViewerList[currentAlbumViewerIndex]);
+      } else {
+        // Main gallery navigation
+        currentViewerIndex = (currentViewerIndex + 1) % displayedCards.length;
+        displayCardInViewer(displayedCards[currentViewerIndex]);
+      }
+      // END: Check
     }
 
     // --- Viewer Zoom/Pan ---
