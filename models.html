@@ -12,6 +12,9 @@
   <script src="https://unpkg.com/imagesloaded@5/imagesloaded.pkgd.min.js"></script>
   <script src="https://unpkg.com/masonry-layout@4/dist/masonry.pkgd.min.js"></script>
   <!-- END: Added Masonry & imagesLoaded -->
+  <!-- START: Added SortableJS for drag/drop -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+  <!-- END: Added SortableJS -->
   <style>
     /* Custom scrollbar for a cleaner look */
     ::-webkit-scrollbar {
@@ -84,36 +87,15 @@
     
     /* Masonry Layout */
     #gallery {
-      /* Reverted back to column-count for masonry layout */
-      /* REMOVED: column-count, column-gap. Masonry.js will handle this. */
       position: relative; /* Required for Masonry.js positioning */
     }
-    /*
-    @media (min-width: 768px) { 
-      #gallery { column-count: 3; }
-    }
-    @media (min-width: 1024px) { 
-      #gallery { column-count: 4; }
-    }
-    @media (min-width: 1280px) { 
-      #gallery { column-count: 5; }
-    }
-    @media (min-width: 1536px) { 
-      #gallery { column-count: 6; }
-    }
-    */
     
     .masonry-item {
-      /* Re-instated properties for masonry items */
-      /* REMOVED: display: inline-block; */
-      /* UPDATED: Widths for Masonry.js to calculate columns using calc() for fixed margins */
       width: calc(50% - 8px); /* 2 cols. 4px margin L/R on each item = 8px total per item */
       margin-bottom: 8px; 
       margin-left: 4px;
       margin-right: 4px;
-      /* REMOVED: break-inside: avoid; */
     }
-    /* UPDATED: Responsive widths for Masonry.js with calc() */
     @media (min-width: 768px) { /* md */
       .masonry-item { width: calc(33.333% - 8px); } /* 3 cols */
     }
@@ -128,7 +110,7 @@
     }
     
 
-    /* Card item hover effect (renamed from .grid-item) */
+    /* Card item hover effect */
     .masonry-item .overlay {
       opacity: 0;
       transition: opacity 0.2s ease-in-out;
@@ -175,6 +157,138 @@
       margin-bottom: 8px; /* Match main gallery gap */
       break-inside: avoid;
     }
+    
+    /* START: Compare Mode Styles */
+    .compare-checkbox {
+      display: none;
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 20;
+      width: 20px;
+      height: 20px;
+    }
+    
+    /* Show checkbox when compare mode is active */
+    #gallery.compare-mode-active .compare-checkbox {
+      display: block;
+    }
+    
+    /* Add a visual indicator to selected cards in compare mode */
+    #gallery.compare-mode-active .masonry-item.compare-selected {
+      outline: 3px solid #3b82f6;
+      box-shadow: 0 0 15px rgba(59, 130, 246, 0.7);
+    }
+    
+    /* Style the compare bar */
+    #compare-sticky-bar {
+      transition: transform 0.3s ease-in-out;
+      transform: translateY(100%);
+    }
+    #compare-sticky-bar.show {
+      transform: translateY(0);
+    }
+    
+    /* Compare Viewer: Grid View */
+    #compare-container {
+      /* Remove scrollbar visibility for a cleaner look */
+      scrollbar-width: none; /* Firefox */
+    }
+    #compare-container::-webkit-scrollbar {
+      display: none; /* Safari and Chrome */
+    }
+    
+    /* Compare Card: Image Zoom */
+    .compare-card-image-container {
+      overflow: hidden; /* This is crucial */
+    }
+    .compare-card-image {
+      transition: transform 0.2s ease-out; /* Smooth zoom */
+      transform-origin: center center;
+      cursor: zoom-in;
+    }
+    
+    /* Compare Viewer: 2-Image Slider View */
+    #compare-slider-view {
+      display: none; /* Hidden by default */
+      grid-template-columns: 1fr;
+      height: 100%;
+      width: 100%;
+    }
+    
+    .compare-slider-container {
+      display: grid;
+      place-items: center;
+      position: relative;
+      overflow: hidden;
+      border-radius: 0.5rem;
+    }
+    
+    .compare-slider-image-before,
+    .compare-slider-image-after {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    
+    .compare-slider-image-before {
+      clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%);
+      z-index: 2;
+    }
+    
+    .compare-slider-image-after {
+      z-index: 1;
+    }
+
+    .compare-slider-handle {
+      position: absolute;
+      z-index: 3;
+      width: 4px;
+      height: 100%;
+      background-color: rgba(255, 255, 255, 0.7);
+      left: 50%;
+      transform: translateX(-50%);
+      cursor: ew-resize;
+      top: 0;
+    }
+    
+    .compare-slider-handle::before {
+      content: '';
+      position: absolute;
+      width: 44px; /* Larger hit area */
+      height: 44px;
+      border-radius: 50%;
+      background-color: white;
+      border: 2px solid #3b82f6;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* Simple < > arrows */
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%233b82f6'%3e%3cpath fill-rule='evenodd' d='M13.28 3.97a.75.75 0 010 1.06L6.31 12l6.97 6.97a.75.75 0 11-1.06 1.06l-7.5-7.5a.75.75 0 010-1.06l7.5-7.5a.75.75 0 011.06 0zm7.44 1.06a.75.75 0 011.06 0l7.5 7.5a.75.75 0 010 1.06l-7.5 7.5a.75.75 0 11-1.06-1.06L24.69 12l-6.97-6.97a.75.75 0 010-1.06z' clip-rule='evenodd' /%3e%3c/svg%3e");
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: 24px 24px;
+    }
+    
+    /* Hide the default range input appearance */
+    .compare-slider-range {
+      position: absolute;
+      z-index: 4;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      cursor: ew-resize;
+      opacity: 0; /* Make it invisible */
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+    }
+    /* END: Compare Mode Styles */
   </style>
 </head>
 <body class="bg-black text-gray-300 font-sans antialiased">
@@ -193,13 +307,9 @@
         <!-- Desktop Nav Links (Hidden on Mobile) -->
         <div class="hidden lg:flex items-center space-x-6">
           <a href="#" onclick="showAllModels(event)" class="text-lg font-semibold text-white hover:text-gray-300">Home</a>
-          <!-- START: Added Albums Link -->
           <a href="#" id="albums-link" onclick="showAllAlbums(event)" class="text-sm text-gray-400 hover:text-white">Albums</a>
-          <!-- END: Added Albums Link -->
           
-          <!-- START: New Total Count Element -->
           <span class="text-sm text-gray-500" id="total-card-count">(...)</span>
-          <!-- END: New Total Count Element -->
           
           <a href="#" onclick="showFavorites(event)" class="text-sm text-gray-400 hover:text-white">Favorites</a>
           <a href="#" onclick="showNsfw(event)" id="nsfwBtn" class="text-sm text-gray-400 hover:text-white">NSFW</a>
@@ -208,7 +318,6 @@
           <!-- MOVED this block to the right side -->
           <!-- END Tags Dropdown -->
           
-          <!-- START: Sort Order Dropdown -->
           <div class="relative">
             <select id="sort-order" class="text-sm text-gray-400 hover:text-white focus:outline-none bg-transparent border-0 focus:ring-0">
               <option value="last_uploaded" class="bg-gray-800">Last uploaded</option>
@@ -218,28 +327,31 @@
               <option value="shuffle" class="bg-gray-800">Shuffle</option>
             </select>
           </div>
-          <!-- END: Sort Order Dropdown -->
         </div>
       </div>
       
       <!-- Right Side: Action Buttons -->
       <div class="flex items-center space-x-3">
-        <!-- START: Tags Dropdown (Moved Here) -->
         <div class="relative" id="tags-dropdown-container">
           <button onclick="toggleTagsDropdown(event)" id="tags-dropdown-btn" class="text-sm text-gray-400 hover:text-white focus:outline-none">
             Tags
           </button>
-          <!-- Changed left-0 to right-0 to align the dropdown correctly on the right side -->
           <div id="tags-dropdown-menu" class="hidden absolute top-full right-0 mt-2 w-56 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 py-2 max-h-64 overflow-y-auto">
             <!-- JS will populate this -->
             <span class="block px-4 py-2 text-sm text-gray-500">Loading...</span>
           </div>
         </div>
-        <!-- END: Tags Dropdown (Moved Here) -->
 
         <button onclick="openManageTagsPopup()" class="hidden lg:block px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors">
           Add Tags
         </button>
+        
+        <!-- START: Added Compare Button -->
+        <button id="compare-mode-btn" onclick="toggleCompareMode()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors">
+          Compare
+        </button>
+        <!-- END: Added Compare Button -->
+        
         <button onclick="openPopup()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
           Upload
         </button>
@@ -247,18 +359,13 @@
     </nav>
 
     <!-- Mobile Menu (Hidden by default) -->
-    <div id="mobile-menu" class="hidden lg:hidden bg-gray-900 bg-opacity-95" style="background-color: #111827f8;"> <!-- A bit of custom color to match -->
+    <div id="mobile-menu" class="hidden lg:hidden bg-gray-900 bg-opacity-95" style="background-color: #111827f8;">
       <div class="container mx-auto px-6 py-4 flex flex-col space-y-4">
         <a href="#" onclick="mobileMenuClicked('showAllModels')" class="block text-lg font-semibold text-white hover:text-gray-300">Home</a>
         <a href="#" onclick="mobileMenuClicked('showAllAlbums')" class="block text-lg text-gray-300 hover:text-white">Albums</a>
         <a href="#" onclick="mobileMenuClicked('showFavorites')" class="block text-lg text-gray-300 hover:text-white">Favorites</a>
         <a href="#" onclick="mobileMenuClicked('showNsfw')" class="block text-lg text-gray-300 hover:text-white">NSFW</a>
         
-        <!-- Mobile Tags -->
-        <!-- REMOVED this section -->
-        <!-- END Mobile Tags -->
-
-        <!-- Mobile Sort -->
         <div class="relative mt-2">
           <label for="mobile-sort-order" class="text-lg text-gray-300 mr-2">Sort by:</label>
           <select id="mobile-sort-order" class="text-lg text-gray-300 hover:text-white focus:outline-none bg-transparent border-0 focus:ring-0 p-1">
@@ -270,7 +377,6 @@
           </select>
         </div>
         
-        <!-- Mobile Add Tags Button -->
         <button onclick="mobileMenuClicked('openManageTagsPopup')" class="w-full px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white text-md font-medium rounded-lg transition-colors">
           Add Tags
         </button>
@@ -279,7 +385,7 @@
   </header>
 
   <!-- Main Content Area -->
-  <main class="pt-24 pb-12 px-4 md:px-6">
+  <main id="main-content" class="pt-24 pb-12 px-4 md:px-6">
     
     <!-- Search/Filter Status -->
     <div id="search-status" class="container mx-auto mb-6 h-16 flex items-center justify-center text-gray-400" style="display: none;">
@@ -319,7 +425,6 @@
       <div class="relative w-full h-[80vh] bg-black mt-8 md:mt-12">
         <!-- Image Header with Tags -->
         <div id="viewer-header" class="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/70 to-transparent z-[105]">
-          <!-- START: Modified for Rating -->
           <div class="flex items-start justify-between">
             <!-- Left side: Tags -->
             <div>
@@ -336,7 +441,6 @@
               <!-- Stars injected by JS -->
             </div>
           </div>
-          <!-- END: Modified for Rating -->
         </div>
         
         <!-- Loader for modal image -->
@@ -364,19 +468,15 @@
     
       <!-- Related Models Section -->
       <div id="viewer-related-container" class="w-full min-h-[20vh] pt-4 pb-4 px-2 md:px-0">
-        <!-- START: Title changed, will be set by JS -->
         <div class="flex justify-between items-center mb-2">
           <h4 class="text-lg font-semibold text-gray-100">Related Models</h4>
-          <!-- START: Add to Album Button -->
           <button id="add-to-album-btn" onclick="openUploadForAlbum()" class="flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors" style="display: none;">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
             </svg>
             Add
           </button>
-          <!-- END: Add to Album Button -->
         </div>
-        <!-- END: Title changed -->
         <div id="viewer-related-grid">
           <!-- Related images injected by JS -->
           <span class="text-gray-500 text-sm col-span-full">Loading...</span>
@@ -397,13 +497,9 @@
       <h3 id="popupTitle" class="text-xl font-semibold text-white mb-4">Upload New Model(s)</h3>
       <form id="cardForm">
         
-        <!-- START: Added Album Name Field -->
         <input type="text" id="modelAlbumName" class="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 mb-4" placeholder="Model/Album Name (Optional)">
-        <!-- END: Added Album Name Field -->
         
-        <!-- START: Changed placeholder -->
         <textarea id="modelUrl" rows="3" class="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Enter one or more image URLs, separated by commas" required></textarea>
-        <!-- END: Changed placeholder -->
         
         <div class="mt-4">
           <label class="text-sm text-gray-400 mb-2 block">Tags</label>
@@ -439,7 +535,6 @@
     <div class="bg-gray-900 p-6 rounded-lg shadow-xl w-full max-w-md border border-gray-700">
       <h3 class="text-xl font-semibold text-white mb-4">Edit Model</h3>
       <form id="quickEditForm">
-        <!-- Hidden input to store the card ID being edited -->
         <input type="hidden" id="quickEditCardId">
         
         <div class="mb-4">
@@ -461,12 +556,10 @@
           <button type="button" onclick="addTagToQuickEdit()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">Add</button>
         </div>
         
-        <!-- START: Added NSFW Checkbox -->
         <div class="flex items-center mb-4">
           <input type="checkbox" id="quickEditModelNsfw" name="nsfw" class="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-600">
           <label for="quickEditModelNsfw" class="ml-2 text-sm text-gray-300">Mark as NSFW</label>
         </div>
-        <!-- END: Added NSFW Checkbox -->
 
         <div id="quickEditErrorMessage" class="text-red-400 text-sm mb-4" style="display: none;"></div>
         
@@ -493,7 +586,7 @@
         <div id="manageTagsErrorMessage" class="text-red-400 text-sm" style="display: none;"></div>
       </form>
 
-      <!-- START: Action Buttons -->
+      <!-- Action Buttons -->
       <div class="flex items-center gap-2 mb-2">
         <button type="button" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded-lg" onclick="selectAllManageTags(true)">Select All</button>
         <button type="button" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded-lg" onclick="selectAllManageTags(false)">Deselect All</button>
@@ -501,7 +594,6 @@
         <button type="button" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg" onclick="handleRenameSelectedTag()">Rename Selected</button>
         <button type="button" class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg" onclick="handleDeleteSelectedTags()">Delete Selected</button>
       </div>
-      <!-- END: Action Buttons -->
 
       <!-- List of existing tags -->
       <h4 class="text-md font-semibold text-gray-300 mb-2">Existing Tags</h4>
@@ -522,6 +614,62 @@
     <button id="context-edit">✏️ Edit</button>
     <button id="context-delete">🗑️ Delete</button>
   </div>
+  
+  <!-- START: Compare Sticky Bar -->
+  <div id="compare-sticky-bar" class="fixed bottom-0 left-0 right-0 z-[60] bg-gray-900 border-t border-gray-700 p-4 shadow-lg">
+    <div class="container mx-auto flex justify-between items-center">
+      <span id="compare-count" class="text-lg text-white">0 models selected</span>
+      <div>
+        <button onclick="toggleCompareMode()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors mr-2">Cancel</Cta>
+        <button id="start-compare-btn" onclick="openCompareViewer()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors" disabled>
+          Start Comparison
+        </button>
+      </div>
+    </div>
+  </div>
+  <!-- END: Compare Sticky Bar -->
+  
+  <!-- START: Compare Viewer Modal -->
+  <div id="compare-viewer" class="fixed inset-0 z-[200] bg-black overflow-hidden" style="display: none;">
+    <!-- Header -->
+    <header class="fixed top-0 left-0 right-0 z-10 bg-black bg-opacity-80 backdrop-blur-sm">
+      <nav class="container mx-auto px-6 py-4 flex justify-between items-center">
+        <h2 id="compare-title" class="text-xl font-semibold text-white">Comparing 2 Models</h2>
+        <button onclick="closeCompareViewer()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+          &times; Close
+        </button>
+      </nav>
+    </header>
+    
+    <!-- Main Content Area -->
+    <main class="pt-20 h-full">
+    
+      <!-- Grid View (for 3+ images) -->
+      <div id="compare-grid-view" class="h-full w-full" style="display: none;">
+        <div id="compare-container" class="flex flex-nowrap h-full overflow-x-auto overflow-y-hidden p-4 gap-4">
+          <!-- Compare cards will be injected by JS -->
+        </div>
+      </div>
+      
+      <!-- Slider View (for 2 images) -->
+      <div id="compare-slider-view" class="h-full w-full p-4">
+        <div class="compare-slider-container w-full h-full">
+          <!-- Images and slider will be injected by JS -->
+          <img id="compare-slider-after" src="" alt="After" class="compare-slider-image-after">
+          <img id="compare-slider-before" src="" alt="Before" class="compare-slider-image-before">
+          
+          <!-- The visual handle -->
+          <div id="compare-slider-handle" class="compare-slider-handle"></div>
+          
+          <!-- The invisible input that controls it -->
+          <input type="range" min="0" max="100" value="50" id="compare-slider-range" class="compare-slider-range">
+        </div>
+      </div>
+      
+    </main>
+  </div>
+  <!-- END: Compare Viewer Modal -->
+
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js"></script>
 
@@ -533,10 +681,10 @@
     let selectedTags = [];
     let quickEditSelectedTags = []; // For the new quick edit modal
     let allTags = [];
-    let tagCountMap = {}; // <-- ADDED
+    let tagCountMap = {};
     let currentlyEditingCardId = null;
-    let msnry; // <-- ADDED: Masonry instance
-    let currentSortOrder = 'last_uploaded'; // <-- ADDED: Sort order state
+    let msnry;
+    let currentSortOrder = 'last_uploaded';
     let currentFilter = {
       type: 'all_singles', // 'all_singles', 'all_albums', 'favorites', 'nsfw', 'tags'
       value: null
@@ -563,24 +711,19 @@
     const viewerRelatedGrid = document.getElementById('viewer-related-grid');
     const relatedScrollLoader = document.getElementById('related-scroll-loader');
     
-    // START: albumsSeenThisSession
-    // This tracks which albums we've already shown a cover for
     let albumsSeenThisSession = new Set();
-    // END: albumsSeenThisSession
     
     let displayedCards = []; // Stores all cards loaded *in the gallery*
     let currentViewerIndex = 0;
     
-    // START: Add state for album viewer
     let currentAlbumViewerList = [];
     let currentAlbumViewerIndex = 0;
-    // END: Add state for album viewer
     
     // Related items state
     let relatedCurrentPage = 0;
     let relatedIsLoadingMore = false;
     let relatedNoMoreResults = false;
-    let currentRelatedCard = null; // The card we are finding related models for
+    let currentRelatedCard = null;
     
     // Zoom/Pan state
     let viewerScale = 1;
@@ -593,6 +736,13 @@
     // Swipe state
     let touchStartX = 0;
     let touchEndX = 0;
+    
+    // START: Compare Mode State
+    let isCompareModeActive = false;
+    let compareSelection = [];
+    let sortableInstance = null;
+    let compareSliderHandle = null; // For 2-image slider
+    // END: Compare Mode State
     
     // --- Initialization ---
 
@@ -612,23 +762,21 @@
       noResults = document.getElementById('no-results');
       searchStatus = document.getElementById('search-status');
       scrollLoader = document.getElementById('scroll-loader');
-      mobileMenu = document.getElementById('mobile-menu'); // <-- Add this
+      mobileMenu = document.getElementById('mobile-menu');
       
-      // --- ADDED: Initialize Masonry ---
       msnry = new Masonry( gallery, {
         itemSelector: '.masonry-item',
         percentPosition: true,
-        transitionDuration: 0 // Disable animation for instant loading
+        transitionDuration: 0
       });
-      // ---------------------------------
       
       // Setup context menu
       setupContextMenu();
       
       // Initial Load
-      await loadTagCounts(); // <-- ADDED: Load counts first
+      await loadTagCounts();
       await loadTags();
-      await loadTotalCardCount(); // <-- Load the total count on startup
+      await loadTotalCardCount();
       await loadCards(true); // Start with a new query
       
       // Event Listeners
@@ -636,8 +784,11 @@
         if (e.key === "Escape") {
           closePopup();
           closeImageViewer();
-          closeQuickEditModal(); // Also close the new modal
-          closeManageTagsPopup(); // <-- ADDED
+          closeQuickEditModal();
+          closeManageTagsPopup();
+          if (isCompareModeActive) { // <-- Close compare view on Escape
+            closeCompareViewer();
+          }
         }
         // Keyboard nav for viewer
         if (imageViewer.style.display === 'flex') {
@@ -646,64 +797,62 @@
         }
       });
       
-      // Add click listener to close tags dropdown
       window.addEventListener('click', (event) => {
         if (!document.getElementById('tags-dropdown-container').contains(event.target)) {
           closeTagsDropdown();
         }
       });
       
-      // Add scroll event listener for infinite loading
       window.addEventListener('scroll', handleScroll);
       
-      // START: Add change listener for sort order
       document.getElementById('sort-order').addEventListener('change', (event) => {
         currentSortOrder = event.target.value;
-        document.getElementById('mobile-sort-order').value = currentSortOrder; // <-- Sync mobile sort
-        loadCards(true); // Trigger a new search with the new sort order
+        document.getElementById('mobile-sort-order').value = currentSortOrder;
+        loadCards(true);
       });
-      // END: Add change listener
       
-      // START: Add change listener for MOBILE sort order
       document.getElementById('mobile-sort-order').addEventListener('change', (event) => {
           currentSortOrder = event.target.value;
-          document.getElementById('sort-order').value = currentSortOrder; // <-- Sync desktop sort
-          loadCards(true); // Trigger a new search
-          closeMobileMenu(); // Close menu on change
+          document.getElementById('sort-order').value = currentSortOrder;
+          loadCards(true);
+          closeMobileMenu();
       });
-      // END: Add change listener
 
-      // Add submit listener for the new quick edit form
       document.getElementById('quickEditForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         await handleQuickUpdate();
       });
       
-      // START: Add submit listener for the new tag management form
       document.getElementById('addTagForm').addEventListener('submit', async (e) => {
           e.preventDefault();
           await handleAddNewTag();
       });
-      // END: Add submit listener
       
-      // START: Add resize listener to close mobile menu
       window.addEventListener('resize', () => {
-          if (window.innerWidth >= 1024) { // lg breakpoint
+          if (window.innerWidth >= 1024) {
               closeMobileMenu();
           }
       });
-      // END: Add resize listener
+      
+      // START: Add listener for compare slider - MOVED
+      /*
+      document.getElementById('compare-slider-range').addEventListener('input', (e) => {
+        const value = e.target.value;
+        document.getElementById('compare-slider-image-before').style.clipPath = `polygon(0 0, ${value}% 0, ${value}% 100%, 0 100%)`;
+        document.getElementById('compare-slider-handle').style.left = `${value}%`;
+      });
+      */
+      // END: Add listener for compare slider - MOVED
     };
     
     // --- Data Loading ---
 
-    // START: New function to load tag counts
     async function loadTagCounts() {
       console.log("Loading tag counts...");
       try {
         const { data: models, error } = await supabase
           .from('models')
-          .select('tags'); // Only get the tags column
+          .select('tags');
 
         if (error) throw error;
 
@@ -717,19 +866,16 @@
           }
         });
         
-        tagCountMap = counts; // Store globally
+        tagCountMap = counts;
         console.log("Tag counts loaded:", tagCountMap);
       } catch (error) {
         console.error("Error loading tag counts:", error);
       }
     }
-    // END: New function
 
-    // START: New function to load total card count
     async function loadTotalCardCount() {
       const countEl = document.getElementById('total-card-count');
       try {
-        // Use a head request with 'exact' count for performance
         const { count, error } = await supabase
           .from('models')
           .select('*', { head: true, count: 'exact' });
@@ -746,7 +892,6 @@
         }
       }
     }
-    // END: New function
     
     async function loadTags() {
       const tagsDropdownMenu = document.getElementById('tags-dropdown-menu');
@@ -764,30 +909,25 @@
         if (error) throw error;
         
         allTags = tags.map(tag => tag.name);
-        updateTagDisplays(); // This is for the main upload popup
+        updateTagDisplays();
         
-        // Populate header dropdown
-        tagsDropdownMenu.innerHTML = ''; // Clear 'Loading...'
+        tagsDropdownMenu.innerHTML = '';
         if (allTags.length > 0) {
           allTags.forEach(tag => {
-            // START: Do not show 'album:' tags in the dropdown
             if (tag.startsWith('album:')) { return; }
-            // END: Do not show 'album:' tags
             
             const tagLink = document.createElement('a');
             tagLink.href = "#";
             tagLink.className = "block px-4 py-2 text-sm text-gray-300 hover:bg-blue-600 hover:text-white";
             
-            // START: MODIFIED
             const count = tagCountMap[tag] || 0;
             tagLink.textContent = `${tag} (${count})`;
-            // END: MODIFIED
             
             tagLink.onclick = (e) => {
               e.preventDefault();
               searchByTag(tag);
               closeTagsDropdown();
-              closeMobileMenu(); // <-- ADD THIS
+              closeMobileMenu();
               document.getElementById('tags-dropdown-btn').classList.add('text-white');
               document.getElementById('tags-dropdown-btn').classList.remove('text-gray-400');
             };
@@ -806,21 +946,24 @@
     async function loadCards(isNewQuery = false) {
       if (isLoadingMore || (noMoreResults && !isNewQuery)) return;
       
+      // --- START: Close compare mode on new load ---
+      if (isCompareModeActive) {
+        toggleCompareMode(); // This will reset everything
+      }
+      // --- END: Close compare mode ---
+      
       isLoadingMore = true;
       if (isNewQuery) {
         currentPage = 0;
-        // Reset noMoreResults based on sort order. Shuffle mode disables pagination.
         noMoreResults = (currentSortOrder === 'shuffle');
-        gallery.innerHTML = ''; // Clear gallery for new search
-        displayedCards = []; // Clear displayed cards array
-        albumsSeenThisSession.clear(); // <-- START: Clear album tracker
+        gallery.innerHTML = '';
+        displayedCards = [];
+        albumsSeenThisSession.clear();
         noResults.style.display = 'none';
         searchStatus.style.display = 'none';
         loader.style.display = 'flex';
-        // Only show scroll loader if we are NOT in shuffle mode
         scrollLoader.style.display = (currentSortOrder === 'shuffle') ? 'none' : 'flex';
       } else {
-        // This block is for infinite scroll, which shuffle mode doesn't use
         scrollLoader.style.display = 'flex';
       }
 
@@ -846,78 +989,63 @@
             const orExpr = `tags.eq."${t}",tags.ilike."${t},%",tags.ilike."%,${t}",tags.ilike."%,${t},%"`;
             query = query.or(orExpr);
             
-            // START: MODIFIED
             const count = tagCountMap[currentFilter.value] || 0;
-            const countText = count === 1 ? 'model' : 'models'; // Handle plural
+            const countText = count === 1 ? 'model' : 'models';
             searchStatus.innerHTML = `
               <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
                 <h2 class="text-xl">Tag: <span class="px-3 py-1 bg-gray-700 text-white text-lg rounded-full">${currentFilter.value}</span></h2>
                 <span class="text-gray-500 text-lg">(${count} ${countText})</span>
               </div>
             `;
-            // END: MODIFIED
             
             searchStatus.style.display = 'flex';
             updateNavActiveState('tags');
             break;
-          // START: New case for 'all_albums'
           case 'all_albums':
             query = query.eq('nsfw', false);
-            query = query.ilike('tags', '%album:%'); // Select ONLY albums
+            query = query.ilike('tags', '%album:%');
             searchStatus.innerHTML = '<h2 class="text-xl">Albums</h2>';
             searchStatus.style.display = 'flex';
             updateNavActiveState('all_albums');
             break;
-          // END: New case
           default: // 'all_singles'
             query = query.eq('nsfw', false);
-            query = query.not('tags', 'ilike', '%album:%'); // Select NOT albums
+            query = query.not('tags', 'ilike', '%album:%');
             updateNavActiveState('all_singles');
             break;
         }
 
         // Add pagination & ordering
         if (currentSortOrder === 'shuffle') {
-          // For shuffle, we fetch one large page (e.g., 100) and disable pagination
-          // We also don't apply a database order. This only runs on a new query.
           if (isNewQuery) {
-            query = query.limit(100); // Fetch a single large batch
+            query = query.limit(100);
           } else {
-            // This shouldn't be called, but as a fallback, ensure no cards are loaded
             cards = [];
             noMoreResults = true;
           }
         } else {
-          // Standard pagination and ordering
           const from = currentPage * PAGE_SIZE;
           const to = from + PAGE_SIZE - 1;
           query = query.range(from, to);
           
-          // START: Updated sort logic
           if (currentSortOrder === 'first_uploaded') {
             query = query.order('created_at', { ascending: true });
           } else if (currentSortOrder === 'highest_rated') {
-            // Order by rating descending, nulls last
             query = query.order('rating', { ascending: false, nullsFirst: false });
           } else if (currentSortOrder === 'lowest_rated') {
-             // Order by rating ascending, nulls first
-            query = query.order('rating', { ascending: true, nullsFirst: true });
+             query = query.order('rating', { ascending: true, nullsFirst: true });
           } else { // default is 'last_uploaded'
             query = query.order('created_at', { ascending: false });
           }
-          // END: Updated sort logic
         }
 
         let { data: cards, error } = await query;
         if (error) throw error;
         
-        // START: Shuffle cards client-side if that option is selected
         if (currentSortOrder === 'shuffle' && cards) {
           shuffleArray(cards);
         }
-        // END: Shuffle
         
-        // Client-side filter for exact tag match (Supabase 'or' is broad)
         if (currentFilter.type === 'tags') {
            const needle = currentFilter.value.toLowerCase();
            cards = (cards || []).filter(c =>
@@ -931,12 +1059,11 @@
         loader.style.display = 'none';
         scrollLoader.style.display = 'none';
         
-        // START: Modified logic for album grouping
         if (cards && cards.length > 0) {
           noResults.style.display = 'none';
           
-          const newElements = []; // For Masonry
-          const newCardsForGallery = []; // For `displayedCards`
+          const newElements = [];
+          const newCardsForGallery = [];
 
           cards.forEach(card => {
             const allCardTags = (card.tags || '').split(',').map(t => t.trim()).filter(t => t);
@@ -946,67 +1073,50 @@
               card.isAlbum = true;
               card.albumTag = albumTag;
               
-              // --- NEW ---
-              // Try to find the matching display name tag
-              const albumSlug = albumTag.substring(6); // e.g., "my-model"
-              // Find a tag that, when sanitized, matches the slug.
-              // This finds the *original* album name tag.
+              const albumSlug = albumTag.substring(6);
               card.albumName = allCardTags.find(t => 
-                !t.startsWith('album:') && // Must not be the album: tag itself
+                !t.startsWith('album:') &&
                 t.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === albumSlug
               );
               
-              // Fallback just in case the original tag was removed
               if (!card.albumName) {
-                // Capitalize the slug
                 card.albumName = albumSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
               }
-              // --- END NEW ---
               
               if (!albumsSeenThisSession.has(albumTag)) {
                 albumsSeenThisSession.add(albumTag);
-                card.isAlbumCover = true; // Flag it
-                newCardsForGallery.push(card); // Add to gallery
+                card.isAlbumCover = true;
+                newCardsForGallery.push(card);
               }
-              // If album *has* been seen, we just skip this card and don't display it.
             } else {
               card.isAlbum = false;
-              newCardsForGallery.push(card); // It's an individual card
+              newCardsForGallery.push(card);
             }
           });
           
-          // Now, `newCardsForGallery` has only 1 cover per album, + all individual cards from this page
-          
           if (newCardsForGallery.length > 0) {
             newCardsForGallery.forEach(card => {
-              const index = displayedCards.length; // Get index *before* adding
-              displayedCards.push(card); // Store card in the global array
+              const index = displayedCards.length;
+              displayedCards.push(card);
               
-              const cardElem = createCardElement(card, index); // Create the element
-              gallery.appendChild(cardElem); // Add it to the DOM
-              newElements.push(cardElem); // Add to array for imagesLoaded
+              const cardElem = createCardElement(card, index);
+              gallery.appendChild(cardElem);
+              newElements.push(cardElem);
             });
             
-            // --- New Masonry/imagesLoaded logic ---
             imagesLoaded(newElements, function() {
               if (isNewQuery) {
-                // For a new search, just reload all items
                 msnry.reloadItems();
               } else {
-                // For infinite scroll, append the new items
                 msnry.addItems(newElements);
               }
-              // Trigger Masonry layout
               msnry.layout();
             });
-            // --- End new logic ---
             
-            // Only increment page if we are NOT in shuffle mode
             if (currentSortOrder !== 'shuffle') {
-              currentPage++; // Increment page for next fetch
+              currentPage++;
             }
           } else if (isNewQuery) {
-             // We fetched cards, but all were filtered out (e.g., already seen albums)
              noResults.style.display = 'block';
           }
           
@@ -1016,7 +1126,6 @@
             noResults.style.display = 'block';
           }
         }
-        // END: Modified logic for album grouping
         
       } catch (error) {
         console.error("Error loading cards:", error);
@@ -1029,24 +1138,30 @@
       isLoadingMore = false;
     }
     
-    // START: ADDED MISSING FUNCTIONS
-    
-    // --- This function creates the card element ---
-    function createCardElement(card, index) { // Added index
+    function createCardElement(card, index) {
       const cardElem = document.createElement('div');
-      // Added `group` class for hover effect on new edit button
       cardElem.className = 'masonry-item bg-gray-900 rounded-lg overflow-hidden relative group cursor-pointer';
-      // Add an ID to the element for easy updating later
       cardElem.id = `card-dom-${card.id}`;
       
-      // START: Add Album badge
+      // START: Add Compare Checkbox
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'compare-checkbox focus:ring-blue-500 h-5 w-5 text-blue-600 bg-gray-700 border-gray-600 rounded';
+      checkbox.dataset.cardId = card.id;
+      checkbox.onclick = (e) => {
+        e.stopPropagation(); // Stop click from opening viewer
+        toggleCompareSelection(card.id, e.target.checked);
+      };
+      cardElem.appendChild(checkbox);
+      // END: Add Compare Checkbox
+      
       if (card.isAlbumCover) {
         const albumBadge = document.createElement('div');
         albumBadge.className = 'absolute top-2 left-2 z-10 px-2 py-0.5 bg-blue-600 text-white text-xs font-bold rounded-full opacity-0 group-hover:opacity-100 transition-opacity';
-        albumBadge.textContent = 'Album';
+        // Reposition badge if compare mode is on
+        albumBadge.classList.add('lg:left-2', 'left-10'); // Move over for checkbox
         cardElem.appendChild(albumBadge);
       }
-      // END: Add Album badge
       
       const img = document.createElement('img');
       img.src = card.main_model_url.includes('ik.imagekit.io')
@@ -1061,9 +1176,8 @@
       
       const tagIcon = document.createElement('span');
       tagIcon.className = "text-white text-3xl";
-      tagIcon.innerHTML = "&#9776;"; // Simple list icon
+      tagIcon.innerHTML = "&#9776;";
       
-      // START: New Edit Button
       const editButton = document.createElement('button');
       editButton.className = "absolute top-2 right-2 z-10 p-1.5 bg-black/50 rounded-full text-white hover:bg-blue-600 opacity-0 group-hover:opacity-100 transition-opacity";
       editButton.innerHTML = `
@@ -1072,58 +1186,58 @@
         </svg>
       `;
       editButton.onclick = (e) => {
-        e.stopPropagation(); // Prevent opening the image viewer
+        e.stopPropagation();
         openQuickEditModal(card.id);
       };
-      // END: New Edit Button
       
-      // START: New Delete Button
       const deleteButton = document.createElement('button');
-      deleteButton.className = "absolute top-10 right-2 z-10 p-1.5 bg-black/50 rounded-full text-white hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"; // Positioned below edit button
+      deleteButton.className = "absolute top-10 right-2 z-10 p-1.5 bg-black/50 rounded-full text-white hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity";
       deleteButton.innerHTML = `
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
         </svg>
       `;
       deleteButton.onclick = (e) => {
-        e.stopPropagation(); // Prevent opening the image viewer
-        deleteCard(card.id); // This function already has a confirm()
+        e.stopPropagation();
+        deleteCard(card.id);
       };
-      // END: New Delete Button
       
-      // START: New Favorite Button
       const favoriteButton = document.createElement('button');
-      // Positioned below delete button. top-10 is 2.5rem. We add another 2rem (8 units) to get 4.5rem.
-      // Using an arbitrary value `top-[4.5rem]` since `top-18` is not a valid class.
       const favBtnBaseClasses = "absolute top-[4.5rem] right-2 z-10 p-1.5 bg-black/50 rounded-full hover:text-yellow-400 opacity-0 group-hover:opacity-100 transition-opacity";
       const favBtnColorClass = card.favorited ? 'text-yellow-400' : 'text-white';
       favoriteButton.className = `${favBtnBaseClasses} ${favBtnColorClass}`;
-      favoriteButton.id = `fav-btn-${card.id}`; // Add ID for easy selection
+      favoriteButton.id = `fav-btn-${card.id}`;
       favoriteButton.innerHTML = `
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
         </svg>
-      `; // Using a filled heart SVG, fill will be 'currentColor'
+      `;
       
       favoriteButton.onclick = (e) => {
-        e.stopPropagation(); // Prevent opening the image viewer
-        // Find the current status from the displayedCards array, in case it was updated
+        e.stopPropagation();
         const currentCard = displayedCards.find(c => c.id === card.id);
         toggleFavorite(e, card.id, currentCard ? currentCard.favorited : card.favorited);
       };
-      // END: New Favorite Button
       
       overlay.appendChild(tagIcon);
       cardElem.appendChild(img);
       cardElem.appendChild(overlay);
-      cardElem.appendChild(editButton); // Add the edit button to the card
-      cardElem.appendChild(deleteButton); // Add the delete button to the card
-      cardElem.appendChild(favoriteButton); // Add the favorite button to the card
-      cardElem.appendChild(createGalleryRatingElement(card)); // <-- START: Add Rating Display
+      cardElem.appendChild(editButton);
+      cardElem.appendChild(deleteButton);
+      cardElem.appendChild(favoriteButton);
+      cardElem.appendChild(createGalleryRatingElement(card));
 
-      // Main click action: Open Image Viewer
+      // Main click action
       cardElem.addEventListener('click', () => {
-        openImageViewer(index); // Pass index
+        // START: Don't open viewer if in compare mode
+        if (isCompareModeActive) {
+          const cb = cardElem.querySelector('.compare-checkbox');
+          cb.checked = !cb.checked;
+          toggleCompareSelection(card.id, cb.checked);
+          return;
+        }
+        // END
+        openImageViewer(index);
       });
       
       // Right-click for context menu
@@ -1132,19 +1246,16 @@
         showContextMenu(e, card.id);
       });
       
-      // gallery.appendChild(cardElem); // <-- REMOVED: Will be appended in loadCards
-      return cardElem; // <-- ADDED: Return the element
+      return cardElem;
     }
 
     // --- Infinite Scroll ---
     
     function handleScroll() {
       // Don't load if any modal is open
-      if (imageViewer.style.display === 'flex' || document.getElementById('popup').style.display === 'flex' || document.getElementById('quick-edit-modal').style.display === 'flex' || document.getElementById('manage-tags-popup').style.display === 'flex') return; // <-- ADDED
+      if (imageViewer.style.display === 'flex' || document.getElementById('popup').style.display === 'flex' || document.getElementById('quick-edit-modal').style.display === 'flex' || document.getElementById('manage-tags-popup').style.display === 'flex' || document.getElementById('compare-viewer').style.display !== 'none') return;
       
-      // START: Disable infinite scroll if in shuffle mode
       if (currentSortOrder === 'shuffle') return;
-      // END: Disable
       
       const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
       if (scrollTop + clientHeight >= scrollHeight - 300) {
@@ -1154,18 +1265,14 @@
       }
     }
     
-    // --- START: Re-adding missing functions ---
-    
     // --- Navigation & Filtering ---
     
     function updateNavActiveState(state = null) {
         document.querySelector('a[href="#"]').classList.remove('text-white', 'font-semibold');
         document.querySelector('a[href="#"]').classList.add('text-gray-400');
         
-        // START: Add albums link
         document.getElementById('albums-link').classList.remove('text-white', 'font-semibold');
         document.getElementById('albums-link').classList.add('text-gray-400');
-        // END: Add albums link
         
         document.querySelector('a[onclick*="showFavorites"]').classList.remove('text-white', 'font-semibold');
         document.querySelector('a[onclick*="showFavorites"]').classList.add('text-gray-400');
@@ -1173,7 +1280,6 @@
         document.getElementById('nsfwBtn').classList.remove('text-white', 'font-semibold');
         document.getElementById('nsfwBtn').classList.add('text-gray-400');
         
-        // Handle Tags button
         document.getElementById('tags-dropdown-btn').classList.remove('text-white');
         document.getElementById('tags-dropdown-btn').classList.add('text-gray-400');
 
@@ -1197,13 +1303,11 @@
       loadCards(true);
     }
 
-    // START: New function for showAllAlbums
     function showAllAlbums(event) {
       if(event) event.preventDefault();
       currentFilter = { type: 'all_albums', value: null };
       loadCards(true);
     }
-    // END: New function
 
     function showFavorites(event) {
       if(event) event.preventDefault();
@@ -1223,18 +1327,11 @@
       loadCards(true);
     }
     
-    // --- END: Re-adding missing functions ---
-
-    
-    // --- START: New Rating Helper ---
-    /**
-     * Creates the read-only rating element for the gallery card.
-     */
+    // --- Rating Helper ---
     function createGalleryRatingElement(card) {
       const rating = card.rating || 0;
       const ratingEl = document.createElement('div');
       ratingEl.id = `rating-display-${card.id}`;
-      // Positioned below favorite at top-[6.5rem]
       ratingEl.className = 'absolute top-[6.5rem] right-2 z-10 flex items-center gap-1 px-1.5 py-0.5 bg-black/50 rounded-full text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity';
       
       const starSvg = `
@@ -1245,18 +1342,14 @@
       ratingEl.innerHTML = `${starSvg} <span>${rating > 0 ? rating : '-'}</span>`;
       return ratingEl;
     }
-    // --- END: New Rating Helper ---
 
-
-    // --- START: Mobile Menu Functions ---
+    // --- Mobile Menu Functions ---
     function toggleMobileMenu() {
         mobileMenu.classList.toggle('hidden');
         const menuBtn = document.getElementById('menu-btn');
         if (mobileMenu.classList.contains('hidden')) {
-            // Change to hamburger
             menuBtn.innerHTML = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>`;
         } else {
-            // Change to 'X'
             menuBtn.innerHTML = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>`;
         }
     }
@@ -1265,64 +1358,42 @@
         if (!mobileMenu.classList.contains('hidden')) {
             mobileMenu.classList.add('hidden');
             const menuBtn = document.getElementById('menu-btn');
-            // Change back to hamburger
             menuBtn.innerHTML = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>`;
         }
     }
     
-    // Wrapper for mobile menu clicks
     function mobileMenuClicked(functionName) {
-        // Pass the event to the functions that need it
         const event = window.event;
-        
-        // Find the function by name and call it
         switch (functionName) {
-            case 'showAllModels':
-                showAllModels(event);
-                break;
-            case 'showAllAlbums':
-                showAllAlbums(event);
-                break;
-            case 'showFavorites':
-                showFavorites(event);
-                break;
-            case 'showNsfw':
-                showNsfw(event);
-                break;
-            case 'openManageTagsPopup':
-                openManageTagsPopup();
-                break;
-            // Add other functions here if needed
+            case 'showAllModels': showAllModels(event); break;
+            case 'showAllAlbums': showAllAlbums(event); break;
+            case 'showFavorites': showFavorites(event); break;
+            case 'showNsfw': showNsfw(event); break;
+            case 'openManageTagsPopup': openManageTagsPopup(); break;
         }
-        // Close the menu after action
         closeMobileMenu();
     }
-    // --- END: Mobile Menu Functions ---
-
-    // START: ADDING MISSING FUNCTION
+    
+    // --- Tags Dropdown ---
     function toggleTagsDropdown(event) {
-      event.stopPropagation(); // Prevent window.click from closing it
+      event.stopPropagation();
       const menu = document.getElementById('tags-dropdown-menu');
       menu.classList.toggle('hidden');
       
       const btn = document.getElementById('tags-dropdown-btn');
       if (!menu.classList.contains('hidden')) {
-        // If opening, always set to active
         btn.classList.add('text-white');
         btn.classList.remove('text-gray-400');
       } else {
-        // If closing, only remove active if not in tag filter mode
         if (currentFilter.type !== 'tags') {
            btn.classList.remove('text-white');
            btn.classList.add('text-gray-400');
         }
       }
     }
-    // END: ADDING MISSING FUNCTION
 
     function closeTagsDropdown() {
       document.getElementById('tags-dropdown-menu').classList.add('hidden');
-      // Only remove 'text-white' if not actively filtering by tag
       const btn = document.getElementById('tags-dropdown-btn');
       if (currentFilter.type !== 'tags') {
          btn.classList.remove('text-white');
@@ -1330,12 +1401,13 @@
       }
     }
 
-    function openImageViewer(index) { // Takes index
+    // --- Image Viewer (Modal) ---
+    
+    function openImageViewer(index) {
       imageViewer.style.display = 'flex';
-      imageViewer.scrollTop = 0; // Scroll modal to top
+      imageViewer.scrollTop = 0;
       
-      // Add event listeners for viewer interactions
-      imageViewer.addEventListener('scroll', handleRelatedScroll); // Listen to modal scroll
+      imageViewer.addEventListener('scroll', handleRelatedScroll);
       document.addEventListener('wheel', handleViewerWheel, { passive: false });
       viewerImageContainer.addEventListener('mousedown', handleViewerMouseDown);
       document.addEventListener('mousemove', handleViewerMouseMove);
@@ -1347,15 +1419,13 @@
       currentViewerIndex = index;
       const card = displayedCards[index];
       if (card) {
-        // START: Initialize album viewer state if it's an album
         if (card.isAlbum) {
-          currentAlbumViewerList = [card]; // Start list with the cover image
-          currentAlbumViewerIndex = 0; // We are viewing the first image (the cover)
+          currentAlbumViewerList = [card];
+          currentAlbumViewerIndex = 0;
         } else {
-          currentAlbumViewerList = []; // Clear album list
+          currentAlbumViewerList = [];
           currentAlbumViewerIndex = 0;
         }
-        // END: Initialize
         displayCardInViewer(card);
       } else {
         console.error("Could not find card at index:", index);
@@ -1365,14 +1435,12 @@
 
     function closeImageViewer(event = null) {
       if (event) {
-        // Only close if the click is on the backdrop, not children
         if (event.target !== imageViewer) { return; }
       }
       if (imageViewer.style.display === 'flex') {
         imageViewer.style.display = 'none';
-        viewerImage.src = ''; // Stop image loading
+        viewerImage.src = '';
         
-        // Remove event listeners
         imageViewer.removeEventListener('scroll', handleRelatedScroll);
         document.removeEventListener('wheel', handleViewerWheel);
         viewerImageContainer.removeEventListener('mousedown', handleViewerMouseDown);
@@ -1382,15 +1450,14 @@
         viewerImageContainer.removeEventListener('touchmove', handleViewerTouchMove);
         viewerImageContainer.removeEventListener('touchend', handleViewerTouchEnd);
         
-        resetZoom(); // Reset for next time
+        resetZoom();
       }
     }
     
-    // Display card data in the (already open) viewer
     function displayCardInViewer(card) {
-      currentRelatedCard = card; // <-- SET THIS AT THE TOP
-      imageViewer.scrollTop = 0; // Scroll to top when loading new image
-      resetZoom(); // Reset zoom/pan for new image
+      currentRelatedCard = card;
+      imageViewer.scrollTop = 0;
+      resetZoom();
       viewerLoader.style.display = 'flex';
       viewerImage.style.display = 'none';
       viewerTags.innerHTML = '';
@@ -1405,7 +1472,7 @@
       viewerImage.onload = () => {
         viewerLoader.style.display = 'none';
         viewerImage.style.display = 'block';
-        applyViewerTransform(); // Apply reset zoom/pan
+        applyViewerTransform();
       };
       
       viewerImage.onerror = () => {
@@ -1421,16 +1488,13 @@
       const tags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t) : [];
       if (tags.length > 0) {
         tags.forEach(tag => {
-          // START: Don't show album tags as clickable buttons
           if (tag.startsWith('album:')) {
             const tagElem = document.createElement('span');
             tagElem.className = "px-3 py-1 bg-gray-800 text-gray-400 text-sm rounded-full";
-            // Clean up the name for display
             tagElem.textContent = tag.substring(6).replace(/-/g, ' ');
             viewerTags.appendChild(tagElem);
-            return; // Skip to next tag
+            return;
           }
-          // END: Don't show album tags
           
           const tagElem = document.createElement('button');
           tagElem.className = "px-3 py-1 bg-gray-700 text-white text-sm rounded-full hover:bg-blue-600 transition-colors";
@@ -1442,88 +1506,68 @@
         viewerTags.innerHTML = `<span class="text-gray-400 text-sm">No tags for this model.</span>`;
       }
       
-      // START: Render rating stars in viewer
       renderViewerRating(card);
-      // END: Render rating
       
-      // START: Modified to load album or related
       const addToAlbumBtn = document.getElementById('add-to-album-btn');
       const relatedTitle = document.getElementById('viewer-related-container').querySelector('h4');
       
       if (card.isAlbum) {
-        // This is an album card, load the album images instead of "related"
         relatedTitle.textContent = 'Images in this Album';
-        addToAlbumBtn.style.display = 'flex'; // <-- SHOW BUTTON
+        addToAlbumBtn.style.display = 'flex';
         loadAlbumImages(card.albumTag, card.id);
       } else {
-        // This is an individual card, load related by tags
         relatedTitle.textContent = 'Related Models';
-        addToAlbumBtn.style.display = 'none'; // <-- HIDE BUTTON
+        addToAlbumBtn.style.display = 'none';
         
-        // START: Clear album list
         currentAlbumViewerList = [];
         currentAlbumViewerIndex = 0;
-        // END: Clear album list
         
-        loadRelatedImages(card, true); // true = new query
+        loadRelatedImages(card, true);
       }
-      // END: Modified
     }
     
-    // START: New function to load album images
     async function loadAlbumImages(albumTag, currentCardId) {
       if (!albumTag) { return; }
       
-      // Store card to prevent related scroll
-      currentRelatedCard.isAlbum = true; // Ensure this is set
+      currentRelatedCard.isAlbum = true;
       
-      relatedIsLoadingMore = true; // Prevent other loads
-      relatedCurrentPage = 0; // Reset
-      relatedNoMoreResults = true; // No pagination for albums for now
+      relatedIsLoadingMore = true;
+      relatedCurrentPage = 0;
+      relatedNoMoreResults = true;
       
-      const relatedContainer = document.getElementById('viewer-related-container');
-      // relatedContainer.querySelector('h4').textContent = 'Images in this Album'; // Change title - REMOVED, handled by displayCardInViewer
       viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">Loading album...</span>';
-      relatedScrollLoader.style.display = 'none'; // Hide scroll loader
+      relatedScrollLoader.style.display = 'none';
 
       try {
-        // Fetch all other images in this album
         const { data: albumCards, error } = await supabase
           .from('models')
           .select('*')
-          .ilike('tags', `%${albumTag}%`)  // Find all with the album tag
-          .neq('id', currentCardId) // Exclude the image we're currently viewing
-          .order('created_at', { ascending: true }) // Show in upload order
-          .limit(50); // Limit to 50 for now
+          .ilike('tags', `%${albumTag}%`)
+          .neq('id', currentCardId)
+          .order('created_at', { ascending: true })
+          .limit(50);
           
         if (error) throw error;
         
-        viewerRelatedGrid.innerHTML = ''; // Clear loading
+        viewerRelatedGrid.innerHTML = '';
         
         if (albumCards.length === 0) {
           viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">No other images found in this album.</span>';
         } else {
-          // START: Update album viewer list and add cards to grid
-          
-          // --- FIX: Add album flags to all cards ---
           const processedAlbumCards = albumCards.map(card => {
             return {
               ...card,
               isAlbum: true,
               albumTag: albumTag,
-              albumName: currentAlbumViewerList[0].albumName // Inherit album name from cover
+              albumName: currentAlbumViewerList[0].albumName
             };
           });
-          // --- END FIX ---
 
-          // We already have the cover image at index 0
-          currentAlbumViewerList = [currentAlbumViewerList[0], ...processedAlbumCards]; // Combine cover + rest
+          currentAlbumViewerList = [currentAlbumViewerList[0], ...processedAlbumCards];
           
-          processedAlbumCards.forEach((albumCard, index) => { // Use processed cards
-            // Pass 'index + 1' because index 0 is the cover
-            addRelatedCardToGrid(albumCard, index + 1, true); // true = isAlbumItem
+          processedAlbumCards.forEach((albumCard, index) => {
+            addRelatedCardToGrid(albumCard, index + 1, true);
           });
-          // END: Update
         }
         
       } catch (error) {
@@ -1533,23 +1577,14 @@
       
       relatedIsLoadingMore = false;
     }
-    // END: New function
     
-    // Load related images into the bottom strip
     async function loadRelatedImages(card, isNewQuery = true) {
       if (!card) { return; }
       
-      // START: Reset title - REMOVED
-      // const relatedContainer = document.getElementById('viewer-related-container');
-      // relatedContainer.querySelector('h4').textContent = 'Related Models';
-      // END: Reset title
-      
-      // Prevent loading if already loading
       if (relatedIsLoadingMore) return;
       
-      // Store the card we're basing this search on
       currentRelatedCard = card; 
-      currentRelatedCard.isAlbum = false; // <-- FIX: Explicitly set to false for related
+      currentRelatedCard.isAlbum = false;
       
       if (isNewQuery) {
         relatedCurrentPage = 0;
@@ -1561,7 +1596,7 @@
       
       relatedIsLoadingMore = true;
 
-      const tags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t && !t.startsWith('album:')) : []; // <-- Don't use album tags for related
+      const tags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t && !t.startsWith('album:')) : [];
       if (tags.length === 0) {
         viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">No tags to find related models.</span>';
         relatedIsLoadingMore = false;
@@ -1580,21 +1615,19 @@
           .from('models')
           .select('*')
           .or(tagConditions)
-          .neq('id', card.id) // Exclude self
-          .eq('nsfw', false) // Keep related SFW
-          .limit(PAGE_SIZE) // Use same page size
-          .range(relatedCurrentPage * PAGE_SIZE, (relatedCurrentPage + 1) * PAGE_SIZE - 1); // Pagination
+          .neq('id', card.id)
+          .eq('nsfw', false)
+          .limit(PAGE_SIZE)
+          .range(relatedCurrentPage * PAGE_SIZE, (relatedCurrentPage + 1) * PAGE_SIZE - 1);
           
         if (error) throw error;
         
-        // START: Shuffle related cards
         if (relatedCards) shuffleArray(relatedCards);
-        // END: Shuffle related cards
         
         relatedScrollLoader.style.display = 'none';
         
         if (isNewQuery) {
-          viewerRelatedGrid.innerHTML = ''; // Clear loading
+          viewerRelatedGrid.innerHTML = '';
         }
         
         if (relatedCards.length === 0) {
@@ -1618,24 +1651,22 @@
       relatedIsLoadingMore = false;
     }
     
-    // Infinite scroll for RELATED items (listens to modal scroll)
     function handleRelatedScroll() {
       const { scrollTop, scrollHeight, clientHeight } = imageViewer;
       if (scrollTop + clientHeight >= scrollHeight - 300) {
         if (!relatedIsLoadingMore && !relatedNoMoreResults) {
-          loadRelatedImages(currentRelatedCard, false); // false = not a new query
+          loadRelatedImages(currentRelatedCard, false);
         }
       }
     }
     
-    // Function to create and add a related card to the new grid
     function addRelatedCardToGrid(relatedCard, index = -1, isAlbumItem = false) {
       const cardElem = document.createElement('div');
       cardElem.className = 'related-masonry-item bg-gray-900 rounded-lg overflow-hidden relative group cursor-pointer';
       
       const img = document.createElement('img');
       img.src = relatedCard.main_model_url.includes('ik.imagekit.io')
-        ? `${relatedCard.main_model_url}?tr=w-500,q-70` // Larger preview
+        ? `${relatedCard.main_model_url}?tr=w-500,q-70`
         : relatedCard.main_model_url;
       img.alt = "Related Model";
       img.className = "w-full h-auto block";
@@ -1644,84 +1675,68 @@
       cardElem.appendChild(img);
       
       cardElem.onclick = () => {
-        // START: Check if this is an album item or related item
         if (isAlbumItem) {
-          // This is an item from the album grid
           currentAlbumViewerIndex = index;
           displayCardInViewer(currentAlbumViewerList[currentAlbumViewerIndex]);
         } else {
-          // This is an item from the "Related Models" grid
           const relatedIndex = displayedCards.findIndex(card => card.id === relatedCard.id);
           
-          // Find album tag
-          // START: Add album flags if clicking on a related album cover
           const allCardTags = (relatedCard.tags || '').split(',').map(t => t.trim()).filter(t => t);
           const albumTag = allCardTags.find(t => t.startsWith('album:'));
           if (albumTag) {
             relatedCard.isAlbum = true;
             relatedCard.albumTag = albumTag;
-            // Try to find the matching display name tag
-            const albumSlug = albumTag.substring(6); // e.g., "my-model"
+            const albumSlug = albumTag.substring(6);
             relatedCard.albumName = allCardTags.find(t => 
-              !t.startsWith('album:') && // Must not be the album: tag itself
+              !t.startsWith('album:') &&
               t.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === albumSlug
             );
-            // Fallback just in case the original tag was removed
             if (!relatedCard.albumName) {
               relatedCard.albumName = albumSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
             }
           }
-          // END: Add album flags
         
           if (relatedIndex !== -1) {
-            // If it's in our main gallery list, just jump to it
             currentViewerIndex = relatedIndex;
-            displayCardInViewer(displayedCards[relatedIndex]); // Use the full object
+            displayCardInViewer(displayedCards[relatedIndex]);
           } else {
-            // If it's not in the main list, just display its data
-            // (Next/Prev will still be tied to the main gallery)
             displayCardInViewer(relatedCard);
           }
-        } // <-- START: Added missing closing brace
+        }
       };
       
       viewerRelatedGrid.appendChild(cardElem);
     }
     
-    // --- START: Rating Functions ---
-    /**
-     * Renders the 5-star interactive rating widget in the image viewer.
-     */
+    // --- Rating Functions ---
     function renderViewerRating(card) {
       const container = document.getElementById('viewer-rating');
       if (!container) return;
       container.innerHTML = '';
       const currentRating = card.rating || 0;
       
-      // Set mouseleave on the container to reset hover states
       container.onmouseleave = () => {
         const stars = container.querySelectorAll('.star');
         stars.forEach((s, index) => {
           s.classList.toggle('text-yellow-400', index < currentRating);
           s.classList.toggle('text-gray-600', index >= currentRating);
-          s.classList.remove('text-yellow-300'); // remove hover state
+          s.classList.remove('text-yellow-300');
         });
       };
 
       for (let i = 1; i <= 5; i++) {
         const star = document.createElement('span');
         star.className = `star text-3xl cursor-pointer ${i <= currentRating ? 'text-yellow-400' : 'text-gray-600'} transition-colors`;
-        star.innerHTML = '&#9733;'; // HTML star
+        star.innerHTML = '&#9733;';
         star.dataset.rating = i;
         
         star.onclick = (e) => {
           e.stopPropagation();
-          const newRating = (i === currentRating) ? 0 : i; // Click same star to un-rate
+          const newRating = (i === currentRating) ? 0 : i;
           setRating(card.id, newRating);
         };
         
         star.onmouseenter = () => {
-          // Highlight stars up to this one on hover
           const stars = container.querySelectorAll('.star');
           stars.forEach((s, index) => {
             s.classList.toggle('text-yellow-300', index < i);
@@ -1733,19 +1748,14 @@
       }
     }
     
-    /**
-     * Updates the rating in the database and optimistically updates the UI.
-     */
     async function setRating(cardId, newRating) {
       try {
-        // 1. Optimistic UI update in the viewer
         const card = currentRelatedCard;
-        if (card.id !== cardId) return; // Safety check
+        if (card.id !== cardId) return;
         
-        card.rating = newRating; // Update in-memory card
-        renderViewerRating(card); // Re-render stars in viewer
+        card.rating = newRating;
+        renderViewerRating(card);
 
-        // 2. Update the gallery card UI (optimistic)
         const galleryRatingEl = document.getElementById(`rating-display-${cardId}`);
         if (galleryRatingEl) {
           const textEl = galleryRatingEl.querySelector('span');
@@ -1759,7 +1769,6 @@
           }
         }
     
-        // 3. Update the database
         const { data: updatedCard, error } = await supabase
           .from('models')
           .update({ rating: newRating })
@@ -1769,58 +1778,45 @@
     
         if (error) throw error;
     
-        // 4. Update the `displayedCards` array with confirmed data
         const index = displayedCards.findIndex(c => c.id == cardId);
         if (index !== -1) {
           displayedCards[index].rating = updatedCard.rating;
         }
         
-        // 5. Update viewer card (in case it drifted)
         currentRelatedCard.rating = updatedCard.rating;
         renderViewerRating(currentRelatedCard);
         
-      } catch (error)
- {
+      } catch (error) {
         console.error("Error setting rating:", error);
-        // Could add error handling to revert UI here
       }
     }
-    // --- END: Rating Functions ---
-
+    
     // --- Viewer Navigation ---
     
     function prevImage(event = null) {
       if(event) event.stopPropagation();
       
-      // START: Check if in album mode
       const card = currentRelatedCard;
       if (card && card.isAlbum) {
-        // Album navigation
         currentAlbumViewerIndex = (currentAlbumViewerIndex - 1 + currentAlbumViewerList.length) % currentAlbumViewerList.length;
         displayCardInViewer(currentAlbumViewerList[currentAlbumViewerIndex]);
       } else {
-        // Main gallery navigation
         currentViewerIndex = (currentViewerIndex - 1 + displayedCards.length) % displayedCards.length;
         displayCardInViewer(displayedCards[currentViewerIndex]);
       }
-      // END: Check
     }
     
     function nextImage(event = null) {
       if(event) event.stopPropagation();
 
-      // START: Check if in album mode
       const card = currentRelatedCard;
       if (card && card.isAlbum) {
-        // Album navigation
         currentAlbumViewerIndex = (currentAlbumViewerIndex + 1) % currentAlbumViewerList.length;
         displayCardInViewer(currentAlbumViewerList[currentAlbumViewerIndex]);
       } else {
-        // Main gallery navigation
         currentViewerIndex = (currentViewerIndex + 1) % displayedCards.length;
         displayCardInViewer(displayedCards[currentViewerIndex]);
       }
-      // END: Check
     }
 
     // --- Viewer Zoom/Pan ---
@@ -1846,32 +1842,27 @@
     }
     
     function applyViewerTransform() {
-      // Fit to container logic
       const containerWidth = viewerImageContainer.clientWidth;
       const containerHeight = viewerImageContainer.clientHeight;
       const imgWidth = viewerImage.naturalWidth;
       const imgHeight = viewerImage.naturalHeight;
 
       if (!imgWidth || !imgHeight) {
-         // Image not loaded yet, just center
          viewerImage.style.transform = `translate(-50%, -50%) translate(${viewerPosX}px, ${viewerPosY}px) scale(${viewerScale})`;
          return;
       }
 
       let baseScale = 1;
       if (viewerScale === 1) {
-        // Fit logic (like 'contain')
         baseScale = Math.min(containerWidth / imgWidth, containerHeight / imgHeight);
-        viewerPosX = 0; // Reset position when fitting
+        viewerPosX = 0;
         viewerPosY = 0;
       } else {
-        // Use the 'fit' scale as the base for zooming
         baseScale = Math.min(containerWidth / imgWidth, containerHeight / imgHeight);
       }
       
       const effectiveScale = baseScale * viewerScale;
       
-      // Apply transform from 50, 50 anchor
       viewerImage.style.transform = `translate(-50%, -50%) translate(${viewerPosX}px, ${viewerPosY}px) scale(${effectiveScale})`;
     }
     
@@ -1884,7 +1875,6 @@
       }
     }
     
-    // --- Mouse Pan Handlers ---
     function handleViewerMouseDown(e) {
       e.preventDefault();
       isViewerDragging = true;
@@ -1906,46 +1896,39 @@
       viewerImageContainer.classList.remove('grabbing');
     }
     
-    // --- Touch Handlers (Pinch/Pan/Swipe) ---
     function handleViewerTouchStart(e) {
       if (e.touches.length === 2) {
-        // Pinch start
         e.preventDefault();
         initialPinchDistance = getPinchDistance(e.touches);
       } else if (e.touches.length === 1) {
-        // Pan or Swipe start
         isViewerDragging = true;
         viewerStartDrag = { x: e.touches[0].clientX - viewerPosX, y: e.touches[0].clientY - viewerPosY };
         touchStartX = e.touches[0].clientX;
-        touchEndX = e.touches[0].clientX; // Reset
+        touchEndX = e.touches[0].clientX;
       }
     }
     
     function handleViewerTouchMove(e) {
       if (e.touches.length === 2) {
-        // Pinching
         e.preventDefault();
         if (initialPinchDistance === null) return;
         
         const newDistance = getPinchDistance(e.touches);
         const scaleFactor = newDistance / initialPinchDistance;
-        initialPinchDistance = newDistance; // Update for next move
+        initialPinchDistance = newDistance;
         
         const newScale = viewerScale * scaleFactor;
         
-        // Clamp scale
         viewerScale = Math.min(Math.max(newScale, 0.5), 10);
         applyViewerTransform();
         
       } else if (e.touches.length === 1 && isViewerDragging) {
-        // Panning
-        if (viewerScale > 1) { // Only pan if zoomed
+        if (viewerScale > 1) {
           e.preventDefault();
           viewerPosX = e.touches[0].clientX - viewerStartDrag.x;
           viewerPosY = e.touches[0].clientY - viewerStartDrag.y;
           applyViewerTransform();
         }
-        // Track for swipe
         touchEndX = e.touches[0].clientX;
       }
     }
@@ -1953,18 +1936,16 @@
     function handleViewerTouchEnd(e) {
       if (e.touches.length === 0) {
         if (isViewerDragging) {
-          // Check for swipe
           const swipeDistance = touchEndX - touchStartX;
-          if (viewerScale === 1 && Math.abs(swipeDistance) > 50) { // Only swipe if not zoomed
+          if (viewerScale === 1 && Math.abs(swipeDistance) > 50) {
             if (swipeDistance > 50) {
-              prevImage(); // Swipe right
+              prevImage();
             } else {
-              nextImage(); // Swipe left
+              nextImage();
             }
           }
         }
         
-        // Reset all states
         isViewerDragging = false;
         initialPinchDistance = null;
         touchStartX = 0;
@@ -1988,7 +1969,7 @@
 
       window.addEventListener('click', () => {
         menu.style.display = 'none';
-      }, true); // Use capture to hide on any click
+      }, true);
 
       editBtn.onclick = () => {
         if (currentCardId) startEditCard(currentCardId);
@@ -2012,7 +1993,7 @@
 
     function openPopup() {
       document.getElementById('popup').style.display = 'flex';
-      updateTagDisplays(); // Re-populate tags dropdown
+      updateTagDisplays();
     }
 
     function closePopup() {
@@ -2026,29 +2007,25 @@
       currentlyEditingCardId = null;
       document.getElementById('popupTitle').textContent = 'Add New Model(s)';
       document.getElementById('modelUrl').placeholder = "Enter one or more image URLs, separated by commas";
-      document.getElementById('modelAlbumName').value = ''; // <-- START: Reset album name
-      document.getElementById('modelAlbumName').style.display = 'block'; // <-- Show album name field
+      document.getElementById('modelAlbumName').value = '';
+      document.getElementById('modelAlbumName').style.display = 'block';
       document.getElementById('modelNsfw').checked = false;
       updateSelectedTagsDisplay();
       updateTagDisplays();
       
-      // START: Clear error message and re-enable button
       const errorMsg = document.getElementById('errorMessage');
       errorMsg.textContent = '';
       errorMsg.style.display = 'none';
       errorMsg.classList.remove('text-green-400');
       errorMsg.classList.add('text-red-400');
-      // Re-enable submit button
       const submitButton = document.getElementById('cardForm').querySelector('button[type="submit"]');
       if (submitButton) {
         submitButton.disabled = false;
       }
-      // END: Clear error message
     }
 
     async function addCard() {
       const errorMessage = document.getElementById('errorMessage');
-      // START: Get submit button
       const submitButton = document.getElementById('cardForm').querySelector('button[type="submit"]');
       
       try {
@@ -2057,7 +2034,6 @@
         errorMessage.style.display = 'block';
         errorMessage.classList.remove('text-green-400');
         errorMessage.classList.add('text-red-400');
-        // END: Get submit button
         
         const modelUrlsText = document.getElementById('modelUrl').value.trim();
         if (!modelUrlsText) throw new Error("Image URL(s) are required.");
@@ -2065,7 +2041,6 @@
         const urls = modelUrlsText.split(',').map(url => url.trim()).filter(url => url.length > 0);
         if (urls.length === 0) throw new Error("Please provide at least one valid image URL.");
         
-        // --- START: Duplicate Check ---
         const { data: existingModels, error: checkError } = await supabase
           .from('models')
           .select('main_model_url')
@@ -2086,53 +2061,34 @@
           submitButton.disabled = false;
           return;
         }
-        // --- END: Duplicate Check ---
         
-        // START: Album logic
         const albumName = document.getElementById('modelAlbumName').value.trim();
         let albumTag = null;
         if (albumName) {
-          // Create a sanitized tag
           albumTag = 'album:' + albumName.toLowerCase()
-            .replace(/\s+/g, '-') // Replace spaces with dashes
-            .replace(/[^a-z0-9-]/g, ''); // Remove special chars
+            .replace(/\s+/g, '-')
+            .replace(/[^a-z0-9-]/g, '');
           
           if (!selectedTags.includes(albumTag)) {
             selectedTags.push(albumTag);
           }
-          
-          // Also add the album name as a regular tag
-          /* REMOVED THIS BLOCK - We no longer add the album name as a regular tag
-          if (!allTags.includes(albumName)) {
-             await supabase.from('tags').insert({ name: albumName });
-             // We don't need to await refreshTagData() here, just add it for this session
-             allTags.push(albumName);
-          }
-          if (!selectedTags.includes(albumName)) {
-            selectedTags.push(albumName);
-          }
-          */
         }
-        // END: Album logic
         
         const isNsfw = document.getElementById('modelNsfw').checked;
         const tagsString = selectedTags.join(', ');
 
-        // START: Use newUrls instead of urls
         const newCards = newUrls.map(url => ({
           tags: tagsString,
           main_model_url: url,
-          related_models: [], // These are old/unused but good to init
-          related_models_with_tags: [], // "
+          related_models: [],
+          related_models_with_tags: [],
           favorited: false,
           nsfw: isNsfw
         }));
-        // END: Use newUrls
 
         const { error } = await supabase.from('models').insert(newCards);
         if (error) throw error;
 
-        // --- START: New Success/Report Logic ---
         const successMessage = `Success! Added ${newUrls.length} new images.`;
         const duplicateMessage = duplicateUrls.length > 0 ? ` Skipped ${duplicateUrls.length} duplicates.` : '';
         
@@ -2140,25 +2096,23 @@
         errorMessage.classList.remove('text-red-400');
         errorMessage.classList.add('text-green-400');
         
-        await loadTotalCardCount(); // Refresh counts
-        await refreshTagData(); // Refresh tags
+        await loadTotalCardCount();
+        await refreshTagData();
         
         setTimeout(() => {
-          closePopup(); // This will re-enable the button via resetForm
+          closePopup();
           
-          // Go to the right view after closing
           if (albumName) {
-              showAllAlbums(); // Go to albums view
+              showAllAlbums();
           } else {
-              showAllModels(); // Refresh singles view
+              showAllModels();
           }
-        }, 2500); // Wait 2.5 seconds
-        // --- END: New Success/Report Logic ---
+        }, 2500);
         
       } catch (error) {
         console.error("Error adding card:", error);
         errorMessage.textContent = `Failed to add model(s): ${error.message}`;
-        submitButton.disabled = false; // Re-enable on failure
+        submitButton.disabled = false;
       }
     }
     
@@ -2170,9 +2124,7 @@
         currentlyEditingCardId = cardId;
         const modelUrlInput = document.getElementById('modelUrl');
         modelUrlInput.value = card.main_model_url;
-        // START: Hide album name on edit, as edit is per-image
         document.getElementById('modelAlbumName').style.display = 'none';
-        // END: Hide
         
         selectedTags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
         document.getElementById('modelNsfw').checked = card.nsfw;
@@ -2188,11 +2140,9 @@
 
     async function updateCard() {
       const errorMessage = document.getElementById('errorMessage');
-      // START: Add submit button logic
       const submitButton = document.getElementById('cardForm').querySelector('button[type="submit"]');
       try {
         submitButton.disabled = true;
-        // END: Add submit button logic
         const modelUrl = document.getElementById('modelUrl').value.trim();
         if (!modelUrl || modelUrl.includes(',')) {
             throw new Error("A single, valid Model URL is required when editing.");
@@ -2213,31 +2163,29 @@
         if (error) throw error;
         
         closePopup();
-        await refreshTagData(); // <-- ADDED
-        loadCards(true); // Force a full refresh
+        await refreshTagData();
+        loadCards(true);
       } catch (error) {
         console.error("Error updating card:", error);
         errorMessage.textContent = error.message;
-        submitButton.disabled = false; // Re-enable on failure
+        submitButton.disabled = false;
       }
     }
 
     async function deleteCard(cardId) {
-      // We don't need a custom modal, browser confirm is fine here
       if (!confirm("Are you sure you want to delete this model?")) { return; }
       try {
         const { error } = await supabase.from('models').delete().eq('id', cardId);
         if (error) throw error;
-        await loadTotalCardCount(); // <-- Refresh count after deleting
-        await refreshTagData(); // <-- ADDED
-        loadCards(true); // Force a full refresh
+        await loadTotalCardCount();
+        await refreshTagData();
+        loadCards(true);
       } catch (error) {
         console.error("Error deleting card:", error);
         alert("Failed to delete card");
       }
     }
     
-    // START: New Toggle Favorite Function
     async function toggleFavorite(event, cardId, currentStatus) {
       const button = event.currentTarget;
       
@@ -2250,17 +2198,13 @@
           .single();
           
         if (error) throw error;
-
-        // --- Start Local Data & UI Update ---
         
-        // 1. Update the main `displayedCards` array
         const index = displayedCards.findIndex(c => c.id == cardId);
         if (index !== -1) {
-          // Manually update properties, preserving album flags
+          const oldCard = displayedCards[index];
           displayedCards[index].favorited = updatedCard.favorited;
         }
         
-        // 2. Update the button color
         if (button) {
           if (updatedCard.favorited) {
             button.classList.add('text-yellow-400');
@@ -2271,31 +2215,25 @@
           }
         }
         
-        // 3. If on "Favorites" tab and card is unfavorited, remove it from view
         if (currentFilter.type === 'favorites' && !updatedCard.favorited) {
           const cardElem = document.getElementById(`card-dom-${cardId}`);
           if (cardElem) {
             msnry.remove(cardElem);
             msnry.layout();
           }
-          // Also remove from displayedCards
           if (index !== -1) {
             displayedCards.splice(index, 1);
           }
         }
         
-        // 4. Update the viewer IF it's open and showing this card
         if (imageViewer.style.display === 'flex' && currentViewerIndex === index) {
           displayCardInViewer(displayedCards[index]);
         }
         
-        // --- End Local Data & UI Update ---
-        
       } catch (error) {
         console.error("Error toggling favorite:", error);
-        // Optionally revert button color if update fails
         if (button) {
-          if (currentStatus) { // Revert to original state
+          if (currentStatus) {
             button.classList.add('text-yellow-400');
             button.classList.remove('text-white');
           } else {
@@ -2305,9 +2243,7 @@
         }
       }
     }
-    // END: New Toggle Favorite Function
     
-    // Popup form submit handler
     document.getElementById('cardForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       if (currentlyEditingCardId) {
@@ -2323,9 +2259,7 @@
       const availableTagsSelect = document.getElementById('availableTags');
       availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
       allTags.forEach(tag => {
-        // START: Don't show album tags in dropdown
         if (tag.startsWith('album:')) { return; }
-        // END
         
         if (!selectedTags.includes(tag)) {
           const option = document.createElement('option');
@@ -2343,15 +2277,14 @@
       
       selectedTags.push(selectedTag);
       updateSelectedTagsDisplay();
-      updateTagDisplays(); // Re-populates the dropdown
-      select.value = ""; // Reset dropdown
+      updateTagDisplays();
+      select.value = "";
     }
     
     function updateSelectedTagsDisplay() {
       const container = document.getElementById('selectedTagsContainer');
       container.innerHTML = '';
       selectedTags.forEach(tag => {
-        // START: Don't allow removing album tags
         const isAlbumTag = tag.startsWith('album:');
         
         const tagElem = document.createElement('span');
@@ -2366,17 +2299,16 @@
         
         tagElem.innerHTML = `${displayName} ${removeButton}`;
         container.appendChild(tagElem);
-        // END
       });
     }
 
     function removeSelectedTag(tagToRemove) {
       selectedTags = selectedTags.filter(tag => tag !== tagToRemove);
       updateSelectedTagsDisplay();
-      updateTagDisplays(); // Re-populates the dropdown
+      updateTagDisplays();
     }
     
-    // --- START: Tag Management Modal Functions ---
+    // --- Tag Management Modal Functions ---
 
     function openManageTagsPopup() {
       document.getElementById('manage-tags-popup').style.display = 'flex';
@@ -2394,7 +2326,6 @@
       container.innerHTML = '<span class="text-gray-500">Loading...</span>';
       
       try {
-        // Fetch fresh tags list
         const { data: tags, error } = await supabase
           .from('tags')
           .select('name')
@@ -2407,14 +2338,12 @@
           return;
         }
 
-        container.innerHTML = ''; // Clear loading
+        container.innerHTML = '';
         
         tags.forEach(tagObj => {
-          const tag = tagObj.name; // Get the name string
+          const tag = tagObj.name;
           
-          // START: Don't show album tags in management
           if (tag.startsWith('album:')) { return; }
-          // END
           
           const tagRow = document.createElement('div');
           tagRow.className = 'flex items-center gap-2 p-2 rounded hover:bg-gray-700';
@@ -2441,7 +2370,6 @@
       }
     }
     
-    // START: New helper functions for multi-select
     function getSelectedManageTags() {
       const checkboxes = document.querySelectorAll('#existingTagsListContainer .manage-tag-checkbox:checked');
       return Array.from(checkboxes).map(cb => cb.value);
@@ -2451,7 +2379,6 @@
       const checkboxes = document.querySelectorAll('#existingTagsListContainer .manage-tag-checkbox');
       checkboxes.forEach(cb => cb.checked = isSelected);
     }
-    // END: New helper functions
 
     async function handleAddNewTag() {
       const input = document.getElementById('newTagName');
@@ -2464,15 +2391,12 @@
         return;
       }
       
-      // START: Prevent adding album tags manually
       if (newTagName.startsWith('album:')) {
         errorMsg.textContent = 'Tags cannot start with "album:".';
         errorMsg.style.display = 'block';
         return;
       }
-      // END
       
-      // We must check against allTags, which is kept in sync by loadTags()
       if (allTags.map(t => t.toLowerCase()).includes(newTagName.toLowerCase())) {
         errorMsg.textContent = 'This tag already exists.';
         errorMsg.style.display = 'block';
@@ -2488,10 +2412,9 @@
           
         if (error) throw error;
         
-        // Success
-        input.value = ''; // Clear input
-        await refreshTagData(); // <-- REPLACED loadTags()
-        await loadTagsForManagement(); // Refresh the list in the modal
+        input.value = '';
+        await refreshTagData();
+        await loadTagsForManagement();
         
       } catch (error) {
         console.error("Error adding new tag:", error);
@@ -2500,7 +2423,6 @@
       }
     }
 
-    // START: Replaced deleteTag with multi-delete
     async function handleDeleteSelectedTags() {
       const selectedTags = getSelectedManageTags();
       const errorMsg = document.getElementById('manageTagsErrorMessage');
@@ -2517,7 +2439,6 @@
       try {
         errorMsg.style.display = 'none';
         
-        // 1. Delete from 'tags' table
         const { error: deleteTagsError } = await supabase
           .from('tags')
           .delete()
@@ -2525,14 +2446,11 @@
           
         if (deleteTagsError) throw deleteTagsError;
 
-        // 2. Remove tags from all models
-        // We need to do this for each tag
         for (const tagToDelete of selectedTags) {
-            // UPDATED: Changed .eq. to .ilike. for case-insensitivity
             const orQuery = `tags.ilike."${tagToDelete}",tags.ilike."${tagToDelete},%",tags.ilike."%,${tagToDelete}",tags.ilike."%,${tagToDelete},%"`;
             const { data: models, error: fetchModelsError } = await supabase
                 .from('models')
-                .select() // <-- ADDED .select()
+                .select()
                 .or(orQuery);
 
             if (fetchModelsError) throw new Error(`Error fetching models for tag ${tagToDelete}: ${fetchModelsError.message}`);
@@ -2540,7 +2458,6 @@
             if (models && models.length > 0) {
                 const updates = models.map(model => {
                     let modelTags = (model.tags || '').split(',').map(t => t.trim()).filter(t => t);
-                    // Filter out the tag to be deleted (case-insensitive)
                     modelTags = modelTags.filter(t => t.toLowerCase() !== tagToDelete.toLowerCase());
                     const newTagsString = modelTags.join(', ');
                     
@@ -2550,10 +2467,9 @@
             }
         }
         
-        // 3. Success
-        await refreshTagData(); // <-- REPLACED loadTags()
-        await loadTagsForManagement(); // Refresh the list in the modal
-        loadCards(true); // Refresh main gallery in case tags changed
+        await refreshTagData();
+        await loadTagsForManagement();
+        loadCards(true);
         
       } catch (error) {
         console.error("Error deleting tags:", error);
@@ -2561,9 +2477,7 @@
         errorMsg.style.display = 'block';
       }
     }
-    // END: Replaced deleteTag
-
-    // START: New function to rename a tag
+    
     async function handleRenameSelectedTag() {
       const selectedTags = getSelectedManageTags();
       const errorMsg = document.getElementById('manageTagsErrorMessage');
@@ -2585,8 +2499,6 @@
       
       const trimmedNewName = newTagName.trim();
       
-      // Check if new tag name already exists
-      // UPDATED: Logic fixed to ignore the tag being renamed
       const otherTagsLower = allTags.map(t => t.toLowerCase()).filter(t => t !== oldTagName.toLowerCase());
       if (otherTagsLower.includes(trimmedNewName.toLowerCase())) {
           errorMsg.textContent = `Tag "${trimmedNewName}" already exists.`;
@@ -2597,7 +2509,6 @@
       try {
         errorMsg.style.display = 'none';
 
-        // 1. Update 'tags' table
         const { error: updateTagError } = await supabase
           .from('tags')
           .update({ name: trimmedNewName })
@@ -2605,12 +2516,10 @@
           
         if (updateTagError) throw updateTagError;
         
-        // 2. Update tag in all models
-        // UPDATED: Changed .eq. to .ilike. for case-insensitivity
         const orQuery = `tags.ilike."${oldTagName}",tags.ilike."${oldTagName},%",tags.ilike."%,${oldTagName}",tags.ilike."%,${oldTagName},%"`;
         const { data: models, error: fetchModelsError } = await supabase
             .from('models')
-            .select() // <-- ADDED .select()
+            .select()
             .or(orQuery);
         
         if (fetchModelsError) throw new Error(`Error fetching models for tag ${oldTagName}: ${fetchModelsError.message}`);
@@ -2618,9 +2527,7 @@
         if (models && models.length > 0) {
             const updates = models.map(model => {
                 let modelTags = (model.tags || '').split(',').map(t => t.trim()).filter(t => t);
-                // Find and replace the tag (case-insensitive)
                 modelTags = modelTags.map(t => t.toLowerCase() === oldTagName.toLowerCase() ? trimmedNewName : t);
-                // Remove duplicates just in case
                 const newTagsString = [...new Set(modelTags)].join(', '); 
                 
                 return supabase.from('models').update({ tags: newTagsString }).eq('id', model.id);
@@ -2628,10 +2535,9 @@
             await Promise.all(updates);
         }
         
-        // 3. Success
-        await refreshTagData(); // <-- REPLACED loadTags()
-        await loadTagsForManagement(); // Refresh the list in the modal
-        loadCards(true); // Refresh main gallery in case tags changed
+        await refreshTagData();
+        await loadTagsForManagement();
+        loadCards(true);
         
       } catch (error) {
         console.error("Error renaming tag:", error);
@@ -2639,11 +2545,8 @@
         errorMsg.style.display = 'block';
       }
     }
-    // END: New function to rename a tag
     
-    // --- END: Tag Management Modal Functions ---
-    
-    // --- START: Quick Edit Modal Functions ---
+    // --- Quick Edit Modal Functions ---
     
     async function openQuickEditModal(cardId) {
       try {
@@ -2652,7 +2555,7 @@
 
         document.getElementById('quickEditCardId').value = card.id;
         document.getElementById('quickEditModelUrl').value = card.main_model_url;
-        document.getElementById('quickEditModelNsfw').checked = card.nsfw; // <-- ADDED
+        document.getElementById('quickEditModelNsfw').checked = card.nsfw;
         
         quickEditSelectedTags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
         
@@ -2673,21 +2576,18 @@
       quickEditSelectedTags = [];
       document.getElementById('quickEditErrorMessage').style.display = 'none';
       
-      // START: Re-enable submit button
       const submitButton = document.getElementById('quickEditForm').querySelector('button[type="submit"]');
       if (submitButton) {
         submitButton.disabled = false;
       }
-      // END: Re-enable submit button
     }
     
     async function handleQuickUpdate() {
       const cardId = document.getElementById('quickEditCardId').value;
       const newUrl = document.getElementById('quickEditModelUrl').value.trim();
       const newTags = quickEditSelectedTags.join(', ');
-      const newNsfw = document.getElementById('quickEditModelNsfw').checked; // <-- ADDED
+      const newNsfw = document.getElementById('quickEditModelNsfw').checked;
       const errorMsg = document.getElementById('quickEditErrorMessage');
-      // START: Add submit button logic
       const submitButton = document.getElementById('quickEditForm').querySelector('button[type="submit"]');
 
       if (!newUrl) {
@@ -2698,47 +2598,41 @@
       
       try {
         submitButton.disabled = true;
-        // END: Add submit button logic
         
-        // Update the database and get the updated row back
         const { data: updatedCard, error } = await supabase
           .from('models')
           .update({ 
             main_model_url: newUrl,
             tags: newTags,
-            nsfw: newNsfw // <-- ADDED
+            nsfw: newNsfw
           })
           .eq('id', cardId)
           .select()
-          .single(); // .select().single() returns the updated row
+          .single();
         
         if (error) throw error;
         
-        // START: Update card in local array
         const index = displayedCards.findIndex(c => c.id == cardId);
         if (index !== -1) {
-          // Preserve album flags, update the rest
           const oldCard = displayedCards[index];
           displayedCards[index] = {
             ...updatedCard,
             isAlbum: oldCard.isAlbum,
             albumTag: oldCard.albumTag,
             isAlbumCover: oldCard.isAlbumCover,
-            albumName: oldCard.albumName // <-- ADDED
+            albumName: oldCard.albumName
           };
         }
-        // END: Update local card
         
-        // REPLACED local update with a full refresh for consistency
         closeQuickEditModal();
         await refreshTagData();
-        loadCards(true); // This will refresh the gallery with all changes
+        loadCards(true);
         
       } catch (error) {
         console.error("Error updating card:", error);
         errorMsg.textContent = `Failed to update: ${error.message}`;
         errorMsg.style.display = 'block';
-        submitButton.disabled = false; // Re-enable on failure
+        submitButton.disabled = false;
       }
     }
     
@@ -2748,7 +2642,7 @@
       const availableTagsSelect = document.getElementById('quickEditAvailableTags');
       availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
       allTags.forEach(tag => {
-        if (tag.startsWith('album:')) { return; } // Don't show
+        if (tag.startsWith('album:')) { return; }
         if (!quickEditSelectedTags.includes(tag)) {
           const option = document.createElement('option');
           option.value = tag;
@@ -2773,7 +2667,6 @@
       const container = document.getElementById('quickEditSelectedTagsContainer');
       container.innerHTML = '';
       quickEditSelectedTags.forEach(tag => {
-        // START: Don't allow removing album tags
         const isAlbumTag = tag.startsWith('album:');
         
         const tagElem = document.createElement('span');
@@ -2788,7 +2681,6 @@
         
         tagElem.innerHTML = `${displayName} ${removeButton}`;
         container.appendChild(tagElem);
-        // END
       });
     }
 
@@ -2798,67 +2690,382 @@
       updateQuickEditAvailableTags();
     }
     
-    // --- END: Quick Edit Modal Functions ---
+    // --- Album Functions ---
     
-    // --- START: New function to add to album ---
     function openUploadForAlbum() {
-      const card = currentRelatedCard; // <-- Use currentRelatedCard
+      const card = currentRelatedCard;
       if (!card || !card.isAlbum || !card.albumName) {
         console.error("Cannot add to album, card data missing.", card);
         return;
       }
       
-      // 1. Close the viewer
       closeImageViewer();
-      
-      // 2. Open popup (this resets the form via closePopup -> resetForm)
       openPopup();
       
-      // 3. Pre-fill album name
       document.getElementById('modelAlbumName').value = card.albumName;
       
-      // 4. Pre-fill tags
       const allCardTags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t) : [];
       
-      // Get all tags *except* the album: tag and the album display name tag
       selectedTags = allCardTags.filter(t => 
         !t.startsWith('album:') && 
         t.toLowerCase() !== card.albumName.toLowerCase()
       );
       
-      // Re-update selected tags display (which will now be pre-filled)
       updateSelectedTagsDisplay();
-      // Re-update available tags dropdown
       updateTagDisplays();
     }
-    // --- END: New function to add to album ---
     
-    // --- START: Shuffle Utility Function ---
-    /**
-     * Shuffles an array in place using the Fisher-YATES algorithm.
-     * @param {Array} array The array to shuffle.
-     */
+    // --- Utility Functions ---
+    
     function shuffleArray(array) {
       let currentIndex = array.length,  randomIndex;
-      // While there remain elements to shuffle.
       while (currentIndex != 0) {
-        // Pick a remaining element.
         randomIndex = Math.floor(Math.random() * currentIndex);
         currentIndex--;
-        // And swap it with the current element.
         [array[currentIndex], array[randomIndex]] = [
           array[randomIndex], array[currentIndex]];
       }
       return array;
     }
-    // --- END: Shuffle Utility Function ---
 
-    // START: New Tag Refresh Function
     async function refreshTagData() {
       await loadTagCounts();
-      await loadTags(); // loadTags will now use the new tagCountMap
+      await loadTags();
     }
-    // END: New Tag Refresh Function
+    
+    // --- START: Compare Mode Functions ---
+    
+    /**
+     * Toggles the compare mode on/off
+     */
+    function toggleCompareMode() {
+      isCompareModeActive = !isCompareModeActive;
+      const btn = document.getElementById('compare-mode-btn');
+      
+      if (isCompareModeActive) {
+        btn.classList.add('bg-blue-600');
+        btn.classList.remove('bg-gray-700', 'hover:bg-gray-600');
+        btn.textContent = "Cancel";
+        gallery.classList.add('compare-mode-active');
+      } else {
+        btn.classList.remove('bg-blue-600');
+        btn.classList.add('bg-gray-700', 'hover:bg-gray-600');
+        btn.textContent = "Compare";
+        gallery.classList.remove('compare-mode-active');
+        
+        // Clear selection and uncheck all boxes
+        compareSelection = [];
+        document.querySelectorAll('.compare-checkbox:checked').forEach(cb => {
+          cb.checked = false;
+        });
+        document.querySelectorAll('.masonry-item.compare-selected').forEach(item => {
+          item.classList.remove('compare-selected');
+        });
+      }
+      updateCompareBar();
+    }
+    
+    /**
+     * Adds or removes a card from the comparison selection
+     */
+    function toggleCompareSelection(cardId, isSelected) {
+      const cardElem = document.getElementById(`card-dom-${cardId}`);
+      if (isSelected) {
+        if (!compareSelection.includes(cardId)) {
+          compareSelection.push(cardId);
+          cardElem.classList.add('compare-selected');
+        }
+      } else {
+        compareSelection = compareSelection.filter(id => id !== cardId);
+        cardElem.classList.remove('compare-selected');
+      }
+      updateCompareBar();
+    }
+    
+    /**
+     * Updates the sticky compare bar at the bottom
+     */
+    function updateCompareBar() {
+      const bar = document.getElementById('compare-sticky-bar');
+      const countSpan = document.getElementById('compare-count');
+      const startBtn = document.getElementById('start-compare-btn');
+      
+      const count = compareSelection.length;
+      
+      if (count > 0 && isCompareModeActive) {
+        countSpan.textContent = `${count} model${count === 1 ? '' : 's'} selected`;
+        // Enable button only if 2 or more models are selected
+        if (count >= 2) {
+          startBtn.disabled = false;
+          startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          startBtn.classList.add('hover:bg-blue-700');
+        } else {
+          startBtn.disabled = true;
+          startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          startBtn.classList.remove('hover:bg-blue-700');
+        }
+        bar.classList.add('show');
+      } else {
+        bar.classList.remove('show');
+      }
+    }
+    
+    /**
+     * Opens the compare viewer modal
+     */
+    function openCompareViewer() {
+      const viewer = document.getElementById('compare-viewer');
+      const mainContent = document.getElementById('main-content');
+      const header = document.querySelector('header');
+      const compareTitle = document.getElementById('compare-title');
+      
+      // Get the full card objects from our selection
+      const selectedCardIds = new Set(compareSelection);
+      const selectedCards = displayedCards.filter(card => selectedCardIds.has(card.id));
+      
+      // Sort them in the order they were selected
+      selectedCards.sort((a, b) => compareSelection.indexOf(a.id) - compareSelection.indexOf(b.id));
+
+      const count = selectedCards.length;
+      if (count < 2) return; // Should be impossible, but safety check
+      
+      compareTitle.textContent = `Comparing ${count} Models`;
+      
+      // Hide main content
+      mainContent.style.display = 'none';
+      header.style.display = 'none';
+      viewer.style.display = 'block';
+      
+      if (count === 2) {
+        // Show 2-image slider view
+        renderCompareSliderView(selectedCards);
+      } else {
+        // Show grid view for 3+
+        renderCompareGridView(selectedCards);
+      }
+    }
+    
+    /**
+     * Closes the compare viewer and resets compare mode
+     */
+    function closeCompareViewer() {
+      const viewer = document.getElementById('compare-viewer');
+      const mainContent = document.getElementById('main-content');
+      const header = document.querySelector('header');
+      
+      // Show main content
+      mainContent.style.display = 'block';
+      header.style.display = 'flex'; // headers are flex
+      viewer.style.display = 'none';
+      
+      // Destroy sortable instance if it exists
+      if (sortableInstance) {
+        sortableInstance.destroy();
+        sortableInstance = null;
+      }
+      
+      // Reset compare mode
+      toggleCompareMode();
+    }
+    
+    /**
+     * Renders the grid view for 3+ models
+     */
+    function renderCompareGridView(cards) {
+      document.getElementById('compare-grid-view').style.display = 'block';
+      document.getElementById('compare-slider-view').style.display = 'none';
+      
+      const container = document.getElementById('compare-container');
+      container.innerHTML = ''; // Clear previous
+      
+      cards.forEach(card => {
+        container.appendChild(createCompareCard(card));
+      });
+      
+      // Initialize SortableJS for drag/drop
+      sortableInstance = Sortable.create(container, {
+        animation: 150,
+        ghostClass: 'bg-gray-800'
+      });
+    }
+    
+    /**
+     * Renders the slider view for 2 models
+     */
+    function renderCompareSliderView(cards) {
+      document.getElementById('compare-grid-view').style.display = 'none';
+      document.getElementById('compare-slider-view').style.display = 'block';
+      
+      const [card1, card2] = cards;
+      
+      const imgBefore = document.getElementById('compare-slider-before');
+      const imgAfter = document.getElementById('compare-slider-after');
+      const slider = document.getElementById('compare-slider-range');
+      const handle = document.getElementById('compare-slider-handle');
+
+      // Set images (use high-res)
+      imgBefore.src = card1.main_model_url.split('?')[0] + '?tr=q-90';
+      imgAfter.src = card2.main_model_url.split('?')[0] + '?tr=q-90';
+      
+      // Reset slider
+      slider.value = 50;
+      imgBefore.style.clipPath = 'polygon(0 0, 50% 0, 50% 100%, 0 100%)';
+      handle.style.left = '50%';
+      
+      // START: Add listener logic here
+      // We check for the listener to avoid adding it multiple times
+      if (!slider.dataset.listenerAdded) {
+        slider.addEventListener('input', (e) => {
+          const value = e.target.value;
+          // We use the cached elements from the outer scope
+          imgBefore.style.clipPath = `polygon(0 0, ${value}% 0, ${value}% 100%, 0 100%)`;
+          handle.style.left = `${value}%`;
+        });
+        slider.dataset.listenerAdded = 'true';
+      }
+      // END: Add listener logic
+      
+      // Add zoom listeners to both images
+      // We need wrapper containers for zoom to work with object-fit: contain
+      setupCompareCardZoom(imgBefore.parentElement, imgBefore);
+      setupCompareCardZoom(imgAfter.parentElement, imgAfter);
+    }
+    
+    /**
+     * Creates a single card element for the compare grid view
+     */
+    function createCompareCard(card) {
+      const cardElem = document.createElement('div');
+      // Set width to be ~45% viewport width, clamped
+      // REMOVED flex flex-col
+      cardElem.className = 'compare-card flex-shrink-0 w-full md:w-1/2 lg:w-1/3 xl:w-1/4 h-full bg-gray-900 rounded-lg overflow-hidden';
+      cardElem.dataset.id = card.id;
+
+      // Image container for zoom
+      const imgContainer = document.createElement('div');
+      // CHANGED h-3/5 to h-full
+      imgContainer.className = 'compare-card-image-container w-full h-full bg-black relative';
+      
+      const img = document.createElement('img');
+      img.src = card.main_model_url.split('?')[0] + '?tr=q-80'; // Good quality
+      img.alt = "Model";
+      img.className = "compare-card-image w-full h-full object-contain"; // Use contain
+      imgContainer.appendChild(img);
+      
+      // --- REMOVED infoContainer, ratingEl, and tagsContainer ---
+      /*
+      // Info container
+      const infoContainer = document.createElement('div');
+      infoContainer.className = 'p-4 overflow-y-auto h-2/5';
+      
+      // Rating
+      const rating = card.rating || 0;
+      const ratingEl = document.createElement('div');
+      ratingEl.className = 'flex items-center gap-1 text-lg mb-2';
+      const starSvg = `
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 ${rating > 0 ? 'text-yellow-400' : 'text-gray-500'}" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27z"/>
+        </svg>
+      `;
+      ratingEl.innerHTML = `${starSvg} <span>${rating > 0 ? rating : '-'}</span>`;
+      
+      // Tags
+      const tagsContainer = document.createElement('div');
+      tagsContainer.className = 'flex flex-wrap gap-2';
+      const tags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t) : [];
+      if (tags.length > 0) {
+        tags.forEach(tag => {
+          if (tag.startsWith('album:')) return;
+          const tagElem = document.createElement('span');
+          tagElem.className = "px-3 py-1 bg-gray-700 text-white text-sm rounded-full";
+          tagElem.textContent = tag;
+          tagsContainer.appendChild(tagElem);
+        });
+      } else {
+        tagsContainer.innerHTML = `<span class="text-gray-400 text-sm">No tags.</span>`;
+      }
+      
+      infoContainer.appendChild(ratingEl);
+      infoContainer.appendChild(tagsContainer);
+      */
+      
+      cardElem.appendChild(imgContainer);
+      // cardElem.appendChild(infoContainer); // REMOVED
+      
+      // Add zoom-on-scroll functionality
+      setupCompareCardZoom(imgContainer, img);
+      
+      return cardElem;
+    }
+    
+    /**
+     * Sets up zoom-on-scroll logic for a compare card image
+     */
+    function setupCompareCardZoom(imageContainer, imageElement) {
+      let scale = 1;
+      let isPanLocked = false; // START: Add pan lock state
+      
+      imageContainer.onmouseenter = () => {
+        // START: Set cursor based on current scale AND lock state
+        if (scale > 1) {
+          imageContainer.style.cursor = isPanLocked ? 'grab' : 'zoom-out';
+        } else {
+          imageContainer.style.cursor = 'zoom-in';
+        }
+        // END: Set cursor
+      };
+      
+      imageContainer.onmousemove = (e) => {
+        // START: Only pan if scale > 1 AND pan is not locked
+        if (scale > 1 && !isPanLocked) {
+          // Set origin to mouse position
+          const rect = imageContainer.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          imageElement.style.transformOrigin = `${x}px ${y}px`;
+        }
+        // END: Modified pan logic
+      };
+
+      imageContainer.onwheel = (e) => {
+        e.preventDefault(); // Prevent page scroll
+        
+        const delta = e.deltaY > 0 ? -0.2 : 0.2; // Zoom direction
+        scale = Math.min(Math.max(scale + delta, 1), 5); // Clamp scale between 1x and 5x
+        
+        if (scale === 1) {
+          imageElement.style.transform = `scale(1)`;
+          imageContainer.style.cursor = 'zoom-in';
+          isPanLocked = false; // START: Reset lock if zoomed all the way out
+          imageElement.style.transformOrigin = `center center`; // Reset origin
+          // END: Reset lock
+        } else {
+          imageElement.style.transform = `scale(${scale})`;
+          // START: Update cursor based on lock state
+          imageContainer.style.cursor = isPanLocked ? 'grab' : 'zoom-out';
+          // END: Update cursor
+        }
+      };
+      
+      imageContainer.onmouseleave = () => {
+        imageContainer.style.cursor = 'default';
+      };
+      
+      // START: Add click listener to toggle pan lock
+      imageContainer.onclick = (e) => {
+        // Only allow locking/unlocking if zoomed in
+        if (scale > 1) {
+          e.preventDefault();
+          isPanLocked = !isPanLocked; // Toggle the lock state
+          // Update cursor immediately
+          imageContainer.style.cursor = isPanLocked ? 'grab' : 'zoom-out';
+        }
+      };
+      // END: Add click listener
+    }
+    
+    // --- END: Compare Mode Functions ---
+    
 
   </script>
 </body>
