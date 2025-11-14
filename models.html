@@ -303,7 +303,9 @@
     
       <!-- Related Models Section -->
       <div id="viewer-related-container" class="w-full min-h-[20vh] pt-4 pb-4 px-2 md:px-0">
+        <!-- START: Title changed, will be set by JS -->
         <h4 class="text-lg font-semibold text-gray-100 mb-2">Related Models</h4>
+        <!-- END: Title changed -->
         <div id="viewer-related-grid">
           <!-- Related images injected by JS -->
           <span class="text-gray-500 text-sm col-span-full">Loading...</span>
@@ -323,7 +325,14 @@
     <div class="bg-gray-900 p-6 rounded-lg shadow-xl w-full max-w-lg border border-gray-700">
       <h3 id="popupTitle" class="text-xl font-semibold text-white mb-4">Upload New Model(s)</h3>
       <form id="cardForm">
-        <textarea id="modelUrl" rows="3" class="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Enter one or more model URLs, separated by commas" required></textarea>
+        
+        <!-- START: Added Album Name Field -->
+        <input type="text" id="modelAlbumName" class="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 mb-4" placeholder="Model/Album Name (Optional)">
+        <!-- END: Added Album Name Field -->
+        
+        <!-- START: Changed placeholder -->
+        <textarea id="modelUrl" rows="3" class="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Enter one or more image URLs, separated by commas" required></textarea>
+        <!-- END: Changed placeholder -->
         
         <div class="mt-4">
           <label class="text-sm text-gray-400 mb-2 block">Tags</label>
@@ -482,7 +491,13 @@
     const viewerImageContainer = document.getElementById('viewer-image-container');
     const viewerRelatedGrid = document.getElementById('viewer-related-grid');
     const relatedScrollLoader = document.getElementById('related-scroll-loader');
-    let displayedCards = []; // Stores all cards loaded in the gallery
+    
+    // START: albumsSeenThisSession
+    // This tracks which albums we've already shown a cover for
+    let albumsSeenThisSession = new Set();
+    // END: albumsSeenThisSession
+    
+    let displayedCards = []; // Stores all cards loaded *in the gallery*
     let currentViewerIndex = 0;
     
     // Related items state
@@ -660,6 +675,10 @@
         tagsDropdownMenu.innerHTML = ''; // Clear 'Loading...'
         if (allTags.length > 0) {
           allTags.forEach(tag => {
+            // START: Do not show 'album:' tags in the dropdown
+            if (tag.startsWith('album:')) return;
+            // END: Do not show 'album:' tags
+            
             const tagLink = document.createElement('a');
             tagLink.href = "#";
             tagLink.className = "block px-4 py-2 text-sm text-gray-300 hover:bg-blue-600 hover:text-white";
@@ -698,6 +717,7 @@
         noMoreResults = (currentSortOrder === 'shuffle');
         gallery.innerHTML = ''; // Clear gallery for new search
         displayedCards = []; // Clear displayed cards array
+        albumsSeenThisSession.clear(); // <-- START: Clear album tracker
         noResults.style.display = 'none';
         searchStatus.style.display = 'none';
         loader.style.display = 'flex';
@@ -797,47 +817,74 @@
         loader.style.display = 'none';
         scrollLoader.style.display = 'none';
         
+        // START: Modified logic for album grouping
         if (cards && cards.length > 0) {
           noResults.style.display = 'none';
           
-          // START: Fix for newElements error
-          const newElements = []; // Define the array
-          
-          // Create elements, add them to DOM and newElements array
+          const newElements = []; // For Masonry
+          const newCardsForGallery = []; // For `displayedCards`
+
           cards.forEach(card => {
-            const index = displayedCards.length; // Get index before adding
-            displayedCards.push(card); // Store card
-            const cardElem = createCardElement(card, index); // Create the element
-            gallery.appendChild(cardElem); // Add it to the DOM
-            newElements.push(cardElem); // Add to array for imagesLoaded
-          });
-          // END: Fix for newElements error
-          
-          // --- New Masonry/imagesLoaded logic ---
-          // Wait for images in the *new* elements to load
-          imagesLoaded(newElements, function() {
-            if (isNewQuery) {
-              // For a new search, just reload all items
-              msnry.reloadItems();
+            const albumTag = (card.tags || '').split(',').map(t => t.trim()).find(t => t.startsWith('album:'));
+            
+            if (albumTag) {
+              card.isAlbum = true;
+              card.albumTag = albumTag;
+              if (!albumsSeenThisSession.has(albumTag)) {
+                albumsSeenThisSession.add(albumTag);
+                card.isAlbumCover = true; // Flag it
+                newCardsForGallery.push(card); // Add to gallery
+              }
+              // If album *has* been seen, we just skip this card and don't display it.
             } else {
-              // For infinite scroll, append the new items
-              msnry.addItems(newElements);
+              card.isAlbum = false;
+              newCardsForGallery.push(card); // It's an individual card
             }
-            // Trigger Masonry layout
-            msnry.layout();
           });
-          // --- End new logic ---
           
-          // Only increment page if we are NOT in shuffle mode
-          if (currentSortOrder !== 'shuffle') {
-            currentPage++; // Increment page for next fetch
+          // Now, `newCardsForGallery` has only 1 cover per album, + all individual cards from this page
+          
+          if (newCardsForGallery.length > 0) {
+            newCardsForGallery.forEach(card => {
+              const index = displayedCards.length; // Get index *before* adding
+              displayedCards.push(card); // Store card in the global array
+              
+              const cardElem = createCardElement(card, index); // Create the element
+              gallery.appendChild(cardElem); // Add it to the DOM
+              newElements.push(cardElem); // Add to array for imagesLoaded
+            });
+            
+            // --- New Masonry/imagesLoaded logic ---
+            imagesLoaded(newElements, function() {
+              if (isNewQuery) {
+                // For a new search, just reload all items
+                msnry.reloadItems();
+              } else {
+                // For infinite scroll, append the new items
+                msnry.addItems(newElements);
+              }
+              // Trigger Masonry layout
+              msnry.layout();
+            });
+            // --- End new logic ---
+            
+            // Only increment page if we are NOT in shuffle mode
+            if (currentSortOrder !== 'shuffle') {
+              currentPage++; // Increment page for next fetch
+            }
+          } else if (isNewQuery) {
+             // We fetched cards, but all were filtered out (e.g., already seen albums)
+             noResults.style.display = 'block';
           }
+          
         } else {
           noMoreResults = true;
           if (isNewQuery) {
             noResults.style.display = 'block';
           }
         }
+        // END: Modified logic for album grouping
+        
       } catch (error) {
         console.error("Error loading cards:", error);
         loader.style.display = 'none';
@@ -856,6 +903,15 @@
       cardElem.className = 'masonry-item bg-gray-900 rounded-lg overflow-hidden relative group cursor-pointer';
       // Add an ID to the element for easy updating later
       cardElem.id = `card-dom-${card.id}`;
+      
+      // START: Add Album Badge if it's a cover
+      if (card.isAlbumCover) {
+        const albumBadge = document.createElement('div');
+        albumBadge.className = "absolute top-2 left-2 z-10 px-2 py-0.5 bg-blue-600 text-white text-xs font-bold rounded-full opacity-0 group-hover:opacity-100 transition-opacity";
+        albumBadge.textContent = 'Album';
+        cardElem.appendChild(albumBadge);
+      }
+      // END: Add Album Badge
       
       const img = document.createElement('img');
       img.src = card.main_model_url.includes('ik.imagekit.io')
@@ -966,6 +1022,11 @@
     function handleRelatedScroll() {
       const { scrollTop, scrollHeight, clientHeight } = imageViewer;
       if (scrollTop + clientHeight >= scrollHeight - 300) {
+        // START: Only scroll if it's *not* an album (albums don't paginate)
+        const card = displayedCards[currentViewerIndex];
+        if (card && card.isAlbum) return;
+        // END: Only scroll
+        
         if (!relatedIsLoadingMore && !relatedNoMoreResults) {
           loadRelatedImages(currentRelatedCard, false); // false = not a new query
         }
@@ -1137,6 +1198,17 @@
       const tags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t) : [];
       if (tags.length > 0) {
         tags.forEach(tag => {
+          // START: Don't show album tags as clickable buttons
+          if (tag.startsWith('album:')) {
+            const tagElem = document.createElement('span');
+            tagElem.className = "px-3 py-1 bg-gray-800 text-gray-400 text-sm rounded-full";
+            // Clean up the name for display
+            tagElem.textContent = tag.substring(6).replace(/-/g, ' ');
+            viewerTags.appendChild(tagElem);
+            return; // Skip to next tag
+          }
+          // END: Don't show album tags
+          
           const tagElem = document.createElement('button');
           tagElem.className = "px-3 py-1 bg-gray-700 text-white text-sm rounded-full hover:bg-blue-600 transition-colors";
           tagElem.textContent = tag;
@@ -1147,13 +1219,71 @@
         viewerTags.innerHTML = `<span class="text-gray-400 text-sm">No tags for this model.</span>`;
       }
       
-      // Load related images
-      loadRelatedImages(card, true); // true = new query
+      // START: Modified to load album or related
+      if (card.isAlbum) {
+        // This is an album card, load the album images instead of "related"
+        loadAlbumImages(card.albumTag, card.id);
+      } else {
+        // This is an individual card, load related by tags
+        loadRelatedImages(card, true); // true = new query
+      }
+      // END: Modified
     }
+    
+    // START: New function to load album images
+    async function loadAlbumImages(albumTag, currentCardId) {
+      if (!albumTag) return;
+      
+      // Store card to prevent related scroll
+      currentRelatedCard = { isAlbum: true }; 
+      
+      relatedIsLoadingMore = true; // Prevent other loads
+      relatedCurrentPage = 0; // Reset
+      relatedNoMoreResults = true; // No pagination for albums for now
+      
+      const relatedContainer = document.getElementById('viewer-related-container');
+      relatedContainer.querySelector('h4').textContent = 'Images in this Album'; // Change title
+      viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">Loading album...</span>';
+      relatedScrollLoader.style.display = 'none'; // Hide scroll loader
+
+      try {
+        // Fetch all other images in this album
+        const { data: albumCards, error } = await supabase
+          .from('models')
+          .select('*')
+          .ilike('tags', `%${albumTag}%`)  // Find all with the album tag
+          .neq('id', currentCardId) // Exclude the image we're currently viewing
+          .order('created_at', { ascending: true }) // Show in upload order
+          .limit(50); // Limit to 50 for now
+          
+        if (error) throw error;
+        
+        viewerRelatedGrid.innerHTML = ''; // Clear loading
+        
+        if (albumCards.length === 0) {
+          viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">No other images found in this album.</span>';
+        } else {
+          // Re-use the existing function to add cards to the grid
+          albumCards.forEach(addRelatedCardToGrid); 
+        }
+        
+      } catch (error) {
+        console.error("Error loading album images:", error);
+        viewerRelatedGrid.innerHTML = '<span class="text-red-400 text-sm col-span-full">Error loading album.</span>';
+      }
+      
+      relatedIsLoadingMore = false;
+    }
+    // END: New function
     
     // Load related images into the bottom strip
     async function loadRelatedImages(card, isNewQuery = true) {
       if (!card) return;
+      
+      // START: Reset title
+      const relatedContainer = document.getElementById('viewer-related-container');
+      relatedContainer.querySelector('h4').textContent = 'Related Models';
+      // END: Reset title
       
       // Prevent loading if already loading
       if (relatedIsLoadingMore) return;
@@ -1171,7 +1301,7 @@
       
       relatedIsLoadingMore = true;
 
-      const tags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t) : [];
+      const tags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t && !t.startsWith('album:')) : []; // <-- Don't use album tags for related
       if (tags.length === 0) {
         viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">No tags to find related models.</span>';
         relatedIsLoadingMore = false;
@@ -1244,12 +1374,21 @@
       cardElem.appendChild(img);
       
       cardElem.onclick = () => {
-        // Find the index of this related card in the main `displayedCards` array
+        // START: Find index in *gallery* list first
         const relatedIndex = displayedCards.findIndex(card => card.id === relatedCard.id);
+        
+        // Find album tag
+        const albumTag = (relatedCard.tags || '').split(',').map(t => t.trim()).find(t => t.startsWith('album:'));
+        if (albumTag) {
+          relatedCard.isAlbum = true;
+          relatedCard.albumTag = albumTag;
+        }
+        // END: Find album tag
+        
         if (relatedIndex !== -1) {
-          // If it's already in our main gallery list, just jump to it
+          // If it's in our main gallery list, just jump to it
           currentViewerIndex = relatedIndex;
-          displayCardInViewer(relatedCard);
+          displayCardInViewer(displayedCards[relatedIndex]); // Use the full object
         } else {
           // If it's not in the main list, just display its data
           // (Next/Prev will still be tied to the main gallery)
@@ -1476,7 +1615,8 @@
       selectedTags = [];
       currentlyEditingCardId = null;
       document.getElementById('popupTitle').textContent = 'Add New Model(s)';
-      document.getElementById('modelUrl').placeholder = "Enter one or more model URLs, separated by commas";
+      document.getElementById('modelUrl').placeholder = "Enter one or more image URLs, separated by commas";
+      document.getElementById('modelAlbumName').value = ''; // <-- START: Reset album name
       document.getElementById('modelNsfw').checked = false;
       updateSelectedTagsDisplay();
       updateTagDisplays();
@@ -1487,10 +1627,35 @@
       const errorMessage = document.getElementById('errorMessage');
       try {
         const modelUrlsText = document.getElementById('modelUrl').value.trim();
-        if (!modelUrlsText) throw new Error("Model URL(s) are required.");
+        if (!modelUrlsText) throw new Error("Image URL(s) are required.");
 
         const urls = modelUrlsText.split(',').map(url => url.trim()).filter(url => url.length > 0);
-        if (urls.length === 0) throw new Error("Please provide at least one valid model URL.");
+        if (urls.length === 0) throw new Error("Please provide at least one valid image URL.");
+        
+        // START: Album logic
+        const albumName = document.getElementById('modelAlbumName').value.trim();
+        let albumTag = null;
+        if (albumName) {
+          // Create a sanitized tag
+          albumTag = 'album:' + albumName.toLowerCase()
+            .replace(/\s+/g, '-') // Replace spaces with dashes
+            .replace(/[^a-z0-9-]/g, ''); // Remove special chars
+          
+          if (!selectedTags.includes(albumTag)) {
+            selectedTags.push(albumTag);
+          }
+          
+          // Also add the album name as a regular tag
+          if (!allTags.includes(albumName)) {
+             await supabase.from('tags').insert({ name: albumName });
+             // We don't need to await refreshTagData() here, just add it for this session
+             allTags.push(albumName);
+          }
+          if (!selectedTags.includes(albumName)) {
+            selectedTags.push(albumName);
+          }
+        }
+        // END: Album logic
         
         const isNsfw = document.getElementById('modelNsfw').checked;
         const tagsString = selectedTags.join(', ');
@@ -1525,7 +1690,9 @@
         currentlyEditingCardId = cardId;
         const modelUrlInput = document.getElementById('modelUrl');
         modelUrlInput.value = card.main_model_url;
-        modelUrlInput.placeholder = "Model URL";
+        // START: Hide album name on edit, as edit is per-image
+        document.getElementById('modelAlbumName').style.display = 'none';
+        // END: Hide
         
         selectedTags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
         document.getElementById('modelNsfw').checked = card.nsfw;
@@ -1604,7 +1771,8 @@
         // 1. Update the main `displayedCards` array
         const index = displayedCards.findIndex(c => c.id == cardId);
         if (index !== -1) {
-          displayedCards[index] = updatedCard;
+          // Manually update properties, preserving album flags
+          displayedCards[index].favorited = updatedCard.favorited;
         }
         
         // 2. Update the button color
@@ -1625,11 +1793,15 @@
             msnry.remove(cardElem);
             msnry.layout();
           }
+          // Also remove from displayedCards
+          if (index !== -1) {
+            displayedCards.splice(index, 1);
+          }
         }
         
         // 4. Update the viewer IF it's open and showing this card
         if (imageViewer.style.display === 'flex' && currentViewerIndex === index) {
-          displayCardInViewer(updatedCard);
+          displayCardInViewer(displayedCards[index]);
         }
         
         // --- End Local Data & UI Update ---
@@ -1666,6 +1838,10 @@
       const availableTagsSelect = document.getElementById('availableTags');
       availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
       allTags.forEach(tag => {
+        // START: Don't show album tags in dropdown
+        if (tag.startsWith('album:')) return;
+        // END
+        
         if (!selectedTags.includes(tag)) {
           const option = document.createElement('option');
           option.value = tag;
@@ -1690,13 +1866,22 @@
       const container = document.getElementById('selectedTagsContainer');
       container.innerHTML = '';
       selectedTags.forEach(tag => {
+        // START: Don't allow removing album tags
+        const isAlbumTag = tag.startsWith('album:');
+        
         const tagElem = document.createElement('span');
-        tagElem.className = 'px-3 py-1 bg-blue-600 text-white text-sm rounded-full flex items-center gap-2';
-        tagElem.innerHTML = `
-          ${tag}
-          <button type="button" class="text-blue-200 hover:text-white" onclick="removeSelectedTag('${tag}')">&times;</button>
-        `;
+        tagElem.className = `px-3 py-1 ${isAlbumTag ? 'bg-gray-700 text-gray-400' : 'bg-blue-600 text-white'} text-sm rounded-full flex items-center gap-2`;
+        
+        let removeButton = '';
+        if (!isAlbumTag) {
+          removeButton = `<button type="button" class="text-blue-200 hover:text-white" onclick="removeSelectedTag('${tag}')">&times;</button>`;
+        }
+        
+        const displayName = isAlbumTag ? `Album: ${tag.substring(6).replace(/-/g, ' ')}` : tag;
+        
+        tagElem.innerHTML = `${displayName} ${removeButton}`;
         container.appendChild(tagElem);
+        // END
       });
     }
 
@@ -1741,6 +1926,11 @@
         
         tags.forEach(tagObj => {
           const tag = tagObj.name; // Get the name string
+          
+          // START: Don't show album tags in management
+          if (tag.startsWith('album:')) return;
+          // END
+          
           const tagRow = document.createElement('div');
           tagRow.className = 'flex items-center gap-2 p-2 rounded hover:bg-gray-700';
           
@@ -1788,6 +1978,14 @@
         errorMsg.style.display = 'block';
         return;
       }
+      
+      // START: Prevent adding album tags manually
+      if (newTagName.startsWith('album:')) {
+        errorMsg.textContent = 'Tags cannot start with "album:".';
+        errorMsg.style.display = 'block';
+        return;
+      }
+      // END
       
       // We must check against allTags, which is kept in sync by loadTags()
       if (allTags.map(t => t.toLowerCase()).includes(newTagName.toLowerCase())) {
@@ -2018,7 +2216,21 @@
           .single(); // .select().single() returns the updated row
         
         if (error) throw error;
-
+        
+        // START: Update card in local array
+        const index = displayedCards.findIndex(c => c.id == cardId);
+        if (index !== -1) {
+          // Preserve album flags, update the rest
+          const oldCard = displayedCards[index];
+          displayedCards[index] = {
+            ...updatedCard,
+            isAlbum: oldCard.isAlbum,
+            albumTag: oldCard.albumTag,
+            isAlbumCover: oldCard.isAlbumCover
+          };
+        }
+        // END: Update local card
+        
         // REPLACED local update with a full refresh for consistency
         closeQuickEditModal();
         await refreshTagData();
@@ -2037,6 +2249,7 @@
       const availableTagsSelect = document.getElementById('quickEditAvailableTags');
       availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
       allTags.forEach(tag => {
+        if (tag.startsWith('album:')) return; // Don't show
         if (!quickEditSelectedTags.includes(tag)) {
           const option = document.createElement('option');
           option.value = tag;
@@ -2061,13 +2274,22 @@
       const container = document.getElementById('quickEditSelectedTagsContainer');
       container.innerHTML = '';
       quickEditSelectedTags.forEach(tag => {
+        // START: Don't allow removing album tags
+        const isAlbumTag = tag.startsWith('album:');
+        
         const tagElem = document.createElement('span');
-        tagElem.className = 'px-3 py-1 bg-blue-600 text-white text-sm rounded-full flex items-center gap-2';
-        tagElem.innerHTML = `
-          ${tag}
-          <button type="button" class="text-blue-200 hover:text-white" onclick="removeQuickEditSelectedTag('${tag}')">&times;</button>
-        `;
+        tagElem.className = `px-3 py-1 ${isAlbumTag ? 'bg-gray-700 text-gray-400' : 'bg-blue-600 text-white'} text-sm rounded-full flex items-center gap-2`;
+        
+        let removeButton = '';
+        if (!isAlbumTag) {
+          removeButton = `<button type="button" class="text-blue-200 hover:text-white" onclick="removeQuickEditSelectedTag('${tag}')">&times;</button>`;
+        }
+        
+        const displayName = isAlbumTag ? `Album: ${tag.substring(6).replace(/-/g, ' ')}` : tag;
+        
+        tagElem.innerHTML = `${displayName} ${removeButton}`;
         container.appendChild(tagElem);
+        // END
       });
     }
 
