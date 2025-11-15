@@ -265,7 +265,10 @@
             </main>
         </div>
         
-        <div id="calendar-view" class="hidden"><main class="container mx-auto px-4 py-8"><div class="flex flex-col lg:flex-row justify-center gap-8"><div class="w-full lg:max-w-md bg-white dark:bg-slate-900/50 p-4 rounded-lg"><div class="flex items-center justify-between mb-4"><button id="cal1-prev-btn" class="p-2 rounded-full"><span class="material-symbols-outlined">chevron_left</span></button><h2 id="cal1-month-year" class="text-lg font-semibold"></h2><button class="opacity-0 p-2"><span class="material-symbols-outlined">chevron_right</span></button></div><div class="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-500 py-2"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div><div id="cal1-body" class="grid grid-cols-7 gap-1 text-center"></div></div><div class="w-full lg:max-w-md bg-white dark:bg-slate-900/50 p-4 rounded-lg"><div class="flex items-center justify-between mb-4"><button class="opacity-0 p-2"><span class="material-symbols-outlined">chevron_left</span></button><h2 id="cal2-month-year" class="text-lg font-semibold"></h2><button id="cal2-next-btn" class="p-2 rounded-full"><span class="material-symbols-outlined">chevron_right</span></button></div><div class="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-500 py-2"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div><div id="cal2-body" class_models="grid grid-cols-7 gap-1 text-center"></div></div></div></main></div>
+        <div id="calendar-view" class="hidden"><main class="container mx-auto px-4 py-8"><div class="flex flex-col lg:flex-row justify-center gap-8"><div class="w-full lg:max-w-md bg-white dark:bg-slate-900/50 p-4 rounded-lg"><div class="flex items-center justify-between mb-4"><button id="cal1-prev-btn" class="p-2 rounded-full"><span class="material-symbols-outlined">chevron_left</span></button><h2 id="cal1-month-year" class="text-lg font-semibold"></h2><button class="opacity-0 p-2"><span class="material-symbols-outlined">chevron_right</span></button></div><div class="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-500 py-2"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div><div id="cal1-body" class="grid grid-cols-7 gap-1 text-center"></div></div><div class="w-full lg:max-w-md bg-white dark:bg-slate-900/50 p-4 rounded-lg"><div class="flex items-center justify-between mb-4"><button class="opacity-0 p-2"><span class="material-symbols-outlined">chevron_left</span></button><h2 id="cal2-month-year" class="text-lg font-semibold"></h2><button id="cal2-next-btn" class="p-2 rounded-full"><span class="material-symbols-outlined">chevron_right</span></button></div><div class="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-500 py-2"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div>
+        
+        <!-- FIX: Changed class_models to class -->
+        <div id="cal2-body" class="grid grid-cols-7 gap-1 text-center"></div></div></div></main></div>
         
         <div id="todo-view" class="hidden"><main class="container mx-auto px-4 py-8"><div class="max-w-4xl mx-auto"><div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-bold">My To-Do List</h2><button id="new-task-btn" class="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg font-semibold"><span class="material-symbols-outlined">add_circle</span>New Task</button></div><div class="bg-white/50 dark:bg-white/5 rounded-lg p-6 mb-8"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">Today's Progress</h3><span id="progress-text" class="text-sm font-medium"></span></div><div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5"><div id="progress-bar" class="bg-primary h-2.5 rounded-full" style="width:0%"></div></div><div class="grid grid-cols-3 gap-4 text-center mt-4" id="stats-container"></div></div>
             <div class="space-y-6">
@@ -350,6 +353,9 @@
         let editingEventId = null;
         let editingTodoId = null;
         
+        // === NEW: Time Indicator State ===
+        let timeIndicatorInterval = null;
+        
         // === NEW TEMPLATE EDITING STATE ===
         let editingTemplateId = null;
         let editingTemplateEventId = null;
@@ -415,6 +421,33 @@
             }
         }
         
+        // NEW HELPER: Creates the HTML for the current time indicator
+        function createTimeIndicatorHTML(now) {
+            const timeString = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            return `
+            <!-- Current Time Indicator -->
+            <div class="flex gap-4 relative -my-4 z-20" id="time-indicator">
+                <!-- 1. Time -->
+                <div class="w-16 text-right text-sm text-red-500 dark:text-red-400 font-bold pt-1 flex-shrink-0">
+                    ${timeString}
+                </div>
+                
+                <!-- 2. Timeline Connector -->
+                <div class="flex flex-col items-center flex-shrink-0">
+                    <!-- Icon (a simple dot) -->
+                    <div class="z-10 rounded-full size-8 flex-shrink-0 flex items-center justify-center">
+                        <div class="size-3 rounded-full bg-red-500 ring-4 ring-background-light dark:ring-background-dark"></div>
+                    </div>
+                </div>
+                
+                <!-- 3. Event Card (just a line) -->
+                <div class="flex-1 pb-8 flex items-center">
+                    <div class="w-full h-0.5 bg-red-500/50"></div>
+                </div>
+            </div>
+            `;
+        }
+        
         // NEW HELPER: Calculates duration for the event card
         function calculateDuration(startTime, endTime) {
             try {
@@ -441,6 +474,12 @@
 
         // === VIEW MANAGEMENT ===
         function showView(viewId) {
+            // NEW: Clear interval when leaving schedule view
+            if (timeIndicatorInterval) {
+                clearInterval(timeIndicatorInterval);
+                timeIndicatorInterval = null;
+            }
+
             document.querySelectorAll('#views-container > div').forEach(v => v.classList.add('hidden'));
             document.querySelector(viewId).classList.remove('hidden');
             updateActiveLink(viewId);
@@ -451,7 +490,7 @@
             if (viewId !== '#new-project-task-view') editingTaskId = null;
             if (viewId !== '#template-form-view') editingTemplateEventId = null;
             
-            if (viewId === '#schedule-view') displayEvents(selectedDate);
+            if (viewId === '#schedule-view') displayEvents(selectedDate); // This will now handle starting the interval
             if (viewId === '#calendar-view') initializeCalendarView();
             if (viewId === '#todo-view') displayTodos();
             if (viewId === '#settings-view') initializeSettings();
@@ -502,6 +541,7 @@
         }
         
         // MODIFIED: displayEvents now renders the new timeline
+        // FIX: Removed corrupted comments from previous diff
         async function displayEvents(date) {
             // Target the new container
             const eventsContainer = document.getElementById('timeline-container'); 
@@ -514,6 +554,7 @@
             scheduleTitle.textContent = isToday ? "Today" : date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
             currentDateEl.textContent = date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
             
+            // Show a loading/offline state immediately
             eventsContainer.innerHTML = `<p class="text-center text-slate-500 pt-4">Loading events...</p>`;
 
             // MODIFICATION: Added .order('start_time') to sort events chronologically
@@ -528,8 +569,15 @@
                 eventsContainer.innerHTML = `<p class="text-center text-red-500 pt-4">Could not load events. Check your connection.</p>`;
                 return;
             }
+
             if (!events || events.length === 0) { 
                 eventsContainer.innerHTML = `<p class="text-center text-slate-500 pt-4">No events for this day.</p>`; 
+                
+                // NEW: Still show time indicator if it's today
+                if (isToday) {
+                    updateTimeIndicatorPosition(); // This will add it
+                    timeIndicatorInterval = setInterval(updateTimeIndicatorPosition, 60000);
+                }
                 return;
             }
             
@@ -541,7 +589,7 @@
                 // The card itself is clickable to edit, using data-event-id
                 return `
                 <!-- Timeline Item -->
-                <div class="flex gap-4">
+                <div class="flex gap-4" data-start-time="${event.start_time}">
                     <!-- 1. Time -->
                     <div class="w-16 text-right text-sm text-slate-500 dark:text-slate-400 pt-1 flex-shrink-0">
                         ${formatTime(event.start_time)}
@@ -587,6 +635,18 @@
                     }
                 });
             });
+
+            // NEW: Clear any existing interval and start a new one
+            if (timeIndicatorInterval) clearInterval(timeIndicatorInterval);
+            
+            if (isToday) {
+                updateTimeIndicatorPosition(); // Run once immediately
+                timeIndicatorInterval = setInterval(updateTimeIndicatorPosition, 60000); // Update every minute
+            } else {
+                // Ensure no indicator is shown if it's not today
+                const oldIndicator = document.getElementById('time-indicator');
+                if (oldIndicator) oldIndicator.remove();
+            }
         }
         
         function editEvent(event) {
@@ -677,6 +737,53 @@
             }
         }
         
+        // NEW: Function to update the time indicator's position
+        function updateTimeIndicatorPosition() {
+            // Check if we are still on the schedule view and if it's today
+            const isToday = (toYMD(new Date()) === toYMD(selectedDate));
+            const scheduleView = document.getElementById('schedule-view');
+            
+            // If it's not today or not on the schedule view, remove indicator and stop timer
+            if (!isToday || (scheduleView && scheduleView.classList.contains('hidden'))) {
+                if (timeIndicatorInterval) clearInterval(timeIndicatorInterval);
+                timeIndicatorInterval = null;
+                const oldIndicator = document.getElementById('time-indicator');
+                if (oldIndicator) oldIndicator.remove();
+                return;
+            }
+
+            const now = new Date();
+            const currentTimeStr = now.toTimeString().split(' ')[0].substring(0, 8); // "HH:MM:SS"
+            const eventsContainer = document.getElementById('timeline-container');
+            if (!eventsContainer) return;
+
+            // Find all event elements
+            const eventElements = eventsContainer.querySelectorAll('[data-start-time]');
+            let indicatorHTML = createTimeIndicatorHTML(now);
+
+            // Remove old indicator if it exists
+            const oldIndicator = document.getElementById('time-indicator');
+            if (oldIndicator) oldIndicator.remove();
+
+            let inserted = false;
+            for (let i = 0; i < eventElements.length; i++) {
+                const eventEl = eventElements[i];
+                const eventStartTime = eventEl.dataset.startTime;
+
+                if (eventStartTime > currentTimeStr) {
+                    // Insert before this element
+                    eventEl.insertAdjacentHTML('beforebegin', indicatorHTML);
+                    inserted = true;
+                    break;
+                }
+            }
+
+            // If it was never inserted, append it to the end
+            if (!inserted) {
+                eventsContainer.insertAdjacentHTML('beforeend', indicatorHTML);
+            }
+        }
+
         // === CALENDAR VIEW LOGIC ===
         async function initializeCalendarView() {
             const date1 = new Date(calendarDisplayDate), date2 = new Date(date1);
