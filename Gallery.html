@@ -221,6 +221,51 @@
             display: none !important;
         }
     }
+    
+    /* File input custom styling */
+    .file-drop-area {
+      position: relative;
+      display: flex;
+      align-items: center;
+      width: 100%;
+      max-width: 100%;
+      padding: 25px;
+      border: 2px dashed #4a4e69;
+      border-radius: 8px;
+      transition: 0.2s;
+      background-color: #1a1b26;
+    }
+    .file-drop-area.is-active {
+      background-color: #2a2d3d;
+      border-color: #2563eb;
+    }
+    .fake-btn {
+      flex-shrink: 0;
+      background-color: #3c3f58;
+      border: 1px solid #4a4e69;
+      border-radius: 4px;
+      padding: 8px 15px;
+      margin-right: 10px;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    .file-msg {
+      font-size: small;
+      font-weight: 300;
+      line-height: 1.4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .file-input {
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 100%;
+      width: 100%;
+      cursor: pointer;
+      opacity: 0;
+    }
   </style>
 </head>
 <body class="antialiased">
@@ -421,7 +466,7 @@
           <form id="relatedImagesForm">
               <div class="mb-4">
                
-                  <label for="relatedImageUrls" class="block text-sm font-medium text-gray-300 mb-1">Image URLs (one per line)</label>
+                  <label for="relatedImageUrls" class="block text-sm font-medium text-gray-300 mb-1">Image URLs (one per line, comma or space separated)</label>
                   <textarea id="relatedImageUrls" rows="5" class="w-full bg-[#1a1b26] text-white border border-gray-600 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition" placeholder="https://example.com/image1.jpg\nhttps://example.com/image2.png"></textarea>
               </div>
               <div class="mb-4">
@@ -934,7 +979,7 @@
                         <button class="edit-btn p-1.5 bg-blue-600 rounded-full text-white hover:bg-blue-700" data-id="${card.id}">
                                <svg class="w-4 h-4 pointer-events-none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z"></path><path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd"></path></svg>
                         </button>
-                         <button class="delete-btn p-1.5 bg-red-600 rounded-full text-white hover:bg-red-700 ml-1" data-id="${card.id}">
+                         <button class="delete-btn p-1.5 bg-red-600 rounded-full text-white hover:bg-red-600 ml-1" data-id="${card.id}">
                             <svg class="w-4 h-4 pointer-events-none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
                         </button>
                     </div>
@@ -1233,7 +1278,7 @@
                 const cursorClass = isManageRelatedMode ? 'cursor-grab' : 'cursor-pointer';
                 imgContainer.className = `relative group aspect-square bg-gray-800 rounded-md overflow-hidden ${cursorClass}`;
                 imgContainer.innerHTML = `
-                    <img src="${img.url}" alt="Related Image" class="w-full h-full object-cover group-hover:opacity-60 transition">
+                    <img src="${img.url}" alt="Related Image" class="w-full h-full object-cover group-hover:opacity-60 transition" onerror="this.onerror=null;this.src='https://placehold.co/400x400/1a1b26/ffffff?text=Image+Not+Found';">
                      ${isManageRelatedMode ? `
                     <div class="absolute top-1 right-1 flex flex-col gap-1">
                         <button class="edit-related-btn p-1 bg-blue-600/80 rounded-full text-white hover:bg-blue-600" data-url="${img.url}">
@@ -1309,27 +1354,42 @@
         relatedImagePopup.style.display = 'none';
         relatedImagesForm.reset();
         selectedRelatedTags = [];
+        document.getElementById('relatedErrorMessage').textContent = '';
     }
     async function saveRelatedImages(e) {
         e.preventDefault();
         const urlsText = document.getElementById('relatedImageUrls').value.trim();
-        if (!urlsText) return;
-        const urls = urlsText.split('\n').map(url => url.trim()).filter(url => url);
+        if (!urlsText) {
+             document.getElementById('relatedErrorMessage').textContent = 'Please enter at least one URL.';
+             return;
+        }
         
-        const currentRelatedImages = currentCardForDetails.related_images || [];
+        // Fix: Split by newline, comma, or space to handle multiple formats
+        const urls = urlsText.split(/[\n, ]+/).map(url => url.trim()).filter(url => url);
+        
+        // Sync Fix: Use related_images_with_tags as the source of truth for duplicates
         const currentRelatedWithTags = currentCardForDetails.related_images_with_tags || [];
+        const existingUrls = new Set(currentRelatedWithTags.map(img => img.url));
         
-        const newUrls = urls.filter(url => !currentRelatedImages.includes(url));
-        if (newUrls.length === 0) return closeRelatedImagePopup();
+        const newUrls = urls.filter(url => !existingUrls.has(url));
+        
+        if (newUrls.length === 0) {
+             document.getElementById('relatedErrorMessage').textContent = 'All entered images are already added.';
+             return;
+        }
+        
         const tagsString = selectedRelatedTags.join(', ');
         
-        const updatedRelatedImages = [...currentRelatedImages, ...newUrls];
+        // Sync Fix: Rebuild both arrays to ensure they match perfectly
         const updatedRelatedWithTags = [...currentRelatedWithTags, ...newUrls.map(url => ({ url, tags: tagsString }))];
+        const updatedRelatedImages = updatedRelatedWithTags.map(img => img.url);
+
         const { data, error } = await supabase
             .from('cards')
             .update({ related_images: updatedRelatedImages, related_images_with_tags: updatedRelatedWithTags })
             .eq('id', currentCardForDetails.id)
             .select().single();
+            
         if (error) {
             document.getElementById('relatedErrorMessage').textContent = 'Error saving images.';
             return console.error('Error saving related images:', error);
@@ -1357,8 +1417,12 @@
 
     async function deleteRelatedImage(urlToDelete) {
         if (!await customConfirm('Are you sure you want to delete this related image?')) return;
-        const updatedRelatedImages = currentCardForDetails.related_images.filter(url => url !== urlToDelete);
-        const updatedRelatedWithTags = currentCardForDetails.related_images_with_tags.filter(img => img.url !== urlToDelete);
+        
+        // Sync Fix: Filter both arrays correctly
+        const currentRelatedWithTags = currentCardForDetails.related_images_with_tags || [];
+        const updatedRelatedWithTags = currentRelatedWithTags.filter(img => img.url !== urlToDelete);
+        const updatedRelatedImages = updatedRelatedWithTags.map(img => img.url);
+
         const { data, error } = await supabase
             .from('cards')
             .update({ related_images: updatedRelatedImages, related_images_with_tags: updatedRelatedWithTags })
@@ -2046,4 +2110,3 @@
   </script>
 </body>
 </html>
-
