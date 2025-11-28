@@ -38,6 +38,15 @@
                         "background-dark": "#101922",
                     },
                     fontFamily: { "display": ["Inter"] },
+                    animation: {
+                        "fade-in": "fadeIn 0.3s ease-out forwards",
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            "0%": { opacity: "0", transform: "translateY(10px)" },
+                            "100%": { opacity: "1", transform: "translateY(0)" },
+                        },
+                    },
                 },
             },
         }
@@ -132,13 +141,7 @@
     </div>
     
     <div id="views-container">
-        <!-- 
-          SCHEDULE VIEW:
-          This view has been modified to support the new timeline design.
-          The old <div class="relative"> containing #hour-grid and #events-container
-          has been replaced with a single <div id="timeline-container">.
-          The displayEvents() function will now populate this new container.
-        -->
+        <!-- SCHEDULE VIEW -->
         <div id="schedule-view" class="hidden">
             <main class="flex-1 px-4 sm:px-10 py-8">
                 <div class="mx-auto max-w-5xl">
@@ -154,20 +157,27 @@
                         </div>
                     </div>
                     
-                    <!-- MODIFICATION: Replaced old grid with a new timeline container -->
                     <div id="timeline-container" class="mt-8">
                         <!-- Timeline events will be injected here by displayEvents() -->
                     </div>
                     
                 </div>
             </main>
-            <div class="fixed bottom-24 right-4 md:bottom-10 md:right-10">
-                <button id="add-event-btn" class="flex items-center justify-center rounded-full size-14 bg-primary text-white shadow-lg">
+            <!-- UPDATED: FAB Container with Dual Buttons -->
+            <div class="fixed bottom-24 right-4 md:bottom-10 md:right-10 flex flex-col gap-4 items-end z-40">
+                <div class="group flex items-center gap-2">
+                    <span class="bg-black/75 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap hidden sm:block">Plan Entire Day</span>
+                    <button id="bulk-mode-btn" class="flex items-center justify-center rounded-full size-12 bg-indigo-500 text-white shadow-lg hover:scale-110 hover:bg-indigo-600 transition-all">
+                        <span class="material-symbols-outlined">playlist_add</span>
+                    </button>
+                </div>
+                <button id="add-event-btn" class="flex items-center justify-center rounded-full size-14 bg-primary text-white shadow-lg hover:scale-110 transition-transform">
                     <span class="material-symbols-outlined">add</span>
                 </button>
             </div>
         </div>
         
+        <!-- SINGLE EVENT FORM -->
         <div id="form-view" class="hidden"><main class="w-full max-w-2xl px-4 py-8 mx-auto"><div class="space-y-8"><div><h2 class="text-3xl font-bold">New Event</h2><p class="mt-2 text-slate-500">Create a new event for your schedule.</p></div><form id="event-form" class="space-y-6">
             <div><label class="block text-sm font-medium" for="title">Title</label><input required class="mt-1 block w-full rounded-lg bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600" id="title" name="title" type="text" /></div>
             <div>
@@ -191,6 +201,43 @@
             </div>
         </form></div></main></div>
 
+        <!-- NEW: BULK SCHEDULE VIEW (Day Planner) -->
+        <div id="bulk-schedule-view" class="hidden">
+            <main class="w-full max-w-4xl px-4 py-8 mx-auto">
+                <div class="space-y-6">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <h2 class="text-3xl font-bold">Day Planner</h2>
+                            <p class="mt-2 text-slate-500">Rapidly schedule your entire day.</p>
+                        </div>
+                        <div class="flex items-center gap-2 bg-white dark:bg-slate-800 px-4 py-2 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700">
+                            <span class="material-symbols-outlined text-primary">calendar_today</span>
+                            <input id="bulk-date" type="text" class="bg-transparent font-bold border-none focus:ring-0 p-0 text-slate-700 dark:text-slate-200 w-32 cursor-pointer" readonly>
+                        </div>
+                    </div>
+
+                    <form id="bulk-form" class="space-y-6">
+                        <div id="bulk-rows-container" class="space-y-4">
+                            <!-- Rows injected via JS -->
+                        </div>
+                        
+                        <div class="flex justify-center pt-4 pb-8 border-b dark:border-slate-800">
+                            <button type="button" id="add-bulk-row-btn" class="flex items-center gap-2 text-primary font-medium hover:bg-primary/10 px-6 py-3 rounded-full transition-colors border border-dashed border-primary/50">
+                                <span class="material-symbols-outlined">add</span> Add Another Event
+                            </button>
+                        </div>
+
+                        <div class="flex justify-end items-center gap-4">
+                            <button id="cancel-bulk-btn" class="px-6 py-3 rounded-lg border bg-white dark:bg-slate-800 font-medium hover:bg-slate-50 dark:hover:bg-slate-700" type="button">Cancel</button>
+                            <button class="px-8 py-3 rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 shadow-md font-bold flex items-center gap-2" type="submit">
+                                <span class="material-symbols-outlined">save</span> Save All Events
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </main>
+        </div>
+
         <div id="template-editor-view" class="hidden">
             <main class="flex-1 px-10 py-8">
                 <div class="mx-auto max-w-5xl">
@@ -203,11 +250,6 @@
                             <button id="close-template-editor-btn" class="px-4 py-2 text-sm font-semibold rounded-lg border bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700">&larr; Back to Schedule</button>
                         </div>
                     </div>
-                    <!-- 
-                      NOTE: This template editor still uses the old grid.
-                      It could be updated to the new timeline view in the future
-                      for consistency.
-                    -->
                     <div class="relative">
                         <div id="template-hour-grid" class="grid grid-cols-[auto_1fr] gap-x-4"></div>
                         <div id="template-events-container" class="absolute top-0 left-[60px] right-0 bottom-0"></div>
@@ -267,7 +309,6 @@
         
         <div id="calendar-view" class="hidden"><main class="container mx-auto px-4 py-8"><div class="flex flex-col lg:flex-row justify-center gap-8"><div class="w-full lg:max-w-md bg-white dark:bg-slate-900/50 p-4 rounded-lg"><div class="flex items-center justify-between mb-4"><button id="cal1-prev-btn" class="p-2 rounded-full"><span class="material-symbols-outlined">chevron_left</span></button><h2 id="cal1-month-year" class="text-lg font-semibold"></h2><button class="opacity-0 p-2"><span class="material-symbols-outlined">chevron_right</span></button></div><div class="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-500 py-2"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div><div id="cal1-body" class="grid grid-cols-7 gap-1 text-center"></div></div><div class="w-full lg:max-w-md bg-white dark:bg-slate-900/50 p-4 rounded-lg"><div class="flex items-center justify-between mb-4"><button class="opacity-0 p-2"><span class="material-symbols-outlined">chevron_left</span></button><h2 id="cal2-month-year" class="text-lg font-semibold"></h2><button id="cal2-next-btn" class="p-2 rounded-full"><span class="material-symbols-outlined">chevron_right</span></button></div><div class="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-500 py-2"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div>
         
-        <!-- FIX: Changed class_models to class -->
         <div id="cal2-body" class="grid grid-cols-7 gap-1 text-center"></div></div></div></main></div>
         
         <div id="todo-view" class="hidden"><main class="container mx-auto px-4 py-8"><div class="max-w-4xl mx-auto"><div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-bold">My To-Do List</h2><button id="new-task-btn" class="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg font-semibold"><span class="material-symbols-outlined">add_circle</span>New Task</button></div><div class="bg-white/50 dark:bg-white/5 rounded-lg p-6 mb-8"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold">Today's Progress</h3><span id="progress-text" class="text-sm font-medium"></span></div><div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5"><div id="progress-bar" class="bg-primary h-2.5 rounded-full" style="width:0%"></div></div><div class="grid grid-cols-3 gap-4 text-center mt-4" id="stats-container"></div></div>
@@ -781,6 +822,114 @@
             // If it was never inserted, append it to the end
             if (!inserted) {
                 eventsContainer.insertAdjacentHTML('beforeend', indicatorHTML);
+            }
+        }
+        
+        // === NEW: BULK SCHEDULE LOGIC ===
+        function addBulkRow(startTime = '') {
+            const container = document.getElementById('bulk-rows-container');
+            const rowId = 'row-' + Date.now();
+            
+            // Calculate a smart default start time if not provided
+            if (!startTime) {
+                const lastRowEnd = document.querySelector('.bulk-row:last-child input[name="end_time"]')?.value;
+                if (lastRowEnd) {
+                    startTime = lastRowEnd;
+                } else {
+                    startTime = '09:00'; // Default start
+                }
+            }
+            
+            // Calculate default end time (1 hour later)
+            let endTime = '';
+            if (startTime) {
+                const [h, m] = startTime.split(':').map(Number);
+                const nextH = (h + 1) % 24;
+                endTime = `${nextH.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+            }
+
+            const rowHTML = `
+            <div class="bulk-row grid grid-cols-1 md:grid-cols-12 gap-3 items-start bg-white dark:bg-slate-800 p-4 rounded-lg shadow-sm animate-fade-in relative group" id="${rowId}">
+                <div class="md:col-span-2">
+                    <label class="block text-xs font-medium text-slate-500 mb-1 md:hidden">Start</label>
+                    <input type="time" name="start_time" value="${startTime}" class="w-full rounded-md border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm [color-scheme:dark]" required>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-xs font-medium text-slate-500 mb-1 md:hidden">End</label>
+                    <input type="time" name="end_time" value="${endTime}" class="w-full rounded-md border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm [color-scheme:dark]" required>
+                </div>
+                <div class="md:col-span-4">
+                    <label class="block text-xs font-medium text-slate-500 mb-1 md:hidden">Title</label>
+                    <input type="text" name="title" placeholder="Event Title" class="w-full rounded-md border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm" required>
+                </div>
+                <div class="md:col-span-3">
+                    <label class="block text-xs font-medium text-slate-500 mb-1 md:hidden">Category</label>
+                    <select name="category" class="w-full rounded-md border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm">
+                        <option>Work</option>
+                        <option>Personal</option>
+                        <option>Spiritual</option>
+                        <option>Education</option>
+                        <option>Entertainment</option>
+                    </select>
+                </div>
+                <div class="md:col-span-1 flex justify-end md:justify-center mt-2 md:mt-0">
+                    <button type="button" class="remove-bulk-row-btn text-slate-400 hover:text-red-500 p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+            </div>`;
+            
+            container.insertAdjacentHTML('beforeend', rowHTML);
+            
+            // Add focus to the title input of the new row for better UX
+            setTimeout(() => {
+                const newRow = document.getElementById(rowId);
+                newRow.querySelector('input[name="title"]').focus();
+            }, 50);
+        }
+
+        async function handleBulkFormSubmit(e) {
+            e.preventDefault();
+            if (!navigator.onLine) {
+                alert("You are offline. Please reconnect to save.");
+                return;
+            }
+            
+            const dateStr = document.getElementById('bulk-date').value;
+            const rows = document.querySelectorAll('.bulk-row');
+            const eventsToInsert = [];
+            
+            rows.forEach(row => {
+                const startTime = row.querySelector('input[name="start_time"]').value;
+                const endTime = row.querySelector('input[name="end_time"]').value;
+                const title = row.querySelector('input[name="title"]').value;
+                const category = row.querySelector('select[name="category"]').value;
+                
+                if (title && startTime && endTime) {
+                    eventsToInsert.push({
+                        date: dateStr,
+                        start_time: startTime + ':00', // ensure format matches DB
+                        end_time: endTime + ':00',
+                        title: title,
+                        category: category
+                    });
+                }
+            });
+            
+            if (eventsToInsert.length === 0) {
+                alert("Please add at least one valid event.");
+                return;
+            }
+            
+            const { error } = await db.from('events').insert(eventsToInsert);
+            
+            if (error) {
+                alert('Error saving events: ' + error.message);
+            } else {
+                // Update selected date to match what we just planned
+                const [year, month, day] = dateStr.split('-').map(Number);
+                selectedDate = new Date(year, month - 1, day);
+                showView('#schedule-view');
             }
         }
 
@@ -1593,6 +1742,7 @@
             flatpickr('#date', { defaultDate: 'today', dateFormat: 'Y-m-d' });
             flatpickr('#task-due-date', { defaultDate: 'today', dateFormat: 'Y-m-d' });
             flatpickr('#project-task-due-date', { defaultDate: 'today', dateFormat: 'Y-m-d' });
+            flatpickr('#bulk-date', { defaultDate: 'today', dateFormat: 'Y-m-d' });
             
             // REMOVED: renderHourGrid();
             renderTemplateEditorGrid(); // NEW: Render the grid for the new editor
@@ -1622,6 +1772,7 @@
             document.getElementById('new-project-form').addEventListener('submit', handleProjectFormSubmit);
             document.getElementById('new-project-task-form').addEventListener('submit', handleProjectTaskFormSubmit);
             document.getElementById('template-event-form').addEventListener('submit', handleTemplateEventFormSubmit); // NEW
+            document.getElementById('bulk-form').addEventListener('submit', handleBulkFormSubmit); // NEW BULK
             
             // Button clicks
             document.getElementById('delete-event-btn').addEventListener('click', deleteEvent);
@@ -1641,6 +1792,36 @@
                 document.getElementById('delete-event-btn').classList.add('hidden');
                 
                 showView('#form-view');
+            });
+
+            // NEW: Bulk Mode Button Listener
+            document.getElementById('bulk-mode-btn').addEventListener('click', () => {
+                const datePicker = document.getElementById('bulk-date')._flatpickr;
+                datePicker.setDate(selectedDate);
+                document.getElementById('bulk-rows-container').innerHTML = ''; // Clear previous
+                addBulkRow('09:00'); // Add first row
+                addBulkRow(); // Add second row (auto-filled)
+                addBulkRow(); // Add third row (auto-filled)
+                showView('#bulk-schedule-view');
+            });
+            
+            document.getElementById('add-bulk-row-btn').addEventListener('click', () => addBulkRow());
+            document.getElementById('cancel-bulk-btn').addEventListener('click', () => showView('#schedule-view'));
+
+            // Remove row delegate listener
+            document.getElementById('bulk-rows-container').addEventListener('click', (e) => {
+                const removeBtn = e.target.closest('.remove-bulk-row-btn');
+                if (removeBtn) {
+                    const row = removeBtn.closest('.bulk-row');
+                    // Only remove if it's not the only row, or clear it if it is?
+                    // Better to just allow removing, if only 1 is left, add a new empty one or leave it empty
+                    if (document.querySelectorAll('.bulk-row').length > 1) {
+                        row.remove();
+                    } else {
+                        // If it's the last one, just reset values
+                        row.querySelectorAll('input').forEach(i => i.value = '');
+                    }
+                }
             });
             
             document.getElementById('cancel-btn').addEventListener('click', () => {
