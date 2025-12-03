@@ -1,681 +1,275 @@
 <!DOCTYPE html>
-<html lang="en">
+<!-- MODIFIED: The 'dark' class will be added/removed here by JS --><html lang="en">
 <head>
   <meta name="robots" content="noindex, nofollow">
   <link rel="icon" href="https://ik.imagekit.io/xfifcyvcg/P_icon.ico?updatedAt=1748049193174" type="image/x-icon">
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Model Gallery | Visual Search</title>
-  <!-- Load Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- START: Added Masonry & imagesLoaded -->
-  <script src="https://unpkg.com/imagesloaded@5/imagesloaded.pkgd.min.js"></script>
-  <script src="https://unpkg.com/masonry-layout@4/dist/masonry.pkgd.min.js"></script>
-  <!-- END: Added Masonry & imagesLoaded -->
-  <!-- START: Added SortableJS for drag/drop -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
-  <!-- END: Added SortableJS -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Celebrity Gallery</title>
+  
+  <!-- Tailwind CSS CDN --><script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Font (Inter) --><link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    // Configure Tailwind to use the 'Inter' font
+    tailwind.config = {
+      darkMode: 'class', // <-- ADDED
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+        },
+      },
+    }
+  </script>
+
   <style>
-    /* Custom scrollbar for a cleaner look */
-    ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
-    }
-    ::-webkit-scrollbar-track {
-      background: #1a1a1a;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #444;
-      border-radius: 4px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #555;
-    }
-
-    /* Simple loading spinner */
-    .loader {
-      border: 4px solid #333;
-      border-top: 4px solid #999;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      animation: spin 1s linear infinite;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+    /* A few custom styles to complement Tailwind */
+    body {
+      -webkit-tap-highlight-color: transparent;
+      /* Set base light mode color */
+      background-color: #f3f4f6; /* gray-100 */
     }
     
-    /* Custom context menu */
-    #context-menu {
-      display: none;
-      position: fixed;
-      z-index: 1000;
-      background-color: #2a2a2a;
-      border: 1px solid #444;
-      border-radius: 8px;
-      padding: 8px;
-      box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    /* Custom scrollbar for thumbnail carousel */
+    .thumbnail-carousel::-webkit-scrollbar {
+        height: 8px;
     }
-    #context-menu button {
-      display: block;
-      width: 100%;
-      padding: 8px 16px;
-      background: none;
-      border: none;
-      color: #e0e0e0;
-      text-align: left;
-      border-radius: 4px;
-      cursor: pointer;
+    .thumbnail-carousel::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 10px;
     }
-    #context-menu button:hover {
-      background-color: #3b82f6; /* Tailwind blue-500 */
-      color: white;
+    .thumbnail-carousel::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.5);
+        border-radius: 10px;
+    }
+    .thumbnail-carousel::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.7);
     }
     
-    /* Style for the new sort dropdown */
-    #sort-order {
-      -webkit-appearance: none;
-      -moz-appearance: none;
-      appearance: none;
-      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='currentColor' aria-hidden='true'%3e%3cpath fill-rule='evenodd' d='M10 3a.75.75 0 01.55.24l3.25 3.5a.75.75 0 11-1.1 1.02L10 4.852 7.3 7.76a.75.75 0 01-1.1-1.02l3.25-3.5A.75.75 0 0110 3zm-3.7 9.24a.75.75 0 011.1 1.02L10 15.148l2.7-2.888a.75.75 0 111.1 1.02l-3.25 3.5a.75.75 0 01-1.1 0l-3.25-3.5a.75.75 0 010-1.02z' clip-rule='evenodd'/%3e%3c/svg%3e");
-      background-size: 1.25rem;
-      background-repeat: no-repeat;
-      background-position: right 0.5rem center;
-      padding-right: 2.25rem; /* Make space for icon */
-    }
-    
-    /* Masonry Layout */
-    #gallery {
-      position: relative; /* Required for Masonry.js positioning */
-    }
-    
+    /* Custom styles for masonry items */
     .masonry-item {
-      width: calc(50% - 8px); /* 2 cols. 4px margin L/R on each item = 8px total per item */
-      margin-bottom: 8px; 
-      margin-left: 4px;
-      margin-right: 4px;
-    }
-    @media (min-width: 768px) { /* md */
-      .masonry-item { width: calc(33.333% - 8px); } /* 3 cols */
-    }
-    @media (min-width: 1024px) { /* lg */
-      .masonry-item { width: calc(25% - 8px); } /* 4 cols */
-    }
-    @media (min-width: 1280px) { /* xl */
-      .masonry-item { width: calc(20% - 8px); } /* 5 cols */
-    }
-    @media (min-width: 1536px) { /* 2xl */
-      .masonry-item { width: calc(16.666% - 8px); } /* 6 cols */
-    }
-    
-
-    /* Card item hover effect */
-    .masonry-item .overlay {
-      opacity: 0;
-      transition: opacity 0.2s ease-in-out;
-    }
-    .masonry-item:hover .overlay {
-      opacity: 1;
-    }
-    
-    /* Viewer Zoom/Pan Styles */
-    #viewer-image-container {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      cursor: grab;
-      position: relative; /* For image positioning */
-    }
-    #viewer-image-container.grabbing {
-      cursor: grabbing;
-    }
-    #viewer-image {
-      transform-origin: center center;
-      transition: transform 0.1s ease-out;
-      position: absolute; /* Allows for centering */
-      top: 50%;
-      left: 50%;
-      will-change: transform; /* Hint for browser performance */
-    }
-    
-    /* Masonry Layout for Related Grid */
-    #viewer-related-grid {
-      column-count: 2;
-      column-gap: 4px; /* Tailwind gap-1 */
-    }
-    @media (min-width: 768px) { /* md */
-      #viewer-related-grid { 
-        column-count: 3; 
-        column-gap: 8px; /* Tailwind gap-2 */
-      }
-    }
-    
-    .related-masonry-item {
-      display: inline-block;
-      width: 100%;
-      margin-bottom: 8px; /* Match main gallery gap */
-      break-inside: avoid;
-    }
-    
-    /* START: Compare Mode Styles */
-    .compare-checkbox {
-      display: none;
-      position: absolute;
-      top: 12px;
-      left: 12px;
-      z-index: 20;
-      width: 20px;
-      height: 20px;
-    }
-    
-    /* Show checkbox when compare mode is active */
-    #gallery.compare-mode-active .compare-checkbox {
-      display: block;
-    }
-    
-    /* Add a visual indicator to selected cards in compare mode */
-    #gallery.compare-mode-active .masonry-item.compare-selected {
-      outline: 3px solid #3b82f6;
-      box-shadow: 0 0 15px rgba(59, 130, 246, 0.7);
-    }
-    
-    /* Style the compare bar */
-    #compare-sticky-bar {
-      transition: transform 0.3s ease-in-out;
-      transform: translateY(100%);
-    }
-    #compare-sticky-bar.show {
-      transform: translateY(0);
-    }
-    
-    /* Compare Viewer: Grid View */
-    #compare-container {
-      /* Remove scrollbar visibility for a cleaner look */
-      scrollbar-width: none; /* Firefox */
-    }
-    #compare-container::-webkit-scrollbar {
-      display: none; /* Safari and Chrome */
-    }
-    
-    /* Compare Card: Image Zoom */
-    .compare-card-image-container {
-      overflow: hidden; /* This is crucial */
-    }
-    .compare-card-image {
-      transition: transform 0.2s ease-out; /* Smooth zoom */
-      transform-origin: center center;
-      cursor: zoom-in;
-    }
-    
-    /* Compare Viewer: 2-Image Slider View */
-    #compare-slider-view {
-      display: none; /* Hidden by default */
-      grid-template-columns: 1fr;
-      height: 100%;
-      width: 100%;
-    }
-    
-    .compare-slider-container {
-      display: grid;
-      place-items: center;
-      position: relative;
-      overflow: hidden;
-      border-radius: 0.5rem;
-    }
-    
-    .compare-slider-image-before,
-    .compare-slider-image-after {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-    }
-    
-    .compare-slider-image-before {
-      clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%);
-      z-index: 2;
-    }
-    
-    .compare-slider-image-after {
-      z-index: 1;
+      break-inside: avoid-column; /* Standard */
+      -webkit-column-break-inside: avoid; /* Safari/Chrome */
+      page-break-inside: avoid; /* Firefox */
     }
 
-    .compare-slider-handle {
-      position: absolute;
-      z-index: 3;
-      width: 4px;
-      height: 100%;
-      background-color: rgba(255, 255, 255, 0.7);
-      left: 50%;
-      transform: translateX(-50%);
-      cursor: ew-resize;
-      top: 0;
+    /* Style for the selected card in the left feed */
+    .feed-card.selected {
+      /* Ring effect for selected state */
+      box-shadow: 0 0 0 3px #3b82f6; 
+      z-index: 10;
+    }
+
+    /* Styles for letter filter buttons */
+    .letter-btn {
+        border: 1px solid #d1d5db; /* gray-300 */
+        background-color: #ffffff; /* white */
+        color: #374151; /* gray-700 */
+        font-weight: 500;
+    }
+    .letter-btn:hover {
+        background-color: #f3f4f6; /* gray-100 */
+    }
+    .letter-btn.selected {
+        background-color: #3b82f6; /* blue-500 */
+        color: #ffffff; /* white */
+        border-color: #3b82f6; /* blue-500 */
+        font-weight: 700;
     }
     
-    .compare-slider-handle::before {
-      content: '';
-      position: absolute;
-      width: 44px; /* Larger hit area */
-      height: 44px;
-      border-radius: 50%;
-      background-color: white;
-      border: 2px solid #3b82f6;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      /* Simple < > arrows */
-      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%233b82f6'%3e%3cpath fill-rule='evenodd' d='M13.28 3.97a.75.75 0 010 1.06L6.31 12l6.97 6.97a.75.75 0 11-1.06 1.06l-7.5-7.5a.75.75 0 010-1.06l7.5-7.5a.75.75 0 011.06 0zm7.44 1.06a.75.75 0 011.06 0l7.5 7.5a.75.75 0 010 1.06l-7.5 7.5a.75.75 0 11-1.06-1.06L24.69 12l-6.97-6.97a.75.75 0 010-1.06z' clip-rule='evenodd' /%3e%3c/svg%3e");
-      background-repeat: no-repeat;
-      background-position: center;
-      background-size: 24px 24px;
+    /* Style for active filter button */
+    #filter-toggle-btn.active {
+        background-color: #eff6ff; /* blue-50 */
+        border-color: #3b82f6; /* blue-500 */
+        color: #3b82f6; /* blue-500 */
+        box-shadow: 0 0 0 1px #3b82f6;
     }
     
-    /* Hide the default range input appearance */
-    .compare-slider-range {
-      position: absolute;
-      z-index: 4;
-      left: 0;
-      top: 0;
-      width: 100%;
-      height: 100%;
-      cursor: ew-resize;
-      opacity: 0; /* Make it invisible */
-      -webkit-appearance: none;
-      appearance: none;
-      background: transparent;
+    /* --- NEW: Dark Mode Styles --- */
+    .dark body {
+        background-color: #030712; /* gray-950 */
     }
-    /* END: Compare Mode Styles */
+    .dark .feed-card.selected {
+        /* Border color handled by ring utility in tailwind for consistency, keeping overrides minimal */
+    }
+    .dark .letter-btn {
+        border-color: #4b5563; /* gray-600 */
+        background-color: #374151; /* gray-700 */
+        color: #d1d5db; /* gray-300 */
+    }
+    .dark .letter-btn:hover {
+        background-color: #4b5563; /* gray-600 */
+    }
+    .dark .letter-btn.selected {
+        /* Selected style is universal */
+        background-color: #3b82f6; /* blue-500 */
+        color: #ffffff; /* white */
+        border-color: #3b82f6; /* blue-500 */
+    }
+    .dark #filter-toggle-btn.active {
+        background-color: #1f2937; /* gray-800 */
+        border-color: #3b82f6; /* blue-500 */
+        color: #3b82f6; /* blue-500 */
+    }
+    /* --- End Dark Mode Styles --- */
   </style>
 </head>
-<body class="bg-black text-gray-300 font-sans antialiased">
+<!-- MODIFIED: Removed bg-gray-100, now handled in <style> block --><body class="font-sans overflow-hidden">
 
-  <!-- Header Navigation -->
-  <header class="fixed top-0 left-0 right-0 z-50 bg-black bg-opacity-80 backdrop-blur-sm">
-    <nav class="container mx-auto px-6 py-4 flex justify-between items-center">
-      
-      <!-- Left Side: Hamburger (Mobile) + Nav Links (Desktop) -->
-      <div class="flex items-center space-x-6">
-        <!-- Hamburger Button (Mobile) -->
-        <button id="menu-btn" class="lg:hidden text-white p-1 -ml-1" onclick="toggleMobileMenu()">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
-        </button>
-        
-        <!-- Desktop Nav Links (Hidden on Mobile) -->
-        <div class="hidden lg:flex items-center space-x-6">
-          <a href="#" onclick="showAllModels(event)" class="text-lg font-semibold text-white hover:text-gray-300">Home</a>
-          <a href="#" id="albums-link" onclick="showAllAlbums(event)" class="text-sm text-gray-400 hover:text-white">Albums</a>
-          
-          <!-- New Link Added Here -->
-          <a href="https://image-card-gallery.vercel.app/celebrities.html" class="text-sm text-gray-400 hover:text-white">Celebrities</a>
-
-          <span class="text-sm text-gray-500" id="total-card-count">(...)</span>
-          
-          <a href="#" onclick="showFavorites(event)" class="text-sm text-gray-400 hover:text-white">Favorites</a>
-          <a href="#" onclick="showNsfw(event)" id="nsfwBtn" class="text-sm text-gray-400 hover:text-white">NSFW</a>
-          
-          <!-- Tags Dropdown -->
-          <!-- MOVED this block to the right side -->
-          <!-- END Tags Dropdown -->
-          
-          <div class="relative">
-            <select id="sort-order" class="text-sm text-gray-400 hover:text-white focus:outline-none bg-transparent border-0 focus:ring-0">
-              <option value="last_uploaded" class="bg-gray-800">Last uploaded</option>
-              <option value="first_uploaded" class="bg-gray-800">First uploaded</option>
-              <option value="highest_rated" class="bg-gray-800">Highest Rated</option>
-              <option value="lowest_rated" class="bg-gray-800">Lowest Rated</option>
-              <option value="shuffle" class="bg-gray-800">Shuffle</option>
-            </select>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Right Side: Action Buttons -->
-      <div class="flex items-center space-x-3">
-        <div class="relative" id="tags-dropdown-container">
-          <button onclick="toggleTagsDropdown(event)" id="tags-dropdown-btn" class="text-sm text-gray-400 hover:text-white focus:outline-none">
-            Tags
-          </button>
-          <div id="tags-dropdown-menu" class="hidden absolute top-full right-0 mt-2 w-56 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 py-2 max-h-64 overflow-y-auto">
-            <!-- JS will populate this -->
-            <span class="block px-4 py-2 text-sm text-gray-500">Loading...</span>
-          </div>
-        </div>
-
-        <button onclick="openManageTagsPopup()" class="hidden lg:block px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors">
-          Add Tags
-        </button>
-        
-        <!-- START: Added Compare Button -->
-        <button id="compare-mode-btn" onclick="toggleCompareMode()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors">
-          Compare
-        </button>
-        <!-- END: Added Compare Button -->
-        
-        <button onclick="openPopup()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
-          Upload
-        </button>
-      </div>
-    </nav>
-
-    <!-- Mobile Menu (Hidden by default) -->
-    <div id="mobile-menu" class="hidden lg:hidden bg-gray-900 bg-opacity-95" style="background-color: #111827f8;">
-      <div class="container mx-auto px-6 py-4 flex flex-col space-y-4">
-        <a href="#" onclick="mobileMenuClicked('showAllModels')" class="block text-lg font-semibold text-white hover:text-gray-300">Home</a>
-        <a href="#" onclick="mobileMenuClicked('showAllAlbums')" class="block text-lg text-gray-300 hover:text-white">Albums</a>
-        
-        <!-- New Link Added Here -->
-        <a href="https://image-card-gallery.vercel.app/celebrities.html" class="block text-lg text-gray-300 hover:text-white">Celebrities</a>
-
-        <a href="#" onclick="mobileMenuClicked('showFavorites')" class="block text-lg text-gray-300 hover:text-white">Favorites</a>
-        <a href="#" onclick="mobileMenuClicked('showNsfw')" class="block text-lg text-gray-300 hover:text-white">NSFW</a>
-        
-        <div class="relative mt-2">
-          <label for="mobile-sort-order" class="text-lg text-gray-300 mr-2">Sort by:</label>
-          <select id="mobile-sort-order" class="text-lg text-gray-300 hover:text-white focus:outline-none bg-transparent border-0 focus:ring-0 p-1">
-            <option value="last_uploaded" class="bg-gray-800">Last uploaded</option>
-            <option value="first_uploaded" class="bg-gray-800">First uploaded</option>
-            <option value="highest_rated" class="bg-gray-800">Highest Rated</option>
-            <option value="lowest_rated" class="bg-gray-800">Lowest Rated</option>
-            <option value="shuffle" class="bg-gray-800">Shuffle</option>
-          </select>
-        </div>
-        
-        <button onclick="mobileMenuClicked('openManageTagsPopup')" class="w-full px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white text-md font-medium rounded-lg transition-colors">
-          Add Tags
-        </button>
-      </div>
-    </div>
-  </header>
-
-  <!-- Main Content Area -->
-  <main id="main-content" class="pt-24 pb-12 px-4 md:px-6">
-    
-    <!-- Search/Filter Status -->
-    <div id="search-status" class="container mx-auto mb-6 h-16 flex items-center justify-center text-gray-400" style="display: none;">
-      <!-- Content will be injected by JS -->
-    </div>
-    
-    <!-- Loading Spinner -->
-    <div id="loader" class="flex justify-center items-center py-20">
-      <div class="loader"></div>
-    </div>
-
-    <!-- Image Grid -->
-    <div id="gallery">
-      <!-- Images will be injected by JS -->
-    </div>
-    
-    <div id="no-results" class="text-center text-gray-500 py-20" style="display: none;">
-      No models found.
-    </div>
-    
-    <!-- Loader for infinite scroll -->
-    <div id="scroll-loader" class="flex justify-center items-center py-10" style="display: none;">
-      <div class="loader"></div>
-    </div>
-  </main>
-
-  <!-- Image Viewer Modal -->
-  <div id="image-viewer" class="fixed inset-0 z-[100] bg-black bg-opacity-90 overflow-y-auto" style="display: none;" onclick="closeImageViewer(event)">
-    
-    <!-- Close Button -->
-    <button class="absolute top-4 right-6 text-white text-5xl font-light z-[120]" onclick="closeImageViewer()">&times;</button>
-    
-    <!-- Modal Content Scroller -->
-    <div class="relative w-full max-w-6xl mx-auto" onclick="event.stopPropagation()">
-    
-      <!-- Main Viewer Area (80% viewport height) -->
-      <div class="relative w-full h-[80vh] bg-black mt-8 md:mt-12">
-        <!-- Image Header with Tags -->
-        <div id="viewer-header" class="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/70 to-transparent z-[105]">
-          <div class="flex items-start justify-between">
-            <!-- Left side: Tags -->
-            <div>
-              <div class="flex items-center gap-4 mb-2">
-                <h3 class="text-lg font-semibold text-white">Tags</h3>
-                <span id="viewer-nsfw-label" class="px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded-full" style="display: none;">NSFW</span>
-              </div>
-              <div id="viewer-tags" class="flex flex-wrap gap-2">
-                <!-- Tags injected by JS -->
-              </div>
-            </div>
-            <!-- Right side: Rating -->
-            <div id="viewer-rating" class="flex flex-col flex-shrink-0 ml-2 md:ml-4">
-              <!-- Stars injected by JS -->
-            </div>
-          </div>
-        </div>
-        
-        <!-- Loader for modal image -->
-        <div id="viewer-loader" class="absolute inset-0 flex items-center justify-center z-[101]">
-          <div class="loader"></div>
-        </div>
-        
-        <!-- Image Container for Zoom/Pan -->
-        <div id="viewer-image-container" class="w-full h-full z-[100]">
-          <!-- Full-size Image -->
-          <img id="viewer-image" src="" alt="Full size model" class="max-w-none max-h-none" style="display: none;">
-        </div>
-        
-        <!-- Navigation Buttons -->
-        <button id="viewer-prev" class="absolute left-4 top-1/2 -translate-y-1/2 z-[105] p-2 bg-black/30 text-white text-3xl rounded-full hover:bg-black/60 transition-colors" onclick="prevImage(event)">&#10094;</button>
-        <button id="viewer-next" class="absolute right-4 top-1/2 -translate-y-1/2 z-[105] p-2 bg-black/30 text-white text-3xl rounded-full hover:bg-black/60 transition-colors" onclick="nextImage(event)">&#10095;</button>
-        
-        <!-- Zoom Controls -->
-        <div class="absolute bottom-4 right-4 z-[105] flex flex-col gap-2">
-          <button class="w-10 h-10 bg-black/40 text-white text-xl rounded-full hover:bg-black/70" onclick="zoomIn(event)">+</button>
-          <button class="w-10 h-10 bg-black/40 text-white text-xl rounded-full hover:bg-black/70" onclick="zoomOut(event)">-</button>
-          <button class="w-10 h-10 bg-black/40 text-white text-sm rounded-full hover:bg-black/70" onclick="resetZoom(event)">1x</button>
-        </div>
-      </div>
-    
-      <!-- Related Models Section -->
-      <div id="viewer-related-container" class="w-full min-h-[20vh] pt-4 pb-4 px-2 md:px-0">
-        <div class="flex justify-between items-center mb-2">
-          <h4 class="text-lg font-semibold text-gray-100">Related Models</h4>
-          <button id="add-to-album-btn" onclick="openUploadForAlbum()" class="flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors" style="display: none;">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+  <div class="flex flex-col md:flex-row h-screen">
+    <!-- Left Section: Main Feed --><!-- Added overflow-hidden to force this flex-col to contain its children --><aside class="w-full md:w-2/5 lg:w-2/5 flex flex-col bg-white border-r border-gray-200 overflow-hidden dark:bg-gray-800 dark:border-gray-700">
+      <!-- Header --><header class="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0 dark:border-gray-700">
+        <h1 class="text-xl font-bold text-gray-800 dark:text-gray-100">Galleries</h1>
+        <!-- MODIFIED: Added a container for buttons --><div class="flex gap-2 items-center">
+          <!-- NEW: Dark Mode Toggle --><button id="dark-mode-toggle" class="w-10 h-10 p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Toggle theme">
+            <!-- Moon Icon (shows in light mode) --><svg class="h-full w-full inline-block dark:hidden" id="theme-icon-light" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
             </svg>
-            Add
+            <!-- Sun Icon (shows in dark mode) --><svg class="h-full w-full hidden dark:inline-block" id="theme-icon-dark" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-6.364-.386 1.591-1.591M3 12H.75m.386-6.364 1.591 1.591M12 12a2.25 2.25 0 0 0-2.25 2.25c0 1.38.5 2.5 1.5 3.062A8.98 8.98 0 0 1 12 21a8.98 8.98 0 0 1-3.062-1.5H12a2.25 2.25 0 0 0 2.25-2.25 2.25 2.25 0 0 0-2.25-2.25ZM12 12a2.25 2.25 0 0 1 2.25-2.25c0-1.38-.5-2.5-1.5-3.062A8.98 8.98 0 0 0 12 3a8.98 8.98 0 0 0 3.062 1.5H12a2.25 2.25 0 0 1-2.25 2.25Z" />
+            </svg>
+          </button>
+          
+          <!-- Filter Button --><button 
+            id="filter-toggle-btn"
+            class="bg-white border border-gray-300 text-gray-700 py-2 px-4 rounded-lg text-sm font-semibold hover:bg-gray-100 transition-colors shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-600"
+            onclick="toggleFilterControls()">
+            Filter
+          </button>
+          
+          <!-- NEW: Old Style Button --><a 
+            href="https://image-card-gallery.vercel.app/celebrities2.html"
+            class="bg-white border border-gray-300 text-gray-700 py-2 px-4 rounded-lg text-sm font-semibold hover:bg-gray-100 transition-colors shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-600"
+            >
+            Old style
+          </a>
+          
+          <button 
+            class="bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm" 
+            onclick="openPopup()">
+            Upload
           </button>
         </div>
-        <div id="viewer-related-grid">
-          <!-- Related images injected by JS -->
-          <span class="text-gray-500 text-sm col-span-full">Loading...</span>
-        </div>
-        <!-- Loader for related infinite scroll -->
-        <div id="related-scroll-loader" class="flex justify-center items-center py-10" style="display: none;">
-          <div class="loader"></div>
-        </div>
-      </div>
+      </header>
       
-    </div> <!-- End Modal Content Scroller -->
-    
-  </div>
-
-  <!-- Upload/Edit Popup Modal -->
-  <div id="popup" class="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-80 p-4" style="display: none;">
-    <div class="bg-gray-900 p-6 rounded-lg shadow-xl w-full max-w-lg border border-gray-700">
-      <h3 id="popupTitle" class="text-xl font-semibold text-white mb-4">Upload New Model(s)</h3>
-      <form id="cardForm">
-        
-        <input type="text" id="modelAlbumName" class="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 mb-4" placeholder="Model/Album Name (Optional)">
-        
-        <textarea id="modelUrl" rows="3" class="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Enter one or more image URLs, separated by commas" required></textarea>
-        
-        <div class="mt-4">
-          <label class="text-sm text-gray-400 mb-2 block">Tags</label>
-          <div id="selectedTagsContainer" class="flex flex-wrap gap-2 p-2 bg-gray-800 border border-gray-700 rounded-lg min-h-[40px]">
-            <!-- Selected tags injected by JS -->
+      <!-- NEW: Filter and Sort Controls Wrapper (hidden by default) --><div id="filter-controls" class="hidden p-4 border-b border-gray-200 flex-shrink-0 dark:border-gray-700">
+          <!-- Sort By Dropdown --><div class="mb-4">
+              <label for="sort-select" class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Sort by:</label>
+              <select id="sort-select" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                  <option value="title-asc">Title (A-Z)</option>
+                  <option value="title-desc">Title (Z-A)</option>
+                  <option value="recent" selected>Recently Added</option>
+              </select>
           </div>
-        </div>
-        
-        <div class="flex gap-2 mt-2">
-          <select id="availableTags" class="flex-grow p-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500">
-            <option value="">Select tags to add</option>
-          </select>
-          <button type="button" onclick="addTagToSelection()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">Add</button>
-        </div>
 
-        <div class="mt-4 flex items-center">
-          <input type="checkbox" id="modelNsfw" name="nsfw" class="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-600">
-          <label for="modelNsfw" class="ml-2 text-sm text-gray-300">Mark as NSFW</label>
-        </div>
-        
-        <div id="errorMessage" class="text-red-400 text-sm mt-4"></div>
-        
-        <div class="mt-6 flex justify-end space-x-3">
-          <button type="button" class="cancel-btn px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors" onclick="closePopup()">Cancel</button>
-          <button type="submit" class="px-5 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
-  
-  <!-- START: Quick Edit Modal -->
-  <div id="quick-edit-modal" class="fixed inset-0 z-[101] flex items-center justify-center bg-black bg-opacity-80 p-4" style="display: none;">
-    <div class="bg-gray-900 p-6 rounded-lg shadow-xl w-full max-w-md border border-gray-700">
-      <h3 class="text-xl font-semibold text-white mb-4">Edit Model</h3>
-      <form id="quickEditForm">
-        <input type="hidden" id="quickEditCardId">
-        
-        <div class="mb-4">
-          <label for="quickEditModelUrl" class="text-sm text-gray-400 mb-2 block">Image URL</label>
-          <input type="url" id="quickEditModelUrl" class="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" required>
-        </div>
-        
-        <div class="mb-4">
-          <label class="text-sm text-gray-400 mb-2 block">Tags</label>
-          <div id="quickEditSelectedTagsContainer" class="flex flex-wrap gap-2 p-2 bg-gray-800 border border-gray-700 rounded-lg min-h-[40px]">
-            <!-- Selected tags injected by JS -->
+          <!-- Browse by Name --><div>
+              <h3 class="text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">BROWSE BY NAME</h3>
+              <div id="letter-filter" class="flex flex-wrap gap-x-2 gap-y-1">
+                  <!-- Letters will be generated by JS --><button data-letter="all" class="letter-btn h-6 w-6 flex items-center justify-center rounded-full text-xs font-bold transition-colors">All</button>
+                  <!-- A-Z buttons will be here --></div>
           </div>
-        </div>
-        
-        <div class="flex gap-2 mt-2 mb-4">
-          <select id="quickEditAvailableTags" class="flex-grow p-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500">
-            <option value="">Select tags to add</option>
-          </select>
-          <button type="button" onclick="addTagToQuickEdit()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">Add</button>
-        </div>
-        
-        <div class="flex items-center mb-4">
-          <input type="checkbox" id="quickEditModelNsfw" name="nsfw" class="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-600">
-          <label for="quickEditModelNsfw" class="ml-2 text-sm text-gray-300">Mark as NSFW</label>
-        </div>
-
-        <div id="quickEditErrorMessage" class="text-red-400 text-sm mb-4" style="display: none;"></div>
-        
-        <div class="mt-6 flex justify-end space-x-3">
-          <button type="button" class="cancel-btn px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors" onclick="closeQuickEditModal()">Cancel</button>
-          <button type="submit" class="px-5 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
-  <!-- END: Quick Edit Modal -->
-  
-  <!-- START: Add Tags Modal -->
-  <div id="manage-tags-popup" class="fixed inset-0 z-[101] flex items-center justify-center bg-black bg-opacity-80 p-4" style="display: none;">
-    <div class="bg-gray-900 p-6 rounded-lg shadow-xl w-full max-w-md border border-gray-700">
-      <h3 class="text-xl font-semibold text-white mb-4">Manage Tags</h3>
-      
-      <!-- Form to add new tag -->
-      <form id="addTagForm" class="flex flex-col gap-2 mb-4">
-        <div class="flex gap-2">
-          <input type="text" id="newTagName" class="flex-grow p-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" placeholder="Enter new tag name" required>
-          <button type="submit" class="px-5 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors">Add</button>
-        </div>
-        <div id="manageTagsErrorMessage" class="text-red-400 text-sm" style="display: none;"></div>
-      </form>
-
-      <!-- Action Buttons -->
-      <div class="flex items-center gap-2 mb-2">
-        <button type="button" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded-lg" onclick="selectAllManageTags(true)">Select All</button>
-        <button type="button" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded-lg" onclick="selectAllManageTags(false)">Deselect All</button>
-        <div class="flex-grow"></div>
-        <button type="button" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg" onclick="handleRenameSelectedTag()">Rename Selected</button>
-        <button type="button" class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg" onclick="handleDeleteSelectedTags()">Delete Selected</button>
       </div>
 
-      <!-- List of existing tags -->
-      <h4 class="text-md font-semibold text-gray-300 mb-2">Existing Tags</h4>
-      <div id="existingTagsListContainer" class="max-h-64 overflow-y-auto bg-gray-800 border border-gray-700 rounded-lg p-2">
-        <!-- Tags will be loaded here -->
-        <span class="text-gray-500">Loading...</span>
-      </div>
-      
-      <div class="mt-6 flex justify-end">
-        <button type="button" class="cancel-btn px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors" onclick="closeManageTagsPopup()">Close</button>
-      </div>
-    </div>
-  </div>
-  <!-- END: Add Tags Modal -->
-  
-  <!-- Custom Context Menu -->
-  <div id="context-menu">
-    <button id="context-edit">✏️ Edit</button>
-    <button id="context-delete">🗑️ Delete</button>
-  </div>
-  
-  <!-- START: Compare Sticky Bar -->
-  <div id="compare-sticky-bar" class="fixed bottom-0 left-0 right-0 z-[60] bg-gray-900 border-t border-gray-700 p-4 shadow-lg">
-    <div class="container mx-auto flex justify-between items-center">
-      <span id="compare-count" class="text-lg text-white">0 models selected</span>
-      <div>
-        <button onclick="toggleCompareMode()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors mr-2">Cancel</Cta>
-        <button id="start-compare-btn" onclick="openCompareViewer()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors" disabled>
-          Start Comparison
-        </button>
-      </div>
-    </div>
-  </div>
-  <!-- END: Compare Sticky Bar -->
-  
-  <!-- START: Compare Viewer Modal -->
-  <div id="compare-viewer" class="fixed inset-0 z-[200] bg-black overflow-hidden" style="display: none;">
-    <!-- Header -->
-    <header class="fixed top-0 left-0 right-0 z-10 bg-black bg-opacity-80 backdrop-blur-sm">
-      <nav class="container mx-auto px-6 py-4 flex justify-between items-center">
-        <h2 id="compare-title" class="text-xl font-semibold text-white">Comparing 2 Models</h2>
-        <button onclick="closeCompareViewer()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
-          &times; Close
-        </button>
-      </nav>
-    </header>
-    
-    <!-- Main Content Area -->
-    <main class="pt-20 h-full">
-    
-      <!-- Grid View (for 3+ images) -->
-      <div id="compare-grid-view" class="h-full w-full" style="display: none;">
-        <div id="compare-container" class="flex flex-wrap h-full overflow-y-auto overflow-x-hidden p-4 gap-4">
-          <!-- Compare cards will be injected by JS -->
+      <!-- Feed --><!-- #main-feed NO LONGER has grid classes. It just grows and scrolls. --><div class="overflow-y-auto flex-grow min-h-0" id="main-feed">
+        <!-- This NEW div handles the grid layout --><div class="grid grid-cols-2 gap-3 p-3" id="main-feed-grid">
+          <!-- Loader is now inside the grid div --><div id="main-feed-loader" class="text-center p-6 text-gray-500 col-span-2 dark:text-gray-400">Loading...</div>
         </div>
       </div>
-      
-      <!-- Slider View (for 2 images) -->
-      <div id="compare-slider-view" class="h-full w-full p-4">
-        <div class="compare-slider-container w-full h-full">
-          <!-- Images and slider will be injected by JS -->
-          <img id="compare-slider-after" src="" alt="After" class="compare-slider-image-after">
-          <img id="compare-slider-before" src="" alt="Before" class="compare-slider-image-before">
-          
-          <!-- The visual handle -->
-          <div id="compare-slider-handle" class="compare-slider-handle"></div>
-          
-          <!-- The invisible input that controls it -->
-          <input type="range" min="0" max="100" value="50" id="compare-slider-range" class="compare-slider-range">
+    </aside>
+
+    <!-- Right Section: Related Gallery --><!-- Added overflow-hidden here as well for layout consistency --><main class="w-full md:w-3/5 lg:w-3/5 flex flex-col bg-gray-50 overflow-hidden dark:bg-gray-900">
+      <!-- Gallery Container --><!-- Added min-h-0 here to ensure scrolling works correctly in this panel too --><div class="overflow-y-auto flex-grow p-4 md:p-6 min-h-0" id="related-gallery-container">
+        <!-- Placeholder --><div id="related-gallery-placeholder" class="flex items-center justify-center h-full">
+          <p class="text-gray-500 text-lg text-center dark:text-gray-400">Select a gallery from the left to view images.</p>
         </div>
+        <!-- Masonry Grid --><div class="columns-2 md:columns-3 lg:columns-4 xl:columns-4 gap-4" id="related-gallery">
+          <!-- Related images will be dynamically inserted here --></div>
       </div>
-      
     </main>
   </div>
-  <!-- END: Compare Viewer Modal -->
+
+  <!-- Floating Action Buttons --><div class="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+    <!-- This button is redundant now but kept from original file --><!-- <button class="w-14 h-14 rounded-full text-white flex items-center justify-center text-2xl shadow-lg hover:shadow-xl transition-all bg-blue-600 hover:bg-blue-700" onclick="openPopup()" title="Upload Celebrity">＋</button> --><button class="w-14 h-14 rounded-full text-white flex items-center justify-center text-2xl shadow-lg hover:shadow-xl transition-all bg-red-500 hover:bg-red-600" onclick="window.location.href='videos.html'" title="Go to Videos">🎬</button>
+    <button class="w-14 h-14 rounded-full text-white flex items-center justify-center text-2xl shadow-lg hover:shadow-xl transition-all bg-green-500 hover:bg-green-600" onclick="window.location.href='index.html'" title="Go Home">🏠</button>
+  </div>
+
+
+  <!-- Celebrity Viewer (Modal) --><div class="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-end p-0 md:p-0 box-border" id="celebrityViewer" style="display: none;">
+    <!-- Close Button --><span class="absolute top-4 right-6 text-white text-4xl font-bold cursor-pointer hover:text-gray-300 z-20" onclick="closeCelebrityViewer()">&times;</span>
+    
+    <!-- Header Actions (Moved for better visibility with new layout) --><div class="absolute top-4 left-4 z-20 flex gap-2">
+        <button class="bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white w-10 h-10 rounded-full flex items-center justify-center text-lg" title="Upload Related Celebrities" onclick="openRelatedCelebritiesPopup()">➕</button>
+    </div>
+    
+    <!-- Main Image Content --><!-- MODIFIED: Flex-grow, min-h-0, and height to fill space --><div class="relative w-full flex-grow min-h-0 flex items-center justify-center overflow-hidden touch-none" id="viewerContent">
+      <!-- MODIFIED: max-h-full now fills the available space in flex-grow container --><img id="viewerCelebrity" src="" alt="" class="max-w-full max-h-full object-contain transition-transform duration-200 ease-out cursor-grab">
+    </div>
+    
+    <!-- Navigation Arrows --><div class="absolute top-1/2 -translate-y-1/2 w-full flex justify-between px-4 z-20">
+      <button class="bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white w-12 h-12 rounded-full flex items-center justify-center text-3xl cursor-pointer" onclick="prevCelebrity()">&#10094;</button>
+      <button class="bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white w-12 h-12 rounded-full flex items-center justify-center text-3xl cursor-pointer" onclick="nextCelebrity()">&#10095;</button>
+    </div>
+    
+    <!-- Bottom Bar (Counter & Thumbnails) --><!-- MODIFIED: Removed pt-2, added fixed width and padding, removed counter -->
+    <!-- START: REMOVED THUMBNAILS AND NAME -->
+    <!-- <div class="w-full flex-shrink-0 bg-black/50 p-2 md:p-4 flex flex-col items-center gap-2">
+        --><!-- MODIFIED: Removed celebrityCounter, now showing only thumbnails --<--><!-- <div class="text-white text-sm font-medium" id="celebrityCounter"></div> ----><!-- MODIFIED: Adjusted max-w-full to max-w-7xl, added mx-auto --><--<div class="thumbnail-carousel flex gap-2 rounded-lg overflow-x-auto max-w-full md:max-w-7xl mx-auto" id="thumbnailCarousel">
+          --><!-- Thumbnails will be dynamically inserted here --><!--</div>
+        --><!-- NEW: Image Title and Price/Tags (placeholder as in example) --><--<div class="flex flex-col items-center text-white text-base">
+            <span id="viewerImageTitle" class="font-semibold text-lg"></span>
+            <span id="viewerImageTags" class="text-sm"></span>
+        </div>
+    </div> -->
+    <!-- END: REMOVED THUMBNAILS AND NAME -->
+
+  </div>
+
+  <!-- Add/Edit Popup (Modal) --><div class="fixed inset-0 bg-black/50 flex items-center justify-center z-[200]" id="popup" style="display: none;">
+    <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md relative dark:bg-gray-800">
+      <h3 class="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100">Upload New Celebrity</h3>
+      <form id="cardForm">
+        <input id="title" placeholder="Title" required class="w-full mb-3 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400" />
+        <textarea id="celebrityUrl" rows="3" placeholder="Celebrity URL" required class="w-full min-h-[80px] mb-3 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"></textarea>
+        
+        <label class="block text-sm font-medium text-gray-600 mb-1 dark:text-gray-300">Tags</label>
+        <div id="selectedTagsContainer" class="flex flex-wrap gap-2 mb-3 p-2 border border-gray-200 rounded-md min-h-[40px] bg-gray-50 dark:border-gray-600 dark:bg-gray-700">
+          <!-- Selected tags will appear here --></div>
+        
+        <div class="flex gap-2 mb-4">
+          <select id="availableTags" class="flex-grow w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+            <option value="">Select tags to add</option>
+          </select>
+          <button type="button" onclick="addTagToSelection()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 px-4 rounded-md text-sm font-medium transition-colors dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500">Add</button>
+        </div>
+        
+        <div id="errorMessage" class="text-red-500 text-sm mb-3 dark:text-red-400"></div>
+        
+        <div class="flex justify-end gap-3">
+          <button type="button" onclick="closePopup()" class="bg-gray-200 text-gray-700 py-2 px-5 rounded-md font-semibold hover:bg-gray-300 transition-colors dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500">Cancel</button>
+          <button type="submit" class="bg-blue-600 text-white py-2 px-5 rounded-md font-semibold hover:bg-blue-700 transition-colors">Upload</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  
+  <!-- Related Celebrities Popup (Modal) --><div class="fixed inset-0 bg-black/50 flex items-center justify-center z-[200]" id="relatedCelebritiesPopup" style="display: none;">
+    <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md relative dark:bg-gray-800">
+      <h3 class="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100">Upload Related Celebrities</h3>
+      <form id="relatedCelebritiesForm">
+        <textarea id="relatedCelebrityUrls" rows="5" placeholder="Enter celebrity URLs, one per line" class="w-full min-h-[120px] mb-3 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"></textarea>
+        <div id="relatedCelebritiesErrorMessage" class="text-red-500 text-sm mb-3 dark:text-red-400"></div>
+        <div class="flex justify-end gap-3">
+          <button type="button" onclick="closeRelatedCelebritiesPopup()" class="bg-gray-200 text-gray-700 py-2 px-5 rounded-md font-semibold hover:bg-gray-300 transition-colors dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500">Cancel</button>
+          <button type="button" onclick="addRelatedCelebrities()" class="bg-blue-600 text-white py-2 px-5 rounded-md font-semibold hover:bg-blue-700 transition-colors">Upload</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js"></script>
@@ -685,1598 +279,634 @@
     const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
 
-    let selectedTags = [];
-    let quickEditSelectedTags = []; // For the new quick edit modal
     let allTags = [];
-    let tagCountMap = {};
     let currentlyEditingCardId = null;
-    let msnry;
-    let currentSortOrder = 'last_uploaded';
-    let currentFilter = {
-      type: 'all_singles', // 'all_singles', 'all_albums', 'favorites', 'nsfw', 'tags'
-      value: null
-    };
+    let currentViewingCard = null;
+    let currentCelebrityIndex = 0;
+    let selectedFeedCardId = null; // Track selected card in the feed
     
-    // Infinite Scroll state
-    let currentPage = 0;
-    const PAGE_SIZE = 25;
-    let isLoadingMore = false;
-    let noMoreResults = false;
+    // NEW: State for sorting and filtering
+    let currentSortOrder = 'recent'; // Default sort
+    let currentLetterFilter = 'all'; // Default filter
     
-    // DOM Elements
-    let gallery, loader, noResults, searchStatus, scrollLoader, mobileMenu;
+    // Viewer panning and zooming state
+    let scale = 1, posX = 0, posY = 0, isDragging = false, startX, startY;
+    let initialPinchDistance = null, lastZoom = 1;
     
-    // Image Viewer elements
-    const imageViewer = document.getElementById('image-viewer');
-    const viewerImage = document.getElementById('viewer-image');
-    const viewerHeader = document.getElementById('viewer-header');
-    const viewerTags = document.getElementById('viewer-tags');
-    const viewerLoader = document.getElementById('viewer-loader');
-    
-    // Viewer state variables
-    const viewerImageContainer = document.getElementById('viewer-image-container');
-    const viewerRelatedGrid = document.getElementById('viewer-related-grid');
-    const relatedScrollLoader = document.getElementById('related-scroll-loader');
-    
-    let albumsSeenThisSession = new Set();
-    
-    let displayedCards = []; // Stores all cards loaded *in the gallery*
-    let currentViewerIndex = 0;
-    
-    let currentAlbumViewerList = [];
-    let currentAlbumViewerIndex = 0;
-    
-    // Related items state
-    let relatedCurrentPage = 0;
-    let relatedIsLoadingMore = false;
-    let relatedNoMoreResults = false;
-    let currentRelatedCard = null;
-    
-    // Zoom/Pan state
-    let viewerScale = 1;
-    let viewerPosX = 0;
-    let viewerPosY = 0;
-    let isViewerDragging = false;
-    let viewerStartDrag = { x: 0, y: 0 };
-    let initialPinchDistance = null;
-    
-    // Swipe state
+    // Viewer touch/swipe state
     let touchStartX = 0;
     let touchEndX = 0;
     
-    // START: Compare Mode State
-    let isCompareModeActive = false;
-    let compareSelection = [];
-    let sortableInstance = null;
-    let compareSliderHandle = null; // For 2-image slider
-    // END: Compare Mode State
-    
-    // --- Initialization ---
+    // --- Constants for Tailwind classes ---
+    const ACTIVE_THUMB_CLASSES = ['border-blue-500', 'scale-105'];
+    const INACTIVE_THUMB_CLASSES = ['border-transparent'];
+
+
+    // --- NEW: Dark Mode Logic ---
+    /**
+     * Applies the selected theme ('light' or 'dark')
+     * @param {'light' | 'dark'} theme 
+     */
+    function applyTheme(theme) {
+        if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+        localStorage.setItem('theme', theme);
+    }
+
+    // --- NEW Function to toggle filter controls ---
+    function toggleFilterControls() {
+        const filterControls = document.getElementById('filter-controls');
+        const filterButton = document.getElementById('filter-toggle-btn');
+        
+        // Toggle visibility
+        if (filterControls.classList.contains('hidden')) {
+            filterControls.classList.remove('hidden');
+            filterButton.classList.add('active');
+        } else {
+            filterControls.classList.add('hidden');
+            filterButton.classList.remove('active');
+        }
+    }
 
     window.onload = async function () {
-      // Initialize Supabase
-      try {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-      } catch (e) {
-        console.error("Error initializing Supabase:", e);
-        document.body.innerHTML = '<div class="p-8 text-red-400">Error: Could not connect to Supabase.</div>';
-        return;
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+      // --- NEW: Dark Mode Setup ---
+      const savedTheme = localStorage.getItem('theme');
+      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      
+      if (savedTheme === 'dark' || (!savedTheme && systemPrefersDark)) {
+          applyTheme('dark');
+      } else {
+          applyTheme('light');
       }
       
-      // Assign DOM elements
-      gallery = document.getElementById('gallery');
-      loader = document.getElementById('loader');
-      noResults = document.getElementById('no-results');
-      searchStatus = document.getElementById('search-status');
-      scrollLoader = document.getElementById('scroll-loader');
-      mobileMenu = document.getElementById('mobile-menu');
-      
-      msnry = new Masonry( gallery, {
-        itemSelector: '.masonry-item',
-        percentPosition: true,
-        transitionDuration: 0
+      // Add click listener for the toggle
+      document.getElementById('dark-mode-toggle').addEventListener('click', () => {
+          const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
+          applyTheme(newTheme);
       });
-      
-      // Setup context menu
-      setupContextMenu();
-      
-      // Initial Load
-      await loadTagCounts();
-      await loadTags();
-      await loadTotalCardCount();
-      await loadCards(true); // Start with a new query
-      
-      // Event Listeners
-      window.addEventListener('keydown', e => {
-        if (e.key === "Escape") {
-          closePopup();
-          closeImageViewer();
-          closeQuickEditModal();
-          closeManageTagsPopup();
-          if (isCompareModeActive) { // <-- Close compare view on Escape
-            closeCompareViewer();
-          }
-        }
-        // Keyboard nav for viewer
-        if (imageViewer.style.display === 'flex') {
-          if (e.key === 'ArrowLeft') prevImage();
-          if (e.key === 'ArrowRight') nextImage();
-        }
-      });
-      
-      window.addEventListener('click', (event) => {
-        if (!document.getElementById('tags-dropdown-container').contains(event.target)) {
-          closeTagsDropdown();
-        }
-      });
-      
-      window.addEventListener('scroll', handleScroll);
-      
-      document.getElementById('sort-order').addEventListener('change', (event) => {
-        currentSortOrder = event.target.value;
-        document.getElementById('mobile-sort-order').value = currentSortOrder;
-        loadCards(true);
-      });
-      
-      document.getElementById('mobile-sort-order').addEventListener('change', (event) => {
-          currentSortOrder = event.target.value;
-          document.getElementById('sort-order').value = currentSortOrder;
-          loadCards(true);
-          closeMobileMenu();
-      });
+      // --- End Dark Mode Setup ---
 
-      document.getElementById('quickEditForm').addEventListener('submit', async (e) => {
+      document.getElementById('cardForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        await handleQuickUpdate();
+        if (currentlyEditingCardId) {
+          await updateCard();
+        } else {
+          await addCard();
+        }
       });
       
-      document.getElementById('addTagForm').addEventListener('submit', async (e) => {
-          e.preventDefault();
-          await handleAddNewTag();
+      // NEW: Add event listener for sort select
+      document.getElementById('sort-select').addEventListener('change', (e) => {
+        currentSortOrder = e.target.value;
+        loadMainFeedCards();
       });
       
-      window.addEventListener('resize', () => {
-          if (window.innerWidth >= 1024) {
-              closeMobileMenu();
-          }
-      });
-      
-      // START: Add listener for compare slider - MOVED
-      /*
-      document.getElementById('compare-slider-range').addEventListener('input', (e) => {
-        const value = e.target.value;
-        document.getElementById('compare-slider-image-before').style.clipPath = `polygon(0 0, ${value}% 0, ${value}% 100%, 0 100%)`;
-        document.getElementById('compare-slider-handle').style.left = `${value}%`;
-      });
-      */
-      // END: Add listener for compare slider - MOVED
+      // NEW: Generate letter buttons
+      generateLetterButtons();
+
+      await loadAllTags();
+      await loadMainFeedCards(); // Changed from loadCards()
     };
-    
-    // --- Data Loading ---
 
-    async function loadTagCounts() {
-      console.log("Loading tag counts...");
-      try {
-        const { data: models, error } = await supabase
-          .from('models')
-          .select('tags');
+    // --- Removed scrollToLetter function ---
 
-        if (error) throw error;
-
-        const counts = {};
-        models.forEach(model => {
-          if (model.tags) {
-            const tags = model.tags.split(',').map(t => t.trim()).filter(t => t);
-            tags.forEach(tag => {
-              counts[tag] = (counts[tag] || 0) + 1;
+    // NEW: Function to generate A-Z filter buttons
+    function generateLetterButtons() {
+        const container = document.getElementById('letter-filter');
+        // 'All' button is already in HTML, so we start from 'A'
+        for (let i = 65; i <= 90; i++) { // A-Z ASCII codes
+            const letter = String.fromCharCode(i);
+            const button = document.createElement('button');
+            button.dataset.letter = letter;
+            button.className = 'letter-btn h-6 w-6 flex items-center justify-center rounded-full text-xs transition-colors';
+            button.textContent = letter;
+            
+            button.addEventListener('click', () => {
+                currentLetterFilter = letter;
+                // Update selected state
+                document.querySelectorAll('.letter-btn.selected').forEach(btn => btn.classList.remove('selected'));
+                button.classList.add('selected');
+                
+                loadMainFeedCards();
             });
-          }
+            container.appendChild(button);
+        }
+        
+        // Add click listener for the 'All' button
+        const allButton = document.querySelector('.letter-btn[data-letter="all"]');
+        allButton.classList.add('selected'); // Start with 'All' selected
+        allButton.addEventListener('click', () => {
+            currentLetterFilter = 'all';
+            document.querySelectorAll('.letter-btn.selected').forEach(btn => btn.classList.remove('selected'));
+            allButton.classList.add('selected');
+            
+            loadMainFeedCards();
         });
-        
-        tagCountMap = counts;
-        console.log("Tag counts loaded:", tagCountMap);
-      } catch (error) {
-        console.error("Error loading tag counts:", error);
-      }
     }
 
-    async function loadTotalCardCount() {
-      const countEl = document.getElementById('total-card-count');
-      try {
-        const { count, error } = await supabase
-          .from('models')
-          .select('*', { head: true, count: 'exact' });
-          
-        if (error) throw error;
-        
-        if (countEl) {
-          countEl.textContent = `(${count} total)`;
+    async function loadAllTags() {
+        try {
+            const { data, error } = await supabase.from('tags').select('name');
+            if (error) throw error;
+            allTags = data.map(t => t.name).sort();
+            updateTagDisplays(); // This updates the popup dropdown
+        } catch (error) {
+            console.error("Error loading all tags:", error);
         }
-      } catch (error) {
-        console.error("Error loading total card count:", error);
-        if (countEl) {
-          countEl.textContent = `(Error)`;
-        }
-      }
-    }
-    
-    async function loadTags() {
-      const tagsDropdownMenu = document.getElementById('tags-dropdown-menu');
-      try {
-        const { data: tags, error } = await supabase
-          .from('tags')
-          .select('name')
-          .order('name', { ascending: true });
-
-        if (error && error.code === '42P01') {
-          console.error("The 'tags' table does not exist.");
-          tagsDropdownMenu.innerHTML = '<span class="block px-4 py-2 text-sm text-gray-500">Tag setup needed</span>';
-          return;
-        }
-        if (error) throw error;
-        
-        allTags = tags.map(tag => tag.name);
-        updateTagDisplays();
-        
-        tagsDropdownMenu.innerHTML = '';
-        if (allTags.length > 0) {
-          allTags.forEach(tag => {
-            if (tag.startsWith('album:')) { return; }
-            
-            const tagLink = document.createElement('a');
-            tagLink.href = "#";
-            tagLink.className = "block px-4 py-2 text-sm text-gray-300 hover:bg-blue-600 hover:text-white";
-            
-            const count = tagCountMap[tag] || 0;
-            tagLink.textContent = `${tag} (${count})`;
-            
-            tagLink.onclick = (e) => {
-              e.preventDefault();
-              searchByTag(tag);
-              closeTagsDropdown();
-              closeMobileMenu();
-              document.getElementById('tags-dropdown-btn').classList.add('text-white');
-              document.getElementById('tags-dropdown-btn').classList.remove('text-gray-400');
-            };
-            tagsDropdownMenu.appendChild(tagLink);
-          });
-        } else {
-          tagsDropdownMenu.innerHTML = '<span class="block px-4 py-2 text-sm text-gray-500">No tags found</span>';
-        }
-        
-      } catch (error) {
-        console.error("Error loading tags:", error);
-        tagsDropdownMenu.innerHTML = '<span class="block px-4 py-2 text-sm text-red-400">Error loading tags</span>';
-      }
     }
 
-    async function loadCards(isNewQuery = false) {
-      if (isLoadingMore || (noMoreResults && !isNewQuery)) return;
-      
-      // --- START: Close compare mode on new load ---
-      if (isCompareModeActive) {
-        toggleCompareMode(); // This will reset everything
-      }
-      // --- END: Close compare mode ---
-      
-      isLoadingMore = true;
-      if (isNewQuery) {
-        currentPage = 0;
-        noMoreResults = (currentSortOrder === 'shuffle');
-        gallery.innerHTML = '';
-        displayedCards = [];
-        albumsSeenThisSession.clear();
-        noResults.style.display = 'none';
-        searchStatus.style.display = 'none';
-        loader.style.display = 'flex';
-        scrollLoader.style.display = (currentSortOrder === 'shuffle') ? 'none' : 'flex';
-      } else {
-        scrollLoader.style.display = 'flex';
-      }
+    // --- New function to load cards into the left feed ---
+    async function loadMainFeedCards() {
+        // We now target the new inner grid container
+        const feedGrid = document.getElementById('main-feed-grid'); 
+        const loader = document.getElementById('main-feed-loader');
+        
+        // Clear previous content from the grid
+        while (feedGrid.firstChild && feedGrid.firstChild !== loader) {
+            feedGrid.removeChild(feedGrid.firstChild);
+        }
+        loader.style.display = 'block';
 
-      try {
-        let query = supabase.from('models').select('*');
+        // NEW: Determine sort order
+        let orderColumn = 'title';
+        let orderAscending = true;
+        
+        if (currentSortOrder === 'title-desc') {
+            orderAscending = false;
+        } else if (currentSortOrder === 'recent') {
+            orderColumn = 'created_at'; // Assumes 'created_at' column exists
+            orderAscending = false;
+        }
+        // 'title-asc' is the default (orderColumn='title', orderAscending=true)
 
-        // Apply filters
-        switch (currentFilter.type) {
-          case 'favorites':
-            query = query.eq('favorited', true);
-            searchStatus.innerHTML = '<h2 class="text-xl">Favorites</h2>';
-            searchStatus.style.display = 'flex';
-            updateNavActiveState('favorites');
-            break;
-          case 'nsfw':
-            query = query.eq('nsfw', true);
-            searchStatus.innerHTML = '<h2 class="text-xl text-red-400">NSFW Models</h2>';
-            searchStatus.style.display = 'flex';
-            updateNavActiveState('nsfw');
-            break;
-          case 'tags':
-            const t = currentFilter.value.trim().replace(/"/g, '""');
-            const orExpr = `tags.eq."${t}",tags.ilike."${t},%",tags.ilike."%,${t}",tags.ilike."%,${t},%"`;
-            query = query.or(orExpr);
+        try {
+            let query = supabase.from('celebrities').select('*');
             
-            const count = tagCountMap[currentFilter.value] || 0;
-            const countText = count === 1 ? 'model' : 'models';
-            searchStatus.innerHTML = `
-              <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
-                <h2 class="text-xl">Tag: <span class="px-3 py-1 bg-gray-700 text-white text-lg rounded-full">${currentFilter.value}</span></h2>
-                <span class="text-gray-500 text-lg">(${count} ${countText})</span>
-              </div>
-            `;
+            // NEW: Apply letter filter
+            if (currentLetterFilter !== 'all') {
+                // Use case-insensitive like (ilike)
+                query = query.ilike('title', `${currentLetterFilter}%`); // Filter by title starting with the letter
+            }
+
+            // Apply sort order
+            query = query.order(orderColumn, { ascending: orderAscending });
+
+            const { data: cards, error } = await query;
             
-            searchStatus.style.display = 'flex';
-            updateNavActiveState('tags');
-            break;
-          case 'all_albums':
-            query = query.eq('nsfw', false);
-            query = query.ilike('tags', '%album:%');
-            searchStatus.innerHTML = '<h2 class="text-xl">Albums</h2>';
-            searchStatus.style.display = 'flex';
-            updateNavActiveState('all_albums');
-            break;
-          default: // 'all_singles'
-            query = query.eq('nsfw', false);
-            query = query.not('tags', 'ilike', '%album:%');
-            updateNavActiveState('all_singles');
-            break;
-        }
-
-        // Add pagination & ordering
-        if (currentSortOrder === 'shuffle') {
-          if (isNewQuery) {
-            query = query.limit(100);
-          } else {
-            cards = [];
-            noMoreResults = true;
-          }
-        } else {
-          const from = currentPage * PAGE_SIZE;
-          const to = from + PAGE_SIZE - 1;
-          query = query.range(from, to);
-          
-          if (currentSortOrder === 'first_uploaded') {
-            query = query.order('created_at', { ascending: true });
-          } else if (currentSortOrder === 'highest_rated') {
-            query = query.order('rating', { ascending: false, nullsFirst: false });
-          } else if (currentSortOrder === 'lowest_rated') {
-             query = query.order('rating', { ascending: true, nullsFirst: true });
-          } else { // default is 'last_uploaded'
-            query = query.order('created_at', { ascending: false });
-          }
-        }
-
-        let { data: cards, error } = await query;
-        if (error) throw error;
-        
-        if (currentSortOrder === 'shuffle' && cards) {
-          shuffleArray(cards);
-        }
-        
-        if (currentFilter.type === 'tags') {
-           const needle = currentFilter.value.toLowerCase();
-           cards = (cards || []).filter(c =>
-             (c.tags || '')
-               .split(',')
-               .map(s => s.trim().toLowerCase())
-               .includes(needle)
-           );
-        }
-        
-        loader.style.display = 'none';
-        scrollLoader.style.display = 'none';
-        
-        if (cards && cards.length > 0) {
-          noResults.style.display = 'none';
-          
-          const newElements = [];
-          const newCardsForGallery = [];
-
-          cards.forEach(card => {
-            const allCardTags = (card.tags || '').split(',').map(t => t.trim()).filter(t => t);
-            const albumTag = allCardTags.find(t => t.startsWith('album:'));
+            if (error) throw error;
             
-            if (albumTag) {
-              card.isAlbum = true;
-              card.albumTag = albumTag;
-              
-              const albumSlug = albumTag.substring(6);
-              card.albumName = allCardTags.find(t => 
-                !t.startsWith('album:') &&
-                t.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === albumSlug
-              );
-              
-              if (!card.albumName) {
-                card.albumName = albumSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-              }
-              
-              if (!albumsSeenThisSession.has(albumTag)) {
-                albumsSeenThisSession.add(albumTag);
-                card.isAlbumCover = true;
-                newCardsForGallery.push(card);
-              }
+            loader.style.display = 'none'; // Hide loader once data is fetched
+
+            if (cards.length > 0) {
+                cards.forEach(addCardToMainFeed);
             } else {
-              card.isAlbum = false;
-              newCardsForGallery.push(card);
+                // Insert empty message into the grid
+                // MODIFIED: Added dark mode class
+                feedGrid.insertAdjacentHTML('afterbegin', '<p class="text-gray-500 dark:text-gray-400 p-4 text-center col-span-2">No galleries found.</p>');
             }
-          });
-          
-          if (newCardsForGallery.length > 0) {
-            newCardsForGallery.forEach(card => {
-              const index = displayedCards.length;
-              displayedCards.push(card);
-              
-              const cardElem = createCardElement(card, index);
-              gallery.appendChild(cardElem);
-              newElements.push(cardElem);
-            });
-            
-            imagesLoaded(newElements, function() {
-              if (isNewQuery) {
-                msnry.reloadItems();
-              } else {
-                msnry.addItems(newElements);
-              }
-              msnry.layout();
-            });
-            
-            if (currentSortOrder !== 'shuffle') {
-              currentPage++;
-            }
-          } else if (isNewQuery) {
-             noResults.style.display = 'block';
-          }
-          
-        } else {
-          noMoreResults = true;
-          if (isNewQuery) {
-            noResults.style.display = 'block';
-          }
+
+        } catch (error) {
+            console.error("Error loading main feed:", error);
+            loader.style.display = 'none';
+            // Insert error message into the grid
+            // MODIFIED: Added dark mode class
+            feedGrid.insertAdjacentHTML('afterbegin', '<p class="text-red-500 dark:text-red-400 p-4 text-center col-span-2">Error loading galleries.</p>');
         }
-        
-      } catch (error) {
-        console.error("Error loading cards:", error);
-        loader.style.display = 'none';
-        scrollLoader.style.display = 'none';
-        noResults.innerHTML = 'Error loading models. Check console for details.';
-        noResults.style.display = 'block';
-      }
-      
-      isLoadingMore = false;
     }
     
-    function createCardElement(card, index) {
+    // --- New function to add a card to the left feed ---
+    function addCardToMainFeed(card) {
+      // We target the new grid container
+      const feedGrid = document.getElementById('main-feed-grid');
       const cardElem = document.createElement('div');
-      cardElem.className = 'masonry-item bg-gray-900 rounded-lg overflow-hidden relative group cursor-pointer';
-      cardElem.id = `card-dom-${card.id}`;
       
-      // START: Add Compare Checkbox
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.className = 'compare-checkbox focus:ring-blue-500 h-5 w-5 text-blue-600 bg-gray-700 border-gray-600 rounded';
-      checkbox.dataset.cardId = card.id;
-      checkbox.onclick = (e) => {
-        e.stopPropagation(); // Stop click from opening viewer
-        toggleCompareSelection(card.id, e.target.checked);
-      };
-      cardElem.appendChild(checkbox);
-      // END: Add Compare Checkbox
-      
-      if (card.isAlbumCover) {
-        const albumBadge = document.createElement('div');
-        albumBadge.className = 'absolute top-2 left-2 z-10 px-2 py-0.5 bg-blue-600 text-white text-xs font-bold rounded-full opacity-0 group-hover:opacity-100 transition-opacity';
-        // Reposition badge if compare mode is on
-        albumBadge.classList.add('lg:left-2', 'left-10'); // Move over for checkbox
-        cardElem.appendChild(albumBadge);
+      // MODIFIED: Changed layout to square (aspect-square) with group for hover effects
+      // Removed flex-col as we are using absolute positioning now
+      cardElem.className = 'feed-card relative aspect-square rounded-lg overflow-hidden shadow-sm border border-gray-200 cursor-pointer transition-all duration-150 group dark:border-gray-600 bg-gray-100 dark:bg-gray-800';
+      cardElem.dataset.cardId = card.id;
+
+      // Add selected class if this card was the last one selected
+      if (card.id === selectedFeedCardId) {
+        cardElem.classList.add('selected');
       }
       
-      const img = document.createElement('img');
-      img.src = card.main_model_url.includes('ik.imagekit.io')
-        ? `${card.main_model_url}?tr=w-500,q-70`
-        : card.main_model_url;
-      img.alt = "Model";
-      img.className = "w-full h-auto block";
-      img.onerror = () => { img.src = 'https://placehold.co/500x500/111827/4b5563?text=Error'; };
+      const relatedImageCount = (card.related_celebrities || []).length;
       
-      const overlay = document.createElement('div');
-      overlay.className = "overlay absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center";
-      
-      const tagIcon = document.createElement('span');
-      tagIcon.className = "text-white text-3xl";
-      tagIcon.innerHTML = "&#9776;";
-      
-      const editButton = document.createElement('button');
-      editButton.className = "absolute top-2 right-2 z-10 p-1.5 bg-black/50 rounded-full text-white hover:bg-blue-600 opacity-0 group-hover:opacity-100 transition-opacity";
-      editButton.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z" />
-        </svg>
-      `;
-      editButton.onclick = (e) => {
-        e.stopPropagation();
-        openQuickEditModal(card.id);
-      };
-      
-      const deleteButton = document.createElement('button');
-      deleteButton.className = "absolute top-10 right-2 z-10 p-1.5 bg-black/50 rounded-full text-white hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity";
-      deleteButton.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-      `;
-      deleteButton.onclick = (e) => {
-        e.stopPropagation();
-        deleteCard(card.id);
-      };
-      
-      const favoriteButton = document.createElement('button');
-      const favBtnBaseClasses = "absolute top-[4.5rem] right-2 z-10 p-1.5 bg-black/50 rounded-full hover:text-yellow-400 opacity-0 group-hover:opacity-100 transition-opacity";
-      const favBtnColorClass = card.favorited ? 'text-yellow-400' : 'text-white';
-      favoriteButton.className = `${favBtnBaseClasses} ${favBtnColorClass}`;
-      favoriteButton.id = `fav-btn-${card.id}`;
-      favoriteButton.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
-        </svg>
-      `;
-      
-      favoriteButton.onclick = (e) => {
-        e.stopPropagation();
-        const currentCard = displayedCards.find(c => c.id === card.id);
-        toggleFavorite(e, card.id, currentCard ? currentCard.favorited : card.favorited);
-      };
-      
-      overlay.appendChild(tagIcon);
-      cardElem.appendChild(img);
-      cardElem.appendChild(overlay);
-      cardElem.appendChild(editButton);
-      cardElem.appendChild(deleteButton);
-      cardElem.appendChild(favoriteButton);
-      cardElem.appendChild(createGalleryRatingElement(card));
+      // MODIFIED: Full image overlay style
+      // CHANGED: added object-top to ensure the top (faces) isn't cut off while filling the card
+      cardElem.innerHTML = `
+        <img src="${card.main_celebrity_url}" alt="${card.title}" loading="lazy"
+             onerror="this.src='https://placehold.co/400x300/f87171/white?text=N/A'; this.classList.remove('object-cover'); this.classList.add('object-contain');" 
+             class="w-full h-full object-cover object-top bg-gray-200 dark:bg-gray-700" />
+        
+        <!-- Gradient Overlay -->
+        <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-90"></div>
 
-      // Main click action
+        <!-- Text Content Overlaid at Bottom -->
+        <div class="absolute bottom-0 left-0 w-full p-3 z-10">
+          <h4 class="text-base font-bold text-white truncate drop-shadow-sm" title="${card.title}">${card.title}</h4>
+          <!-- Show count of main image + related images -->
+          <span class="text-xs text-gray-300 font-medium">${relatedImageCount + 1} images</span>
+        </div>
+        
+        <!-- Edit/Delete buttons (Visible on hover or if card is selected) -->
+        <!-- Added group-hover:opacity-100 opacity-0 to make them cleaner, can remove if always needed -->
+        <div class="absolute top-2 right-2 flex items-center gap-2 z-20 transition-opacity duration-200 opacity-0 group-hover:opacity-100">
+            <button class="bg-black/40 backdrop-blur-md hover:bg-black/60 text-white rounded-full w-8 h-8 flex items-center justify-center transition-all shadow-sm border border-white/20" 
+                    onclick="event.stopPropagation(); openPopup(${JSON.stringify(card).replace(/"/g, '&quot;')})" 
+                    title="Edit">
+              ✏️
+            </button>
+            <button class="bg-black/40 backdrop-blur-md hover:bg-black/60 text-white rounded-full w-8 h-8 flex items-center justify-center transition-all shadow-sm border border-white/20" 
+                    onclick="event.stopPropagation(); deleteCardAndRefreshFeed('${card.id}')" 
+                    title="Delete">
+              🗑️
+            </button>
+        </div>
+      `;
+      
       cardElem.addEventListener('click', () => {
-        // START: Don't open viewer if in compare mode
-        if (isCompareModeActive) {
-          const cb = cardElem.querySelector('.compare-checkbox');
-          cb.checked = !cb.checked;
-          toggleCompareSelection(card.id, cb.checked);
-          return;
+        // Remove 'selected' from previously selected card
+        const currentSelected = document.querySelector('.feed-card.selected');
+        if (currentSelected) {
+          currentSelected.classList.remove('selected');
         }
-        // END
-        openImageViewer(index);
+        
+        // Add 'selected' to this card
+        cardElem.classList.add('selected');
+        selectedFeedCardId = card.id;
+
+        loadRelatedGallery(card);
       });
+      // --- END OF DELETED CODE ---
       
-      // Right-click for context menu
-      cardElem.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        showContextMenu(e, card.id);
-      });
-      
-      return cardElem;
+      // Insert before the loader, inside the grid
+      feedGrid.insertBefore(cardElem, document.getElementById('main-feed-loader'));
     }
 
-    // --- Infinite Scroll ---
-    
-    function handleScroll() {
-      // Don't load if any modal is open
-      if (imageViewer.style.display === 'flex' || document.getElementById('popup').style.display === 'flex' || document.getElementById('quick-edit-modal').style.display === 'flex' || document.getElementById('manage-tags-popup').style.display === 'flex' || document.getElementById('compare-viewer').style.display !== 'none') return;
+    // --- New function to load related images into the right gallery ---
+    function loadRelatedGallery(card) {
+      const gallery = document.getElementById('related-gallery');
+      const placeholder = document.getElementById('related-gallery-placeholder');
       
-      if (currentSortOrder === 'shuffle') return;
-      
-      const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
-      if (scrollTop + clientHeight >= scrollHeight - 300) {
-        if (!isLoadingMore && !noMoreResults) {
-          loadCards();
-        }
-      }
-    }
-    
-    // --- Navigation & Filtering ---
-    
-    function updateNavActiveState(state = null) {
-        document.querySelector('a[href="#"]').classList.remove('text-white', 'font-semibold');
-        document.querySelector('a[href="#"]').classList.add('text-gray-400');
-        
-        document.getElementById('albums-link').classList.remove('text-white', 'font-semibold');
-        document.getElementById('albums-link').classList.add('text-gray-400');
-        
-        document.querySelector('a[onclick*="showFavorites"]').classList.remove('text-white', 'font-semibold');
-        document.querySelector('a[onclick*="showFavorites"]').classList.add('text-gray-400');
-        
-        document.getElementById('nsfwBtn').classList.remove('text-white', 'font-semibold');
-        document.getElementById('nsfwBtn').classList.add('text-gray-400');
-        
-        document.getElementById('tags-dropdown-btn').classList.remove('text-white');
-        document.getElementById('tags-dropdown-btn').classList.add('text-gray-400');
+      // Clear gallery and hide placeholder
+      gallery.innerHTML = '';
+      placeholder.style.display = 'none';
 
-        if (state === 'all_singles') {
-            document.querySelector('a[href="#"]').classList.add('text-white', 'font-semibold');
-        } else if (state === 'all_albums') {
-            document.getElementById('albums-link').classList.add('text-white', 'font-semibold');
-        } else if (state === 'favorites') {
-            document.querySelector('a[onclick*="showFavorites"]').classList.add('text-white', 'font-semibold');
-        } else if (state === 'nsfw') {
-            document.getElementById('nsfwBtn').classList.add('text-white', 'font-semibold');
-        } else if (state === 'tags') {
-            document.getElementById('tags-dropdown-btn').classList.add('text-white');
-            document.getElementById('tags-dropdown-btn').classList.remove('text-gray-400');
-        }
-    }
+      // Combine main image and related images
+      const images = [card.main_celebrity_url, ...(card.related_celebrities || [])];
 
-    function showAllModels(event) {
-      if(event) event.preventDefault();
-      currentFilter = { type: 'all_singles', value: null };
-      loadCards(true);
-    }
-
-    function showAllAlbums(event) {
-      if(event) event.preventDefault();
-      currentFilter = { type: 'all_albums', value: null };
-      loadCards(true);
-    }
-
-    function showFavorites(event) {
-      if(event) event.preventDefault();
-      currentFilter = { type: 'favorites', value: null };
-      loadCards(true);
-    }
-
-    function showNsfw(event) {
-      if(event) event.preventDefault();
-      currentFilter = { type: 'nsfw', value: null };
-      loadCards(true);
-    }
-    
-    function searchByTag(tag) {
-      closeImageViewer();
-      currentFilter = { type: 'tags', value: tag };
-      loadCards(true);
-    }
-    
-    // --- Rating Helper ---
-    function createGalleryRatingElement(card) {
-      const rating = card.rating || 0;
-      const ratingEl = document.createElement('div');
-      ratingEl.id = `rating-display-${card.id}`;
-      ratingEl.className = 'absolute top-[6.5rem] right-2 z-10 flex items-center gap-1 px-1.5 py-0.5 bg-black/50 rounded-full text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity';
-      
-      const starSvg = `
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 ${rating > 0 ? 'text-yellow-400' : 'text-gray-500'}" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27z"/>
-        </svg>
-      `;
-      ratingEl.innerHTML = `${starSvg} <span>${rating > 0 ? rating : '-'}</span>`;
-      return ratingEl;
-    }
-
-    // --- Mobile Menu Functions ---
-    function toggleMobileMenu() {
-        mobileMenu.classList.toggle('hidden');
-        const menuBtn = document.getElementById('menu-btn');
-        if (mobileMenu.classList.contains('hidden')) {
-            menuBtn.innerHTML = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>`;
-        } else {
-            menuBtn.innerHTML = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>`;
-        }
-    }
-    
-    function closeMobileMenu() {
-        if (!mobileMenu.classList.contains('hidden')) {
-            mobileMenu.classList.add('hidden');
-            const menuBtn = document.getElementById('menu-btn');
-            menuBtn.innerHTML = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>`;
-        }
-    }
-    
-    function mobileMenuClicked(functionName) {
-        const event = window.event;
-        switch (functionName) {
-            case 'showAllModels': showAllModels(event); break;
-            case 'showAllAlbums': showAllAlbums(event); break;
-            case 'showFavorites': showFavorites(event); break;
-            case 'showNsfw': showNsfw(event); break;
-            case 'openManageTagsPopup': openManageTagsPopup(); break;
-        }
-        closeMobileMenu();
-    }
-    
-    // --- Tags Dropdown ---
-    function toggleTagsDropdown(event) {
-      event.stopPropagation();
-      const menu = document.getElementById('tags-dropdown-menu');
-      menu.classList.toggle('hidden');
-      
-      const btn = document.getElementById('tags-dropdown-btn');
-      if (!menu.classList.contains('hidden')) {
-        btn.classList.add('text-white');
-        btn.classList.remove('text-gray-400');
-      } else {
-        if (currentFilter.type !== 'tags') {
-           btn.classList.remove('text-white');
-           btn.classList.add('text-gray-400');
-        }
-      }
-    }
-
-    function closeTagsDropdown() {
-      document.getElementById('tags-dropdown-menu').classList.add('hidden');
-      const btn = document.getElementById('tags-dropdown-btn');
-      if (currentFilter.type !== 'tags') {
-         btn.classList.remove('text-white');
-         btn.classList.add('text-gray-400');
-      }
-    }
-
-    // --- Image Viewer (Modal) ---
-    
-    function openImageViewer(index) {
-      imageViewer.style.display = 'flex';
-      imageViewer.scrollTop = 0;
-      
-      imageViewer.addEventListener('scroll', handleRelatedScroll);
-      document.addEventListener('wheel', handleViewerWheel, { passive: false });
-      viewerImageContainer.addEventListener('mousedown', handleViewerMouseDown);
-      document.addEventListener('mousemove', handleViewerMouseMove);
-      document.addEventListener('mouseup', handleViewerMouseUp);
-      viewerImageContainer.addEventListener('touchstart', handleViewerTouchStart, { passive: false });
-      viewerImageContainer.addEventListener('touchmove', handleViewerTouchMove, { passive: false });
-      viewerImageContainer.addEventListener('touchend', handleViewerTouchEnd);
-      
-      currentViewerIndex = index;
-      const card = displayedCards[index];
-      if (card) {
-        if (card.isAlbum) {
-          currentAlbumViewerList = [card];
-          currentAlbumViewerIndex = 0;
-        } else {
-          currentAlbumViewerList = [];
-          currentAlbumViewerIndex = 0;
-        }
-        displayCardInViewer(card);
-      } else {
-        console.error("Could not find card at index:", index);
-        closeImageViewer();
-      }
-    }
-
-    function closeImageViewer(event = null) {
-      if (event) {
-        if (event.target !== imageViewer) { return; }
-      }
-      if (imageViewer.style.display === 'flex') {
-        imageViewer.style.display = 'none';
-        viewerImage.src = '';
-        
-        imageViewer.removeEventListener('scroll', handleRelatedScroll);
-        document.removeEventListener('wheel', handleViewerWheel);
-        viewerImageContainer.removeEventListener('mousedown', handleViewerMouseDown);
-        document.removeEventListener('mousemove', handleViewerMouseMove);
-        document.removeEventListener('mouseup', handleViewerMouseUp);
-        viewerImageContainer.removeEventListener('touchstart', handleViewerTouchStart);
-        viewerImageContainer.removeEventListener('touchmove', handleViewerTouchMove);
-        viewerImageContainer.removeEventListener('touchend', handleViewerTouchEnd);
-        
-        resetZoom();
-      }
-    }
-    
-    function displayCardInViewer(card) {
-      currentRelatedCard = card;
-      imageViewer.scrollTop = 0;
-      resetZoom();
-      viewerLoader.style.display = 'flex';
-      viewerImage.style.display = 'none';
-      viewerTags.innerHTML = '';
-      
-      const nsfwLabel = document.getElementById('viewer-nsfw-label');
-
-      const fullResUrl = card.main_model_url.includes('ik.imagekit.io')
-        ? card.main_model_url.split('?')[0] + '?tr=q-90'
-        : card.main_model_url;
-      
-      // --- START: FIX ---
-      // Set handlers *before* setting src to prevent race condition with cached images
-      viewerImage.onload = () => {
-        viewerLoader.style.display = 'none';
-        viewerImage.style.display = 'block';
-        applyViewerTransform();
-      };
-      
-      viewerImage.onerror = () => {
-        viewerLoader.style.display = 'none';
-        viewerImage.style.display = 'block';
-        viewerImage.src = 'https://placehold.co/800x800/111827/4b5563?text=Error+Loading+Image';
-        applyViewerTransform();
-      };
-      
-      viewerImage.src = fullResUrl; // <-- Set src *after* handlers
-      // --- END: FIX ---
-
-      if (card.nsfw) nsfwLabel.style.display = 'inline-block';
-      else nsfwLabel.style.display = 'none';
-
-      const tags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t) : [];
-      if (tags.length > 0) {
-        tags.forEach(tag => {
-          if (tag.startsWith('album:')) {
-            const tagElem = document.createElement('span');
-            tagElem.className = "px-3 py-1 bg-gray-800 text-gray-400 text-sm rounded-full";
-            tagElem.textContent = tag.substring(6).replace(/-/g, ' ');
-            viewerTags.appendChild(tagElem);
-            return;
-          }
-          
-          const tagElem = document.createElement('button');
-          tagElem.className = "px-3 py-1 bg-gray-700 text-white text-sm rounded-full hover:bg-blue-600 transition-colors";
-          tagElem.textContent = tag;
-          tagElem.onclick = () => searchByTag(tag);
-          viewerTags.appendChild(tagElem);
-        });
-      } else {
-        viewerTags.innerHTML = `<span class="text-gray-400 text-sm">No tags for this model.</span>`;
-      }
-      
-      renderViewerRating(card);
-      
-      const addToAlbumBtn = document.getElementById('add-to-album-btn');
-      const relatedTitle = document.getElementById('viewer-related-container').querySelector('h4');
-      
-      if (card.isAlbum) {
-        relatedTitle.textContent = 'Images in this Album';
-        addToAlbumBtn.style.display = 'flex';
-        loadAlbumImages(card.albumTag, card.id);
-      } else {
-        relatedTitle.textContent = 'Related Models';
-        addToAlbumBtn.style.display = 'none';
-        
-        currentAlbumViewerList = [];
-        currentAlbumViewerIndex = 0;
-        
-        loadRelatedImages(card, true);
-      }
-    }
-    
-    async function loadAlbumImages(albumTag, currentCardId) {
-      if (!albumTag) { return; }
-      
-      currentRelatedCard.isAlbum = true;
-      
-      relatedIsLoadingMore = true;
-      relatedCurrentPage = 0;
-      relatedNoMoreResults = true;
-      
-      viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">Loading album...</span>';
-      relatedScrollLoader.style.display = 'none';
-
-      try {
-        const { data: albumCards, error } = await supabase
-          .from('models')
-          .select('*')
-          .ilike('tags', `%${albumTag}%`)
-          .neq('id', currentCardId)
-          .order('created_at', { ascending: true })
-          .limit(50);
-          
-        if (error) throw error;
-        
-        viewerRelatedGrid.innerHTML = '';
-        
-        if (albumCards.length === 0) {
-          viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">No other images found in this album.</span>';
-        } else {
-          const processedAlbumCards = albumCards.map(card => {
-            return {
-              ...card,
-              isAlbum: true,
-              albumTag: albumTag,
-              albumName: currentAlbumViewerList[0].albumName
-            };
-          });
-
-          currentAlbumViewerList = [currentAlbumViewerList[0], ...processedAlbumCards];
-          
-          processedAlbumCards.forEach((albumCard, index) => {
-            addRelatedCardToGrid(albumCard, index + 1, true);
-          });
-        }
-        
-      } catch (error) {
-        console.error("Error loading album images:", error);
-        viewerRelatedGrid.innerHTML = '<span class="text-red-400 text-sm col-span-full">Error loading album.</span>';
-      }
-      
-      relatedIsLoadingMore = false;
-    }
-    
-    async function loadRelatedImages(card, isNewQuery = true) {
-      if (!card) { return; }
-      
-      if (relatedIsLoadingMore) return;
-      
-      currentRelatedCard = card; 
-      currentRelatedCard.isAlbum = false;
-      
-      if (isNewQuery) {
-        relatedCurrentPage = 0;
-        relatedNoMoreResults = false;
-        viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">Loading...</span>';
-      } else {
-        relatedScrollLoader.style.display = 'flex';
-      }
-      
-      relatedIsLoadingMore = true;
-
-      const tags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t && !t.startsWith('album:')) : [];
-      if (tags.length === 0) {
-        viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">No tags to find related models.</span>';
-        relatedIsLoadingMore = false;
-        relatedNoMoreResults = true;
-        relatedScrollLoader.style.display = 'none';
+      if (images.length === 0 || (images.length === 1 && !images[0])) {
+        // MODIFIED: Added dark mode class
+        gallery.innerHTML = '<p class="text-gray-500 dark:text-gray-400 text-center col-span-full">No images found for this gallery.</p>';
         return;
       }
-      
-      try {
-        const tagConditions = tags.map(tag => {
-          const t = tag.trim().replace(/"/g, '""');
-          return `tags.ilike.%${t}%`;
-        }).join(',');
+
+      images.forEach((imgUrl, index) => {
+        if (!imgUrl) return; // Skip if URL is null or empty
+
+        const item = document.createElement('div');
+        item.className = 'masonry-item mb-4';
         
-        const { data: relatedCards, error } = await supabase
-          .from('models')
-          .select('*')
-          .or(tagConditions)
-          .neq('id', card.id)
-          .eq('nsfw', false)
-          .limit(PAGE_SIZE)
-          .range(relatedCurrentPage * PAGE_SIZE, (relatedCurrentPage + 1) * PAGE_SIZE - 1);
-          
-        if (error) throw error;
+        const img = document.createElement('img');
+        img.src = imgUrl;
+        img.alt = `${card.title} - image ${index + 1}`;
+        img.loading = 'lazy';
+        img.className = 'w-full h-auto object-cover rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 cursor-pointer bg-gray-200';
+        img.onerror = function() { 
+            this.src='https://placehold.co/400x400/f87171/white?text=Not+Found';
+            this.classList.add('aspect-square'); // Give placeholder a shape
+        };
         
-        if (relatedCards) shuffleArray(relatedCards);
-        
-        relatedScrollLoader.style.display = 'none';
-        
-        if (isNewQuery) {
-          viewerRelatedGrid.innerHTML = '';
-        }
-        
-        if (relatedCards.length === 0) {
-          if (isNewQuery) {
-            viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">No related models found.</span>';
-          }
-          relatedNoMoreResults = true;
-        } else {
-          // --- START: FIX ---
-          // relatedCards.forEach(addRelatedCardToGrid); // This is wrong, forEach passes (element, index, array)
-          // We must wrap the call to avoid passing extra arguments to our function
-          relatedCards.forEach(card => addRelatedCardToGrid(card));
-          // --- END: FIX ---
-          relatedCurrentPage++;
-        }
-        
-      } catch (error) {
-        console.error("Error loading related images:", error);
-        relatedScrollLoader.style.display = 'none';
-        if (isNewQuery) {
-          viewerRelatedGrid.innerHTML = '<span class="text-red-400 text-sm col-span-full">Error loading related models.</span>';
-        }
-      }
-      
-      relatedIsLoadingMore = false;
-    }
-    
-    function handleRelatedScroll() {
-      const { scrollTop, scrollHeight, clientHeight } = imageViewer;
-      if (scrollTop + clientHeight >= scrollHeight - 300) {
-        if (!relatedIsLoadingMore && !relatedNoMoreResults) {
-          loadRelatedImages(currentRelatedCard, false);
-        }
-      }
-    }
-    
-    function addRelatedCardToGrid(relatedCard, index = -1, isAlbumItem = false) {
-      const cardElem = document.createElement('div');
-      cardElem.className = 'related-masonry-item bg-gray-900 rounded-lg overflow-hidden relative group cursor-pointer';
-      
-      const img = document.createElement('img');
-      img.src = relatedCard.main_model_url.includes('ik.imagekit.io')
-        ? `${relatedCard.main_model_url}?tr=w-500,q-70`
-        : relatedCard.main_model_url;
-      img.alt = "Related Model";
-      img.className = "w-full h-auto block";
-      img.onerror = () => { img.src = 'https://placehold.co/500x500/111827/4b5563?text=Error'; };
-      
-      cardElem.appendChild(img);
-      
-      cardElem.onclick = () => {
-        if (isAlbumItem) {
-          currentAlbumViewerIndex = index;
-          displayCardInViewer(currentAlbumViewerList[currentAlbumViewerIndex]);
-        } else {
-          const relatedIndex = displayedCards.findIndex(card => card.id === relatedCard.id);
-          
-          const allCardTags = (relatedCard.tags || '').split(',').map(t => t.trim()).filter(t => t);
-          const albumTag = allCardTags.find(t => t.startsWith('album:'));
-          if (albumTag) {
-            relatedCard.isAlbum = true;
-            relatedCard.albumTag = albumTag;
-            const albumSlug = albumTag.substring(6);
-            relatedCard.albumName = allCardTags.find(t => 
-              !t.startsWith('album:') &&
-              t.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === albumSlug
-            );
-            if (!relatedCard.albumName) {
-              relatedCard.albumName = albumSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-            }
-          }
-        
-          if (relatedIndex !== -1) {
-            currentViewerIndex = relatedIndex;
-            displayCardInViewer(displayedCards[relatedIndex]);
-          } else {
-            displayCardInViewer(relatedCard);
-          }
-        }
-      };
-      
-      viewerRelatedGrid.appendChild(cardElem);
-    }
-    
-    // --- Rating Functions ---
-    function renderViewerRating(card) {
-      const container = document.getElementById('viewer-rating');
-      if (!container) return;
-      container.innerHTML = '';
-      const currentRating = card.rating || 0;
-      
-      container.onmouseleave = () => {
-        const stars = container.querySelectorAll('.star');
-        stars.forEach((s, index) => {
-          s.classList.toggle('text-yellow-400', index < currentRating);
-          s.classList.toggle('text-gray-600', index >= currentRating);
-          s.classList.remove('text-yellow-300');
+        // Add click listener to open the main viewer
+        img.addEventListener('click', () => {
+          openCelebrityViewer(card, index); // Pass card and the index of the clicked image
         });
-      };
-
-      for (let i = 1; i <= 5; i++) {
-        const star = document.createElement('span');
-        star.className = `star text-xl md:text-2xl cursor-pointer ${i <= currentRating ? 'text-yellow-400' : 'text-gray-600'} transition-colors`;
-        star.innerHTML = '&#9733;';
-        star.dataset.rating = i;
         
-        star.onclick = (e) => {
-          e.stopPropagation();
-          const newRating = (i === currentRating) ? 0 : i;
-          setRating(card.id, newRating);
-        };
-        
-        star.onmouseenter = () => {
-          const stars = container.querySelectorAll('.star');
-          stars.forEach((s, index) => {
-            s.classList.toggle('text-yellow-300', index < i);
-            s.classList.toggle('text-gray-600', index >= i);
-          });
-        };
-
-        container.appendChild(star);
-      }
+        item.appendChild(img);
+        gallery.appendChild(item);
+      });
     }
-    
-    async function setRating(cardId, newRating) {
-      try {
-        const card = currentRelatedCard;
-        if (card.id !== cardId) return;
-        
-        card.rating = newRating;
-        renderViewerRating(card);
 
-        const galleryRatingEl = document.getElementById(`rating-display-${cardId}`);
-        if (galleryRatingEl) {
-          const textEl = galleryRatingEl.querySelector('span');
-          if (textEl) {
-            textEl.textContent = newRating > 0 ? newRating : '-';
-          }
-          const starSvg = galleryRatingEl.querySelector('svg');
-          if(starSvg) {
-              starSvg.classList.toggle('text-yellow-400', newRating > 0);
-              starSvg.classList.toggle('text-gray-500', !(newRating > 0));
-          }
-        }
+    // --- Removed loadCards() and addCardToPage() functions ---
     
-        const { data: updatedCard, error } = await supabase
-          .from('models')
-          .update({ rating: newRating })
-          .eq('id', cardId)
-          .select()
-          .single();
+    // --- Viewer Management ---
     
-        if (error) throw error;
-    
-        const index = displayedCards.findIndex(c => c.id == cardId);
-        if (index !== -1) {
-          displayedCards[index].rating = updatedCard.rating;
-        }
-        
-        currentRelatedCard.rating = updatedCard.rating;
-        renderViewerRating(currentRelatedCard);
-        
-      } catch (error) {
-        console.error("Error setting rating:", error);
-      }
-    }
-    
-    // --- Viewer Navigation ---
-    
-    function prevImage(event = null) {
-      if(event) event.stopPropagation();
+    // Modified to accept a clickedIndex
+    function openCelebrityViewer(card, clickedIndex = 0) {
+      currentViewingCard = card;
+      currentCelebrityIndex = clickedIndex; // Set to the clicked image index
+      updateViewerCelebrity();
+      document.getElementById('celebrityViewer').style.display = 'flex';
       
-      const card = currentRelatedCard;
-      if (card && card.isAlbum) {
-        currentAlbumViewerIndex = (currentAlbumViewerIndex - 1 + currentAlbumViewerList.length) % currentAlbumViewerList.length;
-        displayCardInViewer(currentAlbumViewerList[currentAlbumViewerIndex]);
-      } else {
-        currentViewerIndex = (currentViewerIndex - 1 + displayedCards.length) % displayedCards.length;
-        displayCardInViewer(displayedCards[currentViewerIndex]);
-      }
-    }
-    
-    function nextImage(event = null) {
-      if(event) event.stopPropagation();
-
-      const card = currentRelatedCard;
-      if (card && card.isAlbum) {
-        currentAlbumViewerIndex = (currentAlbumViewerIndex + 1) % currentAlbumViewerList.length;
-        displayCardInViewer(currentAlbumViewerList[currentAlbumViewerIndex]);
-      } else {
-        currentViewerIndex = (currentViewerIndex + 1) % displayedCards.length;
-        displayCardInViewer(displayedCards[currentViewerIndex]);
-      }
+      // Add event listeners for pan/zoom/swipe
+      const viewerContent = document.getElementById('viewerContent');
+      viewerContent.addEventListener('touchstart', handleTouchStart, { passive: false });
+      viewerContent.addEventListener('touchend', handleTouchEnd);
+      viewerContent.addEventListener('touchmove', handleTouchMove, { passive: false });
+      viewerContent.addEventListener('wheel', handleWheelZoom, { passive: false });
+      viewerContent.addEventListener('mousedown', startDrag);
+      viewerContent.addEventListener('mousemove', dragCelebrity);
+      viewerContent.addEventListener('mouseup', endDrag);
+      viewerContent.addEventListener('mouseleave', endDrag);
+      viewerContent.addEventListener('dblclick', handleDoubleClick);
     }
 
-    // --- Viewer Zoom/Pan ---
-    
-    function zoomIn(event = null) {
-      if(event) event.stopPropagation();
-      viewerScale = Math.min(viewerScale * 1.5, 10);
-      applyViewerTransform();
-    }
-    
-    function zoomOut(event = null) {
-      if(event) event.stopPropagation();
-      viewerScale = Math.max(viewerScale / 1.5, 0.5);
-      applyViewerTransform();
-    }
-    
-    function resetZoom(event = null) {
-      if(event) event.stopPropagation();
-      viewerScale = 1;
-      viewerPosX = 0;
-      viewerPosY = 0;
-      applyViewerTransform();
-    }
-    
-    function applyViewerTransform() {
-      const containerWidth = viewerImageContainer.clientWidth;
-      const containerHeight = viewerImageContainer.clientHeight;
-      const imgWidth = viewerImage.naturalWidth;
-      const imgHeight = viewerImage.naturalHeight;
-
-      if (!imgWidth || !imgHeight) {
-         viewerImage.style.transform = `translate(-50%, -50%) translate(${viewerPosX}px, ${viewerPosY}px) scale(${viewerScale})`;
-         return;
-      }
-
-      let baseScale = 1;
-      if (viewerScale === 1) {
-        baseScale = Math.min(containerWidth / imgWidth, containerHeight / imgHeight);
-        viewerPosX = 0;
-        viewerPosY = 0;
-      } else {
-        baseScale = Math.min(containerWidth / imgWidth, containerHeight / imgHeight);
-      }
+    function closeCelebrityViewer() {
+      const viewerContent = document.getElementById('viewerContent');
+      // Remove event listeners
+      viewerContent.removeEventListener('touchstart', handleTouchStart);
+      viewerContent.removeEventListener('touchend', handleTouchEnd);
+      viewerContent.removeEventListener('touchmove', handleTouchMove);
+      viewerContent.removeEventListener('wheel', handleWheelZoom);
+      viewerContent.removeEventListener('mousedown', startDrag);
+      viewerContent.removeEventListener('mousemove', dragCelebrity);
+      viewerContent.removeEventListener('mouseup', endDrag);
+      viewerContent.removeEventListener('mouseleave', endDrag);
+      viewerContent.removeEventListener('dblclick', handleDoubleClick);
       
-      const effectiveScale = baseScale * viewerScale;
-      
-      viewerImage.style.transform = `translate(-50%, -50%) translate(${viewerPosX}px, ${viewerPosY}px) scale(${effectiveScale})`;
+      document.getElementById('celebrityViewer').style.display = 'none';
+      currentViewingCard = null;
+      resetZoom(); // Reset zoom state for next time
     }
     
-    function handleViewerWheel(e) {
-      if (e.ctrlKey) {
-        e.preventDefault();
-        const delta = -e.deltaY;
-        if (delta > 0) zoomIn();
-        else zoomOut();
-      }
-    }
+    // --- Touch & Gesture Controls for Viewer (Unchanged) ---
     
-    function handleViewerMouseDown(e) {
-      e.preventDefault();
-      isViewerDragging = true;
-      viewerStartDrag = { x: e.clientX - viewerPosX, y: e.clientY - viewerPosY };
-      viewerImageContainer.classList.add('grabbing');
-    }
-    
-    function handleViewerMouseMove(e) {
-      if (isViewerDragging) {
-        e.preventDefault();
-        viewerPosX = e.clientX - viewerStartDrag.x;
-        viewerPosY = e.clientY - viewerStartDrag.y;
-        applyViewerTransform();
-      }
-    }
-
-    function handleViewerMouseUp() {
-      isViewerDragging = false;
-      viewerImageContainer.classList.remove('grabbing');
-    }
-    
-    function handleViewerTouchStart(e) {
-      if (e.touches.length === 2) {
-        e.preventDefault();
-        initialPinchDistance = getPinchDistance(e.touches);
-      } else if (e.touches.length === 1) {
-        isViewerDragging = true;
-        viewerStartDrag = { x: e.touches[0].clientX - viewerPosX, y: e.touches[0].clientY - viewerPosY };
-        touchStartX = e.touches[0].clientX;
-        touchEndX = e.touches[0].clientX;
-      }
-    }
-    
-    function handleViewerTouchMove(e) {
-      if (e.touches.length === 2) {
-        e.preventDefault();
-        if (initialPinchDistance === null) return;
-        
-        const newDistance = getPinchDistance(e.touches);
-        const scaleFactor = newDistance / initialPinchDistance;
-        initialPinchDistance = newDistance;
-        
-        const newScale = viewerScale * scaleFactor;
-        
-        viewerScale = Math.min(Math.max(newScale, 0.5), 10);
-        applyViewerTransform();
-        
-      } else if (e.touches.length === 1 && isViewerDragging) {
-        if (viewerScale > 1) {
-          e.preventDefault();
-          viewerPosX = e.touches[0].clientX - viewerStartDrag.x;
-          viewerPosY = e.touches[0].clientY - viewerStartDrag.y;
-          applyViewerTransform();
+    function handleTouchStart(e) {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            initialPinchDistance = getDistance(e.touches[0].clientX, e.touches[0].clientY, e.touches[1].clientX, e.touches[1].clientY);
+            lastZoom = scale;
+        } else if (e.touches.length === 1) {
+            touchStartX = e.touches[0].clientX;
+            startDrag(e.touches[0]);
         }
-        touchEndX = e.touches[0].clientX;
-      }
+    }
+
+    function handleTouchMove(e) {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            const currentDistance = getDistance(e.touches[0].clientX, e.touches[0].clientY, e.touches[1].clientX, e.touches[1].clientY);
+            if (initialPinchDistance === null) return;
+            scale = lastZoom * (currentDistance / initialPinchDistance);
+            applyZoom();
+        } else if (e.touches.length === 1) {
+             if (isDragging) e.preventDefault();
+             dragCelebrity(e.touches[0]);
+        }
+    }
+
+    function handleTouchEnd(e) {
+        if(e.touches.length < 2) initialPinchDistance = null;
+        if(e.touches.length < 1) {
+            touchEndX = e.changedTouches[0].clientX;
+            if (scale <= 1) handleSwipe(); // Only swipe if not zoomed
+            endDrag();
+        }
     }
     
-    function handleViewerTouchEnd(e) {
-      if (e.touches.length === 0) {
-        if (isViewerDragging) {
-          const swipeDistance = touchEndX - touchStartX;
-          if (viewerScale === 1 && Math.abs(swipeDistance) > 50) {
-            if (swipeDistance > 50) {
-              prevImage();
-            } else {
-              nextImage();
+    function handleSwipe() {
+        const swipeThreshold = 50; // Minimum distance for a swipe
+        if (touchStartX - touchEndX > swipeThreshold) nextCelebrity();
+        else if (touchEndX - touchStartX > swipeThreshold) prevCelebrity();
+    }
+
+    function handleDoubleClick(e) {
+        e.preventDefault();
+        if (scale > 1) {
+            resetZoom();
+        } else {
+            const img = e.target;
+            const rect = img.getBoundingClientRect();
+            scale = 2; // Zoom in to 2x
+            // Center zoom on double-click position
+            posX = -(e.clientX - rect.left - rect.width / 2) * scale;
+            posY = -(e.clientY - rect.top - rect.height / 2) * scale;
+            applyZoom();
+        }
+    }
+    
+    function handleWheelZoom(e) {
+        // Zoom with Ctrl key or if it's a trackpad pinch-zoom
+        if (e.ctrlKey || e.deltaY % 1 != 0) { 
+            e.preventDefault();
+            const delta = Math.sign(e.deltaY);
+            if (delta < 0) zoomIn(); else zoomOut();
+        }
+    }
+
+    function zoomIn() { scale = Math.min(scale * 1.2, 10); applyZoom(); } // Max zoom 10x
+    function zoomOut() { scale = Math.max(scale / 1.2, 1); if (scale === 1) resetZoom(); else applyZoom(); }
+    function resetZoom() { scale = 1; posX = 0; posY = 0; applyZoom(); }
+    function applyZoom() { document.getElementById('viewerCelebrity').style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`; }
+
+    function startDrag(e) {
+        if (scale <= 1) return; // Don't drag if not zoomed
+        isDragging = true;
+        startX = e.clientX - posX;
+        startY = e.clientY - posY;
+        document.getElementById('viewerCelebrity').classList.add('cursor-grabbing');
+        document.getElementById('viewerCelebrity').classList.remove('cursor-grab');
+    }
+
+    function dragCelebrity(e) {
+        if (!isDragging) return;
+        posX = e.clientX - startX;
+        posY = e.clientY - startY;
+        applyZoom();
+    }
+
+    function endDrag() {
+        isDragging = false;
+        document.getElementById('viewerCelebrity').classList.remove('cursor-grabbing');
+        document.getElementById('viewerCelebrity').classList.add('cursor-grab');
+    }
+
+    function getDistance(x1, y1, x2, y2) { return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)); }
+
+
+    function updateViewerCelebrity() {
+      if (!currentViewingCard) return;
+      resetZoom();
+      
+      const celebrities = [currentViewingCard.main_celebrity_url, ...(currentViewingCard.related_celebrities || [])].filter(Boolean); // Filter out null/empty URLs
+      const viewerCelebrity = document.getElementById('viewerCelebrity');
+      
+      // START: REMOVED THUMBNAIL/TITLE LOGIC
+      // const thumbnailCarousel = document.getElementById('thumbnailCarousel');
+      // const viewerImageTitle = document.getElementById('viewerImageTitle');
+      // const viewerImageTags = document.getElementById('viewerImageTags');
+      
+      // if (thumbnailCarousel) thumbnailCarousel.innerHTML = '';
+      // END: REMOVED THUMBNAIL/TITLE LOGIC
+
+
+      if (celebrities.length > 0 && currentCelebrityIndex >= 0 && currentCelebrityIndex < celebrities.length) {
+        viewerCelebrity.src = celebrities[currentCelebrityIndex];
+        
+        // START: REMOVED THUMBNAIL/TITLE LOGIC
+        // NEW: Update title and tags
+        // if (viewerImageTitle) viewerImageTitle.textContent = currentViewingCard.title; // Main title
+        // Find the tags for the currently viewed image
+        let currentImageTags = '';
+        if (currentCelebrityIndex === 0) {
+            currentImageTags = currentViewingCard.tags || '';
+        } else {
+            const relatedWithTags = currentViewingCard.related_celebrities_with_tags || [];
+            // Assuming related_celebrities_with_tags is aligned with related_celebrities by index (after main_celebrity_url)
+            // So index '1' in 'celebrities' array maps to index '0' in 'related_celebrities_with_tags'
+            const correspondingRelatedIndex = currentCelebrityIndex - 1;
+            if (relatedWithTags[correspondingRelatedIndex]) {
+                currentImageTags = relatedWithTags[correspondingRelatedIndex].tags || '';
             }
-          }
         }
-        
-        isViewerDragging = false;
-        initialPinchDistance = null;
-        touchStartX = 0;
-        touchEndX = 0;
+        // if (viewerImageTags) viewerImageTags.textContent = currentImageTags;
+
+        /*
+        celebrities.forEach((imgUrl, index) => {
+            const thumb = document.createElement('img');
+            thumb.src = imgUrl;
+            // MODIFIED: Adjusted thumbnail size for the new layout to be more like the example
+            thumb.className = 'thumbnail w-20 h-24 object-cover cursor-pointer rounded-sm border-2 transition-all bg-gray-200';
+            thumb.onerror = function() { this.src='https://placehold.co/80x96/f87171/white?text=N/A' };
+            
+            if(index === currentCelebrityIndex) {
+                thumb.classList.add(...ACTIVE_THUMB_CLASSES);
+            } else {
+                thumb.classList.add(...INACTIVE_THUMB_CLASSES);
+            }
+            
+            thumb.onclick = () => {
+                currentCelebrityIndex = index;
+                updateViewerCelebrity();
+            };
+            
+            if (thumbnailCarousel) thumbnailCarousel.appendChild(thumb);
+            
+            // Scroll active thumbnail into view
+            if (index === currentCelebrityIndex) {
+                thumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+        });
+        */
+       // END: REMOVED THUMBNAIL/TITLE LOGIC
       }
     }
     
-    function getPinchDistance(touches) {
-      const dx = touches[0].clientX - touches[1].clientX;
-      const dy = touches[0].clientY - touches[1].clientY;
-      return Math.sqrt(dx * dx + dy * dy);
-    }
-    
-    // --- Context Menu ---
-    
-    function setupContextMenu() {
-      const menu = document.getElementById('context-menu');
-      const editBtn = document.getElementById('context-edit');
-      const deleteBtn = document.getElementById('context-delete');
-      let currentCardId = null;
-
-      window.addEventListener('click', () => {
-        menu.style.display = 'none';
-      }, true);
-
-      editBtn.onclick = () => {
-        if (currentCardId) startEditCard(currentCardId);
-      };
-      
-      deleteBtn.onclick = () => {
-        if (currentCardId) deleteCard(currentCardId);
-      };
-      
-      window.showContextMenu = (event, cardId) => {
-        event.preventDefault();
-        event.stopPropagation();
-        currentCardId = cardId;
-        menu.style.top = `${event.clientY}px`;
-        menu.style.left = `${event.clientX}px`;
-        menu.style.display = 'block';
-      };
-    }
-    
-    // --- Popup & CRUD ---
-
-    function openPopup() {
-      document.getElementById('popup').style.display = 'flex';
-      updateTagDisplays();
+    function prevCelebrity() {
+      if (!currentViewingCard) return;
+      const celebrities = [currentViewingCard.main_celebrity_url, ...(currentViewingCard.related_celebrities || [])].filter(Boolean);
+      if (celebrities.length === 0) return;
+      currentCelebrityIndex = (currentCelebrityIndex - 1 + celebrities.length) % celebrities.length;
+      updateViewerCelebrity();
     }
 
-    function closePopup() {
-      document.getElementById('popup').style.display = 'none';
-      resetForm();
+    function nextCelebrity() {
+      if (!currentViewingCard) return;
+      const celebrities = [currentViewingCard.main_celebrity_url, ...(currentViewingCard.related_celebrities || [])].filter(Boolean);
+      if (celebrities.length === 0) return;
+      currentCelebrityIndex = (currentCelebrityIndex + 1) % celebrities.length;
+      updateViewerCelebrity();
     }
-    
-    function resetForm() {
-      document.getElementById('cardForm').reset();
-      selectedTags = [];
-      currentlyEditingCardId = null;
-      document.getElementById('popupTitle').textContent = 'Add New Model(s)';
-      document.getElementById('modelUrl').placeholder = "Enter one or more image URLs, separated by commas";
-      document.getElementById('modelAlbumName').value = '';
-      document.getElementById('modelAlbumName').style.display = 'block';
-      document.getElementById('modelNsfw').checked = false;
-      updateSelectedTagsDisplay();
-      updateTagDisplays();
-      
-      const errorMsg = document.getElementById('errorMessage');
-      errorMsg.textContent = '';
-      errorMsg.style.display = 'none';
-      errorMsg.classList.remove('text-green-400');
-      errorMsg.classList.add('text-red-400');
-      const submitButton = document.getElementById('cardForm').querySelector('button[type="submit"]');
-      if (submitButton) {
-        submitButton.disabled = false;
-      }
-    }
+
+    // --- Card CRUD Operations ---
 
     async function addCard() {
       const errorMessage = document.getElementById('errorMessage');
-      const submitButton = document.getElementById('cardForm').querySelector('button[type="submit"]');
-      
+      errorMessage.textContent = '';
       try {
-        submitButton.disabled = true;
-        errorMessage.textContent = 'Checking for duplicates...';
-        errorMessage.style.display = 'block';
-        errorMessage.classList.remove('text-green-400');
-        errorMessage.classList.add('text-red-400');
+        const title = document.getElementById('title').value.trim();
+        const celebrityUrl = document.getElementById('celebrityUrl').value.trim();
+        if (!title || !celebrityUrl) throw new Error("Title and Celebrity URL are required");
         
-        const modelUrlsText = document.getElementById('modelUrl').value.trim();
-        if (!modelUrlsText) throw new Error("Image URL(s) are required.");
+        const tags = Array.from(document.querySelectorAll('#selectedTagsContainer .selected-tag')).map(el => el.dataset.tag);
 
-        const urls = modelUrlsText.split(',').map(url => url.trim()).filter(url => url.length > 0);
-        if (urls.length === 0) throw new Error("Please provide at least one valid image URL.");
-        
-        const { data: existingModels, error: checkError } = await supabase
-          .from('models')
-          .select('main_model_url')
-          .in('main_model_url', urls);
-          
-        if (checkError) throw checkError;
-
-        const existingUrls = existingModels.map(model => model.main_model_url);
-        const newUrls = urls.filter(url => !existingUrls.includes(url));
-        const duplicateUrls = urls.filter(url => existingUrls.includes(url));
-
-        if (newUrls.length === 0) {
-          if (duplicateUrls.length > 0) {
-            errorMessage.textContent = `Upload failed. All ${duplicateUrls.length} image(s) are already in the gallery.`;
-          } else {
-            errorMessage.textContent = 'No new images to upload.';
-          }
-          submitButton.disabled = false;
-          return;
-        }
-        
-        const albumName = document.getElementById('modelAlbumName').value.trim();
-        let albumTag = null;
-        if (albumName) {
-          albumTag = 'album:' + albumName.toLowerCase()
-            .replace(/\s+/g, '-')
-            .replace(/[^a-z0-9-]/g, '');
-          
-          if (!selectedTags.includes(albumTag)) {
-            selectedTags.push(albumTag);
-          }
-        }
-        
-        const isNsfw = document.getElementById('modelNsfw').checked;
-        const tagsString = selectedTags.join(', ');
-
-        const newCards = newUrls.map(url => ({
-          tags: tagsString,
-          main_model_url: url,
-          related_models: [],
-          related_models_with_tags: [],
-          favorited: false,
-          nsfw: isNsfw
-        }));
-
-        const { error } = await supabase.from('models').insert(newCards);
-        if (error) throw error;
-
-        const successMessage = `Success! Added ${newUrls.length} new images.`;
-        const duplicateMessage = duplicateUrls.length > 0 ? ` Skipped ${duplicateUrls.length} duplicates.` : '';
-        
-        errorMessage.textContent = successMessage + duplicateMessage;
-        errorMessage.classList.remove('text-red-400');
-        errorMessage.classList.add('text-green-400');
-        
-        await loadTotalCardCount();
-        await refreshTagData();
-        
-        setTimeout(() => {
-          closePopup();
-          
-          if (albumName) {
-              showAllAlbums();
-          } else {
-              showAllModels();
-          }
-        }, 2500);
-        
-      } catch (error) {
-        console.error("Error adding card:", error);
-        errorMessage.textContent = `Failed to add model(s): ${error.message}`;
-        submitButton.disabled = false;
-      }
-    }
-    
-    async function startEditCard(cardId) {
-      try {
-        const { data: card, error } = await supabase.from('models').select('*').eq('id', cardId).single();
-        if (error) throw error;
-
-        currentlyEditingCardId = cardId;
-        const modelUrlInput = document.getElementById('modelUrl');
-        modelUrlInput.value = card.main_model_url;
-        document.getElementById('modelAlbumName').style.display = 'none';
-        
-        selectedTags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
-        document.getElementById('modelNsfw').checked = card.nsfw;
-        
-        updateSelectedTagsDisplay();
-        document.getElementById('popupTitle').textContent = 'Edit Model';
-        openPopup();
-      } catch (error) {
-        console.error("Error loading card for edit:", error);
-        alert("Failed to load card for editing");
-      }
-    }
-
-    async function updateCard() {
-      const errorMessage = document.getElementById('errorMessage');
-      const submitButton = document.getElementById('cardForm').querySelector('button[type="submit"]');
-      try {
-        submitButton.disabled = true;
-        const modelUrl = document.getElementById('modelUrl').value.trim();
-        if (!modelUrl || modelUrl.includes(',')) {
-            throw new Error("A single, valid Model URL is required when editing.");
-        }
-        
-        const isNsfw = document.getElementById('modelNsfw').checked;
-        const tagsString = selectedTags.join(', ');
-
-        const { error } = await supabase
-          .from('models')
-          .update({ 
-            main_model_url: modelUrl,
-            tags: tagsString,
-            nsfw: isNsfw
-          })
-          .eq('id', currentlyEditingCardId);
+        const newCard = { 
+          title, 
+          main_celebrity_url: celebrityUrl, 
+          tags: tags.join(', '), 
+          related_celebrities: [], 
+          related_celebrities_with_tags: [] 
+        };
+        const { data, error } = await supabase.from('celebrities').insert([newCard]).select();
         
         if (error) throw error;
         
         closePopup();
-        await refreshTagData();
-        loadCards(true);
+        loadMainFeedCards(); // Refresh feed
+        await loadAllTags(); // Refresh tags
+      } catch (error) {
+        console.error("Error adding card:", error);
+        errorMessage.textContent = error.message;
+      }
+    }
+    
+    async function updateCard() {
+      const errorMessage = document.getElementById('errorMessage');
+      errorMessage.textContent = '';
+      try {
+        const title = document.getElementById('title').value.trim();
+        const celebrityUrl = document.getElementById('celebrityUrl').value.trim();
+        if (!title || !celebrityUrl) throw new Error("Title and Celebrity URL are required");
+        const tags = Array.from(document.querySelectorAll('#selectedTagsContainer .selected-tag')).map(el => el.dataset.tag);
+
+        const updateData = { title, tags: tags.join(', '), main_celebrity_url: celebrityUrl };
+        const { error } = await supabase.from('celebrities').update(updateData).eq('id', currentlyEditingCardId);
+        if (error) throw error;
+
+        closePopup();
+        await loadMainFeedCards(); // Refresh feed
+        await loadAllTags(); // Refresh tags
       } catch (error) {
         console.error("Error updating card:", error);
         errorMessage.textContent = error.message;
-        submitButton.disabled = false;
+      } finally {
+        currentlyEditingCardId = null;
       }
     }
 
-    async function deleteCard(cardId) {
-      if (!confirm("Are you sure you want to delete this model?")) { return; }
+    // --- Updated delete function ---
+    async function deleteCardAndRefreshFeed(cardId) {
+      // A simple custom confirmation modal would be better than confirm()
+      // but for now, this works.
+      if (!confirm("Are you sure you want to delete this gallery? This action cannot be undone.")) return;
       try {
-        const { error } = await supabase.from('models').delete().eq('id', cardId);
+        const { error } = await supabase.from('celebrities').delete().eq('id', cardId);
         if (error) throw error;
-        await loadTotalCardCount();
-        await refreshTagData();
-        loadCards(true);
+        
+        // Refresh the left feed
+        await loadMainFeedCards(); 
+        
+        // If the deleted card was the one being viewed, clear the right panel
+        if (selectedFeedCardId === cardId) {
+            document.getElementById('related-gallery').innerHTML = '';
+            document.getElementById('related-gallery-placeholder').style.display = 'flex';
+            selectedFeedCardId = null;
+        }
       } catch (error) {
         console.error("Error deleting card:", error);
-        alert("Failed to delete card");
+        alert("Failed to delete card. Please try again."); // Replace with custom modal later
       }
     }
     
-    async function toggleFavorite(event, cardId, currentStatus) {
-      const button = event.currentTarget;
-      
-      try {
-        const { data: updatedCard, error } = await supabase
-          .from('models')
-          .update({ favorited: !currentStatus })
-          .eq('id', cardId)
-          .select()
-          .single();
-          
-        if (error) throw error;
-        
-        const index = displayedCards.findIndex(c => c.id == cardId);
-        if (index !== -1) {
-          const oldCard = displayedCards[index];
-          displayedCards[index].favorited = updatedCard.favorited;
-        }
-        
-        if (button) {
-          if (updatedCard.favorited) {
-            button.classList.add('text-yellow-400');
-            button.classList.remove('text-white');
-          } else {
-            button.classList.remove('text-yellow-400');
-            button.classList.add('text-white');
-          }
-        }
-        
-        if (currentFilter.type === 'favorites' && !updatedCard.favorited) {
-          const cardElem = document.getElementById(`card-dom-${cardId}`);
-          if (cardElem) {
-            msnry.remove(cardElem);
-            msnry.layout();
-          }
-          if (index !== -1) {
-            displayedCards.splice(index, 1);
-          }
-        }
-        
-        if (imageViewer.style.display === 'flex' && currentViewerIndex === index) {
-          displayCardInViewer(displayedCards[index]);
-        }
-        
-      } catch (error) {
-        console.error("Error toggling favorite:", error);
-        if (button) {
-          if (currentStatus) {
-            button.classList.add('text-yellow-400');
-            button.classList.remove('text-white');
-          } else {
-            button.classList.remove('text-yellow-400');
-            button.classList.add('text-white');
-          }
-        }
-      }
-    }
+    // --- Popup and Tag Management (Unchanged) ---
     
-    document.getElementById('cardForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (currentlyEditingCardId) {
-        await updateCard();
-      } else {
-        await addCard();
-      }
-    });
-
-    // --- Tag Selection UI (Main Upload) ---
-
+    // --- This function now ONLY updates the dropdown in the popup ---
     function updateTagDisplays() {
       const availableTagsSelect = document.getElementById('availableTags');
+      const selectedTagValues = Array.from(document.querySelectorAll('#selectedTagsContainer .selected-tag')).map(el => el.dataset.tag);
+      
+      // Preserve the default option
       availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
+      
       allTags.forEach(tag => {
-        if (tag.startsWith('album:')) { return; }
-        
-        if (!selectedTags.includes(tag)) {
+        // Only add tag to dropdown if it's not already selected
+        if (!selectedTagValues.includes(tag)) {
           const option = document.createElement('option');
           option.value = tag;
           option.textContent = tag;
@@ -2286,801 +916,146 @@
     }
 
     function addTagToSelection() {
-      const select = document.getElementById('availableTags');
-      const selectedTag = select.value;
-      if (!selectedTag || selectedTags.includes(selectedTag)) { return; }
+      const availableTagsSelect = document.getElementById('availableTags');
+      const selectedTag = availableTagsSelect.value;
+      if (!selectedTag) return;
       
-      selectedTags.push(selectedTag);
-      updateSelectedTagsDisplay();
-      updateTagDisplays();
-      select.value = "";
-    }
-    
-    function updateSelectedTagsDisplay() {
       const container = document.getElementById('selectedTagsContainer');
-      container.innerHTML = '';
-      selectedTags.forEach(tag => {
-        const isAlbumTag = tag.startsWith('album:');
-        
-        const tagElem = document.createElement('span');
-        tagElem.className = `px-3 py-1 ${isAlbumTag ? 'bg-gray-700 text-gray-400' : 'bg-blue-600 text-white'} text-sm rounded-full flex items-center gap-2`;
-        
-        let removeButton = '';
-        if (!isAlbumTag) {
-          removeButton = `<button type="button" class="text-blue-200 hover:text-white" onclick="removeSelectedTag('${tag}')">&times;</button>`;
-        }
-        
-        const displayName = isAlbumTag ? `Album: ${tag.substring(6).replace(/-/g, ' ')}` : tag;
-        
-        tagElem.innerHTML = `${displayName} ${removeButton}`;
-        container.appendChild(tagElem);
-      });
-    }
+      const existingTags = Array.from(container.querySelectorAll('.selected-tag')).map(el => el.dataset.tag);
+      if (existingTags.includes(selectedTag)) return; // Don't add duplicates
 
-    function removeSelectedTag(tagToRemove) {
-      selectedTags = selectedTags.filter(tag => tag !== tagToRemove);
-      updateSelectedTagsDisplay();
-      updateTagDisplays();
-    }
-    
-    // --- Tag Management Modal Functions ---
-
-    function openManageTagsPopup() {
-      document.getElementById('manage-tags-popup').style.display = 'flex';
-      document.getElementById('manageTagsErrorMessage').style.display = 'none';
-      document.getElementById('newTagName').value = '';
-      loadTagsForManagement();
-    }
-
-    function closeManageTagsPopup() {
-      document.getElementById('manage-tags-popup').style.display = 'none';
-    }
-
-    async function loadTagsForManagement() {
-      const container = document.getElementById('existingTagsListContainer');
-      container.innerHTML = '<span class="text-gray-500">Loading...</span>';
-      
-      try {
-        const { data: tags, error } = await supabase
-          .from('tags')
-          .select('name')
-          .order('name', { ascending: true });
-          
-        if (error) throw error;
-
-        if (!tags || tags.length === 0) {
-          container.innerHTML = '<span class="text-gray-500">No tags found.</span>';
-          return;
-        }
-
-        container.innerHTML = '';
-        
-        tags.forEach(tagObj => {
-          const tag = tagObj.name;
-          
-          if (tag.startsWith('album:')) { return; }
-          
-          const tagRow = document.createElement('div');
-          tagRow.className = 'flex items-center gap-2 p-2 rounded hover:bg-gray-700';
-          
-          const checkbox = document.createElement('input');
-          checkbox.type = 'checkbox';
-          checkbox.value = tag;
-          checkbox.className = 'manage-tag-checkbox w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-600 focus:ring-2 focus:ring-blue-500';
-          checkbox.id = `tag-cb-${tag}`;
-          
-          const tagNameLabel = document.createElement('label');
-          tagNameLabel.className = 'text-sm text-gray-300 cursor-pointer';
-          tagNameLabel.textContent = tag;
-          tagNameLabel.htmlFor = `tag-cb-${tag}`;
-          
-          tagRow.appendChild(checkbox);
-          tagRow.appendChild(tagNameLabel);
-          container.appendChild(tagRow);
-        });
-        
-      } catch (error) {
-        console.error("Error loading tags for management:", error);
-        container.innerHTML = '<span class="text-red-400">Error loading tags.</span>';
-      }
-    }
-    
-    function getSelectedManageTags() {
-      const checkboxes = document.querySelectorAll('#existingTagsListContainer .manage-tag-checkbox:checked');
-      return Array.from(checkboxes).map(cb => cb.value);
-    }
-
-    function selectAllManageTags(isSelected) {
-      const checkboxes = document.querySelectorAll('#existingTagsListContainer .manage-tag-checkbox');
-      checkboxes.forEach(cb => cb.checked = isSelected);
-    }
-
-    async function handleAddNewTag() {
-      const input = document.getElementById('newTagName');
-      const errorMsg = document.getElementById('manageTagsErrorMessage');
-      const newTagName = input.value.trim();
-
-      if (!newTagName) {
-        errorMsg.textContent = 'Tag name cannot be empty.';
-        errorMsg.style.display = 'block';
-        return;
-      }
-      
-      if (newTagName.startsWith('album:')) {
-        errorMsg.textContent = 'Tags cannot start with "album:".';
-        errorMsg.style.display = 'block';
-        return;
-      }
-      
-      if (allTags.map(t => t.toLowerCase()).includes(newTagName.toLowerCase())) {
-        errorMsg.textContent = 'This tag already exists.';
-        errorMsg.style.display = 'block';
-        return;
-      }
-
-      try {
-        errorMsg.style.display = 'none';
-        
-        const { error } = await supabase
-          .from('tags')
-          .insert({ name: newTagName });
-          
-        if (error) throw error;
-        
-        input.value = '';
-        await refreshTagData();
-        await loadTagsForManagement();
-        
-      } catch (error) {
-        console.error("Error adding new tag:", error);
-        errorMsg.textContent = `Failed to add tag: ${error.message}`;
-        errorMsg.style.display = 'block';
-      }
-    }
-
-    async function handleDeleteSelectedTags() {
-      const selectedTags = getSelectedManageTags();
-      const errorMsg = document.getElementById('manageTagsErrorMessage');
-      if (selectedTags.length === 0) {
-        errorMsg.textContent = 'Please select at least one tag to delete.';
-        errorMsg.style.display = 'block';
-        return;
-      }
-
-      if (!confirm(`Are you sure you want to delete ${selectedTags.length} tag(s)? This will also remove the tag from all models.`)) {
-        return;
-      }
-
-      try {
-        errorMsg.style.display = 'none';
-        
-        const { error: deleteTagsError } = await supabase
-          .from('tags')
-          .delete()
-          .in('name', selectedTags);
-          
-        if (deleteTagsError) throw deleteTagsError;
-
-        for (const tagToDelete of selectedTags) {
-            const orQuery = `tags.ilike."${tagToDelete}",tags.ilike."${tagToDelete},%",tags.ilike."%,${tagToDelete}",tags.ilike."%,${tagToDelete},%"`;
-            const { data: models, error: fetchModelsError } = await supabase
-                .from('models')
-                .select()
-                .or(orQuery);
-
-            if (fetchModelsError) throw new Error(`Error fetching models for tag ${tagToDelete}: ${fetchModelsError.message}`);
-
-            if (models && models.length > 0) {
-                const updates = models.map(model => {
-                    let modelTags = (model.tags || '').split(',').map(t => t.trim()).filter(t => t);
-                    modelTags = modelTags.filter(t => t.toLowerCase() !== tagToDelete.toLowerCase());
-                    const newTagsString = modelTags.join(', ');
-                    
-                    return supabase.from('models').update({ tags: newTagsString }).eq('id', model.id);
-                });
-                await Promise.all(updates);
-            }
-        }
-        
-        await refreshTagData();
-        await loadTagsForManagement();
-        loadCards(true);
-        
-      } catch (error) {
-        console.error("Error deleting tags:", error);
-        errorMsg.textContent = `Failed to delete tags: ${error.message}.`;
-        errorMsg.style.display = 'block';
-      }
-    }
-    
-    async function handleRenameSelectedTag() {
-      const selectedTags = getSelectedManageTags();
-      const errorMsg = document.getElementById('manageTagsErrorMessage');
-      
-      if (selectedTags.length !== 1) {
-        errorMsg.textContent = 'Please select exactly one tag to rename.';
-        errorMsg.style.display = 'block';
-        return;
-      }
-
-      const oldTagName = selectedTags[0];
-      const newTagName = prompt(`Enter new name for "${oldTagName}":`, oldTagName);
-
-      if (!newTagName || newTagName.trim() === '' || newTagName.trim() === oldTagName) {
-        errorMsg.textContent = 'Rename cancelled or name unchanged.';
-        errorMsg.style.display = 'block';
-        return;
-      }
-      
-      const trimmedNewName = newTagName.trim();
-      
-      const otherTagsLower = allTags.map(t => t.toLowerCase()).filter(t => t !== oldTagName.toLowerCase());
-      if (otherTagsLower.includes(trimmedNewName.toLowerCase())) {
-          errorMsg.textContent = `Tag "${trimmedNewName}" already exists.`;
-          errorMsg.style.display = 'block';
-          return;
-      }
-
-      try {
-        errorMsg.style.display = 'none';
-
-        const { error: updateTagError } = await supabase
-          .from('tags')
-          .update({ name: trimmedNewName })
-          .eq('name', oldTagName);
-          
-        if (updateTagError) throw updateTagError;
-        
-        const orQuery = `tags.ilike."${oldTagName}",tags.ilike."${oldTagName},%",tags.ilike."%,${oldTagName}",tags.ilike."%,${oldTagName},%"`;
-        const { data: models, error: fetchModelsError } = await supabase
-            .from('models')
-            .select()
-            .or(orQuery);
-        
-        if (fetchModelsError) throw new Error(`Error fetching models for tag ${oldTagName}: ${fetchModelsError.message}`);
-
-        if (models && models.length > 0) {
-            const updates = models.map(model => {
-                let modelTags = (model.tags || '').split(',').map(t => t.trim()).filter(t => t);
-                modelTags = modelTags.map(t => t.toLowerCase() === oldTagName.toLowerCase() ? trimmedNewName : t);
-                const newTagsString = [...new Set(modelTags)].join(', '); 
-                
-                return supabase.from('models').update({ tags: newTagsString }).eq('id', model.id);
-            });
-            await Promise.all(updates);
-        }
-        
-        await refreshTagData();
-        await loadTagsForManagement();
-        loadCards(true);
-        
-      } catch (error) {
-        console.error("Error renaming tag:", error);
-        errorMsg.textContent = `Failed to rename tag: ${error.message}.`;
-        errorMsg.style.display = 'block';
-      }
-    }
-    
-    // --- Quick Edit Modal Functions ---
-    
-    async function openQuickEditModal(cardId) {
-      try {
-        const { data: card, error } = await supabase.from('models').select('*').eq('id', cardId).single();
-        if (error) throw error;
-
-        document.getElementById('quickEditCardId').value = card.id;
-        document.getElementById('quickEditModelUrl').value = card.main_model_url;
-        document.getElementById('quickEditModelNsfw').checked = card.nsfw;
-        
-        quickEditSelectedTags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
-        
-        updateQuickEditSelectedTagsDisplay();
-        updateQuickEditAvailableTags();
-        
-        document.getElementById('quickEditErrorMessage').style.display = 'none';
-        document.getElementById('quick-edit-modal').style.display = 'flex';
-      } catch (error) {
-        console.error("Error loading card for quick edit:", error);
-        alert("Failed to load card for editing");
-      }
-    }
-    
-    function closeQuickEditModal() {
-      document.getElementById('quick-edit-modal').style.display = 'none';
-      document.getElementById('quickEditForm').reset();
-      quickEditSelectedTags = [];
-      document.getElementById('quickEditErrorMessage').style.display = 'none';
-      
-      const submitButton = document.getElementById('quickEditForm').querySelector('button[type="submit"]');
-      if (submitButton) {
-        submitButton.disabled = false;
-      }
-    }
-    
-    async function handleQuickUpdate() {
-      const cardId = document.getElementById('quickEditCardId').value;
-      const newUrl = document.getElementById('quickEditModelUrl').value.trim();
-      const newTags = quickEditSelectedTags.join(', ');
-      const newNsfw = document.getElementById('quickEditModelNsfw').checked;
-      const errorMsg = document.getElementById('quickEditErrorMessage');
-      const submitButton = document.getElementById('quickEditForm').querySelector('button[type="submit"]');
-
-      if (!newUrl) {
-        errorMsg.textContent = "Image URL is required.";
-        errorMsg.style.display = 'block';
-        return;
-      }
-      
-      try {
-        submitButton.disabled = true;
-        
-        const { data: updatedCard, error } = await supabase
-          .from('models')
-          .update({ 
-            main_model_url: newUrl,
-            tags: newTags,
-            nsfw: newNsfw
-          })
-          .eq('id', cardId)
-          .select()
-          .single();
-        
-        if (error) throw error;
-        
-        const index = displayedCards.findIndex(c => c.id == cardId);
-        if (index !== -1) {
-          const oldCard = displayedCards[index];
-          displayedCards[index] = {
-            ...updatedCard,
-            isAlbum: oldCard.isAlbum,
-            albumTag: oldCard.albumTag,
-            isAlbumCover: oldCard.isAlbumCover,
-            albumName: oldCard.albumName
-          };
-        }
-        
-        closeQuickEditModal();
-        await refreshTagData();
-        loadCards(true);
-        
-      } catch (error) {
-        console.error("Error updating card:", error);
-        errorMsg.textContent = `Failed to update: ${error.message}`;
-        errorMsg.style.display = 'block';
-        submitButton.disabled = false;
-      }
-    }
-    
-    // --- Tag Helpers for Quick Edit Modal ---
-    
-    function updateQuickEditAvailableTags() {
-      const availableTagsSelect = document.getElementById('quickEditAvailableTags');
-      availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
-      allTags.forEach(tag => {
-        if (tag.startsWith('album:')) { return; }
-        if (!quickEditSelectedTags.includes(tag)) {
-          const option = document.createElement('option');
-          option.value = tag;
-          option.textContent = tag;
-          availableTagsSelect.appendChild(option);
-        }
-      });
-    }
-
-    function addTagToQuickEdit() {
-      const select = document.getElementById('quickEditAvailableTags');
-      const selectedTag = select.value;
-      if (!selectedTag || quickEditSelectedTags.includes(selectedTag)) { return; }
-      
-      quickEditSelectedTags.push(selectedTag);
-      updateQuickEditSelectedTagsDisplay();
-      updateQuickEditAvailableTags();
-      select.value = "";
-    }
-    
-    function updateQuickEditSelectedTagsDisplay() {
-      const container = document.getElementById('quickEditSelectedTagsContainer');
-      container.innerHTML = '';
-      quickEditSelectedTags.forEach(tag => {
-        const isAlbumTag = tag.startsWith('album:');
-        
-        const tagElem = document.createElement('span');
-        tagElem.className = `px-3 py-1 ${isAlbumTag ? 'bg-gray-700 text-gray-400' : 'bg-blue-600 text-white'} text-sm rounded-full flex items-center gap-2`;
-        
-        let removeButton = '';
-        if (!isAlbumTag) {
-          removeButton = `<button type="button" class="text-blue-200 hover:text-white" onclick="removeQuickEditSelectedTag('${tag}')">&times;</button>`;
-        }
-        
-        const displayName = isAlbumTag ? `Album: ${tag.substring(6).replace(/-/g, ' ')}` : tag;
-        
-        tagElem.innerHTML = `${displayName} ${removeButton}`;
-        container.appendChild(tagElem);
-      });
-    }
-
-    function removeQuickEditSelectedTag(tagToRemove) {
-      quickEditSelectedTags = quickEditSelectedTags.filter(tag => tag !== tagToRemove);
-      updateQuickEditSelectedTagsDisplay();
-      updateQuickEditAvailableTags();
-    }
-    
-    // --- Album Functions ---
-    
-    function openUploadForAlbum() {
-      const card = currentRelatedCard;
-      if (!card || !card.isAlbum || !card.albumName) {
-        console.error("Cannot add to album, card data missing.", card);
-        return;
-      }
-      
-      closeImageViewer();
-      openPopup();
-      
-      document.getElementById('modelAlbumName').value = card.albumName;
-      
-      const allCardTags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t) : [];
-      
-      selectedTags = allCardTags.filter(t => 
-        !t.startsWith('album:') && 
-        t.toLowerCase() !== card.albumName.toLowerCase()
-      );
-      
-      updateSelectedTagsDisplay();
-      updateTagDisplays();
-    }
-    
-    // --- Utility Functions ---
-    
-    function shuffleArray(array) {
-      let currentIndex = array.length,  randomIndex;
-      while (currentIndex != 0) {
-        randomIndex = Math.floor(Math.random() * currentIndex);
-        currentIndex--;
-        [array[currentIndex], array[randomIndex]] = [
-          array[randomIndex], array[currentIndex]];
-      }
-      return array;
-    }
-
-    async function refreshTagData() {
-      await loadTagCounts();
-      await loadTags();
-    }
-    
-    // --- START: Compare Mode Functions ---
-    
-    /**
-     * Toggles the compare mode on/off
-     */
-    function toggleCompareMode() {
-      isCompareModeActive = !isCompareModeActive;
-      const btn = document.getElementById('compare-mode-btn');
-      
-      if (isCompareModeActive) {
-        btn.classList.add('bg-blue-600');
-        btn.classList.remove('bg-gray-700', 'hover:bg-gray-600');
-        btn.textContent = "Cancel";
-        gallery.classList.add('compare-mode-active');
-      } else {
-        btn.classList.remove('bg-blue-600');
-        btn.classList.add('bg-gray-700', 'hover:bg-gray-600');
-        btn.textContent = "Compare";
-        gallery.classList.remove('compare-mode-active');
-        
-        // Clear selection and uncheck all boxes
-        compareSelection = [];
-        document.querySelectorAll('.compare-checkbox:checked').forEach(cb => {
-          cb.checked = false;
-        });
-        document.querySelectorAll('.masonry-item.compare-selected').forEach(item => {
-          item.classList.remove('compare-selected');
-        });
-      }
-      updateCompareBar();
-    }
-    
-    /**
-     * Adds or removes a card from the comparison selection
-     */
-    function toggleCompareSelection(cardId, isSelected) {
-      const cardElem = document.getElementById(`card-dom-${cardId}`);
-      if (isSelected) {
-        if (!compareSelection.includes(cardId)) {
-          compareSelection.push(cardId);
-          cardElem.classList.add('compare-selected');
-        }
-      } else {
-        compareSelection = compareSelection.filter(id => id !== cardId);
-        cardElem.classList.remove('compare-selected');
-      }
-      updateCompareBar();
-    }
-    
-    /**
-     * Updates the sticky compare bar at the bottom
-     */
-    function updateCompareBar() {
-      const bar = document.getElementById('compare-sticky-bar');
-      const countSpan = document.getElementById('compare-count');
-      const startBtn = document.getElementById('start-compare-btn');
-      
-      const count = compareSelection.length;
-      
-      if (count > 0 && isCompareModeActive) {
-        countSpan.textContent = `${count} model${count === 1 ? '' : 's'} selected`;
-        // Enable button only if 2 or more models are selected
-        if (count >= 2) {
-          startBtn.disabled = false;
-          startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-          startBtn.classList.add('hover:bg-blue-700');
-        } else {
-          startBtn.disabled = true;
-          startBtn.classList.add('opacity-50', 'cursor-not-allowed');
-          startBtn.classList.remove('hover:bg-blue-700');
-        }
-        bar.classList.add('show');
-      } else {
-        bar.classList.remove('show');
-      }
-    }
-    
-    /**
-     * Opens the compare viewer modal
-     */
-    function openCompareViewer() {
-      const viewer = document.getElementById('compare-viewer');
-      const mainContent = document.getElementById('main-content');
-      const header = document.querySelector('header');
-      const compareTitle = document.getElementById('compare-title');
-      
-      // Get the full card objects from our selection
-      const selectedCardIds = new Set(compareSelection);
-      const selectedCards = displayedCards.filter(card => selectedCardIds.has(card.id));
-      
-      // Sort them in the order they were selected
-      selectedCards.sort((a, b) => compareSelection.indexOf(a.id) - compareSelection.indexOf(b.id));
-
-      const count = selectedCards.length;
-      if (count < 2) return; // Should be impossible, but safety check
-      
-      compareTitle.textContent = `Comparing ${count} Models`;
-      
-      // Hide main content
-      mainContent.style.display = 'none';
-      header.style.display = 'none';
-      viewer.style.display = 'block';
-      
-      if (count === 2) {
-        // Show 2-image slider view
-        renderCompareSliderView(selectedCards);
-      } else {
-        // Show grid view for 3+
-        renderCompareGridView(selectedCards);
-      }
-    }
-    
-    /**
-     * Closes the compare viewer and resets compare mode
-     */
-    function closeCompareViewer() {
-      const viewer = document.getElementById('compare-viewer');
-      const mainContent = document.getElementById('main-content');
-      const header = document.querySelector('header');
-      
-      // Show main content
-      mainContent.style.display = 'block';
-      header.style.display = 'flex'; // headers are flex
-      viewer.style.display = 'none';
-      
-      // Destroy sortable instance if it exists
-      if (sortableInstance) {
-        sortableInstance.destroy();
-        sortableInstance = null;
-      }
-      
-      // Reset compare mode
-      toggleCompareMode();
-    }
-    
-    /**
-     * Renders the grid view for 3+ models
-     */
-    function renderCompareGridView(cards) {
-      document.getElementById('compare-grid-view').style.display = 'block';
-      document.getElementById('compare-slider-view').style.display = 'none';
-      
-      const container = document.getElementById('compare-container');
-      container.innerHTML = ''; // Clear previous
-      
-      cards.forEach(card => {
-        container.appendChild(createCompareCard(card));
-      });
-      
-      // Initialize SortableJS for drag/drop
-      sortableInstance = Sortable.create(container, {
-        animation: 150,
-        ghostClass: 'bg-gray-800'
-      });
-    }
-    
-    /**
-     * Renders the slider view for 2 models
-     */
-    function renderCompareSliderView(cards) {
-      document.getElementById('compare-grid-view').style.display = 'none';
-      document.getElementById('compare-slider-view').style.display = 'block';
-      
-      const [card1, card2] = cards;
-      
-      const imgBefore = document.getElementById('compare-slider-before');
-      const imgAfter = document.getElementById('compare-slider-after');
-      const slider = document.getElementById('compare-slider-range');
-      const handle = document.getElementById('compare-slider-handle');
-
-      // Set images (use high-res)
-      imgBefore.src = card1.main_model_url.split('?')[0] + '?tr=q-90';
-      imgAfter.src = card2.main_model_url.split('?')[0] + '?tr=q-90';
-      
-      // Reset slider
-      slider.value = 50;
-      imgBefore.style.clipPath = 'polygon(0 0, 50% 0, 50% 100%, 0 100%)';
-      handle.style.left = '50%';
-      
-      // START: Add listener logic here
-      // We check for the listener to avoid adding it multiple times
-      if (!slider.dataset.listenerAdded) {
-        slider.addEventListener('input', (e) => {
-          const value = e.target.value;
-          // We use the cached elements from the outer scope
-          imgBefore.style.clipPath = `polygon(0 0, ${value}% 0, ${value}% 100%, 0 100%)`;
-          handle.style.left = `${value}%`;
-        });
-        slider.dataset.listenerAdded = 'true';
-      }
-      // END: Add listener logic
-      
-      // Add zoom listeners to both images
-      // We need wrapper containers for zoom to work with object-fit: contain
-      setupCompareCardZoom(imgBefore.parentElement, imgBefore);
-      setupCompareCardZoom(imgAfter.parentElement, imgAfter);
-    }
-    
-    /**
-     * Creates a single card element for the compare grid view
-     */
-    function createCompareCard(card) {
-      const cardElem = document.createElement('div');
-      // Set width to be ~45% viewport width, clamped
-      // REMOVED flex flex-col
-      cardElem.className = 'compare-card w-full md:w-1/2 lg:w-1/4 h-[80vh] bg-gray-900 rounded-lg overflow-hidden';
-      cardElem.dataset.id = card.id;
-
-      // Image container for zoom
-      const imgContainer = document.createElement('div');
-      // CHANGED h-3/5 to h-full
-      imgContainer.className = 'compare-card-image-container w-full h-full bg-black relative';
-      
-      const img = document.createElement('img');
-      img.src = card.main_model_url.split('?')[0] + '?tr=q-80'; // Good quality
-      img.alt = "Model";
-      img.className = "compare-card-image w-full h-full object-contain"; // Use contain
-      imgContainer.appendChild(img);
-      
-      // --- REMOVED infoContainer, ratingEl, and tagsContainer ---
-      /*
-      // Info container
-      const infoContainer = document.createElement('div');
-      infoContainer.className = 'p-4 overflow-y-auto h-2/5';
-      
-      // Rating
-      const rating = card.rating || 0;
-      const ratingEl = document.createElement('div');
-      ratingEl.className = 'flex items-center gap-1 text-lg mb-2';
-      const starSvg = `
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 ${rating > 0 ? 'text-yellow-400' : 'text-gray-500'}" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27z"/>
-        </svg>
+      const tagElem = document.createElement('div');
+      tagElem.className = 'selected-tag bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 dark:bg-blue-900 dark:text-blue-200';
+      tagElem.dataset.tag = selectedTag;
+      tagElem.innerHTML = `
+        <span>${selectedTag}</span>
+        <button type="button" onclick="removeSelectedTag(this)" class="bg-transparent border-none text-blue-600 hover:text-blue-800 font-bold cursor-pointer p-0 ml-1 dark:text-blue-300 dark:hover:text-blue-100" title="Remove tag">×</button>
       `;
-      ratingEl.innerHTML = `${starSvg} <span>${rating > 0 ? rating : '-'}</span>`;
+      container.appendChild(tagElem);
       
-      // Tags
-      const tagsContainer = document.createElement('div');
-      tagsContainer.className = 'flex flex-wrap gap-2';
-      const tags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t) : [];
-      if (tags.length > 0) {
-        tags.forEach(tag => {
-          if (tag.startsWith('album:')) return;
-          const tagElem = document.createElement('span');
-          tagElem.className = "px-3 py-1 bg-gray-700 text-white text-sm rounded-full";
-          tagElem.textContent = tag;
-          tagsContainer.appendChild(tagElem);
-        });
+      // Reset dropdown and update options
+      availableTagsSelect.value = '';
+      updateTagDisplays();
+    }
+    
+    function removeSelectedTag(button) {
+        button.parentElement.remove();
+        updateTagDisplays(); // Re-add the removed tag to the dropdown
+    }
+
+    function openPopup(card = null) {
+      currentlyEditingCardId = card ? card.id : null;
+      const popupTitle = document.querySelector('#popup h3');
+      const cardForm = document.getElementById('cardForm');
+      cardForm.reset();
+      document.getElementById('errorMessage').textContent = '';
+      
+      const selectedTagsContainer = document.getElementById('selectedTagsContainer');
+      selectedTagsContainer.innerHTML = '';
+
+      if (card) {
+          popupTitle.textContent = 'Edit Gallery';
+          document.getElementById('title').value = card.title;
+          document.getElementById('celebrityUrl').value = card.main_celebrity_url;
+          if (card.tags) {
+              card.tags.split(',').forEach(tag => {
+                  if(!tag.trim()) return;
+                  const tagElem = document.createElement('div');
+                  // MODIFIED: Added dark mode classes
+                  tagElem.className = 'selected-tag bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 dark:bg-blue-900 dark:text-blue-200';
+                  tagElem.dataset.tag = tag.trim();
+                  tagElem.innerHTML = `
+                    <span>${tag.trim()}</span>
+                    <button type="button" onclick="removeSelectedTag(this)" class="bg-transparent border-none text-blue-600 hover:text-blue-800 font-bold cursor-pointer p-0 ml-1 dark:text-blue-300 dark:hover:text-blue-100" title="Remove tag">×</button>
+                  `;
+                  selectedTagsContainer.appendChild(tagElem);
+              });
+          }
       } else {
-        tagsContainer.innerHTML = `<span class="text-gray-400 text-sm">No tags.</span>`;
+          popupTitle.textContent = 'Upload New Gallery';
       }
       
-      infoContainer.appendChild(ratingEl);
-      infoContainer.appendChild(tagsContainer);
-      */
-      
-      cardElem.appendChild(imgContainer);
-      // cardElem.appendChild(infoContainer); // REMOVED
-      
-      // Add zoom-on-scroll functionality
-      setupCompareCardZoom(imgContainer, img);
-      
-      return cardElem;
+      updateTagDisplays();
+      document.getElementById('popup').style.display = 'flex';
     }
-    
-    /**
-     * Sets up zoom-on-scroll logic for a compare card image
-     */
-    function setupCompareCardZoom(imageContainer, imageElement) {
-      let scale = 1;
-      let isPanLocked = false; // START: Add pan lock state
-      
-      imageContainer.onmouseenter = () => {
-        // START: Set cursor based on current scale AND lock state
-        if (scale > 1) {
-          imageContainer.style.cursor = isPanLocked ? 'grab' : 'zoom-out';
-        } else {
-          imageContainer.style.cursor = 'zoom-in';
-        }
-        // END: Set cursor
-      };
-      
-      imageContainer.onmousemove = (e) => {
-        // START: Only pan if scale > 1 AND pan is not locked
-        if (scale > 1 && !isPanLocked) {
-          // Set origin to mouse position
-          const rect = imageContainer.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          const y = e.clientY - rect.top;
-          imageElement.style.transformOrigin = `${x}px ${y}px`;
-        }
-        // END: Modified pan logic
-      };
 
-      imageContainer.onwheel = (e) => {
-        e.preventDefault(); // Prevent page scroll
-        
-        const delta = e.deltaY > 0 ? -0.2 : 0.2; // Zoom direction
-        scale = Math.min(Math.max(scale + delta, 1), 5); // Clamp scale between 1x and 5x
-        
-        if (scale === 1) {
-          imageElement.style.transform = `scale(1)`;
-          imageContainer.style.cursor = 'zoom-in';
-          isPanLocked = false; // START: Reset lock if zoomed all the way out
-          imageElement.style.transformOrigin = `center center`; // Reset origin
-          // END: Reset lock
-        } else {
-          imageElement.style.transform = `scale(${scale})`;
-          // START: Update cursor based on lock state
-          imageContainer.style.cursor = isPanLocked ? 'grab' : 'zoom-out';
-          // END: Update cursor
-        }
-      };
-      
-      imageContainer.onmouseleave = () => {
-        imageContainer.style.cursor = 'default';
-      };
-      
-      // START: Add click listener to toggle pan lock
-      imageContainer.onclick = (e) => {
-        // Only allow locking/unlocking if zoomed in
-        if (scale > 1) {
-          e.preventDefault();
-          isPanLocked = !isPanLocked; // Toggle the lock state
-          // Update cursor immediately
-          imageContainer.style.cursor = isPanLocked ? 'grab' : 'zoom-out';
-        }
-      };
-      // END: Add click listener
+    function closePopup() {
+      document.getElementById('popup').style.display = 'none';
+      currentlyEditingCardId = null;
     }
+
+    // --- Related Celebrities Popup (Unchanged) ---
     
-    // --- END: Compare Mode Functions ---
-    
+    function openRelatedCelebritiesPopup() {
+        document.getElementById('celebrityViewer').style.display = 'none'; // Hide viewer
+        document.getElementById('relatedCelebritiesPopup').style.display = 'flex';
+        document.getElementById('relatedCelebritiesErrorMessage').textContent = '';
+        document.getElementById('relatedCelebrityUrls').value = '';
+    }
+
+    function closeRelatedCelebritiesPopup() {
+        document.getElementById('relatedCelebritiesPopup').style.display = 'none';
+        if (currentViewingCard) {
+            document.getElementById('celebrityViewer').style.display = 'flex'; // Show viewer again
+        }
+    }
+
+    async function addRelatedCelebrities() {
+        if (!currentViewingCard) return;
+        const urlsText = document.getElementById('relatedCelebrityUrls').value.trim();
+        if (!urlsText) return;
+        
+        // Filter out empty lines and trim whitespace
+        const urls = urlsText.split('\n').map(url => url.trim()).filter(Boolean);
+        const errorMessage = document.getElementById('relatedCelebritiesErrorMessage');
+        errorMessage.textContent = '';
+
+        try {
+            // Get the most up-to-date data first
+            const { data: card, error: fetchError } = await supabase
+                .from('celebrities')
+                .select('related_celebrities, related_celebrities_with_tags')
+                .eq('id', currentViewingCard.id)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            const currentRelated = card.related_celebrities || [];
+            // Find only the URLs that are not already in the list
+            const newUrls = urls.filter(url => !currentRelated.includes(url));
+
+            if (newUrls.length > 0) {
+                const updatedRelated = [...currentRelated, ...newUrls];
+                const updatedRelatedWithTags = [
+                  ...(card.related_celebrities_with_tags || []), 
+                  ...newUrls.map(url => ({ url, tags: '' })) // Add new ones with empty tags
+                ];
+                
+                const { error: updateError } = await supabase
+                    .from('celebrities')
+                    .update({ related_celebrities: updatedRelated, related_celebrities_with_tags: updatedRelatedWithTags })
+                    .eq('id', currentViewingCard.id);
+
+                if (updateError) throw updateError;
+                
+                // Update the local copy so the viewer is correct
+                currentViewingCard.related_celebrities = updatedRelated;
+                currentViewingCard.related_celebrities_with_tags = updatedRelatedWithTags;
+                updateViewerCelebrity(); // Refresh viewer thumbnails
+                
+                // Also refresh the right gallery if this is the selected card
+                if (currentViewingCard.id === selectedFeedCardId) {
+                    loadRelatedGallery(currentViewingCard);
+                }
+                // And refresh the count on the left feed
+                await loadMainFeedCards();
+            }
+            closeRelatedCelebritiesPopup();
+        } catch (error) {
+            console.error('Error adding related celebrities:', error);
+            errorMessage.textContent = 'Failed to add celebrities. ' + error.message;
+        }
+    }
 
   </script>
 </body>
