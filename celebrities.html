@@ -566,7 +566,8 @@
         if (!imgUrl) return; // Skip if URL is null or empty
 
         const item = document.createElement('div');
-        item.className = 'masonry-item mb-4';
+        // MODIFIED: added relative and group for positioning the delete button
+        item.className = 'masonry-item mb-4 relative group';
         
         const img = document.createElement('img');
         img.src = imgUrl;
@@ -584,6 +585,26 @@
         });
         
         item.appendChild(img);
+
+        // NEW: Add delete button for related images (index > 0)
+        // We skip index 0 because it is the "Main" image, managed by editing the card itself.
+        if (index > 0) {
+            const deleteBtn = document.createElement('button');
+            // Styled to be top-right, red, visible on hover
+            deleteBtn.className = 'absolute top-2 right-2 bg-red-600 text-white p-1.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-700 focus:opacity-100';
+            deleteBtn.title = "Delete this image";
+            deleteBtn.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                </svg>
+            `;
+            deleteBtn.onclick = (e) => {
+                e.stopPropagation(); // Prevent opening the viewer
+                deleteRelatedImage(card.id, imgUrl);
+            };
+            item.appendChild(deleteBtn);
+        }
+
         gallery.appendChild(item);
       });
     }
@@ -888,6 +909,65 @@
         alert("Failed to delete card. Please try again."); // Replace with custom modal later
       }
     }
+
+    // --- NEW: Function to delete a specific related image ---
+    async function deleteRelatedImage(cardId, imageUrlToDelete) {
+        if (!confirm("Are you sure you want to delete this image?")) return;
+        
+        try {
+            // Fetch fresh data to ensure we don't overwrite concurrent changes
+            const { data: card, error: fetchError } = await supabase
+                .from('celebrities')
+                .select('related_celebrities, related_celebrities_with_tags')
+                .eq('id', cardId)
+                .single();
+            
+            if (fetchError) throw fetchError;
+
+            // Filter arrays to remove the image
+            const updatedRelated = (card.related_celebrities || []).filter(url => url !== imageUrlToDelete);
+            
+            // Also update the tags array if it exists
+            let updatedRelatedWithTags = card.related_celebrities_with_tags || [];
+            if (updatedRelatedWithTags.length > 0) {
+                 updatedRelatedWithTags = updatedRelatedWithTags.filter(item => item.url !== imageUrlToDelete);
+            }
+
+            // Update DB
+            const { error: updateError } = await supabase
+                .from('celebrities')
+                .update({ 
+                    related_celebrities: updatedRelated,
+                    related_celebrities_with_tags: updatedRelatedWithTags
+                })
+                .eq('id', cardId);
+
+            if (updateError) throw updateError;
+
+            // Re-fetch full card to update UI cleanly
+            const { data: updatedCard, error: refetchError } = await supabase
+                .from('celebrities')
+                .select('*')
+                .eq('id', cardId)
+                .single();
+                
+            if (refetchError) throw refetchError;
+            
+            // Reload the right panel if we are currently viewing this card
+            if (selectedFeedCardId === cardId) {
+                loadRelatedGallery(updatedCard);
+                // Also update the global currentViewingCard just in case the viewer is opened next
+                currentViewingCard = updatedCard;
+            }
+            
+            // Update the main feed to show correct image counts
+            await loadMainFeedCards();
+
+        } catch (error) {
+            console.error("Error deleting related image:", error);
+            alert("Failed to delete image: " + error.message);
+        }
+    }
     
     // --- Popup and Tag Management (Unchanged) ---
     
@@ -985,6 +1065,7 @@
         document.getElementById('celebrityViewer').style.display = 'none'; // Hide viewer
         document.getElementById('relatedCelebritiesPopup').style.display = 'flex';
         document.getElementById('relatedCelebritiesErrorMessage').textContent = '';
+        document.getElementById('relatedCelebritiesErrorMessage').className = 'text-red-500 text-sm mb-3 dark:text-red-400'; // Reset styling
         document.getElementById('relatedCelebrityUrls').value = '';
     }
 
@@ -1000,10 +1081,15 @@
         const urlsText = document.getElementById('relatedCelebrityUrls').value.trim();
         if (!urlsText) return;
         
-        // Filter out empty lines and trim whitespace
-        const urls = urlsText.split('\n').map(url => url.trim()).filter(Boolean);
+        // MODIFIED: Split by regex to handle \r\n, \n, \r
+        const rawUrls = urlsText.split(/\r?\n/).map(url => url.trim()).filter(Boolean);
+        
+        // MODIFIED: Deduplicate within the input list itself
+        const uniqueInputUrls = [...new Set(rawUrls)];
+        
         const errorMessage = document.getElementById('relatedCelebritiesErrorMessage');
         errorMessage.textContent = '';
+        errorMessage.className = 'text-red-500 text-sm mb-3 dark:text-red-400'; // Reset class
 
         try {
             // Get the most up-to-date data first
@@ -1016,8 +1102,10 @@
             if (fetchError) throw fetchError;
 
             const currentRelated = card.related_celebrities || [];
-            // Find only the URLs that are not already in the list
-            const newUrls = urls.filter(url => !currentRelated.includes(url));
+            
+            // Filter out URLs that are already in the database
+            const newUrls = uniqueInputUrls.filter(url => !currentRelated.includes(url));
+            const duplicatesCount = uniqueInputUrls.length - newUrls.length;
 
             if (newUrls.length > 0) {
                 const updatedRelated = [...currentRelated, ...newUrls];
@@ -1033,7 +1121,7 @@
 
                 if (updateError) throw updateError;
                 
-                // Update the local copy so the viewer is correct
+                // Update local state
                 currentViewingCard.related_celebrities = updatedRelated;
                 currentViewingCard.related_celebrities_with_tags = updatedRelatedWithTags;
                 updateViewerCelebrity(); // Refresh viewer thumbnails
@@ -1044,10 +1132,29 @@
                 }
                 // And refresh the count on the left feed
                 await loadMainFeedCards();
+                
+                // MODIFIED: Show success message instead of just closing
+                // We'll change the error message style to green for success
+                errorMessage.className = 'text-green-500 text-sm mb-3 dark:text-green-400';
+                errorMessage.textContent = `Successfully added ${newUrls.length} images.` + (duplicatesCount > 0 ? ` (${duplicatesCount} duplicates skipped)` : '');
+                
+                // Clear the textarea
+                document.getElementById('relatedCelebrityUrls').value = '';
+                
+                // Close after a short delay so they see the message
+                setTimeout(() => {
+                    closeRelatedCelebritiesPopup();
+                    errorMessage.textContent = ''; // Clear for next time
+                }, 1500);
+
+            } else {
+                // MODIFIED: Explicitly tell user if nothing was added due to duplicates
+                errorMessage.className = 'text-yellow-500 text-sm mb-3 dark:text-yellow-400';
+                errorMessage.textContent = `No new images added. All ${uniqueInputUrls.length} URLs were duplicates of existing images.`;
             }
-            closeRelatedCelebritiesPopup();
         } catch (error) {
             console.error('Error adding related celebrities:', error);
+            errorMessage.className = 'text-red-500 text-sm mb-3 dark:text-red-400';
             errorMessage.textContent = 'Failed to add celebrities. ' + error.message;
         }
     }
