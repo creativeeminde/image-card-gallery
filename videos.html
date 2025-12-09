@@ -188,7 +188,8 @@
 
     .gallery {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      /* Adjusted minmax to 250px to fit better on smaller phone screens */
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
       gap: 20px;
     }
 
@@ -845,13 +846,17 @@
       cardElem.dataset.cardId = card.id;
       
       const tags = card.tags ? card.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+      
+      // FIXED: Added #t=0.001 to force thumbnail generation on mobile
+      const videoSrc = card.main_video_url.includes('#t=') ? card.main_video_url : `${card.main_video_url}#t=0.001`;
+
       cardElem.innerHTML = `
         <div class="card-actions">
           <button class="edit-btn" onclick="event.stopPropagation(); startEditCard('${card.id}')">✏️</button>
           <button class="delete-btn" onclick="event.stopPropagation(); deleteCard('${card.id}')">🗑️</button>
         </div>
-        <video preload="auto" muted loop playsinline>
-          <source src="${card.main_video_url}" type="video/mp4">
+        <video preload="metadata" muted loop playsinline>
+          <source src="${videoSrc}" type="video/mp4">
           Your browser does not support the video tag.
         </video>
         <div class="card-info">
@@ -867,8 +872,20 @@
 
       const videoElem = cardElem.querySelector('video');
 
-      cardElem.addEventListener('mouseenter', () => videoElem.play());
+      // FIXED: Handle play() promise to prevent AbortError
+      cardElem.addEventListener('mouseenter', () => {
+        const playPromise = videoElem.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(error => {
+            // Ignore AbortError which happens if user mouses out quickly
+            if (error.name !== 'AbortError') {
+              console.error("Video play error:", error);
+            }
+          });
+        }
+      });
       cardElem.addEventListener('mouseleave', () => videoElem.pause());
+      
       cardElem.addEventListener('click', () => openVideoViewer(card));
       document.getElementById('gallery').appendChild(cardElem);
     }
@@ -927,9 +944,12 @@
           cardElem.className = 'card';
           const tags = match.tags ? match.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
           
+          // FIXED: Added #t=0.001 to force thumbnail generation on mobile
+          const videoSrc = match.url.includes('#t=') ? match.url : `${match.url}#t=0.001`;
+
           cardElem.innerHTML = `
             <video preload="metadata" muted loop playsinline>
-              <source src="${match.url}" type="video/mp4">
+              <source src="${videoSrc}" type="video/mp4">
             </video>
             <div class="card-info">
               <small>From: ${match.parentCard.title}</small>
@@ -942,7 +962,19 @@
           `;
           
           const videoElem = cardElem.querySelector('video');
-          cardElem.addEventListener('mouseenter', () => videoElem.play());
+          
+          // FIXED: Handle play() promise to prevent AbortError
+          cardElem.addEventListener('mouseenter', () => {
+            const playPromise = videoElem.play();
+            if (playPromise !== undefined) {
+              playPromise.catch(error => {
+                // Ignore AbortError which happens if user mouses out quickly
+                if (error.name !== 'AbortError') {
+                  console.error("Video play error:", error);
+                }
+              });
+            }
+          });
           cardElem.addEventListener('mouseleave', () => videoElem.pause());
           
           cardElem.addEventListener('click', () => {
@@ -1072,9 +1104,12 @@
           
           const tags = vid.tags ? vid.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
           
+          // FIXED: Added #t=0.001 to force thumbnail generation on mobile
+          const videoSrc = vid.url.includes('#t=') ? vid.url : `${vid.url}#t=0.001`;
+
           vidElem.innerHTML = `
             <video preload="metadata" muted loop playsinline>
-              <source src="${vid.url}" type="video/mp4">
+              <source src="${videoSrc}" type="video/mp4">
             </video>
             <div class="card-info">
               ${tags.length > 0 ? `
@@ -1086,7 +1121,19 @@
           `;
           
           const videoElem = vidElem.querySelector('video');
-          vidElem.addEventListener('mouseenter', () => videoElem.play());
+          
+          // FIXED: Handle play() promise to prevent AbortError
+          vidElem.addEventListener('mouseenter', () => {
+            const playPromise = videoElem.play();
+            if (playPromise !== undefined) {
+              playPromise.catch(error => {
+                // Ignore AbortError which happens if user mouses out quickly
+                if (error.name !== 'AbortError') {
+                  console.error("Video play error:", error);
+                }
+              });
+            }
+          });
           vidElem.addEventListener('mouseleave', () => videoElem.pause());
 
           vidElem.addEventListener('click', () => {
