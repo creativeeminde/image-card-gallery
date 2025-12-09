@@ -267,6 +267,12 @@
     <div id="gallery"><!-- Images/Videos injected here --></div>
     <div id="no-results" class="text-center text-gray-500 py-20" style="display: none;">No items found.</div>
     <div id="scroll-loader" class="flex justify-center items-center py-10" style="display: none;"><div class="loader"></div></div>
+    <!-- Load More Button for Reels -->
+    <div id="load-more-container" class="flex justify-center py-8" style="display: none;">
+      <button id="load-more-btn" onclick="loadCards()" class="px-6 py-3 bg-gray-800 hover:bg-gray-700 text-white font-medium rounded-lg transition-colors flex items-center gap-2">
+        Load More
+      </button>
+    </div>
   </main>
 
   <!-- Image Viewer Modal (Shared) -->
@@ -480,7 +486,7 @@
     };
     
     let currentPage = 0;
-    const PAGE_SIZE = 25;
+    const PAGE_SIZE = 25; // Default for normal galleries
     let isLoadingMore = false;
     let noMoreResults = false;
     
@@ -649,13 +655,41 @@
       if (isLoadingMore || (noMoreResults && !isNewQuery)) return;
       if (isCompareModeActive) toggleCompareMode();
       
+      const isReelsView = currentFilter.type === 'reels';
+      const limitSize = isReelsView ? 10 : PAGE_SIZE; // 10 for Reels, 25 for others
+      const loadMoreContainer = document.getElementById('load-more-container');
+      const loadMoreBtn = document.getElementById('load-more-btn');
+      
       isLoadingMore = true;
       if (isNewQuery) {
         currentPage = 0; noMoreResults = (currentSortOrder === 'shuffle');
         gallery.innerHTML = ''; displayedCards = []; albumsSeenThisSession.clear();
         noResults.style.display = 'none'; searchStatus.style.display = 'none';
-        loader.style.display = 'flex'; scrollLoader.style.display = (currentSortOrder === 'shuffle') ? 'none' : 'flex';
-      } else { scrollLoader.style.display = 'flex'; }
+        loader.style.display = 'flex'; 
+        
+        // Handle Loader Visibility Logic
+        if (currentSortOrder === 'shuffle') {
+            scrollLoader.style.display = 'none';
+            loadMoreContainer.style.display = 'none';
+        } else if (isReelsView) {
+            scrollLoader.style.display = 'none'; // Don't show infinite scroll loader for reels
+            loadMoreContainer.style.display = 'none'; // Hide button while initial loading
+        } else {
+            scrollLoader.style.display = 'flex';
+            loadMoreContainer.style.display = 'none';
+        }
+      } else {
+        // Pagination loading state
+        if (isReelsView) {
+            // Change button state
+            if (loadMoreBtn) {
+                loadMoreBtn.innerHTML = '<div class="loader" style="width: 20px; height: 20px; border-width: 2px;"></div> Loading...';
+                loadMoreBtn.disabled = true;
+            }
+        } else {
+            scrollLoader.style.display = 'flex';
+        }
+      }
 
       try {
         let query = supabase.from('models').select('*');
@@ -702,7 +736,7 @@
         if (currentSortOrder === 'shuffle') {
           if (isNewQuery) query = query.limit(100); else { isLoadingMore = false; return; }
         } else {
-          const from = currentPage * PAGE_SIZE, to = from + PAGE_SIZE - 1;
+          const from = currentPage * limitSize, to = from + limitSize - 1;
           query = query.range(from, to);
           if (currentSortOrder === 'first_uploaded') query = query.order('created_at', { ascending: true });
           else if (currentSortOrder === 'highest_rated') query = query.order('rating', { ascending: false, nullsFirst: false });
@@ -723,6 +757,12 @@
 
         loader.style.display = 'none';
         scrollLoader.style.display = 'none';
+        
+        // Reset load more button
+        if (loadMoreBtn) {
+            loadMoreBtn.innerHTML = 'Load More';
+            loadMoreBtn.disabled = false;
+        }
         
         if (cards && cards.length > 0) {
           noResults.style.display = 'none';
@@ -762,13 +802,26 @@
             msnry.layout();
           });
           if (currentSortOrder !== 'shuffle') currentPage++;
+          
+          // Show Load More button if in Reels view and we got a full page
+          if (isReelsView) {
+              if (cards.length < limitSize) {
+                  noMoreResults = true;
+                  loadMoreContainer.style.display = 'none';
+              } else {
+                  loadMoreContainer.style.display = 'flex';
+              }
+          }
+          
         } else {
           noMoreResults = true;
           if (isNewQuery) noResults.style.display = 'block';
+          if (isReelsView) loadMoreContainer.style.display = 'none';
         }
       } catch (error) {
         console.error(error);
         loader.style.display = 'none'; scrollLoader.style.display = 'none';
+        if (isReelsView && loadMoreContainer) loadMoreContainer.style.display = 'none';
         noResults.innerHTML = 'Error loading content.'; noResults.style.display = 'block';
       }
       isLoadingMore = false;
@@ -1096,7 +1149,14 @@
     }
 
     // --- Standard Helper Functions (Truncated slightly for brevity as they are unchanged) ---
-    function handleScroll() { if (imageViewer.style.display === 'flex' || document.getElementById('popup').style.display === 'flex') return; if (currentSortOrder === 'shuffle') return; const { scrollTop, scrollHeight, clientHeight } = document.documentElement; if (scrollTop + clientHeight >= scrollHeight - 300) { if (!isLoadingMore && !noMoreResults) loadCards(); } }
+    function handleScroll() { 
+      if (imageViewer.style.display === 'flex' || document.getElementById('popup').style.display === 'flex') return; 
+      if (currentSortOrder === 'shuffle' || currentFilter.type === 'reels') return; // Disable scroll for Reels
+      const { scrollTop, scrollHeight, clientHeight } = document.documentElement; 
+      if (scrollTop + clientHeight >= scrollHeight - 300) { 
+        if (!isLoadingMore && !noMoreResults) loadCards(); 
+      } 
+    }
     function createGalleryRatingElement(card) { const rating = card.rating || 0; const el = document.createElement('div'); el.id = `rating-display-${card.id}`; el.className = 'absolute top-[6.5rem] right-2 z-10 flex items-center gap-1 px-1.5 py-0.5 bg-black/50 rounded-full text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity'; el.innerHTML = `<svg class="w-3 h-3 ${rating > 0 ? 'text-yellow-400' : 'text-gray-500'}" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27z"/></svg> <span>${rating > 0 ? rating : '-'}</span>`; return el; }
     function toggleMobileMenu() { mobileMenu.classList.toggle('hidden'); }
     function closeMobileMenu() { mobileMenu.classList.add('hidden'); }
