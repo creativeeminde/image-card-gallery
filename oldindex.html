@@ -1277,12 +1277,27 @@
       if (tags.length === 0) { viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">No tags to find related models.</span>'; relatedIsLoadingMore = false; relatedNoMoreResults = true; relatedScrollLoader.style.display = 'none'; return; }
       try {
         const tagConditions = tags.map(t => `tags.ilike.%${t.trim().replace(/"/g, '""')}%`).join(',');
-        const { data: relatedCards, error } = await supabase.from('models').select('*').or(tagConditions).neq('id', card.id).eq('nsfw', false).limit(PAGE_SIZE).range(relatedCurrentPage * PAGE_SIZE, (relatedCurrentPage + 1) * PAGE_SIZE - 1);
+        
+        // Base query
+        let query = supabase.from('models').select('*').or(tagConditions).neq('id', card.id).eq('nsfw', false);
+
+        // --- CONTEXT AWARE FILTERING ---
+        if (currentTab === 'reels') {
+            // If in Reels tab, ONLY show related REELS
+            query = query.ilike('tags', '%reel%');
+        } else {
+            // If in Home tab, exclude reels (show images)
+            query = query.not('tags', 'ilike', '%reel%').not('tags', 'ilike', '%album:%');
+        }
+        // -------------------------------
+
+        const { data: relatedCards, error } = await query.limit(PAGE_SIZE).range(relatedCurrentPage * PAGE_SIZE, (relatedCurrentPage + 1) * PAGE_SIZE - 1);
+        
         if (error) throw error;
         if (relatedCards) shuffleArray(relatedCards);
         relatedScrollLoader.style.display = 'none';
         if (isNewQuery) viewerRelatedGrid.innerHTML = '';
-        if (relatedCards.length === 0) { if (isNewQuery) viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">No related models found.</span>'; relatedNoMoreResults = true; } else { relatedCards.forEach(c => addRelatedCardToGrid(c)); relatedCurrentPage++; }
+        if (relatedCards.length === 0) { if (isNewQuery) viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">No related items found.</span>'; relatedNoMoreResults = true; } else { relatedCards.forEach(c => addRelatedCardToGrid(c)); relatedCurrentPage++; }
       } catch (error) { console.error("Error loading related:", error); relatedScrollLoader.style.display = 'none'; if (isNewQuery) viewerRelatedGrid.innerHTML = '<span class="text-red-400 text-sm col-span-full">Error loading related models.</span>'; }
       relatedIsLoadingMore = false;
     }
@@ -1290,11 +1305,39 @@
     function addRelatedCardToGrid(relatedCard, index = -1, isAlbumItem = false) {
       const cardElem = document.createElement('div');
       cardElem.className = 'related-masonry-item bg-gray-900 rounded-lg overflow-hidden relative group cursor-pointer';
-      const img = document.createElement('img');
-      img.src = relatedCard.main_model_url.includes('ik.imagekit.io') ? `${relatedCard.main_model_url}?tr=w-500,q-70` : relatedCard.main_model_url;
-      img.alt = "Related"; img.className = "w-full h-auto block";
-      img.onerror = () => { img.src = 'https://placehold.co/500x500/111827/4b5563?text=Error'; };
-      cardElem.appendChild(img);
+      
+      // Check if it is a video/reel to render correct tag
+      const isReel = (relatedCard.tags && relatedCard.tags.includes('reel')) || relatedCard.main_model_url.match(/\.(mp4|webm|mov)$/i);
+
+      if (isReel) {
+          const video = document.createElement('video');
+          const videoSrc = relatedCard.main_model_url.includes('#') ? relatedCard.main_model_url : `${relatedCard.main_model_url}#t=0.001`;
+          video.src = videoSrc;
+          video.muted = true;
+          video.loop = true; // Loop on hover
+          video.playsInline = true;
+          video.preload = 'metadata';
+          video.className = "w-full h-auto block object-cover aspect-[9/16]"; 
+          
+          // Simple hover play for related items (desktop)
+          video.onmouseover = () => { video.play().catch(e=>{}); };
+          video.onmouseout = () => { video.pause(); video.currentTime = 0; };
+          
+          cardElem.appendChild(video);
+          
+          // Small badge
+          const badge = document.createElement('div');
+          badge.className = "absolute bottom-1 right-1 z-10 px-1 py-0.5 bg-pink-600 text-white text-[10px] font-bold rounded";
+          badge.innerText = "Reel";
+          cardElem.appendChild(badge);
+      } else {
+          const img = document.createElement('img');
+          img.src = relatedCard.main_model_url.includes('ik.imagekit.io') ? `${relatedCard.main_model_url}?tr=w-500,q-70` : relatedCard.main_model_url;
+          img.alt = "Related"; img.className = "w-full h-auto block";
+          img.onerror = () => { img.src = 'https://placehold.co/500x500/111827/4b5563?text=Error'; };
+          cardElem.appendChild(img);
+      }
+
       cardElem.onclick = () => {
         if (isAlbumItem) { currentAlbumViewerIndex = index; displayCardInViewer(currentAlbumViewerList[currentAlbumViewerIndex]); } else {
           const rIndex = displayedCards.findIndex(c => c.id === relatedCard.id);
