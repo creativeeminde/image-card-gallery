@@ -797,8 +797,7 @@
       // VIDEO LOGIC
       if (card.isReel) {
         const video = document.createElement('video');
-        // Add #t=0.001 to the URL. This forces iOS/Android to seek to the first millisecond, 
-        // triggering a thumbnail render even if autoplay is blocked.
+        // Add #t=0.001 to the URL. This forces iOS/Android to seek to the first millisecond.
         const videoSrc = card.main_model_url.includes('#') 
           ? card.main_model_url 
           : `${card.main_model_url}#t=0.001`;
@@ -807,9 +806,8 @@
         video.muted = true;
         video.loop = true;
         video.playsInline = true;
-        video.preload = 'auto'; // Helps load the first frame faster
+        video.preload = 'auto'; 
         
-        // Remove manual hover logic and use IntersectionObserver for better mobile support
         if (videoObserver) {
           videoObserver.observe(video);
         }
@@ -818,6 +816,18 @@
         typeBadge.className = 'absolute bottom-2 left-2 z-10 px-2 py-0.5 bg-pink-600 text-white text-xs font-bold rounded-full';
         typeBadge.innerHTML = '▶ Reel';
         cardElem.appendChild(typeBadge);
+        
+        // --- START: ADD EXPAND BUTTON ---
+        const expandBtn = document.createElement('button');
+        // Mobile: opacity-100 (visible). Desktop (lg): opacity-0 (hidden), hover:opacity-100 (fade in).
+        expandBtn.className = "absolute bottom-2 right-2 z-20 p-1.5 bg-black/60 rounded-full text-white hover:bg-blue-600 transition-all duration-200 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 shadow-sm backdrop-blur-sm";
+        expandBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>`;
+        expandBtn.onclick = (e) => {
+            e.stopPropagation(); // Prevent card click (which plays/pauses)
+            openImageViewer(index);
+        };
+        cardElem.appendChild(expandBtn);
+        // --- END: ADD EXPAND BUTTON ---
         
         cardElem.appendChild(video);
       } else {
@@ -830,7 +840,7 @@
       }
       
       const overlay = document.createElement('div');
-      overlay.className = "overlay absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center pointer-events-none"; // Pointer events none so video hover works
+      overlay.className = "overlay absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center pointer-events-none"; 
       
       // Controls (Edit, Delete, Fav)
       const controlsContainer = document.createElement('div');
@@ -857,15 +867,28 @@
       
       cardElem.appendChild(controlsContainer);
       cardElem.appendChild(createGalleryRatingElement(card));
+      
+      // --- START: UPDATE CLICK INTERACTION ---
       cardElem.addEventListener('click', () => {
         if (isCompareModeActive) {
           const cb = cardElem.querySelector('.compare-checkbox');
           cb.checked = !cb.checked;
           toggleCompareSelection(card.id, cb.checked);
         } else {
-          openImageViewer(index);
+          // If Reel, toggle Play/Pause. If Image, open Viewer.
+          if (card.isReel) {
+            const vid = cardElem.querySelector('video');
+            if (vid) {
+                if (vid.paused) vid.play().catch(err => console.log('Playback error', err));
+                else vid.pause();
+            }
+          } else {
+            openImageViewer(index);
+          }
         }
       });
+      // --- END: UPDATE CLICK INTERACTION ---
+      
       cardElem.addEventListener('contextmenu', (e) => { e.preventDefault(); showContextMenu(e, card.id); });
       
       return cardElem;
