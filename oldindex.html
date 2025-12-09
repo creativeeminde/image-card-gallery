@@ -484,6 +484,8 @@
       type: 'all_singles', // 'all_singles', 'all_albums', 'favorites', 'nsfw', 'tags', 'reels'
       value: null
     };
+    // Added currentTab state for context-aware filtering
+    let currentTab = 'home';
     
     let currentPage = 0;
     const PAGE_SIZE = 25; // Default for normal galleries
@@ -655,7 +657,7 @@
       if (isLoadingMore || (noMoreResults && !isNewQuery)) return;
       if (isCompareModeActive) toggleCompareMode();
       
-      const isReelsView = currentFilter.type === 'reels';
+      const isReelsView = currentFilter.type === 'reels' || (currentTab === 'reels' && currentFilter.type === 'tags');
       const limitSize = isReelsView ? 10 : PAGE_SIZE; // 10 for Reels, 25 for others
       const loadMoreContainer = document.getElementById('load-more-container');
       const loadMoreBtn = document.getElementById('load-more-btn');
@@ -709,8 +711,25 @@
             break;
           case 'tags':
             const t = currentFilter.value.trim().replace(/"/g, '""');
+            // Base OR query for the tag itself
             query = query.or(`tags.eq."${t}",tags.ilike."${t},%",tags.ilike."%,${t}",tags.ilike."%,${t},%"`);
-            searchStatus.innerHTML = `<h2 class="text-xl">Tag: <span class="px-3 py-1 bg-gray-700 text-white text-lg rounded-full">${currentFilter.value}</span></h2>`;
+            
+            // STRICT Context-aware filtering for tags
+            if (currentTab === 'reels') {
+                // Must be a reel
+                query = query.ilike('tags', '%reel%');
+                searchStatus.innerHTML = `<h2 class="text-xl flex items-center gap-2"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> Reels tagged: <span class="ml-2 px-3 py-1 bg-gray-700 text-white text-lg rounded-full">${currentFilter.value}</span></h2>`;
+            } else if (currentTab === 'albums') {
+                 // Context aware for albums
+                 query = query.ilike('tags', '%album:%');
+                 searchStatus.innerHTML = `<h2 class="text-xl">Albums tagged: <span class="px-3 py-1 bg-gray-700 text-white text-lg rounded-full">${currentFilter.value}</span></h2>`;
+            } else {
+                // Default to Home (Images) behavior: No reels, no albums
+                query = query.not('tags', 'ilike', '%reel%');
+                query = query.not('tags', 'ilike', '%album:%');
+                searchStatus.innerHTML = `<h2 class="text-xl">Images tagged: <span class="px-3 py-1 bg-gray-700 text-white text-lg rounded-full">${currentFilter.value}</span></h2>`;
+            }
+            
             searchStatus.style.display = 'flex';
             updateNavActiveState('tags');
             break;
@@ -968,15 +987,47 @@
         if(el) { el.classList.remove('text-white', 'font-semibold'); el.classList.add('text-gray-400'); }
       });
 
+      // Special handling: Keep Reels active if filtering tags in reels mode
+      if (currentTab === 'reels' && state === 'tags') {
+          if(links['reels']) {
+              links['reels'].classList.add('text-white', 'font-semibold');
+              links['reels'].classList.remove('text-gray-400');
+          }
+          // Also highlight tags button
+          if(links['tags']) {
+              links['tags'].classList.add('text-white');
+              links['tags'].classList.remove('text-gray-400');
+          }
+          return;
+      }
+
       if (links[state]) {
         links[state].classList.add('text-white', 'font-semibold');
         links[state].classList.remove('text-gray-400');
       }
     }
 
-    function showAllModels(e) { if(e) e.preventDefault(); currentFilter = { type: 'all_singles', value: null }; loadCards(true); }
-    function showAllAlbums(e) { if(e) e.preventDefault(); currentFilter = { type: 'all_albums', value: null }; loadCards(true); }
-    function showReels(e) { if(e) e.preventDefault(); currentFilter = { type: 'reels', value: null }; loadCards(true); }
+    function showAllModels(e) { 
+      if(e) e.preventDefault(); 
+      currentTab = 'home'; 
+      currentFilter = { type: 'all_singles', value: null }; 
+      loadCards(true); 
+    }
+    
+    function showAllAlbums(e) { 
+      if(e) e.preventDefault(); 
+      currentTab = 'albums'; // Optional: track albums tab too
+      currentFilter = { type: 'all_albums', value: null }; 
+      loadCards(true); 
+    }
+    
+    function showReels(e) { 
+      if(e) e.preventDefault(); 
+      currentTab = 'reels'; 
+      currentFilter = { type: 'reels', value: null }; 
+      loadCards(true); 
+    }
+    
     function showFavorites(e) { if(e) e.preventDefault(); currentFilter = { type: 'favorites', value: null }; loadCards(true); }
     function showNsfw(e) { if(e) e.preventDefault(); currentFilter = { type: 'nsfw', value: null }; loadCards(true); }
     function searchByTag(tag) { closeImageViewer(); currentFilter = { type: 'tags', value: tag }; loadCards(true); }
