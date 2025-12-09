@@ -1652,10 +1652,96 @@
     }
     
     function openCompareViewer() {
-      // Basic compare logic - simplified
       if (compareSelection.length < 2) return;
-      document.getElementById('compare-viewer').style.display = 'block';
-      // Render logic omitted for brevity, but would go here
+      
+      const viewer = document.getElementById('compare-viewer');
+      const gridView = document.getElementById('compare-grid-view');
+      const sliderView = document.getElementById('compare-slider-view');
+      const gridContainer = document.getElementById('compare-container');
+      
+      viewer.style.display = 'block';
+      
+      // Get selected card objects
+      const selectedCards = displayedCards.filter(c => compareSelection.includes(c.id));
+      
+      if (selectedCards.length === 2) {
+        // Slider Mode
+        gridView.style.display = 'none';
+        sliderView.style.display = 'grid'; // CSS says grid-template-columns: 1fr
+        
+        const hasReel = selectedCards.some(c => (c.tags && c.tags.includes('reel')) || c.main_model_url.match(/\.(mp4|webm|mov)$/i));
+        
+        if (hasReel) {
+             // Fallback to Grid for Reels
+             setupGridView(selectedCards);
+        } else {
+             setupSliderView(selectedCards);
+        }
+      } else {
+        // Grid Mode
+        setupGridView(selectedCards);
+      }
+    }
+
+    function setupSliderView(cards) {
+        document.getElementById('compare-grid-view').style.display = 'none';
+        const sliderView = document.getElementById('compare-slider-view');
+        sliderView.style.display = 'grid';
+
+        const beforeImg = document.getElementById('compare-slider-before');
+        const afterImg = document.getElementById('compare-slider-after');
+        
+        beforeImg.src = cards[0].main_model_url;
+        afterImg.src = cards[1].main_model_url;
+        
+        const range = document.getElementById('compare-slider-range');
+        const handle = document.getElementById('compare-slider-handle');
+        
+        // Reset slider
+        range.value = 50;
+        updateSlider(50);
+        
+        range.oninput = (e) => updateSlider(e.target.value);
+        
+        function updateSlider(val) {
+            beforeImg.style.clipPath = `polygon(0 0, ${val}% 0, ${val}% 100%, 0 100%)`;
+            handle.style.left = `${val}%`;
+        }
+    }
+
+    function setupGridView(cards) {
+        document.getElementById('compare-slider-view').style.display = 'none';
+        const gridView = document.getElementById('compare-grid-view');
+        gridView.style.display = 'block';
+        const container = document.getElementById('compare-container');
+        container.innerHTML = '';
+        
+        cards.forEach(card => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flex-1 min-w-[300px] h-full flex flex-col';
+            
+            // Content
+            const content = document.createElement('div');
+            content.className = 'flex-grow relative bg-gray-900 rounded-lg overflow-hidden';
+            
+            const isReel = (card.tags && card.tags.includes('reel')) || card.main_model_url.match(/\.(mp4|webm|mov)$/i);
+            
+            if (isReel) {
+                const vid = document.createElement('video');
+                vid.src = card.main_model_url;
+                vid.controls = true;
+                vid.className = 'w-full h-full object-contain';
+                content.appendChild(vid);
+            } else {
+                const img = document.createElement('img');
+                img.src = card.main_model_url;
+                img.className = 'w-full h-full object-contain';
+                content.appendChild(img);
+            }
+            
+            wrapper.appendChild(content);
+            container.appendChild(wrapper);
+        });
     }
     
     function closeCompareViewer() {
