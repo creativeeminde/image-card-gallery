@@ -31,6 +31,23 @@
     }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     
+    /* Small Video Loader */
+    .video-loader {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 30px;
+        height: 30px;
+        border: 3px solid rgba(255,255,255,0.3);
+        border-radius: 50%;
+        border-top-color: #fff;
+        animation: spin 1s ease-in-out infinite;
+        z-index: 5;
+        display: none; /* Hidden by default, toggled by JS */
+        pointer-events: none;
+    }
+
     /* Context menu */
     #context-menu {
       display: none;
@@ -128,6 +145,10 @@
     }
 
     /* Video Card Specifics */
+    .video-card {
+        background-color: #111827; /* Dark background so it's not transparent while loading */
+        min-height: 200px;
+    }
     .video-card video {
       width: 100%;
       height: auto;
@@ -135,6 +156,7 @@
       aspect-ratio: 9 / 16; /* Force vertical 9:16 aspect ratio */
       object-fit: cover;    /* Fill the area without stretching */
       border-radius: 0.5rem;
+      background-color: #000;
     }
     .video-duration {
       position: absolute;
@@ -541,24 +563,42 @@
       scrollLoader = document.getElementById('scroll-loader');
       mobileMenu = document.getElementById('mobile-menu');
       
-      // Initialize IntersectionObserver for Videos
+      // FIX: Improved lazy load observer specifically for mobile memory limits
       videoObserver = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
+          const video = entry.target;
+          const loader = video.parentElement.querySelector('.video-loader');
+          
           if (entry.isIntersecting) {
-            // Play when in view
-            const promise = entry.target.play();
+            // 1. LAZY LOAD: Only set src when visible
+            if (!video.src && video.dataset.src) {
+                if (loader) loader.style.display = 'block';
+                video.src = video.dataset.src;
+                video.load();
+            }
+
+            // 2. Play
+            const promise = video.play();
             if (promise !== undefined) {
-              promise.catch(error => { 
-                // Auto-play might be blocked by browser settings or battery saver
-                // console.log('Autoplay prevented', error); 
+              promise.then(() => {
+                 // Hide loader when playing starts
+                 if (loader) loader.style.display = 'none';
+              }).catch(error => { 
+                // Auto-play might be blocked or low battery mode
+                if (loader) loader.style.display = 'none';
               });
             }
           } else {
-            // Pause when out of view
-            entry.target.pause();
+            // 3. RESOURCE SAVING: Pause immediately when out of view
+            video.pause();
+            // Optional: for extreme memory saving on low-end devices, we could unset src here
+            // but that causes re-buffering lag. Pause is usually enough.
           }
         });
-      }, { threshold: 0.25 }); // Trigger when 25% of video is visible
+      }, { 
+          threshold: 0.25,
+          rootMargin: "50% 0px" // Start loading 50% before it hits the viewport for smoother scroll
+      });
       
       msnry = new Masonry( gallery, {
         itemSelector: '.masonry-item',
@@ -871,17 +911,28 @@
       // VIDEO LOGIC
       if (card.isReel) {
         const video = document.createElement('video');
-        // Add #t=0.001 to the URL. This forces iOS/Android to seek to the first millisecond.
+        // FIX: Lazy Loading Implementation
         const videoSrc = card.main_model_url.includes('#') 
           ? card.main_model_url 
           : `${card.main_model_url}#t=0.001`;
           
-        video.src = videoSrc;
+        // Use data-src instead of src to prevent eager loading
+        video.dataset.src = videoSrc;
         video.muted = true;
         video.loop = true;
         video.playsInline = true;
-        video.preload = 'auto'; 
+        video.preload = 'none'; // CRITICAL: Stop mobile browsers from locking up
         
+        // Add loading spinner specifically for this video
+        const vidLoader = document.createElement('div');
+        vidLoader.className = 'video-loader';
+        cardElem.appendChild(vidLoader);
+        
+        // Hide loader when video is ready to play
+        video.onplaying = () => { vidLoader.style.display = 'none'; };
+        video.oncanplay = () => { vidLoader.style.display = 'none'; };
+        video.onwaiting = () => { vidLoader.style.display = 'block'; };
+
         if (videoObserver) {
           videoObserver.observe(video);
         }
