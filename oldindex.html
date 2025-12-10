@@ -31,42 +31,51 @@
     }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     
-    /* --- NEW Video Loader with Percentage --- */
-    .video-loader-container {
+    /* --- Circular Buffer Loader (Reels) --- */
+    .buffer-loader {
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        width: 50px;
-        height: 50px;
-        z-index: 5;
+        width: 60px;
+        height: 60px;
+        z-index: 10;
         display: none; /* Hidden by default, toggled by JS */
         pointer-events: none;
     }
-    
-    .video-spinner {
-        width: 100%;
-        height: 100%;
-        border: 4px solid rgba(255,255,255,0.1); /* Faint background ring */
-        border-top: 4px solid #3b82f6; /* Bright blue active ring */
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        position: absolute;
-        top: 0;
-        left: 0;
+
+    .circular-chart {
+        display: block;
+        margin: 0 auto;
+        max-width: 100%;
+        max-height: 100%;
     }
-    
-    .video-percent {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        color: white;
-        font-size: 11px;
+
+    .circle-bg {
+        fill: none;
+        stroke: rgba(0, 0, 0, 0.5);
+        stroke-width: 2.5;
+    }
+
+    .circle {
+        fill: none;
+        stroke: #fff;
+        stroke-width: 2.5;
+        stroke-linecap: round;
+        /* stroke-dasharray controlled by JS */
+        transition: stroke-dasharray 0.3s ease;
+        transform: rotate(-90deg); /* Start from top */
+        transform-origin: center;
+    }
+
+    .percentage {
+        fill: #fff;
+        font-family: sans-serif;
         font-weight: bold;
-        text-align: center;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        text-shadow: 0px 1px 2px rgba(0,0,0,0.8);
+        font-size: 8px;
+        text-anchor: middle;
+        dominant-baseline: middle; /* Modern vertical centering */
+        alignment-baseline: middle; /* Fallback */
     }
 
     /* Context menu */
@@ -179,17 +188,6 @@
       border-radius: 0.5rem;
       background-color: #000;
     }
-    .video-duration {
-      position: absolute;
-      bottom: 8px;
-      right: 8px;
-      background: rgba(0, 0, 0, 0.7);
-      color: white;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 0.75rem;
-      pointer-events: none;
-    }
   </style>
 </head>
 <body class="bg-black text-gray-300 font-sans antialiased">
@@ -220,7 +218,7 @@
 
           <a href="https://image-card-gallery.vercel.app/celebrities.html" class="text-sm text-gray-400 hover:text-white">Celebrities</a>
           <a href="https://image-card-gallery.vercel.app/Gallery.html" class="text-sm text-gray-400 hover:text-white">PStars</a>
-          
+
           <span class="text-sm text-gray-500" id="total-card-count">(...)</span>
           
           <a href="#" onclick="showFavorites(event)" id="favorites-link" class="text-sm text-gray-400 hover:text-white">Favorites</a>
@@ -421,7 +419,6 @@
     </div>
   </div>
   
-  <!-- Quick Edit, Add Tags, Context Menu, Compare Bar, Compare Viewer - Same as original -->
   <!-- Quick Edit Modal -->
   <div id="quick-edit-modal" class="fixed inset-0 z-[101] flex items-center justify-center bg-black bg-opacity-80 p-4" style="display: none;">
     <div class="bg-gray-900 p-6 rounded-lg shadow-xl w-full max-w-md border border-gray-700">
@@ -523,14 +520,13 @@
     let msnry;
     let currentSortOrder = 'last_uploaded';
     let currentFilter = {
-      type: 'all_singles', // 'all_singles', 'all_albums', 'favorites', 'nsfw', 'tags', 'reels'
+      type: 'all_singles', 
       value: null
     };
-    // Added currentTab state for context-aware filtering
     let currentTab = 'home';
     
     let currentPage = 0;
-    const PAGE_SIZE = 25; // Default for normal galleries
+    const PAGE_SIZE = 25; 
     let isLoadingMore = false;
     let noMoreResults = false;
     
@@ -561,7 +557,6 @@
     
     let isCompareModeActive = false, compareSelection = [], sortableInstance = null;
     
-    // Video Observer for auto-playing reels on scroll
     let videoObserver;
 
     // --- Initialization ---
@@ -581,37 +576,40 @@
       scrollLoader = document.getElementById('scroll-loader');
       mobileMenu = document.getElementById('mobile-menu');
       
-      // FIX: Improved lazy load observer specifically for mobile memory limits
+      // Video Observer: Lazy load and play/pause logic
       videoObserver = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
           const video = entry.target;
+          const cardElem = video.closest('.masonry-item');
+          const bufferLoader = cardElem ? cardElem.querySelector('.buffer-loader') : null;
           
           if (entry.isIntersecting) {
-            // 1. LAZY LOAD: Only set src when visible
+            // Lazy load
             if (!video.src && video.dataset.src) {
+                if (bufferLoader) bufferLoader.style.display = 'block';
                 video.src = video.dataset.src;
                 video.load();
             }
 
-            // 2. Play
+            // Play attempt
             const promise = video.play();
             if (promise !== undefined) {
               promise.then(() => {
-                 // Auto-play started
+                 // Hide loader on play success
+                 if (bufferLoader) bufferLoader.style.display = 'none';
               }).catch(error => { 
-                // Auto-play might be blocked or low battery mode
+                // Auto-play prevented
+                if (bufferLoader) bufferLoader.style.display = 'none';
               });
             }
           } else {
-            // 3. RESOURCE SAVING: Pause immediately when out of view
+            // Pause when out of view
             video.pause();
-            // Optional: for extreme memory saving on low-end devices, we could unset src here
-            // but that causes re-buffering lag. Pause is usually enough.
           }
         });
       }, { 
           threshold: 0.25,
-          rootMargin: "50% 0px" // Start loading 50% before it hits the viewport for smoother scroll
+          rootMargin: "50% 0px"
       });
       
       msnry = new Masonry( gallery, {
@@ -714,7 +712,7 @@
       if (isCompareModeActive) toggleCompareMode();
       
       const isReelsView = currentFilter.type === 'reels' || (currentTab === 'reels' && currentFilter.type === 'tags');
-      const limitSize = isReelsView ? 10 : PAGE_SIZE; // 10 for Reels, 25 for others
+      const limitSize = isReelsView ? 10 : PAGE_SIZE; 
       const loadMoreContainer = document.getElementById('load-more-container');
       const loadMoreBtn = document.getElementById('load-more-btn');
       
@@ -725,21 +723,18 @@
         noResults.style.display = 'none'; searchStatus.style.display = 'none';
         loader.style.display = 'flex'; 
         
-        // Handle Loader Visibility Logic
         if (currentSortOrder === 'shuffle') {
             scrollLoader.style.display = 'none';
             loadMoreContainer.style.display = 'none';
         } else if (isReelsView) {
-            scrollLoader.style.display = 'none'; // Don't show infinite scroll loader for reels
-            loadMoreContainer.style.display = 'none'; // Hide button while initial loading
+            scrollLoader.style.display = 'none';
+            loadMoreContainer.style.display = 'none';
         } else {
             scrollLoader.style.display = 'flex';
             loadMoreContainer.style.display = 'none';
         }
       } else {
-        // Pagination loading state
         if (isReelsView) {
-            // Change button state
             if (loadMoreBtn) {
                 loadMoreBtn.innerHTML = '<div class="loader" style="width: 20px; height: 20px; border-width: 2px;"></div> Loading...';
                 loadMoreBtn.disabled = true;
@@ -767,20 +762,15 @@
             break;
           case 'tags':
             const t = currentFilter.value.trim();
-            // SIMPLIFIED QUERY: Just check if the tag text exists anywhere in the tags column
             query = query.ilike('tags', `%${t}%`);
             
-            // STRICT Context-aware filtering for tags
             if (currentTab === 'reels') {
-                // Must be a reel
                 query = query.ilike('tags', '%reel%');
                 searchStatus.innerHTML = `<h2 class="text-xl flex items-center gap-2"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> Reels tagged: <span class="ml-2 px-3 py-1 bg-gray-700 text-white text-lg rounded-full">${currentFilter.value}</span></h2>`;
             } else if (currentTab === 'albums') {
-                 // Context aware for albums
                  query = query.ilike('tags', '%album:%');
                  searchStatus.innerHTML = `<h2 class="text-xl">Albums tagged: <span class="px-3 py-1 bg-gray-700 text-white text-lg rounded-full">${currentFilter.value}</span></h2>`;
             } else {
-                // Default to Home (Images) behavior: No reels, no albums
                 query = query.not('tags', 'ilike', '%reel%');
                 query = query.not('tags', 'ilike', '%album:%');
                 searchStatus.innerHTML = `<h2 class="text-xl">Images tagged: <span class="px-3 py-1 bg-gray-700 text-white text-lg rounded-full">${currentFilter.value}</span></h2>`;
@@ -796,7 +786,6 @@
             updateNavActiveState('all_albums');
             break;
           case 'reels':
-            // Fetch items tagged with 'reel'
             query = query.eq('nsfw', false).ilike('tags', '%reel%');
             searchStatus.innerHTML = '<h2 class="text-xl flex items-center gap-2"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> Reels Gallery</h2>';
             searchStatus.style.display = 'flex';
@@ -824,7 +813,6 @@
         
         if (currentSortOrder === 'shuffle' && cards) shuffleArray(cards);
         
-        // Client-side tag filter refinement
         if (currentFilter.type === 'tags') {
            const needle = currentFilter.value.toLowerCase();
            cards = (cards || []).filter(c => (c.tags || '').split(',').map(s => s.trim().toLowerCase()).includes(needle));
@@ -833,7 +821,6 @@
         loader.style.display = 'none';
         scrollLoader.style.display = 'none';
         
-        // Reset load more button
         if (loadMoreBtn) {
             loadMoreBtn.innerHTML = 'Load More';
             loadMoreBtn.disabled = false;
@@ -844,14 +831,12 @@
           const newElements = [];
           
           cards.forEach(card => {
-            // Determine if card is Reel
             const tags = (card.tags || '').toLowerCase();
             card.isReel = tags.includes('reel') || card.main_model_url.match(/\.(mp4|webm|mov)$/i);
             
-            // Album logic
             const allCardTags = (card.tags || '').split(',').map(t => t.trim()).filter(t => t);
             const albumTag = allCardTags.find(t => t.startsWith('album:'));
-            if (albumTag && !card.isReel) { // Don't treat reels as albums in this view context
+            if (albumTag && !card.isReel) { 
               card.isAlbum = true;
               card.albumTag = albumTag;
               card.albumName = albumTag.substring(6).replace(/-/g, ' ');
@@ -878,7 +863,6 @@
           });
           if (currentSortOrder !== 'shuffle') currentPage++;
           
-          // Show Load More button if in Reels view and we got a full page
           if (isReelsView) {
               if (cards.length < limitSize) {
                   noMoreResults = true;
@@ -924,71 +908,75 @@
 
       // VIDEO LOGIC
       if (card.isReel) {
-        // --- NEW LOADER CREATION START ---
-        const loaderContainer = document.createElement('div');
-        loaderContainer.className = 'video-loader-container';
-        
-        const spinner = document.createElement('div');
-        spinner.className = 'video-spinner';
-        
-        const percentText = document.createElement('div');
-        percentText.className = 'video-percent';
-        percentText.innerText = '0%';
-        
-        loaderContainer.appendChild(spinner);
-        loaderContainer.appendChild(percentText);
-        cardElem.appendChild(loaderContainer);
-        // --- NEW LOADER CREATION END ---
-
         const video = document.createElement('video');
-        // FIX: Lazy Loading Implementation
-        const videoSrc = card.main_model_url.includes('#') 
-          ? card.main_model_url 
-          : `${card.main_model_url}#t=0.001`;
+        const videoSrc = card.main_model_url.includes('#') ? card.main_model_url : `${card.main_model_url}#t=0.001`;
           
-        // Use data-src instead of src to prevent eager loading
         video.dataset.src = videoSrc;
         video.muted = true;
         video.loop = true;
         video.playsInline = true;
-        video.preload = 'none'; // CRITICAL: Stop mobile browsers from locking up
-        
-        // --- LOADER LOGIC START ---
-        function updateProgress() {
-            if (video.duration) {
-                // Find the buffered range that covers the current time or the end
-                let bufferedEnd = 0;
-                if (video.buffered.length > 0) {
-                     // Get the end of the last buffered range
-                     bufferedEnd = video.buffered.end(video.buffered.length - 1);
-                }
-                
-                const percent = Math.min(100, Math.round((bufferedEnd / video.duration) * 100));
-                percentText.innerText = percent + '%';
-                
-                // Once 100% is reached, hide it forever (per user request)
-                if (percent >= 100) {
-                    loaderContainer.style.display = 'none';
-                }
-            }
-        }
+        video.preload = 'none'; 
 
-        video.addEventListener('progress', updateProgress);
-        // Fallback checks
-        video.addEventListener('timeupdate', updateProgress); 
-        
-        // Visibility Logic
-        video.onwaiting = () => { 
-            // Only show if not fully buffered
-            if (percentText.innerText !== '100%') {
-                loaderContainer.style.display = 'block'; 
-                updateProgress(); // Immediate update attempt
-            }
+        // --- NEW CIRCULAR BUFFER SPINNER ---
+        const bufferLoader = document.createElement('div');
+        bufferLoader.className = 'buffer-loader';
+        bufferLoader.innerHTML = `
+          <svg viewBox="0 0 36 36" class="circular-chart">
+            <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+            <path class="circle" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+            <text x="18" y="21" class="percentage">0%</text>
+          </svg>
+        `;
+        cardElem.appendChild(bufferLoader);
+
+        const circle = bufferLoader.querySelector('.circle');
+        const percentageText = bufferLoader.querySelector('.percentage');
+
+        const updateBuffer = () => {
+             if (video.duration > 0) {
+                 let percent = 0;
+                 if (video.buffered.length > 0) {
+                     // Get end of last buffered range or range covering current time
+                     // Simplest robust method for percentage of total:
+                     // Find the range that ends furthest.
+                     let maxEnd = 0;
+                     for(let i=0; i < video.buffered.length; i++) {
+                         if (video.buffered.end(i) > maxEnd) maxEnd = video.buffered.end(i);
+                     }
+                     percent = (maxEnd / video.duration) * 100;
+                 }
+                 
+                 // Clamp
+                 if (percent < 0) percent = 0;
+                 if (percent > 100) percent = 100;
+                 
+                 circle.setAttribute('stroke-dasharray', `${percent}, 100`);
+                 percentageText.textContent = `${Math.round(percent)}%`;
+
+                 // If 100% buffered, hide immediately and play
+                 if (percent >= 99) {
+                     bufferLoader.style.display = 'none';
+                     video.play().catch(()=>{});
+                 }
+             }
         };
-        video.onplaying = () => { loaderContainer.style.display = 'none'; };
-        video.oncanplay = () => { loaderContainer.style.display = 'none'; };
-        // --- LOADER LOGIC END ---
 
+        video.addEventListener('progress', updateBuffer);
+        video.addEventListener('timeupdate', updateBuffer); 
+        
+        video.onwaiting = () => { 
+            bufferLoader.style.display = 'block'; 
+            updateBuffer();
+        };
+        
+        // Hide when playing starts (standard UX, though user asked for 100% check, 
+        // the progress event above handles the 100% check as well)
+        video.onplaying = () => { 
+             bufferLoader.style.display = 'none'; 
+        };
+        
+        // --- END SPINNER LOGIC ---
+        
         if (videoObserver) {
           videoObserver.observe(video);
         }
@@ -998,18 +986,14 @@
         typeBadge.innerHTML = '▶ Reel';
         cardElem.appendChild(typeBadge);
         
-        // --- START: ADD EXPAND BUTTON ---
         const expandBtn = document.createElement('button');
-        // Mobile: opacity-100 (visible). Desktop (lg): opacity-0 (hidden), hover:opacity-100 (fade in).
-        // Reduced z-index from 50 to 20 to stay under header
         expandBtn.className = "absolute bottom-2 right-2 z-20 p-1.5 bg-black/60 rounded-full text-white hover:bg-blue-600 transition-all duration-200 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 shadow-sm backdrop-blur-sm pointer-events-auto";
         expandBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>`;
         expandBtn.onclick = (e) => {
-            e.stopPropagation(); // Prevent card click (which plays/pauses)
+            e.stopPropagation(); 
             openImageViewer(index);
         };
         cardElem.appendChild(expandBtn);
-        // --- END: ADD EXPAND BUTTON ---
         
         cardElem.appendChild(video);
       } else {
@@ -1024,22 +1008,17 @@
       const overlay = document.createElement('div');
       overlay.className = "overlay absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center pointer-events-none z-10"; 
       
-      // Removed the wrapper container to fix click events on buttons
-      
       const editButton = document.createElement('button');
-      // Reduced z-index from 50 to 20 to stay under header
       editButton.className = "absolute top-2 right-2 z-20 p-1.5 bg-black/50 rounded-full text-white hover:bg-blue-600 transition-all duration-200 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 shadow-sm backdrop-blur-sm pointer-events-auto";
       editButton.innerHTML = `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z" /></svg>`;
       editButton.onclick = (e) => { e.stopPropagation(); openQuickEditModal(card.id); };
       
       const deleteButton = document.createElement('button');
-      // Reduced z-index from 50 to 20 to stay under header
       deleteButton.className = "absolute top-10 right-2 z-20 p-1.5 bg-black/50 rounded-full text-white hover:bg-red-600 transition-all duration-200 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 shadow-sm backdrop-blur-sm pointer-events-auto";
       deleteButton.innerHTML = `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>`;
       deleteButton.onclick = (e) => { e.stopPropagation(); deleteCard(card.id); };
       
       const favoriteButton = document.createElement('button');
-      // Reduced z-index from 50 to 20 to stay under header
       favoriteButton.className = `absolute top-[4.5rem] right-2 z-20 p-1.5 bg-black/60 rounded-full hover:text-yellow-400 transition-all duration-200 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 shadow-sm backdrop-blur-sm pointer-events-auto ${card.favorited ? 'text-yellow-400' : 'text-white'}`;
       favoriteButton.innerHTML = `<svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>`;
       favoriteButton.onclick = (e) => { e.stopPropagation(); toggleFavorite(e, card.id, displayedCards.find(c => c.id === card.id)?.favorited || card.favorited); };
@@ -1049,21 +1028,17 @@
       cardElem.appendChild(deleteButton);
       cardElem.appendChild(favoriteButton);
       
-      // Update gallery rating element to handle clicks if user tries to rate from card
       const ratingElem = createGalleryRatingElement(card);
-      // Ensure it floats above overlay
       ratingElem.classList.add('z-20');
       
       cardElem.appendChild(ratingElem);
       
-      // --- START: UPDATE CLICK INTERACTION ---
       cardElem.addEventListener('click', () => {
         if (isCompareModeActive) {
           const cb = cardElem.querySelector('.compare-checkbox');
           cb.checked = !cb.checked;
           toggleCompareSelection(card.id, cb.checked);
         } else {
-          // If Reel, toggle Play/Pause. If Image, open Viewer.
           if (card.isReel) {
             const vid = cardElem.querySelector('video');
             if (vid) {
@@ -1075,7 +1050,6 @@
           }
         }
       });
-      // --- END: UPDATE CLICK INTERACTION ---
       
       cardElem.addEventListener('contextmenu', (e) => { e.preventDefault(); showContextMenu(e, card.id); });
       
@@ -1097,13 +1071,11 @@
         if(el) { el.classList.remove('text-white', 'font-semibold'); el.classList.add('text-gray-400'); }
       });
 
-      // Special handling: Keep Reels active if filtering tags in reels mode
       if (currentTab === 'reels' && state === 'tags') {
           if(links['reels']) {
               links['reels'].classList.add('text-white', 'font-semibold');
               links['reels'].classList.remove('text-gray-400');
           }
-          // Also highlight tags button
           if(links['tags']) {
               links['tags'].classList.add('text-white');
               links['tags'].classList.remove('text-gray-400');
@@ -1126,7 +1098,7 @@
     
     function showAllAlbums(e) { 
       if(e) e.preventDefault(); 
-      currentTab = 'albums'; // Optional: track albums tab too
+      currentTab = 'albums'; 
       currentFilter = { type: 'all_albums', value: null }; 
       loadCards(true); 
     }
@@ -1161,7 +1133,6 @@
     function openPopup() { 
       document.getElementById('popup').style.display = 'flex'; 
       updateTagDisplays(); 
-      // Reset radio to image
       document.querySelector('input[name="contentType"][value="image"]').checked = true;
       toggleUploadType();
     }
@@ -1189,15 +1160,12 @@
         const urls = document.getElementById('modelUrl').value.split(',').map(u => u.trim()).filter(u => u);
         if (urls.length === 0) throw new Error("Please provide at least one URL.");
         
-        // Auto-tag logic
         const tagsToAdd = [...selectedTags];
         
-        // If Reel, add 'reel' tag
         if (type === 'reel') {
           if (!tagsToAdd.includes('reel')) tagsToAdd.push('reel');
         }
         
-        // If Album (image mode), handle album tag
         if (type === 'image') {
           const albumName = document.getElementById('modelAlbumName').value.trim();
           if (albumName) {
@@ -1209,7 +1177,6 @@
         const isNsfw = document.getElementById('modelNsfw').checked;
         const tagsString = tagsToAdd.join(', ');
 
-        // Check duplicates
         const { data: existing, error: checkErr } = await supabase.from('models').select('main_model_url').in('main_model_url', urls);
         if (checkErr) throw checkErr;
         
@@ -1250,7 +1217,6 @@
       }
     }
     
-    // --- Viewer (Video Support) ---
     function displayCardInViewer(card) {
       currentRelatedCard = card;
       imageViewer.scrollTop = 0; resetZoom();
@@ -1263,11 +1229,9 @@
       const nsfwLabel = document.getElementById('viewer-nsfw-label');
       nsfwLabel.style.display = card.nsfw ? 'inline-block' : 'none';
 
-      // Determine type
       const isReel = card.isReel || card.main_model_url.match(/\.(mp4|webm|mov)$/i) || (card.tags && card.tags.includes('reel'));
 
       if (isReel) {
-        // Video Mode
         document.getElementById('viewer-zoom-controls').style.display = 'none';
         viewerImage.style.display = 'none';
         
@@ -1280,7 +1244,6 @@
         if (playProm !== undefined) playProm.catch(e => console.log('Auto-play prevented in viewer', e));
         
       } else {
-        // Image Mode
         document.getElementById('viewer-zoom-controls').style.display = 'flex';
         viewerVideo.style.display = 'none';
         
@@ -1289,7 +1252,6 @@
         viewerImage.src = card.main_model_url.includes('ik.imagekit.io') ? card.main_model_url.split('?')[0] + '?tr=q-90' : card.main_model_url;
       }
 
-      // Tags
       const tags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t) : [];
       if (tags.length > 0) {
         tags.forEach(tag => {
@@ -1315,22 +1277,19 @@
       }
     }
 
-    // --- Standard Helper Functions (Truncated slightly for brevity as they are unchanged) ---
     function handleScroll() { 
       if (imageViewer.style.display === 'flex' || document.getElementById('popup').style.display === 'flex') return; 
-      if (currentSortOrder === 'shuffle' || currentFilter.type === 'reels') return; // Disable scroll for Reels
+      if (currentSortOrder === 'shuffle' || currentFilter.type === 'reels') return;
       const { scrollTop, scrollHeight, clientHeight } = document.documentElement; 
       if (scrollTop + clientHeight >= scrollHeight - 300) { 
         if (!isLoadingMore && !noMoreResults) loadCards(); 
       } 
     }
     
-    // Updated Rating Element Generator to include clickable stars
     function createGalleryRatingElement(card) { 
       const rating = card.rating || 0; 
       const el = document.createElement('div'); 
       el.id = `rating-display-${card.id}`; 
-      // Ensure high z-index and opacity logic matches other buttons
       el.className = 'absolute top-[6.5rem] right-2 z-20 flex items-center gap-1 px-1.5 py-0.5 bg-black/60 rounded-full text-xs text-white transition-all duration-200 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 shadow-sm backdrop-blur-sm pointer-events-auto'; 
       
       const starSpan = document.createElement('span');
@@ -1354,7 +1313,6 @@
     function openImageViewer(index) { imageViewer.style.display = 'flex'; currentViewerIndex = index; displayCardInViewer(displayedCards[index]); }
     function closeImageViewer(e) { if(e && e.target !== imageViewer) return; imageViewer.style.display = 'none'; viewerVideo.pause(); resetZoom(); }
     
-    // --- Restored Functions ---
     async function loadAlbumImages(albumTag, currentCardId) {
       if (!albumTag) return;
       currentRelatedCard.isAlbum = true;
@@ -1388,18 +1346,13 @@
       try {
         const tagConditions = tags.map(t => `tags.ilike.%${t.trim().replace(/"/g, '""')}%`).join(',');
         
-        // Base query
         let query = supabase.from('models').select('*').or(tagConditions).neq('id', card.id).eq('nsfw', false);
 
-        // --- CONTEXT AWARE FILTERING ---
         if (currentTab === 'reels') {
-            // If in Reels tab, ONLY show related REELS
             query = query.ilike('tags', '%reel%');
         } else {
-            // If in Home tab, exclude reels (show images)
             query = query.not('tags', 'ilike', '%reel%').not('tags', 'ilike', '%album:%');
         }
-        // -------------------------------
 
         const { data: relatedCards, error } = await query.limit(PAGE_SIZE).range(relatedCurrentPage * PAGE_SIZE, (relatedCurrentPage + 1) * PAGE_SIZE - 1);
         
@@ -1416,7 +1369,6 @@
       const cardElem = document.createElement('div');
       cardElem.className = 'related-masonry-item bg-gray-900 rounded-lg overflow-hidden relative group cursor-pointer';
       
-      // Check if it is a video/reel to render correct tag
       const isReel = (relatedCard.tags && relatedCard.tags.includes('reel')) || relatedCard.main_model_url.match(/\.(mp4|webm|mov)$/i);
 
       if (isReel) {
@@ -1424,18 +1376,16 @@
           const videoSrc = relatedCard.main_model_url.includes('#') ? relatedCard.main_model_url : `${relatedCard.main_model_url}#t=0.001`;
           video.src = videoSrc;
           video.muted = true;
-          video.loop = true; // Loop on hover
+          video.loop = true; 
           video.playsInline = true;
           video.preload = 'metadata';
           video.className = "w-full h-auto block object-cover aspect-[9/16]"; 
           
-          // Simple hover play for related items (desktop)
           video.onmouseover = () => { video.play().catch(e=>{}); };
           video.onmouseout = () => { video.pause(); video.currentTime = 0; };
           
           cardElem.appendChild(video);
           
-          // Small badge
           const badge = document.createElement('div');
           badge.className = "absolute bottom-1 right-1 z-10 px-1 py-0.5 bg-pink-600 text-white text-[10px] font-bold rounded";
           badge.innerText = "Reel";
@@ -1451,7 +1401,6 @@
       cardElem.onclick = () => {
         if (isAlbumItem) { currentAlbumViewerIndex = index; displayCardInViewer(currentAlbumViewerList[currentAlbumViewerIndex]); } else {
           const rIndex = displayedCards.findIndex(c => c.id === relatedCard.id);
-          // Process tags logic if needed for new card... simplified here:
           if (rIndex !== -1) { currentViewerIndex = rIndex; displayCardInViewer(displayedCards[rIndex]); } else displayCardInViewer(relatedCard);
         }
       };
@@ -1489,11 +1438,9 @@
     function zoomIn(e) { if(e) e.stopPropagation(); viewerScale = Math.min(viewerScale * 1.5, 10); applyViewerTransform(); }
     function zoomOut(e) { if(e) e.stopPropagation(); viewerScale = Math.max(viewerScale / 1.5, 0.5); applyViewerTransform(); }
     function resetZoom(e) { if(e) e.stopPropagation(); viewerScale = 1; viewerPosX = 0; viewerPosY = 0; applyViewerTransform(); }
-    function applyViewerTransform() { if (viewerVideo.style.display === 'block') return; /* No zoom for video */ const cw = viewerImageContainer.clientWidth, ch = viewerImageContainer.clientHeight, iw = viewerImage.naturalWidth, ih = viewerImage.naturalHeight; let bs = 1; if (viewerScale === 1) { bs = Math.min(cw / iw, ch / ih); viewerPosX = 0; viewerPosY = 0; } else { bs = Math.min(cw / iw, ch / ih); } viewerImage.style.transform = `translate(-50%, -50%) translate(${viewerPosX}px, ${viewerPosY}px) scale(${bs * viewerScale})`; }
+    function applyViewerTransform() { if (viewerVideo.style.display === 'block') return; const cw = viewerImageContainer.clientWidth, ch = viewerImageContainer.clientHeight, iw = viewerImage.naturalWidth, ih = viewerImage.naturalHeight; let bs = 1; if (viewerScale === 1) { bs = Math.min(cw / iw, ch / ih); viewerPosX = 0; viewerPosY = 0; } else { bs = Math.min(cw / iw, ch / ih); } viewerImage.style.transform = `translate(-50%, -50%) translate(${viewerPosX}px, ${viewerPosY}px) scale(${bs * viewerScale})`; }
     
-    // Setup listeners for zoom/pan
     document.addEventListener('wheel', (e) => { if(imageViewer.style.display === 'flex' && viewerImage.style.display !== 'none' && e.ctrlKey) { e.preventDefault(); e.deltaY > 0 ? zoomOut() : zoomIn(); } }, { passive: false });
-    // ... Mouse/Touch listeners same as original ...
 
     function setupContextMenu() {
       const menu = document.getElementById('context-menu');
@@ -1509,10 +1456,9 @@
       };
     }
     
-    // CRUD Handlers
     document.getElementById('cardForm').addEventListener('submit', async (e) => { e.preventDefault(); if(currentlyEditingCardId) await updateCard(); else await addCard(); });
     
-    async function updateCard() { /* Standard update logic for main popup if used */ }
+    async function updateCard() {  }
     
     async function deleteCard(cardId) {
       if (!confirm("Are you sure you want to delete this model?")) return;
@@ -1542,7 +1488,6 @@
       } catch (error) { console.error("Error toggling favorite:", error); }
     }
     
-    // Tag Helpers
     function updateTagDisplays() {
       const availableTagsSelect = document.getElementById('availableTags');
       availableTagsSelect.innerHTML = '<option value="">Select tags to add</option>';
@@ -1569,7 +1514,6 @@
     }
     function removeSelectedTag(t) { selectedTags = selectedTags.filter(tag => tag !== t); updateSelectedTagsDisplay(); updateTagDisplays(); }
     
-    // Tag Management
     function openManageTagsPopup() {
       document.getElementById('manage-tags-popup').style.display = 'flex';
       document.getElementById('manageTagsErrorMessage').style.display = 'none';
@@ -1618,7 +1562,6 @@
         errorMsg.style.display = 'none';
         const { error } = await supabase.from('tags').delete().in('name', selected);
         if (error) throw error;
-        // Cleanup from models logic omitted for brevity but recommended
         await refreshTagData(); await loadTagsForManagement(); loadCards(true);
       } catch (error) { errorMsg.textContent = error.message; errorMsg.style.display = 'block'; }
     }
@@ -1632,12 +1575,10 @@
         errorMsg.style.display = 'none';
         const { error } = await supabase.from('tags').update({ name: newName.trim() }).eq('name', oldName);
         if (error) throw error;
-        // Note: Renaming tags in 'models' table requires iteration, omitted here for brevity
         await refreshTagData(); await loadTagsForManagement(); loadCards(true);
       } catch (error) { errorMsg.textContent = error.message; errorMsg.style.display = 'block'; }
     }
 
-    // Quick Edit Logic
     async function openQuickEditModal(cardId) {
       try {
         const { data: card, error } = await supabase.from('models').select('*').eq('id', cardId).single();
@@ -1711,7 +1652,6 @@
       if (!currentRelatedCard || !currentRelatedCard.isAlbum || !currentRelatedCard.albumName) return;
       closeImageViewer(); openPopup();
       document.getElementById('modelAlbumName').value = currentRelatedCard.albumName;
-      // Pre-select non-album tags if desired, logic omitted for brevity
     }
     
     function shuffleArray(array) {
@@ -1768,24 +1708,20 @@
       
       viewer.style.display = 'block';
       
-      // Get selected card objects
       const selectedCards = displayedCards.filter(c => compareSelection.includes(c.id));
       
       if (selectedCards.length === 2) {
-        // Slider Mode
         gridView.style.display = 'none';
-        sliderView.style.display = 'grid'; // CSS says grid-template-columns: 1fr
+        sliderView.style.display = 'grid'; 
         
         const hasReel = selectedCards.some(c => (c.tags && c.tags.includes('reel')) || c.main_model_url.match(/\.(mp4|webm|mov)$/i));
         
         if (hasReel) {
-             // Fallback to Grid for Reels
              setupGridView(selectedCards);
         } else {
              setupSliderView(selectedCards);
         }
       } else {
-        // Grid Mode
         setupGridView(selectedCards);
       }
     }
@@ -1804,7 +1740,6 @@
         const range = document.getElementById('compare-slider-range');
         const handle = document.getElementById('compare-slider-handle');
         
-        // Reset slider
         range.value = 50;
         updateSlider(50);
         
@@ -1827,7 +1762,6 @@
             const wrapper = document.createElement('div');
             wrapper.className = 'flex-1 min-w-[300px] h-full flex flex-col';
             
-            // Content
             const content = document.createElement('div');
             content.className = 'flex-grow relative bg-gray-900 rounded-lg overflow-hidden';
             
