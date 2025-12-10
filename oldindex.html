@@ -20,7 +20,7 @@
     ::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: #555; }
 
-    /* Loading spinner */
+    /* Main Page Loading spinner */
     .loader {
       border: 4px solid #333;
       border-top: 4px solid #999;
@@ -31,21 +31,42 @@
     }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     
-    /* Small Video Loader */
-    .video-loader {
+    /* --- NEW Video Loader with Percentage --- */
+    .video-loader-container {
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        width: 30px;
-        height: 30px;
-        border: 3px solid rgba(255,255,255,0.3);
-        border-radius: 50%;
-        border-top-color: #fff;
-        animation: spin 1s ease-in-out infinite;
+        width: 50px;
+        height: 50px;
         z-index: 5;
         display: none; /* Hidden by default, toggled by JS */
         pointer-events: none;
+    }
+    
+    .video-spinner {
+        width: 100%;
+        height: 100%;
+        border: 4px solid rgba(255,255,255,0.1); /* Faint background ring */
+        border-top: 4px solid #3b82f6; /* Bright blue active ring */
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+    
+    .video-percent {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        font-size: 11px;
+        font-weight: bold;
+        text-align: center;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        text-shadow: 0px 1px 2px rgba(0,0,0,0.8);
     }
 
     /* Context menu */
@@ -199,9 +220,7 @@
 
           <a href="https://image-card-gallery.vercel.app/celebrities.html" class="text-sm text-gray-400 hover:text-white">Celebrities</a>
           <a href="https://image-card-gallery.vercel.app/Gallery.html" class="text-sm text-gray-400 hover:text-white">PStars</a>
-          <!-- 'Clips' Removed or kept as legacy link -->
-          <!-- <a href="https://image-card-gallery.vercel.app/videos.html" class="text-sm text-gray-400 hover:text-white">Clips</a> -->
-
+          
           <span class="text-sm text-gray-500" id="total-card-count">(...)</span>
           
           <a href="#" onclick="showFavorites(event)" id="favorites-link" class="text-sm text-gray-400 hover:text-white">Favorites</a>
@@ -226,7 +245,6 @@
           <button onclick="toggleTagsDropdown(event)" id="tags-dropdown-btn" class="text-sm text-gray-400 hover:text-white focus:outline-none">
             Tags
           </button>
-          <!-- FIXED: Dropdown alignment. Mobile: left-0 (extends right). Desktop: lg:left-auto lg:right-0 (extends left) -->
           <div id="tags-dropdown-menu" class="hidden absolute top-full left-0 lg:left-auto lg:right-0 mt-2 w-56 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 py-2 max-h-64 overflow-y-auto">
             <span class="block px-4 py-2 text-sm text-gray-500">Loading...</span>
           </div>
@@ -567,12 +585,10 @@
       videoObserver = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
           const video = entry.target;
-          const loader = video.parentElement.querySelector('.video-loader');
           
           if (entry.isIntersecting) {
             // 1. LAZY LOAD: Only set src when visible
             if (!video.src && video.dataset.src) {
-                if (loader) loader.style.display = 'block';
                 video.src = video.dataset.src;
                 video.load();
             }
@@ -581,11 +597,9 @@
             const promise = video.play();
             if (promise !== undefined) {
               promise.then(() => {
-                 // Hide loader when playing starts
-                 if (loader) loader.style.display = 'none';
+                 // Auto-play started
               }).catch(error => { 
                 // Auto-play might be blocked or low battery mode
-                if (loader) loader.style.display = 'none';
               });
             }
           } else {
@@ -910,6 +924,22 @@
 
       // VIDEO LOGIC
       if (card.isReel) {
+        // --- NEW LOADER CREATION START ---
+        const loaderContainer = document.createElement('div');
+        loaderContainer.className = 'video-loader-container';
+        
+        const spinner = document.createElement('div');
+        spinner.className = 'video-spinner';
+        
+        const percentText = document.createElement('div');
+        percentText.className = 'video-percent';
+        percentText.innerText = '0%';
+        
+        loaderContainer.appendChild(spinner);
+        loaderContainer.appendChild(percentText);
+        cardElem.appendChild(loaderContainer);
+        // --- NEW LOADER CREATION END ---
+
         const video = document.createElement('video');
         // FIX: Lazy Loading Implementation
         const videoSrc = card.main_model_url.includes('#') 
@@ -923,15 +953,41 @@
         video.playsInline = true;
         video.preload = 'none'; // CRITICAL: Stop mobile browsers from locking up
         
-        // Add loading spinner specifically for this video
-        const vidLoader = document.createElement('div');
-        vidLoader.className = 'video-loader';
-        cardElem.appendChild(vidLoader);
+        // --- LOADER LOGIC START ---
+        function updateProgress() {
+            if (video.duration) {
+                // Find the buffered range that covers the current time or the end
+                let bufferedEnd = 0;
+                if (video.buffered.length > 0) {
+                     // Get the end of the last buffered range
+                     bufferedEnd = video.buffered.end(video.buffered.length - 1);
+                }
+                
+                const percent = Math.min(100, Math.round((bufferedEnd / video.duration) * 100));
+                percentText.innerText = percent + '%';
+                
+                // Once 100% is reached, hide it forever (per user request)
+                if (percent >= 100) {
+                    loaderContainer.style.display = 'none';
+                }
+            }
+        }
+
+        video.addEventListener('progress', updateProgress);
+        // Fallback checks
+        video.addEventListener('timeupdate', updateProgress); 
         
-        // Hide loader when video is ready to play
-        video.onplaying = () => { vidLoader.style.display = 'none'; };
-        video.oncanplay = () => { vidLoader.style.display = 'none'; };
-        video.onwaiting = () => { vidLoader.style.display = 'block'; };
+        // Visibility Logic
+        video.onwaiting = () => { 
+            // Only show if not fully buffered
+            if (percentText.innerText !== '100%') {
+                loaderContainer.style.display = 'block'; 
+                updateProgress(); // Immediate update attempt
+            }
+        };
+        video.onplaying = () => { loaderContainer.style.display = 'none'; };
+        video.oncanplay = () => { loaderContainer.style.display = 'none'; };
+        // --- LOADER LOGIC END ---
 
         if (videoObserver) {
           videoObserver.observe(video);
