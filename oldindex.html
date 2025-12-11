@@ -1160,13 +1160,28 @@
         }
     }
 
-    function createNewModelTag() {
+    async function createNewModelTag() {
         const input = document.getElementById('newModelInput');
         const val = input.value.trim();
         if(!val) return;
         const tagSlug = val.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
         const fullTag = 'model:' + tagSlug;
-        addPoseTag(fullTag); // Re-use generic tag adder
+        
+        // Add to current selection immediately
+        addPoseTag(fullTag); 
+
+        // Check if exists in DB list (allTags)
+        if (!allTags.includes(fullTag)) {
+             try {
+                 const { error } = await supabase.from('tags').insert({ name: fullTag });
+                 if (error && error.code !== '23505') { // Ignore duplicate error just in case
+                     console.error("Error creating model tag:", error);
+                 } else {
+                     await loadTags(); // Refresh dropdowns
+                 }
+             } catch (e) { console.error(e); }
+        }
+        
         input.value = '';
     }
     // --- End Model Identity Functions ---
