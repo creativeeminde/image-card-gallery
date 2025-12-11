@@ -442,7 +442,7 @@
           <button type="button" onclick="addTagToSelection()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">Add</button>
         </div>
 
-        <!-- Add Pose Helper -->
+        <!-- Common Poses Section -->
         <div class="mt-4 border-t border-gray-700 pt-4">
             <div class="flex justify-between items-center mb-2">
                 <label class="text-sm text-gray-400 block">Common Poses (Click to add)</label>
@@ -468,6 +468,21 @@
                 <div class="mt-2 text-right">
                      <button type="button" onclick="toggleManagePoses()" class="text-xs text-gray-400 hover:text-white">Done</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Model Identity Section -->
+        <div class="mt-4 border-t border-gray-700 pt-4">
+            <label class="text-sm text-gray-400 mb-2 block">Model Identity (Optional)</label>
+            <div class="flex gap-2 mb-2">
+                <select id="existingModelSelect" class="flex-grow p-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-xs focus:outline-none focus:border-blue-500">
+                    <option value="">Select Existing Model</option>
+                </select>
+                <button type="button" onclick="addModelTagFromSelect()" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded-lg">Add</button>
+            </div>
+            <div class="flex gap-2">
+                <input type="text" id="newModelInput" class="flex-grow p-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-xs placeholder-gray-500 focus:outline-none focus:border-blue-500" placeholder="New Model Name (e.g. Sarah)">
+                <button type="button" onclick="createNewModelTag()" class="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg">Create</button>
             </div>
         </div>
 
@@ -731,12 +746,14 @@
     
     async function loadTagCounts() {
       try {
-        const { data: models, error } = await supabase.from('models').select('tags');
+        // Fetch a larger number of rows to ensure we count everything
+        const { data: models, error } = await supabase.from('models').select('tags').range(0, 5000);
         if (error) throw error;
         const counts = {};
         models.forEach(model => {
           if (model.tags) {
-            model.tags.split(',').map(t => t.trim()).filter(t => t).forEach(tag => {
+            // Lowercase tags to ensure consistent counting
+            model.tags.split(',').map(t => t.trim().toLowerCase()).filter(t => t).forEach(tag => {
               counts[tag] = (counts[tag] || 0) + 1;
             });
           }
@@ -763,6 +780,10 @@
         // Sync Common Poses from Database (tags starting with 'pose:')
         commonPoses = allTags.filter(t => t.startsWith('pose:'));
         renderCommonPoses();
+        
+        // Sync Models from Database (tags starting with 'model:')
+        const modelTags = allTags.filter(t => t.startsWith('model:'));
+        renderModelOptions(modelTags);
         
         // If manager is open, refresh it too
         if(!document.getElementById('poseManager').classList.contains('hidden')) {
@@ -1115,6 +1136,40 @@
              await loadTags(); // Reload tags to refresh UI
         }
     }
+
+    // --- Model Identity Functions ---
+    function renderModelOptions(modelTags) {
+        const select = document.getElementById('existingModelSelect');
+        if(!select) return;
+        select.innerHTML = '<option value="">Select Existing Model</option>';
+        modelTags.forEach(tag => {
+            const name = tag.replace('model:', '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            const option = document.createElement('option');
+            option.value = tag;
+            option.textContent = name;
+            select.appendChild(option);
+        });
+    }
+
+    function addModelTagFromSelect() {
+        const select = document.getElementById('existingModelSelect');
+        const tag = select.value;
+        if(tag) {
+            addPoseTag(tag); // Re-use generic tag adder
+            select.value = "";
+        }
+    }
+
+    function createNewModelTag() {
+        const input = document.getElementById('newModelInput');
+        const val = input.value.trim();
+        if(!val) return;
+        const tagSlug = val.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+        const fullTag = 'model:' + tagSlug;
+        addPoseTag(fullTag); // Re-use generic tag adder
+        input.value = '';
+    }
+    // --- End Model Identity Functions ---
 
     async function renderPoseCategories() {
         gallery.innerHTML = '';
@@ -1680,37 +1735,123 @@
     async function loadRelatedImages(card, isNewQuery = true) {
       if (!card || relatedIsLoadingMore) return;
       currentRelatedCard = card; currentRelatedCard.isAlbum = false;
-      if (isNewQuery) { relatedCurrentPage = 0; relatedNoMoreResults = false; viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">Loading...</span>'; } else { relatedScrollLoader.style.display = 'flex'; }
+      if (isNewQuery) { 
+          relatedCurrentPage = 0; 
+          relatedNoMoreResults = false; 
+          viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">Loading...</span>'; 
+      } else { 
+          relatedScrollLoader.style.display = 'flex'; 
+      }
+      
       relatedIsLoadingMore = true;
-      const tags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t && !t.startsWith('album:')) : [];
-      if (tags.length === 0) { viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">No tags to find related models.</span>'; relatedIsLoadingMore = false; relatedNoMoreResults = true; relatedScrollLoader.style.display = 'none'; return; }
+      
+      // Parse tags
+      const rawTags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t) : [];
+      if (rawTags.length === 0) { 
+          viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">No tags to find related models.</span>'; 
+          relatedIsLoadingMore = false; 
+          relatedNoMoreResults = true; 
+          relatedScrollLoader.style.display = 'none'; 
+          return; 
+      }
+
+      // Prioritized Tags Logic
+      const modelTags = rawTags.filter(t => t.startsWith('model:'));
+      const poseTags = rawTags.filter(t => t.startsWith('pose:'));
+      const otherTags = rawTags.filter(t => !t.startsWith('model:') && !t.startsWith('pose:') && !t.startsWith('album:'));
+
       try {
-        const tagConditions = tags.map(t => `tags.ilike.%${t.trim().replace(/"/g, '""')}%`).join(',');
-        
-        // Base query
-        let query = supabase.from('models').select('*').or(tagConditions).neq('id', card.id).eq('nsfw', false);
+        let results = [];
+        let excludedIds = [card.id];
 
-        // --- CONTEXT AWARE FILTERING ---
-        if (currentTab === 'reels') {
-            // If in Reels tab, ONLY show related REELS
-            query = query.ilike('tags', '%reel%');
-        } else if (currentTab === 'poses') {
-            // If in Poses tab, ONLY show related videos (reels/poses)
-            query = query.or('tags.ilike.%reel%,tags.ilike.%pose:%');
-        } else {
-            // If in Home tab, exclude reels (show images)
-            query = query.not('tags', 'ilike', '%reel%').not('tags', 'ilike', '%album:%');
+        // 1. Priority: Model Identity
+        if (modelTags.length > 0) {
+            const modelConditions = modelTags.map(t => `tags.ilike.%${t}%`).join(',');
+            const { data: modelData } = await supabase
+                .from('models')
+                .select('*')
+                .or(modelConditions)
+                .neq('id', card.id)
+                .eq('nsfw', false)
+                .limit(20);
+            
+            if (modelData && modelData.length > 0) {
+                results = [...results, ...modelData];
+                modelData.forEach(m => excludedIds.push(m.id));
+            }
         }
-        // -------------------------------
 
-        const { data: relatedCards, error } = await query.limit(PAGE_SIZE).range(relatedCurrentPage * PAGE_SIZE, (relatedCurrentPage + 1) * PAGE_SIZE - 1);
+        // 2. Priority: Pose Category (Fill up if less than 25)
+        if (results.length < PAGE_SIZE && poseTags.length > 0) {
+            const poseConditions = poseTags.map(t => `tags.ilike.%${t}%`).join(',');
+            // Manually filter excluded IDs because Supabase 'not.in' with dynamic lists can be tricky or limited
+            // But we'll try a basic fetch and filter in JS for robustness
+            const { data: poseData } = await supabase
+                .from('models')
+                .select('*')
+                .or(poseConditions)
+                .eq('nsfw', false)
+                .limit(PAGE_SIZE); // Fetch enough candidates
+            
+            if (poseData) {
+                const newPoseData = poseData.filter(p => !excludedIds.includes(p.id));
+                results = [...results, ...newPoseData];
+                newPoseData.forEach(p => excludedIds.push(p.id));
+            }
+        }
+
+        // 3. Fallback: Other Tags (Fill up if still less than 25)
+        if (results.length < PAGE_SIZE && otherTags.length > 0) {
+             const otherConditions = otherTags.map(t => `tags.ilike.%${t.replace(/"/g, '""')}%`).join(',');
+             const { data: otherData } = await supabase
+                .from('models')
+                .select('*')
+                .or(otherConditions)
+                .eq('nsfw', false)
+                .limit(PAGE_SIZE);
+             
+             if(otherData) {
+                 const newOtherData = otherData.filter(o => !excludedIds.includes(o.id));
+                 results = [...results, ...newOtherData];
+             }
+        }
+
+        // --- Context Filtering (Reels/Poses Tab context) ---
+        // If we are in Reels or Poses tab, filter related content to prefer videos
+        if (currentTab === 'reels' || currentTab === 'poses') {
+            // Priority sort video content higher in the results list?
+            // Or filter out pure images? The prompt said "show related videos", implying preference.
+            // Let's sort: Videos first.
+            results.sort((a, b) => {
+                const aIsVid = (a.tags && a.tags.includes('reel')) || a.main_model_url.match(/\.(mp4|webm|mov)$/i);
+                const bIsVid = (b.tags && b.tags.includes('reel')) || b.main_model_url.match(/\.(mp4|webm|mov)$/i);
+                return (bIsVid === aIsVid) ? 0 : bIsVid ? 1 : -1;
+            });
+        }
+
+        // Trim to page size and render
+        // Since we are doing manual merging, pagination is tricky. We'll simplify related view to "Load One Big Batch" for now
+        // or just slice the results.
+        const finalResults = results.slice(0, PAGE_SIZE); 
         
-        if (error) throw error;
-        if (relatedCards) shuffleArray(relatedCards);
         relatedScrollLoader.style.display = 'none';
         if (isNewQuery) viewerRelatedGrid.innerHTML = '';
-        if (relatedCards.length === 0) { if (isNewQuery) viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">No related items found.</span>'; relatedNoMoreResults = true; } else { relatedCards.forEach(c => addRelatedCardToGrid(c)); relatedCurrentPage++; }
-      } catch (error) { console.error("Error loading related:", error); relatedScrollLoader.style.display = 'none'; if (isNewQuery) viewerRelatedGrid.innerHTML = '<span class="text-red-400 text-sm col-span-full">Error loading related models.</span>'; }
+        
+        if (finalResults.length === 0) { 
+            if (isNewQuery) viewerRelatedGrid.innerHTML = '<span class="text-gray-500 text-sm col-span-full">No related items found.</span>'; 
+            relatedNoMoreResults = true; 
+        } else { 
+            finalResults.forEach(c => addRelatedCardToGrid(c)); 
+            // Simplified: disable further scroll loading for this custom merge logic
+            relatedNoMoreResults = true; 
+        }
+
+      } catch (error) { 
+          console.error("Error loading related:", error); 
+          relatedScrollLoader.style.display = 'none'; 
+          if (isNewQuery) viewerRelatedGrid.innerHTML = '<span class="text-red-400 text-sm col-span-full">Error loading related models.</span>'; 
+      }
+      
       relatedIsLoadingMore = false;
     }
 
