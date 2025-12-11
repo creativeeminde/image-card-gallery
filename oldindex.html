@@ -682,7 +682,7 @@
       });
       
       setupContextMenu();
-      initCommonPoses(); // Initialize Poses
+      // initCommonPoses() removed in favor of direct DB sync inside loadTags
       await loadTagCounts();
       await loadTags();
       await loadTotalCardCount();
@@ -752,6 +752,16 @@
         const { data: tags, error } = await supabase.from('tags').select('name').order('name', { ascending: true });
         if (error) throw error;
         allTags = tags.map(tag => tag.name);
+        
+        // Sync Common Poses from Database (tags starting with 'pose:')
+        commonPoses = allTags.filter(t => t.startsWith('pose:'));
+        renderCommonPoses();
+        
+        // If manager is open, refresh it too
+        if(!document.getElementById('poseManager').classList.contains('hidden')) {
+            renderManagePosesList();
+        }
+
         updateTagDisplays();
         tagsDropdownMenu.innerHTML = '';
         if (allTags.length > 0) {
@@ -1002,17 +1012,8 @@
 
     // --- Pose Specific Functions ---
     let commonPoses = [];
-    const defaultPoses = ['pose:hands-on-head', 'pose:back-arch', 'pose:over-shoulder', 'pose:sitting', 'pose:standing', 'pose:kneeling'];
-
-    function initCommonPoses() {
-        const stored = localStorage.getItem('commonPoses');
-        if (stored) {
-            try { commonPoses = JSON.parse(stored); } catch(e) { commonPoses = [...defaultPoses]; }
-        } else {
-            commonPoses = [...defaultPoses];
-        }
-        renderCommonPoses();
-    }
+    
+    // NOTE: Initialization of commonPoses is now handled in loadTags() via DB sync
 
     function renderCommonPoses() {
         const container = document.getElementById('commonPosesContainer');
@@ -1057,7 +1058,7 @@
         });
     }
 
-    function createNewPose() {
+    async function createNewPose() {
         const input = document.getElementById('newPoseName');
         const val = input.value.trim();
         if(!val) return;
@@ -1067,41 +1068,42 @@
         const fullTag = 'pose:' + tagSlug;
         
         if(!commonPoses.includes(fullTag)) {
-            commonPoses.push(fullTag);
-            savePoses();
-            renderCommonPoses();
-            renderManagePosesList();
+            // Persist to DB
+            const { error } = await supabase.from('tags').insert({ name: fullTag });
+            if(error) { alert('Error adding pose: ' + error.message); return; }
+            
+            await loadTags(); // Reload tags to refresh UI
             input.value = '';
         } else {
             alert('Pose already exists');
         }
     }
 
-    function deleteCustomPose(idx) {
-        if(confirm('Delete this pose shortcut?')) {
-            commonPoses.splice(idx, 1);
-            savePoses();
-            renderCommonPoses();
-            renderManagePosesList();
+    async function deleteCustomPose(idx) {
+        if(confirm('Delete this pose category?')) {
+            const tagToDelete = commonPoses[idx];
+            // Remove from DB
+            const { error } = await supabase.from('tags').delete().eq('name', tagToDelete);
+            if(error) { alert('Error deleting pose: ' + error.message); return; }
+            
+            await loadTags(); // Reload tags to refresh UI
         }
     }
 
-    function editCustomPose(idx) {
+    async function editCustomPose(idx) {
         const currentTag = commonPoses[idx];
         const currentLabel = currentTag.replace('pose:', '').replace(/-/g, ' '); 
         const newLabel = prompt("Edit Pose Name:", currentLabel);
         if(newLabel && newLabel.trim() !== "") {
              const tagSlug = newLabel.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
              const fullTag = 'pose:' + tagSlug;
-             commonPoses[idx] = fullTag;
-             savePoses();
-             renderCommonPoses();
-             renderManagePosesList();
+             
+             // Update in DB
+             const { error } = await supabase.from('tags').update({ name: fullTag }).eq('name', currentTag);
+             if(error) { alert('Error updating pose: ' + error.message); return; }
+             
+             await loadTags(); // Reload tags to refresh UI
         }
-    }
-
-    function savePoses() {
-        localStorage.setItem('commonPoses', JSON.stringify(commonPoses));
     }
 
     async function renderPoseCategories() {
@@ -1604,8 +1606,364 @@
       
       // Determine visibility classes based on type (Reel vs Image)
       const isReel = card.isReel;
-      // If Reel: hidden on mobile (hidden), flex on desktop (lg:flex)
-      // If Image: flex on mobile (flex), flex on desktop (flex)
+      // If Reel: hidden on mobile, visible (block) on desktop
+      // If Image: visible on mobile, visible on desktop
+      const mobileVisibility = isReel ? 'hidden lg:block' : 'opacity-100'; 
+      
+      const editButton = document.createElement('button');
+      // Reduced z-index from 50 to 20 to stay under header
+      editButton.className = `absolute top-2 right-2 z-20 p-1.5 bg-black/50 rounded-full text-white hover:bg-blue-600 transition-all duration-200 ${mobileVisibility} lg:opacity-0 lg:group-hover:opacity-100 shadow-sm backdrop-blur-sm pointer-events-auto`;
+      editButton.innerHTML = `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z" /></svg>`;
+      editButton.onclick = (e) => { e.stopPropagation(); openQuickEditModal(card.id); };
+      
+      const deleteButton = document.createElement('button');
+      // Reduced z-index from 50 to 20 to stay under header
+      deleteButton.className = `absolute top-10 right-2 z-20 p-1.5 bg-black/50 rounded-full text-white hover:bg-red-600 transition-all duration-200 ${mobileVisibility} lg:opacity-0 lg:group-hover:opacity-100 shadow-sm backdrop-blur-sm pointer-events-auto`;
+      deleteButton.innerHTML = `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>`;
+      deleteButton.onclick = (e) => { e.stopPropagation(); deleteCard(card.id); };
+      
+      const favoriteButton = document.createElement('button');
+      // Reduced z-index from 50 to 20 to stay under header
+      favoriteButton.className = `absolute top-[4.5rem] right-2 z-20 p-1.5 bg-black/60 rounded-full hover:text-yellow-400 transition-all duration-200 ${mobileVisibility} lg:opacity-0 lg:group-hover:opacity-100 shadow-sm backdrop-blur-sm pointer-events-auto ${card.favorited ? 'text-yellow-400' : 'text-white'}`;
+      favoriteButton.innerHTML = `<svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>`;
+      favoriteButton.onclick = (e) => { e.stopPropagation(); toggleFavorite(e, card.id, displayedCards.find(c => c.id === card.id)?.favorited || card.favorited); };
+
+      cardElem.appendChild(overlay);
+      cardElem.appendChild(editButton);
+      cardElem.appendChild(deleteButton);
+      cardElem.appendChild(favoriteButton);
+      
+      // Update gallery rating element to handle clicks if user tries to rate from card
+      const ratingElem = createGalleryRatingElement(card);
+      // Ensure it floats above overlay
+      ratingElem.classList.add('z-20');
+      
+      cardElem.appendChild(ratingElem);
+      
+      // --- START: UPDATE CLICK INTERACTION ---
+      cardElem.addEventListener('click', () => {
+        if (isCompareModeActive) {
+          const cb = cardElem.querySelector('.compare-checkbox');
+          cb.checked = !cb.checked;
+          toggleCompareSelection(card.id, cb.checked);
+        } else {
+          // If Reel, toggle Play/Pause. If Image, open Viewer.
+          if (card.isReel) {
+            const vid = cardElem.querySelector('video');
+            if (vid) {
+                if (vid.paused) vid.play().catch(err => console.log('Playback error', err));
+                else vid.pause();
+            }
+          } else {
+            openImageViewer(index);
+          }
+        }
+      });
+      // --- END: UPDATE CLICK INTERACTION ---
+      
+      cardElem.addEventListener('contextmenu', (e) => { e.preventDefault(); showContextMenu(e, card.id); });
+      
+      return cardElem;
+    }
+
+    // --- Navigation ---
+    function updateNavActiveState(state = null) {
+      const links = {
+        'all_singles': document.getElementById('home-link'),
+        'all_albums': document.getElementById('albums-link'),
+        'reels': document.getElementById('reels-link'),
+        'poses': document.getElementById('poses-link'),
+        'favorites': document.getElementById('favorites-link'),
+        'nsfw': document.getElementById('nsfw-link'),
+        'tags': document.getElementById('tags-dropdown-btn')
+      };
+      
+      Object.values(links).forEach(el => {
+        if(el) { el.classList.remove('text-white', 'font-semibold'); el.classList.add('text-gray-400'); }
+      });
+
+      // Special handling: Keep Reels active if filtering tags in reels mode
+      if (currentTab === 'reels' && state === 'tags') {
+          if(links['reels']) {
+              links['reels'].classList.add('text-white', 'font-semibold');
+              links['reels'].classList.remove('text-gray-400');
+          }
+          // Also highlight tags button
+          if(links['tags']) {
+              links['tags'].classList.add('text-white');
+              links['tags'].classList.remove('text-gray-400');
+          }
+          return;
+      }
+      // Special handling: Keep Poses active if in poses mode (categories or specific pose)
+      if (currentTab === 'poses') {
+          if(links['poses']) {
+              links['poses'].classList.add('text-white', 'font-semibold');
+              links['poses'].classList.remove('text-gray-400');
+          }
+          return;
+      }
+
+      if (links[state]) {
+        links[state].classList.add('text-white', 'font-semibold');
+        links[state].classList.remove('text-gray-400');
+      }
+    }
+
+    function showAllModels(e) { 
+      if(e) e.preventDefault(); 
+      currentTab = 'home'; 
+      currentFilter = { type: 'all_singles', value: null }; 
+      loadCards(true); 
+    }
+    
+    function showAllAlbums(e) { 
+      if(e) e.preventDefault(); 
+      currentTab = 'albums'; // Optional: track albums tab too
+      currentFilter = { type: 'all_albums', value: null }; 
+      loadCards(true); 
+    }
+    
+    function showReels(e) { 
+      if(e) e.preventDefault(); 
+      currentTab = 'reels'; 
+      currentFilter = { type: 'reels', value: null }; 
+      loadCards(true); 
+    }
+
+    function showPoses(e) { 
+      if(e) e.preventDefault(); 
+      currentTab = 'poses'; 
+      currentFilter = { type: 'poses_categories', value: null }; 
+      loadCards(true); // Will trigger renderPoseCategories via switch logic
+    }
+    
+    function showFavorites(e) { if(e) e.preventDefault(); currentFilter = { type: 'favorites', value: null }; loadCards(true); }
+    function showNsfw(e) { if(e) e.preventDefault(); currentFilter = { type: 'nsfw', value: null }; loadCards(true); }
+    function searchByTag(tag) { closeImageViewer(); currentFilter = { type: 'tags', value: tag }; loadCards(true); }
+    
+    // --- Upload Functions ---
+    function toggleUploadType() {
+      const type = document.querySelector('input[name="contentType"]:checked').value;
+      const albumInput = document.getElementById('modelAlbumName');
+      const urlInput = document.getElementById('modelUrl');
+      
+      if (type === 'reel') {
+        albumInput.style.display = 'none';
+        albumInput.value = '';
+        urlInput.placeholder = "Enter video URLs separated by commas (.mp4, .webm, etc).";
+      } else {
+        albumInput.style.display = 'block';
+        urlInput.placeholder = "Enter image URLs separated by commas.";
+      }
+    }
+
+    function openPopup() { 
+      document.getElementById('popup').style.display = 'flex'; 
+      updateTagDisplays(); 
+      // Reset radio to image
+      document.querySelector('input[name="contentType"][value="image"]').checked = true;
+      toggleUploadType();
+    }
+    
+    function closePopup() { document.getElementById('popup').style.display = 'none'; resetForm(); }
+    
+    function resetForm() {
+      document.getElementById('cardForm').reset();
+      selectedTags = []; currentlyEditingCardId = null;
+      document.getElementById('popupTitle').textContent = 'Upload';
+      document.getElementById('modelNsfw').checked = false;
+      updateSelectedTagsDisplay(); updateTagDisplays();
+      const errorMsg = document.getElementById('errorMessage');
+      errorMsg.style.display = 'none';
+    }
+
+    async function addCard() {
+      const errorMessage = document.getElementById('errorMessage');
+      const submitButton = document.getElementById('cardForm').querySelector('button[type="submit"]');
+      const type = document.querySelector('input[name="contentType"]:checked').value;
+      
+      try {
+        submitButton.disabled = true; errorMessage.textContent = 'Processing...'; errorMessage.style.display = 'block'; errorMessage.className = 'text-sm mt-4 text-blue-400';
+        
+        const urls = document.getElementById('modelUrl').value.split(',').map(u => u.trim()).filter(u => u);
+        if (urls.length === 0) throw new Error("Please provide at least one URL.");
+        
+        // Auto-tag logic
+        const tagsToAdd = [...selectedTags];
+        
+        // If Reel, add 'reel' tag
+        if (type === 'reel') {
+          if (!tagsToAdd.includes('reel')) tagsToAdd.push('reel');
+        }
+        
+        // If Album (image mode), handle album tag
+        if (type === 'image') {
+          const albumName = document.getElementById('modelAlbumName').value.trim();
+          if (albumName) {
+            const albumTag = 'album:' + albumName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+            if (!tagsToAdd.includes(albumTag)) tagsToAdd.push(albumTag);
+          }
+        }
+        
+        const isNsfw = document.getElementById('modelNsfw').checked;
+        const tagsString = tagsToAdd.join(', ');
+
+        // Check duplicates
+        const { data: existing, error: checkErr } = await supabase.from('models').select('main_model_url').in('main_model_url', urls);
+        if (checkErr) throw checkErr;
+        
+        const existingUrls = existing.map(m => m.main_model_url);
+        const newUrls = urls.filter(u => !existingUrls.includes(u));
+        
+        if (newUrls.length === 0) {
+          errorMessage.textContent = 'All items already exist in gallery.';
+          errorMessage.className = 'text-sm mt-4 text-yellow-400';
+          submitButton.disabled = false; return;
+        }
+
+        const newCards = newUrls.map(url => ({
+          tags: tagsString,
+          main_model_url: url,
+          related_models: [], related_models_with_tags: [],
+          favorited: false, nsfw: isNsfw
+        }));
+
+        const { error } = await supabase.from('models').insert(newCards);
+        if (error) throw error;
+
+        errorMessage.textContent = `Success! Added ${newUrls.length} items.`;
+        errorMessage.className = 'text-sm mt-4 text-green-400';
+        
+        await refreshTagData();
+        setTimeout(() => { 
+          closePopup(); 
+          if (type === 'reel') showReels();
+          else if (document.getElementById('modelAlbumName').value) showAllAlbums();
+          else showAllModels();
+        }, 1500);
+        
+      } catch (error) {
+        console.error(error);
+        errorMessage.textContent = error.message; errorMessage.className = 'text-sm mt-4 text-red-400';
+        submitButton.disabled = false;
+      }
+    }
+    
+    // --- Viewer (Video Support) ---
+    function displayCardInViewer(card) {
+      currentRelatedCard = card;
+      imageViewer.scrollTop = 0; resetZoom();
+      viewerLoader.style.display = 'flex';
+      viewerImage.style.display = 'none';
+      viewerVideo.style.display = 'none';
+      viewerVideo.pause();
+      viewerTags.innerHTML = '';
+      
+      const nsfwLabel = document.getElementById('viewer-nsfw-label');
+      nsfwLabel.style.display = card.nsfw ? 'inline-block' : 'none';
+      
+      // --- DYNAMICALLY INJECT VIEWER ACTIONS (Favorite, Edit, Delete) ---
+      const actionsContainer = document.getElementById('viewer-actions');
+      actionsContainer.innerHTML = ''; // Clear previous
+
+      // 1. Favorite Button
+      const favBtn = document.createElement('button');
+      favBtn.id = 'viewer-fav-btn';
+      favBtn.className = `p-2 bg-gray-700/80 rounded-full hover:text-yellow-400 transition-colors ${card.favorited ? 'text-yellow-400' : 'text-white'}`;
+      favBtn.innerHTML = `<svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>`;
+      favBtn.onclick = (e) => toggleFavorite(e, card.id, card.favorited);
+      
+      // 2. Edit Button
+      const editBtn = document.createElement('button');
+      editBtn.className = "p-2 bg-gray-700/80 rounded-full text-white hover:bg-blue-600 transition-colors";
+      editBtn.innerHTML = `<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z" /></svg>`;
+      editBtn.onclick = () => openQuickEditModal(card.id);
+      
+      // 3. Delete Button
+      const delBtn = document.createElement('button');
+      delBtn.className = "p-2 bg-gray-700/80 rounded-full text-white hover:bg-red-600 transition-colors";
+      delBtn.innerHTML = `<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>`;
+      delBtn.onclick = () => { deleteCard(card.id); closeImageViewer(); };
+
+      actionsContainer.append(favBtn, editBtn, delBtn);
+      // -----------------------------------------------------------------
+
+      // Determine type
+      const isReel = card.isReel || card.main_model_url.match(/\.(mp4|webm|mov)$/i) || (card.tags && card.tags.includes('reel'));
+
+      if (isReel) {
+        // Video Mode
+        document.getElementById('viewer-zoom-controls').style.display = 'none';
+        viewerImage.style.display = 'none';
+        
+        viewerVideo.src = card.main_model_url;
+        viewerVideo.load();
+        viewerVideo.style.display = 'block';
+        viewerLoader.style.display = 'none';
+        
+        const playProm = viewerVideo.play();
+        if (playProm !== undefined) playProm.catch(e => console.log('Auto-play prevented in viewer', e));
+        
+      } else {
+        // Image Mode
+        document.getElementById('viewer-zoom-controls').style.display = 'flex';
+        viewerVideo.style.display = 'none';
+        
+        viewerImage.onload = () => { viewerLoader.style.display = 'none'; viewerImage.style.display = 'block'; applyViewerTransform(); };
+        viewerImage.onerror = () => { viewerLoader.style.display = 'none'; viewerImage.style.display = 'block'; viewerImage.src = 'https://placehold.co/800x800/111827/4b5563?text=Error'; };
+        viewerImage.src = card.main_model_url.includes('ik.imagekit.io') ? card.main_model_url.split('?')[0] + '?tr=q-90' : card.main_model_url;
+      }
+
+      // Tags
+      const tags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t) : [];
+      if (tags.length > 0) {
+        tags.forEach(tag => {
+          if (tag.startsWith('album:')) {
+             const s = document.createElement('span'); s.className = "px-3 py-1 bg-gray-800 text-gray-400 text-sm rounded-full"; s.textContent = tag.substring(6).replace(/-/g, ' '); viewerTags.appendChild(s);
+          } else {
+             const b = document.createElement('button'); b.className = "px-3 py-1 bg-gray-700 text-white text-sm rounded-full hover:bg-blue-600"; b.textContent = tag; b.onclick = () => searchByTag(tag); viewerTags.appendChild(b);
+          }
+        });
+      } else { viewerTags.innerHTML = `<span class="text-gray-400 text-sm">No tags.</span>`; }
+      
+      renderViewerRating(card);
+      
+      const addToAlbumBtn = document.getElementById('add-to-album-btn');
+      const relatedTitle = document.getElementById('viewer-related-container').querySelector('h4');
+      
+      if (card.isAlbum) {
+        relatedTitle.textContent = 'Images in this Album'; addToAlbumBtn.style.display = 'flex'; loadAlbumImages(card.albumTag, card.id);
+      } else {
+        relatedTitle.textContent = 'Related'; addToAlbumBtn.style.display = 'none';
+        currentAlbumViewerList = []; currentAlbumViewerIndex = 0;
+        loadRelatedImages(card, true);
+      }
+    }
+
+    // --- Standard Helper Functions (Truncated slightly for brevity as they are unchanged) ---
+    function handleScroll() { 
+      if (imageViewer.style.display === 'flex' || document.getElementById('popup').style.display === 'flex') return; 
+      if (currentSortOrder === 'shuffle' || currentFilter.type === 'reels') return; // Disable scroll for Reels
+      // Also disable standard scroll for poses categories view
+      if (currentFilter.type === 'poses_categories') return;
+      
+      const { scrollTop, scrollHeight, clientHeight } = document.documentElement; 
+      if (scrollTop + clientHeight >= scrollHeight - 300) { 
+        if (!isLoadingMore && !noMoreResults) loadCards(); 
+      } 
+    }
+    
+    // Updated Rating Element Generator to include clickable stars
+    function createGalleryRatingElement(card) { 
+      const rating = card.rating || 0; 
+      const el = document.createElement('div'); 
+      el.id = `rating-display-${card.id}`; 
+      
+      // Determine visibility classes based on type (Reel vs Image)
+      const isReel = card.isReel;
+      // If Reel: hidden on mobile, visible (block) on desktop
+      // If Image: visible on mobile, visible on desktop
       const mobileVisibility = isReel ? 'hidden lg:flex' : 'flex';
 
       // Ensure high z-index and opacity logic matches other buttons
