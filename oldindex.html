@@ -1125,15 +1125,65 @@
         const currentTag = commonPoses[idx];
         const currentLabel = currentTag.replace('pose:', '').replace(/-/g, ' '); 
         const newLabel = prompt("Edit Pose Name:", currentLabel);
+        
         if(newLabel && newLabel.trim() !== "") {
-             const tagSlug = newLabel.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+             const tagSlug = newLabel.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
              const fullTag = 'pose:' + tagSlug;
              
-             // Update in DB
+             if (fullTag === currentTag) return;
+
+             // 1. Update the tag definition in 'tags' table
              const { error } = await supabase.from('tags').update({ name: fullTag }).eq('name', currentTag);
              if(error) { alert('Error updating pose: ' + error.message); return; }
              
-             await loadTags(); // Reload tags to refresh UI
+             // 2. Update all models that use this tag
+             try {
+                 // Fetch models with the old tag
+                 const { data: modelsToUpdate, error: fetchError } = await supabase
+                    .from('models')
+                    .select('id, tags')
+                    .ilike('tags', `%${currentTag}%`);
+                 
+                 if (fetchError) throw fetchError;
+                 
+                 if (modelsToUpdate && modelsToUpdate.length > 0) {
+                     const updatePromises = modelsToUpdate.map(async (model) => {
+                         if (!model.tags) return;
+                         
+                         // Split and clean existing tags
+                         const tagList = model.tags.split(',').map(t => t.trim());
+                         
+                         // Replace old tag with new tag (case-insensitive check)
+                         const updatedList = tagList.map(t => 
+                             t.toLowerCase() === currentTag.toLowerCase() ? fullTag : t
+                         );
+                         
+                         const newTagsString = updatedList.join(', ');
+                         
+                         // Only update if changes were made
+                         if (newTagsString !== model.tags) {
+                            return supabase.from('models').update({ tags: newTagsString }).eq('id', model.id);
+                         }
+                     });
+                     
+                     await Promise.all(updatePromises);
+                 }
+                 
+                 // 3. Force Refresh ALL Data
+                 await loadTagCounts(); // Recalculate counts
+                 await loadTags();      // Reload tag list and UI
+                 
+                 // If currently viewing the old pose, switch to the new one
+                 if (currentFilter.type === 'pose_tag' && currentFilter.value === currentTag) {
+                     filterByPose(fullTag);
+                 } else {
+                     loadCards(true);
+                 }
+                 
+             } catch (err) {
+                 console.error("Error migrating tags:", err);
+                 alert("Pose name updated, but failed to update some videos.");
+             }
         }
     }
 
@@ -1210,10 +1260,16 @@
             const count = tagCountMap[tag] || 0;
             
             const card = document.createElement('div');
-            card.className = 'masonry-item pose-category-card group';
+            // Added 'relative' class to allow absolute positioning of edit button
+            card.className = 'masonry-item pose-category-card group relative';
             card.onclick = () => filterByPose(tag);
             
             card.innerHTML = `
+                <button onclick="triggerEditPose(event, '${tag.replace(/'/g, "\\'")}')" class="absolute top-2 right-2 p-1.5 bg-black/50 rounded-full text-white hover:bg-blue-600 transition-all duration-200 opacity-0 group-hover:opacity-100 shadow-sm backdrop-blur-sm z-20">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z" />
+                    </svg>
+                </button>
                 <svg class="pose-icon group-hover:text-white transition-colors" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
@@ -1228,6 +1284,19 @@
         // Use Masonry for categories too
         msnry.reloadItems();
         msnry.layout();
+    }
+    
+    function triggerEditPose(e, tag) {
+        e.stopPropagation();
+        // Find index in commonPoses
+        const idx = commonPoses.indexOf(tag);
+        if (idx > -1) {
+            editCustomPose(idx);
+        } else {
+            console.error("Tag not found in commonPoses list for editing.");
+            // Fallback: If for some reason commonPoses isn't synced, maybe try refreshing tags?
+            // Or implement edit by string directly if needed.
+        }
     }
     
     function filterByPose(poseTag) {
