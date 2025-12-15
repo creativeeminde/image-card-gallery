@@ -1838,7 +1838,7 @@
             // 1. Fetch current goal
             const { data: goals, error } = await db.from('goals').select('*').limit(1);
             
-            if (error && error.code !== 'PGRST116') { // Ignore "no rows" errors if that's the code
+            if (error && error.code !== 'PGRST116') { 
                 console.error("Error fetching goals:", error);
             }
 
@@ -1914,19 +1914,35 @@
 
         async function handleGoalSetup(e) {
             e.preventDefault();
+            
+            if (!navigator.onLine) {
+                alert("You are offline. Please reconnect to set a goal.");
+                return;
+            }
+
             const formData = new FormData(e.target);
+            const title = formData.get('title');
+            const targetNumber = parseInt(formData.get('target_number'));
+            
+            if (!title || !targetNumber) {
+                 alert("Please enter a valid title and target number.");
+                 return;
+            }
+
             const goalData = {
-                title: formData.get('title'),
-                target_number: parseInt(formData.get('target_number'))
+                title: title,
+                target_number: targetNumber
             };
 
-            const { error } = await db.from('goals').insert([goalData]);
+            const { data, error } = await db.from('goals').insert([goalData]).select();
             
             if (error) {
                 alert('Error creating goal: ' + error.message);
             } else {
                 e.target.reset();
-                displayGoals();
+                // Force a slight delay to ensure DB propagation if necessary, 
+                // though .select() usually handles consistency well enough for this.
+                await displayGoals();
             }
         }
 
