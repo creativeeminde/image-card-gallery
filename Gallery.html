@@ -381,10 +381,18 @@
   <div id="details-view" class="hidden fixed inset-0 bg-[#1a1b26] z-[100] p-4 md:p-8 overflow-y-auto">
       <button id="closeDetailsBtn" class="absolute top-6 right-6 text-gray-400 hover:text-white transition z-10">
           <svg class="h-8 w-8" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-      
              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
       </button>
+      
+      <!-- New Navigation Arrows -->
+      <button id="prevDetailBtn" class="fixed left-4 top-1/2 -translate-y-1/2 z-[110] text-white/50 hover:text-white transition p-3 bg-black/40 hover:bg-black/60 rounded-full backdrop-blur-sm">
+        <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+      </button>
+      <button id="nextDetailBtn" class="fixed right-4 top-1/2 -translate-y-1/2 z-[110] text-white/50 hover:text-white transition p-3 bg-black/40 hover:bg-black/60 rounded-full backdrop-blur-sm">
+        <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+      </button>
+
       <div class="container mx-auto grid grid-cols-1 md:grid-cols-12 gap-4 items-center h-full">
             <div id="details-image-container" class="md:col-span-7 flex items-center justify-center h-96 md:h-full relative overflow-hidden bg-black/10 rounded-lg">
                 <div id="details-image-transform-box" style="position: absolute; cursor: grab;">
@@ -638,6 +646,8 @@
     const addRelatedBtn = document.getElementById('addRelatedBtn');
     const uploadRelatedBtn = document.getElementById('uploadRelatedBtn');
     const manageRelatedBtn = document.getElementById('manageRelatedBtn');
+    const prevDetailBtn = document.getElementById('prevDetailBtn');
+    const nextDetailBtn = document.getElementById('nextDetailBtn');
     
     // Image transform elements
     const detailsImageContainer = document.getElementById('details-image-container');
@@ -693,6 +703,7 @@
     let isManageRelatedMode = false;
     let isManageRelatedVideosMode = false;
     let filteredItemsForPreview = [];
+    let currentDisplayList = [];
     // Edit Related Tags Popup State
     let currentlyEditingRelatedImage = null;
     let selectedTagsForEdit = [];
@@ -795,6 +806,8 @@
             const { data: cards, error } = await query;
             if (error) throw error;
             
+            currentDisplayList = cards;
+
             let displayItems = [];
             if(selectedFilterTag) {
                 cards.forEach(card => {
@@ -1115,6 +1128,29 @@
     closeEditRelatedVideoTagsPopupBtn.addEventListener('click', closeEditRelatedVideoTagsPopup);
     editRelatedVideoTagsForm.addEventListener('submit', saveRelatedVideoTags);
     editRelatedVideoTagsPopup.addEventListener('click', (e) => { if (e.target === editRelatedVideoTagsPopup) closeEditRelatedVideoTagsPopup(); });
+    // Details Navigation Listeners
+    prevDetailBtn.addEventListener('click', () => navigateDetails(-1));
+    nextDetailBtn.addEventListener('click', () => navigateDetails(1));
+    document.addEventListener('keydown', (e) => {
+        if (!detailsView.classList.contains('hidden')) {
+            if (e.key === 'ArrowLeft') navigateDetails(-1);
+            if (e.key === 'ArrowRight') navigateDetails(1);
+        }
+    });
+
+    async function navigateDetails(offset) {
+        if (!currentCardForDetails || currentDisplayList.length === 0) return;
+        const currentIndex = currentDisplayList.findIndex(c => c.id === currentCardForDetails.id);
+        if (currentIndex === -1) return;
+
+        let newIndex = currentIndex + offset;
+        // Loop navigation
+        if (newIndex < 0) newIndex = currentDisplayList.length - 1;
+        if (newIndex >= currentDisplayList.length) newIndex = 0;
+
+        const nextCard = currentDisplayList[newIndex];
+        await openDetailsView(nextCard.id);
+    }
 
     // --- Panning Event Listeners ---
     previewImage.addEventListener('mousedown', startPan);
