@@ -809,7 +809,19 @@
             currentDisplayList = cards;
 
             let displayItems = [];
-            if(selectedFilterTag) {
+            if (selectedFilterTag === 'special:videos') {
+                 cards.forEach(card => {
+                    const relatedVideos = card.related_videos_with_tags || [];
+                    relatedVideos.forEach(video => {
+                        displayItems.push({
+                            isVideo: true,
+                            url: video.url,
+                            tags: video.tags,
+                            parentCard: card
+                        });
+                    });
+                });
+            } else if(selectedFilterTag) {
                 cards.forEach(card => {
                     const mainTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
                     if(mainTags.includes(selectedFilterTag)) {
@@ -930,8 +942,17 @@
                 const plusBtn = cardElement.querySelector('.plus-btn');
                 const speedDisplay = cardElement.querySelector('.speed-display');
 
-                // Hover playback
-                cardElement.addEventListener('mouseenter', () => videoElem.play());
+                // Hover playback with AbortError handling
+                cardElement.addEventListener('mouseenter', () => {
+                    const playPromise = videoElem.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(error => {
+                            if (error.name !== 'AbortError') {
+                                console.log("Video play interrupted");
+                            }
+                        });
+                    }
+                });
                 cardElement.addEventListener('mouseleave', () => videoElem.pause());
 
                 // Seek bar logic
@@ -1193,7 +1214,9 @@
             e.preventDefault();
             selectedFilterTag = e.target.dataset.tag;
             const filterButtonText = document.querySelector('#filterButton');
-            if (selectedFilterTag) {
+            if (selectedFilterTag === 'special:videos') {
+                 filterButtonText.innerHTML = `<svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" /></svg> Videos Only`;
+            } else if (selectedFilterTag) {
                 filterButtonText.innerHTML = `<svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" /></svg> ${selectedFilterTag}`;
             } else {
                  filterButtonText.innerHTML = `<svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg> Filter`;
@@ -1809,6 +1832,7 @@
     function updateTagDisplays() {
         const sortedTags = Array.from(allTags).sort();
         filterDropdown.innerHTML = `<a href="#" class="filter-option block px-4 py-2 text-sm text-gray-300 hover:bg-blue-600 hover:text-white" data-tag="">All Characters</a>`;
+        filterDropdown.innerHTML += `<a href="#" class="filter-option block px-4 py-2 text-sm text-gray-300 hover:bg-blue-600 hover:text-white" data-tag="special:videos">Videos Only</a>`;
         sortedTags.forEach(tag => {
             filterDropdown.innerHTML += `<a href="#" class="filter-option block px-4 py-2 text-sm text-gray-300 hover:bg-blue-600 hover:text-white" data-tag="${tag}">${tag}</a>`;
         });
