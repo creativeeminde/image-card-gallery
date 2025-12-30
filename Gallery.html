@@ -747,6 +747,40 @@
 
     const debouncedSaveMainImageStyle = debounce(saveMainImageStyle, 1000);
 
+    // --- Video Lazy Loading for iOS Safari ---
+    function lazyLoadVideos() {
+        const lazyVideos = document.querySelectorAll('video.lazy-video');
+        if ('IntersectionObserver' in window) {
+            const videoObserver = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const video = entry.target;
+                        if (video.dataset.src) {
+                            video.src = video.dataset.src;
+                            // Explicit load() is sometimes needed for iOS to catch up
+                            video.load(); 
+                            video.classList.remove('lazy-video');
+                            video.removeAttribute('data-src');
+                        }
+                        observer.unobserve(video);
+                    }
+                });
+            }, {
+                rootMargin: '200px' // Start loading before it hits viewport
+            });
+            lazyVideos.forEach(video => videoObserver.observe(video));
+        } else {
+            // Fallback for older browsers
+            lazyVideos.forEach(video => {
+                if(video.dataset.src) {
+                    video.src = video.dataset.src;
+                    video.classList.remove('lazy-video');
+                    video.removeAttribute('data-src');
+                }
+            });
+        }
+    }
+
 
     // --- Data Fetching and Display ---
     async function fetchAllTags() {
@@ -906,14 +940,16 @@
                 const card = item.parentCard;
                 const tagsHtml = item.tags ? item.tags.split(',').map(tag => `<span class="bg-teal-600 text-white text-xs font-medium px-2 py-0.5 rounded-full">${tag.trim()}</span>`).join(' ') : '';
                 
-                // Fix: Add #t=0.1 to src if not present to force mobile thumbnail rendering, and add muted attribute
-                // MOBILE FIX: Changed preload="metadata" to preload="auto" to force frame loading on iOS
+                // Fix: Add #t=0.1 to src if not present to force mobile thumbnail rendering
+                // iOS Safari requires explicit buffering or the #t hack. 
+                // We utilize Lazy Loading (data-src) to prevent hitting iOS memory limits (approx 16 videos).
                 const videoSrc = item.url.includes('#') ? item.url : `${item.url}#t=0.1`;
 
                 cardElement.innerHTML = `
                     <div class="bg-black rounded-xl shadow-lg overflow-hidden transform group-hover:scale-105 group-hover:-translate-y-1 transition-all duration-300 ease-in-out cursor-pointer relative">
                          <div class="w-full h-80 bg-black relative">
-                            <video class="w-full h-full object-cover" src="${videoSrc}" preload="auto" muted loop playsinline></video>
+                            <!-- Use lazy-video class and data-src. Preload=metadata until in view -->
+                            <video class="lazy-video w-full h-full object-cover" data-src="${videoSrc}" preload="metadata" muted loop playsinline></video>
                             
                             <div class="speed-controls">
                                 <button class="speed-btn minus-btn">-</button>
@@ -1070,6 +1106,9 @@
             });
             cardGallery.appendChild(cardElement);
         });
+
+        // Initialize lazy loading for the new video elements
+        lazyLoadVideos();
     }
     
     // --- Image Preview Functions ---
