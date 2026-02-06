@@ -3,7 +3,7 @@ const CACHE_NAME = 'gallery-app-v1';
 // Assets required for the app to function offline (The "App Shell")
 const ASSETS_TO_CACHE = [
   './',
-  './index.html',
+  './oldindex.html',
   'https://cdn.tailwindcss.com',
   'https://unpkg.com/imagesloaded@5/imagesloaded.pkgd.min.js',
   'https://unpkg.com/masonry-layout@4/dist/masonry.pkgd.min.js',
