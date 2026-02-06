@@ -671,10 +671,16 @@
             if (!video.src && video.dataset.src) {
                 if (loader) loader.style.display = 'block';
                 video.src = video.dataset.src;
-                video.preload = "metadata"; // FIX: Ensure metadata is loaded for mobile thumbnail
+                
+                // FORCE MOBILE THUMBNAIL: Use auto preload when visible to force frame download
+                video.preload = "auto"; 
+                
+                // Add listener to force frame update as soon as possible
+                video.addEventListener('loadeddata', function() {
+                   if(this.currentTime === 0) this.currentTime = 0.1; // Seek to 0.1s to avoid black frame
+                }, { once: true });
+                
                 video.load();
-                // FIX: Ensure we have a frame even if autoplay fails
-                video.currentTime = 0.001; 
             }
 
             // 2. Play
@@ -685,7 +691,11 @@
                  if (loader) loader.style.display = 'none';
               }).catch(error => { 
                 // Auto-play might be blocked or low battery mode
+                // Still hide loader so user sees thumbnail (or black box if failed)
                 if (loader) loader.style.display = 'none';
+                
+                // Fallback: If autoplay fails, ensure we have a frame
+                if(video.currentTime === 0) video.currentTime = 0.1;
               });
             }
           } else {
@@ -1350,9 +1360,10 @@
         video.muted = true;
         video.loop = true;
         video.playsInline = true;
+        // Stronger Mobile Attributes
         video.setAttribute('playsinline', '');
         video.setAttribute('webkit-playsinline', '');
-        // Removed explicit preload='none' to allow mobile browsers to decide, but we force metadata in observer
+        video.setAttribute('muted', ''); // Explicitly set muted attr for mobile autoplay policy
         
         // Add loading spinner specifically for this video
         const vidLoader = document.createElement('div');
@@ -2147,7 +2158,7 @@
         container.appendChild(span);
       });
     }
-    function removeSelectedTag(t) { selectedTags = selectedTags.filter(tag => tag !== t); updateSelectedTagsDisplay(); updateTagDisplays(); }
+    function removeSelectedTag(t) { selectedTags = selectedTags.filter(tag => tag !== t); updateSelectedTagsDisplay(); updateTagDisplays(); select.value = ""; }
     
     // Tag Management
     function openManageTagsPopup() {
