@@ -4,7 +4,7 @@
   <meta name="robots" content="noindex, nofollow">
   <link rel="icon" href="https://ik.imagekit.io/xfifcyvcg/P_icon.ico?updatedAt=1748049193174" type="image/x-icon">
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Model Gallery | Visual Search</title>
   <!-- Load Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -196,6 +196,11 @@
         margin-bottom: 1rem;
         color: #60a5fa; /* Blue-400 */
     }
+
+    /* Mobile Reel Viewer Menu Animation */
+    #mobile-reel-menu-overlay.show {
+        transform: translateY(0);
+    }
   </style>
 </head>
 <body class="bg-black text-gray-300 font-sans antialiased">
@@ -339,7 +344,42 @@
     </div>
   </main>
 
-  <!-- Image Viewer Modal (Shared) -->
+  <!-- Mobile Reel Viewer (TikTok Style) -->
+  <div id="mobile-reel-viewer" class="fixed inset-0 z-[200] bg-black hidden flex-col">
+    <!-- Main Video Container -->
+    <div id="mobile-reel-touch-area" class="relative w-full h-full flex items-center justify-center bg-black">
+        <video id="mobile-reel-video" class="w-full h-full object-contain" loop playsinline></video>
+        
+        <!-- Close Button (Always visible) -->
+        <button onclick="closeMobileReelViewer()" class="absolute top-4 right-4 z-20 text-white p-2 rounded-full bg-black/20 backdrop-blur-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </button>
+
+        <!-- 3 Dots Menu Button (Always visible) -->
+        <button onclick="toggleMobileReelMenu(event)" class="absolute bottom-8 right-4 z-20 text-white p-2">
+             <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 drop-shadow-md" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+            </svg>
+        </button>
+
+        <!-- Menu Overlay (Hidden by default) -->
+        <div id="mobile-reel-menu-overlay" class="absolute bottom-0 left-0 right-0 bg-gray-900/95 rounded-t-2xl p-6 transform translate-y-full transition-transform duration-300 z-30" onclick="event.stopPropagation()">
+             <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+                 <h3 class="text-white text-lg font-semibold">Options</h3>
+                 <button onclick="toggleMobileReelMenu(event)" class="text-gray-400 hover:text-white">&times;</button>
+             </div>
+             <div id="mobile-reel-menu-content" class="flex flex-col gap-3">
+                 <!-- Dynamically filled -->
+             </div>
+        </div>
+        <!-- Click outside to close menu overlay area -->
+        <div id="mobile-reel-menu-click-blocker" class="absolute inset-0 z-25 hidden" onclick="toggleMobileReelMenu(event)"></div>
+    </div>
+  </div>
+
+  <!-- Image Viewer Modal (Shared - Desktop) -->
   <div id="image-viewer" class="fixed inset-0 z-[100] bg-black bg-opacity-90 overflow-y-auto" style="display: none;" onclick="closeImageViewer(event)">
     <button class="absolute top-4 right-6 text-white text-5xl font-light z-[120]" onclick="closeImageViewer()">&times;</button>
     <div class="relative w-full max-w-6xl mx-auto" onclick="event.stopPropagation()">
@@ -721,7 +761,7 @@
       
       window.addEventListener('keydown', e => {
         if (e.key === "Escape") {
-          closePopup(); closeImageViewer(); closeQuickEditModal(); closeManageTagsPopup(); closeCompareViewer();
+          closePopup(); closeImageViewer(); closeQuickEditModal(); closeManageTagsPopup(); closeCompareViewer(); closeMobileReelViewer();
         }
         if (imageViewer.style.display === 'flex') {
           if (e.key === 'ArrowLeft') prevImage();
@@ -751,7 +791,229 @@
       document.getElementById('quickEditForm').addEventListener('submit', async (e) => { e.preventDefault(); await handleQuickUpdate(); });
       document.getElementById('addTagForm').addEventListener('submit', async (e) => { e.preventDefault(); await handleAddNewTag(); });
       window.addEventListener('resize', () => { if (window.innerWidth >= 1024) closeMobileMenu(); });
+      
+      // Setup Mobile Reel Touch
+      setupMobileReelTouch();
     };
+    
+    // --- Mobile Reel Viewer Functions ---
+    let mobileReelStartY = 0;
+    
+    function setupMobileReelTouch() {
+        const touchArea = document.getElementById('mobile-reel-touch-area');
+        
+        touchArea.addEventListener('touchstart', (e) => {
+            mobileReelStartY = e.touches[0].clientY;
+        }, {passive: true});
+        
+        touchArea.addEventListener('touchend', (e) => {
+            const endY = e.changedTouches[0].clientY;
+            const diff = mobileReelStartY - endY;
+            
+            // Threshold for swipe (e.g., 50px)
+            if (Math.abs(diff) > 50) {
+                if (diff > 0) {
+                    // Swiped Up -> Next Reel
+                    nextMobileReel();
+                } else {
+                    // Swiped Down -> Previous Reel
+                    prevMobileReel();
+                }
+            }
+        }, {passive: true});
+    }
+    
+    function openMobileReelViewer(index) {
+        currentViewerIndex = index;
+        const card = displayedCards[index];
+        currentRelatedCard = card;
+        
+        const viewer = document.getElementById('mobile-reel-viewer');
+        const video = document.getElementById('mobile-reel-video');
+        
+        viewer.classList.remove('hidden');
+        viewer.classList.add('flex');
+        
+        // Hide standard image viewer just in case
+        imageViewer.style.display = 'none';
+        
+        // Load Video
+        const src = card.main_model_url;
+        video.src = src;
+        video.load();
+        
+        const playProm = video.play();
+        if (playProm !== undefined) {
+            playProm.catch(e => {
+                // If auto-play blocked, user must tap. 
+                // Since UI is minimal, tapping anywhere on video toggles play usually, 
+                // but we also have gestures. We'll leave native controls hidden as requested.
+                console.log("Mobile play prevented", e);
+            });
+        }
+        
+        // Prepare Menu Content relative to this card
+        renderMobileMenuContent(card);
+    }
+    
+    function closeMobileReelViewer() {
+        const viewer = document.getElementById('mobile-reel-viewer');
+        const video = document.getElementById('mobile-reel-video');
+        
+        video.pause();
+        video.src = "";
+        viewer.classList.add('hidden');
+        viewer.classList.remove('flex');
+        
+        // Close menu if open
+        const overlay = document.getElementById('mobile-reel-menu-overlay');
+        const blocker = document.getElementById('mobile-reel-menu-click-blocker');
+        overlay.classList.remove('show');
+        overlay.classList.remove('translate-y-0');
+        overlay.classList.add('translate-y-full');
+        blocker.classList.add('hidden');
+    }
+    
+    function nextMobileReel() {
+        // Find next reel in displayedCards
+        let nextIndex = currentViewerIndex + 1;
+        if (nextIndex >= displayedCards.length) nextIndex = 0; // Loop or stop? Let's loop.
+        
+        // Optimization: In a mixed gallery, skip non-reels? 
+        // Prompt implies "Reels Gallery", but current logic handles mixed. 
+        // If we want a smooth reel experience, we should probably skip images in mobile view.
+        // Let's iterate until we find a reel or loop back.
+        let safeguard = 0;
+        while(safeguard < displayedCards.length) {
+            const c = displayedCards[nextIndex];
+            const isReel = (c.tags && c.tags.includes('reel')) || c.main_model_url.match(/\.(mp4|webm|mov)$/i);
+            
+            if(isReel) {
+                openMobileReelViewer(nextIndex);
+                return;
+            }
+            
+            nextIndex++;
+            if (nextIndex >= displayedCards.length) nextIndex = 0;
+            safeguard++;
+        }
+    }
+    
+    function prevMobileReel() {
+        let prevIndex = currentViewerIndex - 1;
+        if (prevIndex < 0) prevIndex = displayedCards.length - 1;
+        
+        let safeguard = 0;
+        while(safeguard < displayedCards.length) {
+            const c = displayedCards[prevIndex];
+            const isReel = (c.tags && c.tags.includes('reel')) || c.main_model_url.match(/\.(mp4|webm|mov)$/i);
+            
+            if(isReel) {
+                openMobileReelViewer(prevIndex);
+                return;
+            }
+            
+            prevIndex--;
+            if (prevIndex < 0) prevIndex = displayedCards.length - 1;
+            safeguard++;
+        }
+    }
+    
+    function toggleMobileReelMenu(e) {
+        if(e) e.stopPropagation();
+        const overlay = document.getElementById('mobile-reel-menu-overlay');
+        const blocker = document.getElementById('mobile-reel-menu-click-blocker');
+        
+        if (overlay.classList.contains('show')) {
+            overlay.classList.remove('show');
+            overlay.classList.remove('translate-y-0');
+            overlay.classList.add('translate-y-full');
+            blocker.classList.add('hidden');
+        } else {
+            overlay.classList.add('show');
+            overlay.classList.remove('translate-y-full');
+            overlay.classList.add('translate-y-0');
+            blocker.classList.remove('hidden');
+        }
+    }
+    
+    function renderMobileMenuContent(card) {
+        const container = document.getElementById('mobile-reel-menu-content');
+        container.innerHTML = '';
+        
+        // 1. Favorite
+        const favBtn = document.createElement('button');
+        favBtn.className = "w-full text-left p-3 rounded bg-gray-800 text-white flex items-center gap-3";
+        favBtn.innerHTML = `
+            <svg class="h-5 w-5 ${card.favorited ? 'text-yellow-400' : 'text-gray-400'}" fill="currentColor" viewBox="0 0 24 24"><path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
+            ${card.favorited ? 'Unfavorite' : 'Favorite'}
+        `;
+        favBtn.onclick = async (e) => {
+            await toggleFavorite(e, card.id, card.favorited);
+            card.favorited = !card.favorited; // Optimistic local update for the menu re-render
+            renderMobileMenuContent(card);
+        };
+        container.appendChild(favBtn);
+        
+        // 2. Star Rating
+        const ratingRow = document.createElement('div');
+        ratingRow.className = "w-full p-3 rounded bg-gray-800 text-white flex items-center justify-between";
+        ratingRow.innerHTML = `<span class="text-sm">Rating:</span> <div class="flex gap-1"></div>`;
+        const starContainer = ratingRow.querySelector('div');
+        const currentRating = card.rating || 0;
+        
+        for(let i=1; i<=5; i++) {
+            const s = document.createElement('span');
+            s.className = `text-xl ${i <= currentRating ? 'text-yellow-400' : 'text-gray-600'}`;
+            s.innerHTML = '&#9733;';
+            s.onclick = async () => {
+                await setRating(card.id, i);
+                card.rating = i;
+                renderMobileMenuContent(card);
+            };
+            starContainer.appendChild(s);
+        }
+        container.appendChild(ratingRow);
+        
+        // 3. Edit
+        const editBtn = document.createElement('button');
+        editBtn.className = "w-full text-left p-3 rounded bg-gray-800 text-white flex items-center gap-3";
+        editBtn.innerHTML = `
+            <svg class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z" /></svg>
+            Edit
+        `;
+        editBtn.onclick = () => { toggleMobileReelMenu(); openQuickEditModal(card.id); };
+        container.appendChild(editBtn);
+        
+        // 4. Delete
+        const delBtn = document.createElement('button');
+        delBtn.className = "w-full text-left p-3 rounded bg-gray-800 text-red-400 flex items-center gap-3";
+        delBtn.innerHTML = `
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            Delete
+        `;
+        delBtn.onclick = () => { 
+            toggleMobileReelMenu(); 
+            if(confirm('Delete this reel?')) { 
+                deleteCard(card.id); 
+                closeMobileReelViewer(); 
+            } 
+        };
+        container.appendChild(delBtn);
+        
+        // 5. Tags
+        if(card.tags) {
+            const tagsDiv = document.createElement('div');
+            tagsDiv.className = "w-full p-3 bg-gray-800 rounded flex flex-wrap gap-2";
+            card.tags.split(',').forEach(t => {
+                const tagSpan = document.createElement('span');
+                tagSpan.className = "px-2 py-1 bg-gray-700 rounded text-xs text-gray-300";
+                tagSpan.textContent = t.trim();
+                tagsDiv.appendChild(tagSpan);
+            });
+            container.appendChild(tagsDiv);
+        }
+    }
     
     async function loadTagCounts() {
       try {
@@ -1709,6 +1971,16 @@
     
     // --- Viewer (Video Support) ---
     function displayCardInViewer(card) {
+      // Logic Hook for Mobile Fullscreen Viewer
+      const isReel = card.isReel || card.main_model_url.match(/\.(mp4|webm|mov)$/i) || (card.tags && card.tags.includes('reel'));
+      const isMobile = window.innerWidth < 1024; // Tailwind lg breakpoint
+
+      if (isReel && isMobile) {
+          openMobileReelViewer(currentViewerIndex);
+          return;
+      }
+
+      // --- Original Desktop Logic ---
       currentRelatedCard = card;
       imageViewer.scrollTop = 0; resetZoom();
       viewerLoader.style.display = 'flex';
@@ -1747,8 +2019,7 @@
       // -----------------------------------------------------------------
 
       // Determine type
-      const isReel = card.isReel || card.main_model_url.match(/\.(mp4|webm|mov)$/i) || (card.tags && card.tags.includes('reel'));
-
+      // Check again if it's Reel but Desktop Mode (since we bypassed mobile block)
       if (isReel) {
         // Video Mode
         document.getElementById('viewer-zoom-controls').style.display = 'none';
