@@ -147,7 +147,7 @@
     /* Video Card Specifics */
     .video-card {
         background-color: #111827; /* Dark background so it's not transparent while loading */
-        min-height: 200px;
+        min-height: 200px; /* Ensure videos take up space immediately to trigger IntersectionObserver */
     }
     .video-card video {
       width: 100%;
@@ -641,30 +641,11 @@
     let isCompareModeActive = false, compareSelection = [], sortableInstance = null;
     
     // Video Observer for auto-playing reels on scroll
-    let videoObserver;
-
-    // --- Initialization ---
-    window.onload = async function () {
-      try {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-      } catch (e) {
-        console.error("Error initializing Supabase:", e);
-        document.body.innerHTML = '<div class="p-8 text-red-400">Error: Could not connect to Supabase.</div>';
-        return;
-      }
-      
-      gallery = document.getElementById('gallery');
-      loader = document.getElementById('loader');
-      noResults = document.getElementById('no-results');
-      searchStatus = document.getElementById('search-status');
-      scrollLoader = document.getElementById('scroll-loader');
-      mobileMenu = document.getElementById('mobile-menu');
-      
-      // FIX: Improved lazy load observer specifically for mobile memory limits
-      videoObserver = new IntersectionObserver((entries) => {
+    // Initialize immediately to ensure it's available for dynamically created cards
+    let videoObserver = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
           const video = entry.target;
-          const loader = video.parentElement.querySelector('.video-loader');
+          const loader = video.parentElement ? video.parentElement.querySelector('.video-loader') : null;
           
           if (entry.isIntersecting) {
             // 1. LAZY LOAD: Only set src when visible
@@ -701,14 +682,29 @@
           } else {
             // 3. RESOURCE SAVING: Pause immediately when out of view
             video.pause();
-            // Optional: for extreme memory saving on low-end devices, we could unset src here
-            // but that causes re-buffering lag. Pause is usually enough.
           }
         });
       }, { 
           threshold: 0.25,
           rootMargin: "50% 0px" // Start loading 50% before it hits the viewport for smoother scroll
       });
+
+    // --- Initialization ---
+    window.onload = async function () {
+      try {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      } catch (e) {
+        console.error("Error initializing Supabase:", e);
+        document.body.innerHTML = '<div class="p-8 text-red-400">Error: Could not connect to Supabase.</div>';
+        return;
+      }
+      
+      gallery = document.getElementById('gallery');
+      loader = document.getElementById('loader');
+      noResults = document.getElementById('no-results');
+      searchStatus = document.getElementById('search-status');
+      scrollLoader = document.getElementById('scroll-loader');
+      mobileMenu = document.getElementById('mobile-menu');
       
       msnry = new Masonry( gallery, {
         itemSelector: '.masonry-item',
@@ -1027,6 +1023,12 @@
           imagesLoaded(newElements, function() {
             if (isNewQuery) msnry.reloadItems(); else msnry.addItems(newElements);
             msnry.layout();
+            
+            // SAFEGUARD: Force a second layout for Videos
+            // Because video cards might render with 0 height initially, breaking the IntersectionObserver
+            setTimeout(() => {
+                msnry.layout();
+            }, 500);
           });
           if (currentSortOrder !== 'shuffle') currentPage++;
           
@@ -1353,17 +1355,21 @@
         // FIX: Lazy Loading Implementation
         const videoSrc = card.main_model_url.includes('#') 
           ? card.main_model_url 
-          : `${card.main_model_url}#t=0.001`;
+          : `${card.main_model_url}#t=0.001`; // Ensure first frame loads
           
         // Use data-src instead of src to prevent eager loading
         video.dataset.src = videoSrc;
         video.muted = true;
         video.loop = true;
+        // Important properties
         video.playsInline = true;
-        // Stronger Mobile Attributes
+        video.preload = "metadata";
+
+        // Stronger Mobile Attributes (Must be setAttribute)
         video.setAttribute('playsinline', '');
         video.setAttribute('webkit-playsinline', '');
         video.setAttribute('muted', ''); // Explicitly set muted attr for mobile autoplay policy
+        video.setAttribute('loop', '');
         
         // Add loading spinner specifically for this video
         const vidLoader = document.createElement('div');
@@ -1377,6 +1383,9 @@
 
         if (videoObserver) {
           videoObserver.observe(video);
+        } else {
+           // Fallback if observer is missing for some reason
+           video.src = videoSrc;
         }
 
         // --- START: Sound Toggle Button ---
