@@ -1,82 +1,96 @@
-const CACHE_NAME = 'gallery-app-v1';
+const APP_CACHE_NAME = 'gym-app-shell-v2';
+const DATA_CACHE_NAME = 'gym-app-data-v2';
 
-// Assets required for the app to function offline (The "App Shell")
-const ASSETS_TO_CACHE = [
-  './',
-  './oldindex.html',
-  'https://cdn.tailwindcss.com',
-  'https://unpkg.com/imagesloaded@5/imagesloaded.pkgd.min.js',
-  'https://unpkg.com/masonry-layout@4/dist/masonry.pkgd.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js',
-  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js'
+// 1. URLs for the app shell to be cached immediately
+const APP_SHELL_URLS = [
+    'oldindex.html', // IMPORTANT: Rename your 'gym (2).html' to 'index.html'
+    'manifest-gallery.json',
+    'https://cdn.jsdelivr.net/npm/chart.js',
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+    'https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap'
 ];
 
-// Install Event: Cache static assets
-self.addEventListener('install', (event) => {
+// 2. Install Event: Cache the app shell
+self.addEventListener('install', event => {
+  console.log('[Service Worker] Install');
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log('[Service Worker] Caching App Shell');
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
+    caches.open(APP_CACHE_NAME)
+      .then(cache => {
+        console.log('[Service Worker] Caching app shell');
+        return cache.addAll(APP_SHELL_URLS);
+      })
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
-// Activate Event: Clean up old caches
-self.addEventListener('activate', (event) => {
+// 3. Activate Event: Clean up old caches
+self.addEventListener('activate', event => {
+  console.log('[Service Worker] Activate');
   event.waitUntil(
-    caches.keys().then((keyList) => {
+    caches.keys().then(cacheNames => {
       return Promise.all(
-        keyList.map((key) => {
-          if (key !== CACHE_NAME) {
-            console.log('[Service Worker] Removing old cache', key);
-            return caches.delete(key);
+        cacheNames.map(cacheName => {
+          if (cacheName !== APP_CACHE_NAME && cacheName !== DATA_CACHE_NAME) {
+            console.log('[Service Worker] Deleting old cache:', cacheName);
+            return caches.delete(cacheName);
           }
         })
       );
     })
   );
-  self.clients.claim();
+  return self.clients.claim();
 });
 
-// Fetch Event: Handle network requests
-self.addEventListener('fetch', (event) => {
+// 4. Fetch Event: Serve cached content
+self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // 1. STRATEGY: Network First for Supabase (Data)
-  // We want fresh data. If offline, fail gracefully or serve cached if available (optional)
-  if (url.hostname.includes('supabase.co')) {
+  // Strategy 1: Supabase API Data (Stale-While-Revalidate)
+  // This serves cached data first (stale) then updates it from the network.
+  if (url.origin.includes('supabase.co') && event.request.method === 'GET') {
     event.respondWith(
-      fetch(event.request).catch(() => {
-        return caches.match(event.request);
-      })
-    );
-    return;
-  }
-
-  // 2. STRATEGY: Stale-While-Revalidate for App Shell (HTML/CSS/JS Libs)
-  // Serve cached content immediately, then update cache in background
-  if (ASSETS_TO_CACHE.some(asset => event.request.url.includes(asset)) || event.request.mode === 'navigate') {
-    event.respondWith(
-      caches.match(event.request).then((cachedResponse) => {
-        const fetchPromise = fetch(event.request).then((networkResponse) => {
-          caches.open(CACHE_NAME).then((cache) => {
+      caches.open(DATA_CACHE_NAME).then(cache => {
+        return cache.match(event.request).then(cachedResponse => {
+          const networkFetch = fetch(event.request).then(networkResponse => {
             cache.put(event.request, networkResponse.clone());
+            return networkResponse;
+          }).catch(err => {
+            console.error('[Service Worker] Fetch error:', err);
+            // If network fails, still return the cached response if it exists
+            return cachedResponse; 
           });
-          return networkResponse;
+
+          // Return cached response immediately if it exists, otherwise wait for network
+          return cachedResponse || networkFetch;
         });
-        return cachedResponse || fetchPromise;
       })
     );
-    return;
+  } 
+  // Strategy 2: App Shell & Other Assets (Cache-First)
+  // This serves from cache. If not in cache, it fetches from network and caches it.
+  else if (APP_SHELL_URLS.includes(url.pathname) || 
+           url.origin === 'https://fonts.gstatic.com' ||
+           event.request.destination === 'style' ||
+           event.request.destination === 'script') 
+  {
+    event.respondWith(
+      caches.match(event.request).then(response => {
+        if (response) {
+          return response; // Serve from cache
+        }
+        // Not in cache, fetch and cache
+        return fetch(event.request).then(networkResponse => {
+          return caches.open(APP_CACHE_NAME).then(cache => {
+            cache.put(event.request, networkResponse.clone());
+            return networkResponse;
+          });
+        });
+      })
+    );
   }
-
-  // 3. STRATEGY: Cache First (or Standard Browser Cache) for Images/Videos
-  // We don't manually cache large media in the SW to avoid storage quota limits.
-  // We let the browser handle standard HTTP caching for media.
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    })
-  );
+  // Strategy 3: Other requests (e.g., Supabase POST/PUT/DELETE)
+  // We don't cache these, but we will handle failures in the client-side JS.
+  else {
+    event.respondWith(fetch(event.request));
+  }
 });
