@@ -745,7 +745,10 @@
                 if (loader) loader.style.display = 'none';
                 
                 // Fallback: If autoplay fails, ensure we have a frame
-                if(video.currentTime === 0) video.currentTime = 0.1;
+                // Ensure video is ready before seeking to prevent further errors
+                try {
+                    if(video.readyState >= 1 && video.currentTime === 0) video.currentTime = 0.1;
+                } catch(e) {}
               });
             }
           } else {
@@ -817,8 +820,16 @@
           closeMobileMenu();
       });
 
-      document.getElementById('quickEditForm').addEventListener('submit', async (e) => { e.preventDefault(); await handleQuickUpdate(); });
-      document.getElementById('addTagForm').addEventListener('submit', async (e) => { e.preventDefault(); await handleAddNewTag(); });
+      const quickEditForm = document.getElementById('quickEditForm');
+      if (quickEditForm) {
+          quickEditForm.addEventListener('submit', async (e) => { e.preventDefault(); await handleQuickUpdate(); });
+      }
+      
+      const addTagForm = document.getElementById('addTagForm');
+      if (addTagForm) {
+          addTagForm.addEventListener('submit', async (e) => { e.preventDefault(); await handleAddNewTag(); });
+      }
+      
       window.addEventListener('resize', () => { if (window.innerWidth >= 1024) closeMobileMenu(); });
       
       // Setup Mobile Reel Touch
@@ -830,6 +841,7 @@
     
     function setupMobileReelTouch() {
         const touchArea = document.getElementById('mobile-reel-touch-area');
+        if (!touchArea) return; 
         
         touchArea.addEventListener('touchstart', (e) => {
             mobileReelStartY = e.touches[0].clientY;
@@ -2191,7 +2203,7 @@
     function toggleVRPlay() {
         const vid = document.getElementById('vr-video-texture');
         if (vid.paused) {
-            vid.play();
+            vid.play().catch(e => console.log("VR Play error", e)); // Added catch
         } else {
             vid.pause();
         }
@@ -2476,6 +2488,34 @@
             menu.style.display = 'block';
         }
       };
+    }
+
+    // --- Restored renderViewerRating Function ---
+    function renderViewerRating(card) {
+      const container = document.getElementById('viewer-rating'); if (!container) return;
+      container.innerHTML = ''; const currentRating = card.rating || 0;
+      container.onmouseleave = () => { const stars = container.querySelectorAll('.star'); stars.forEach((s, i) => { s.classList.toggle('text-yellow-400', i < currentRating); s.classList.toggle('text-gray-600', i >= currentRating); s.classList.remove('text-yellow-300'); }); };
+      for (let i = 1; i <= 5; i++) {
+        const star = document.createElement('span'); star.className = `star text-xl md:text-2xl cursor-pointer ${i <= currentRating ? 'text-yellow-400' : 'text-gray-600'} transition-colors`;
+        star.innerHTML = '&#9733;'; star.dataset.rating = i;
+        star.onclick = (e) => { e.stopPropagation(); setRating(card.id, (i === currentRating) ? 0 : i); };
+        star.onmouseenter = () => { const stars = container.querySelectorAll('.star'); stars.forEach((s, idx) => { s.classList.toggle('text-yellow-300', idx < i); s.classList.toggle('text-gray-600', idx >= i); }); };
+        container.appendChild(star);
+      }
+    }
+
+    // --- Restored setRating Function ---
+    async function setRating(cardId, newRating) {
+      try {
+        if (currentRelatedCard.id !== cardId) return;
+        currentRelatedCard.rating = newRating; renderViewerRating(currentRelatedCard);
+        const galEl = document.getElementById(`rating-display-${cardId}`);
+        if (galEl) { const txt = galEl.querySelector('span:last-child'); if(txt) txt.textContent = newRating > 0 ? newRating : '-'; const svg = galEl.querySelector('svg'); if(svg) { svg.classList.toggle('text-yellow-400', newRating > 0); svg.classList.toggle('text-gray-500', !(newRating > 0)); } }
+        const { data: updated, error } = await supabase.from('models').update({ rating: newRating }).eq('id', cardId).select().single();
+        if (error) throw error;
+        const idx = displayedCards.findIndex(c => c.id == cardId); if (idx !== -1) displayedCards[idx].rating = updated.rating;
+        currentRelatedCard.rating = updated.rating; renderViewerRating(currentRelatedCard);
+      } catch (error) { console.error("Error setting rating:", error); }
     }
 
     // --- Standard Helper Functions continued ---
