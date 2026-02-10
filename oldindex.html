@@ -665,6 +665,9 @@
     // Added currentTab state for context-aware filtering
     let currentTab = 'home'; // 'home', 'albums', 'reels', 'poses'
     
+    // NEW: Track Active Pose Context for filtering
+    let activePoseContext = null; 
+    
     let currentPage = 0;
     const PAGE_SIZE = 25; // Default for normal galleries
     let isLoadingMore = false;
@@ -1166,6 +1169,7 @@
             break;
           case 'tags':
             const t = currentFilter.value.trim();
+            // Start with base tag filter
             query = query.ilike('tags', `%${t}%`);
             
             // STRICT Context-aware filtering for tags
@@ -1175,9 +1179,30 @@
             } else if (currentTab === 'albums') {
                  query = query.ilike('tags', '%album:%');
                  searchStatus.innerHTML = `<h2 class="text-xl">Albums tagged: <span class="px-3 py-1 bg-gray-700 text-white text-lg rounded-full">${currentFilter.value}</span></h2>`;
-            } else if (currentTab === 'poses') {
-                 // Should not happen usually as pose_tag handles it, but just in case
-                 searchStatus.innerHTML = `<h2 class="text-xl">Pose: <span class="px-3 py-1 bg-gray-700 text-white text-lg rounded-full">${currentFilter.value}</span></h2>`;
+            } else if (currentTab === 'poses' && activePoseContext) {
+                 // --- NEW LOGIC START: Context-Aware Pose Filtering ---
+                 // If we are deep inside a pose category, and we filter by a tag, 
+                 // we must ALSO filter by that active pose tag.
+                 
+                 // 1. Filter by the active pose context (AND condition via chaining .ilike)
+                 query = query.ilike('tags', `%${activePoseContext}%`);
+                 
+                 // 2. Update Header with Breadcrumb
+                 const displayPose = activePoseContext.replace('pose:', '').replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                 
+                 searchStatus.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <button onclick="showPoses()" class="text-gray-400 hover:text-white flex items-center">
+                            <svg class="w-5 h-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                            Poses
+                        </button>
+                        <span class="text-gray-600">/</span>
+                        <button onclick="filterByPose('${activePoseContext}')" class="text-gray-400 hover:text-white">${displayPose}</button>
+                        <span class="text-gray-600">/</span>
+                        <h2 class="text-xl font-semibold text-white">Tag: ${currentFilter.value}</h2>
+                    </div>`;
+                 // --- NEW LOGIC END ---
+                 
             } else {
                 // Default to Home (Images) behavior
                 query = query.not('tags', 'ilike', '%reel%');
@@ -1599,6 +1624,7 @@
     }
     
     function filterByPose(poseTag) {
+        activePoseContext = poseTag; // Track context
         currentFilter = { type: 'pose_tag', value: poseTag };
         loadCards(true);
     }
@@ -1845,6 +1871,7 @@
     function showAllModels(e) { 
       if(e) e.preventDefault(); 
       currentTab = 'home'; 
+      activePoseContext = null; // Clear pose context
       currentFilter = { type: 'all_singles', value: null }; 
       loadCards(true); 
     }
@@ -1852,6 +1879,7 @@
     function showAllAlbums(e) { 
       if(e) e.preventDefault(); 
       currentTab = 'albums'; // Optional: track albums tab too
+      activePoseContext = null; // Clear pose context
       currentFilter = { type: 'all_albums', value: null }; 
       loadCards(true); 
     }
@@ -1859,6 +1887,7 @@
     function showReels(e) { 
       if(e) e.preventDefault(); 
       currentTab = 'reels'; 
+      activePoseContext = null; // Clear pose context
       currentFilter = { type: 'reels', value: null }; 
       loadCards(true); 
     }
@@ -1866,12 +1895,25 @@
     function showPoses(e) { 
       if(e) e.preventDefault(); 
       currentTab = 'poses'; 
+      activePoseContext = null; // Clear pose context when going back to categories
       currentFilter = { type: 'poses_categories', value: null }; 
       loadCards(true); // Will trigger renderPoseCategories via switch logic
     }
     
-    function showFavorites(e) { if(e) e.preventDefault(); currentFilter = { type: 'favorites', value: null }; loadCards(true); }
-    function showNsfw(e) { if(e) e.preventDefault(); currentFilter = { type: 'nsfw', value: null }; loadCards(true); }
+    function showFavorites(e) { 
+        if(e) e.preventDefault(); 
+        activePoseContext = null; 
+        currentFilter = { type: 'favorites', value: null }; 
+        loadCards(true); 
+    }
+    
+    function showNsfw(e) { 
+        if(e) e.preventDefault(); 
+        activePoseContext = null;
+        currentFilter = { type: 'nsfw', value: null }; 
+        loadCards(true); 
+    }
+    
     function searchByTag(tag) { closeImageViewer(); currentFilter = { type: 'tags', value: tag }; loadCards(true); }
     
     // --- Upload Functions ---
