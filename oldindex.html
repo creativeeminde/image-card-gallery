@@ -309,6 +309,15 @@
       
       <!-- Right Side: Action Buttons -->
       <div class="flex items-center space-x-3">
+        <div class="relative" id="models-dropdown-container">
+          <button onclick="toggleModelsDropdown(event)" id="models-dropdown-btn" class="text-sm text-gray-400 hover:text-white focus:outline-none">
+            Models
+          </button>
+          <div id="models-dropdown-menu" class="hidden absolute top-full left-0 lg:left-auto lg:right-0 mt-2 w-56 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 py-2 max-h-64 overflow-y-auto">
+            <span class="block px-4 py-2 text-sm text-gray-500">Loading...</span>
+          </div>
+        </div>
+
         <div class="relative" id="tags-dropdown-container">
           <button onclick="toggleTagsDropdown(event)" id="tags-dropdown-btn" class="text-sm text-gray-400 hover:text-white focus:outline-none">
             Tags
@@ -907,7 +916,7 @@
       
       window.addEventListener('keydown', e => {
         if (e.key === "Escape") {
-          closePopup(); closeImageViewer(); closeQuickEditModal(); closeManageTagsPopup(); closeCompareViewer(); closeMobileReelViewer(); closeBulkEditModal();
+          closePopup(); closeImageViewer(); closeQuickEditModal(); closeManageTagsPopup(); closeCompareViewer(); closeMobileReelViewer(); closeBulkEditModal(); closeModelsDropdown();
         }
         if (imageViewer.style.display === 'flex') {
           if (e.key === 'ArrowLeft') prevImage();
@@ -917,6 +926,7 @@
       
       window.addEventListener('click', (event) => {
         if (!document.getElementById('tags-dropdown-container').contains(event.target)) closeTagsDropdown();
+        if (!document.getElementById('models-dropdown-container').contains(event.target)) closeModelsDropdown();
       });
       
       window.addEventListener('scroll', handleScroll);
@@ -1208,6 +1218,7 @@
     
     async function loadTags() {
       const tagsDropdownMenu = document.getElementById('tags-dropdown-menu');
+      const modelsDropdownMenu = document.getElementById('models-dropdown-menu'); // NEW
       try {
         const { data: tags, error } = await supabase.from('tags').select('name').order('name', { ascending: true });
         if (error) throw error;
@@ -1242,7 +1253,39 @@
             tagsDropdownMenu.appendChild(tagLink);
           });
         } else { tagsDropdownMenu.innerHTML = '<span class="block px-4 py-2 text-sm text-gray-500">No tags found</span>'; }
-      } catch (error) { tagsDropdownMenu.innerHTML = '<span class="block px-4 py-2 text-sm text-red-400">Error loading tags</span>'; }
+
+        // --- Populate Models Dropdown (NEW) ---
+        if (modelsDropdownMenu) {
+            modelsDropdownMenu.innerHTML = '';
+            const modelTags = allTags.filter(t => t.startsWith('model:'));
+            if (modelTags.length > 0) {
+                // Sort Models A-Z explicitly (even though tag query is sorted, ensure pure list order)
+                modelTags.sort();
+                modelTags.forEach(tag => {
+                    // Strip 'model:' prefix and format
+                    const displayName = tag.replace('model:', '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    
+                    const link = document.createElement('a');
+                    link.href = "#";
+                    link.className = "block px-4 py-2 text-sm text-gray-300 hover:bg-blue-600 hover:text-white";
+                    link.textContent = displayName; // Only name, no count
+                    link.onclick = (e) => {
+                        e.preventDefault();
+                        searchByTag(tag);
+                        closeModelsDropdown();
+                        // Update active state logic will handle highlighting
+                    };
+                    modelsDropdownMenu.appendChild(link);
+                });
+            } else {
+                modelsDropdownMenu.innerHTML = '<span class="block px-4 py-2 text-sm text-gray-500">No models found</span>';
+            }
+        }
+
+      } catch (error) { 
+          tagsDropdownMenu.innerHTML = '<span class="block px-4 py-2 text-sm text-red-400">Error loading tags</span>';
+          if(modelsDropdownMenu) modelsDropdownMenu.innerHTML = '<span class="block px-4 py-2 text-sm text-red-400">Error</span>';
+      }
     }
 
     async function loadCards(isNewQuery = false) {
@@ -1989,7 +2032,8 @@
         'vr': document.getElementById('vr-link'),
         'favorites': document.getElementById('favorites-link'),
         'nsfw': document.getElementById('nsfw-link'),
-        'tags': document.getElementById('tags-dropdown-btn')
+        'tags': document.getElementById('tags-dropdown-btn'),
+        'models': document.getElementById('models-dropdown-btn') // NEW
       };
       
       Object.values(links).forEach(el => {
@@ -2019,6 +2063,18 @@
               links['poses'].classList.remove('text-gray-400');
           }
           return;
+      }
+
+      // Check currentFilter to see if we should highlight 'models' or 'tags'
+      if (currentFilter.type === 'tags') {
+          if (currentFilter.value && currentFilter.value.startsWith('model:')) {
+              // Highlight Models button instead of Tags
+              if (links['models']) {
+                  links['models'].classList.add('text-white');
+                  links['models'].classList.remove('text-gray-400');
+              }
+              return;
+          }
       }
 
       if (links[state]) {
@@ -2375,6 +2431,8 @@
     function mobileMenuClicked(fn) { window[fn](); closeMobileMenu(); }
     function toggleTagsDropdown(e) { e.stopPropagation(); document.getElementById('tags-dropdown-menu').classList.toggle('hidden'); }
     function closeTagsDropdown() { document.getElementById('tags-dropdown-menu').classList.add('hidden'); }
+    function toggleModelsDropdown(e) { e.stopPropagation(); document.getElementById('models-dropdown-menu').classList.toggle('hidden'); }
+    function closeModelsDropdown() { document.getElementById('models-dropdown-menu').classList.add('hidden'); }
     function openImageViewer(index) { imageViewer.style.display = 'flex'; currentViewerIndex = index; displayCardInViewer(displayedCards[index]); }
     function closeImageViewer(e) { 
         if(e && e.target !== imageViewer && e.target.id !== "image-viewer" && e.target.parentElement?.id !== "image-viewer") {
