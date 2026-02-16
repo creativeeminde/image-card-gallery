@@ -323,7 +323,7 @@
         </button>
         
         <button id="compare-mode-btn" onclick="toggleCompareMode()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors">
-          Compare
+          Select / Compare
         </button>
         
         <button onclick="openPopup()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
@@ -624,6 +624,9 @@
       <span id="compare-count" class="text-lg text-white">0 models selected</span>
       <div>
         <button onclick="toggleCompareMode()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors mr-2">Cancel</button>
+        <!-- NEW: Bulk Edit Button -->
+        <button id="bulk-edit-btn" onclick="openBulkEditModal()" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors mr-2" disabled>Bulk Edit</button>
+        
         <button id="start-compare-btn" onclick="openCompareViewer()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors" disabled>Start Comparison</button>
       </div>
     </div>
@@ -647,6 +650,117 @@
         </div>
       </div>
     </main>
+  </div>
+
+  <!-- NEW: Bulk Edit Modal -->
+  <div id="bulk-edit-modal" class="fixed inset-0 z-[210] flex items-center justify-center bg-black bg-opacity-80 p-4" style="display: none;">
+    <div class="bg-gray-900 p-6 rounded-lg shadow-xl w-full max-w-lg border border-gray-700">
+      <h3 class="text-xl font-semibold text-white mb-4">Bulk Edit</h3>
+      <p class="text-gray-400 text-sm mb-4">Editing <span id="bulk-edit-count">0</span> items.</p>
+      
+      <form id="bulkEditForm">
+        <!-- 1. Change Model Name -->
+        <div class="mb-4">
+            <label class="block text-sm text-gray-400 mb-1">Set Model Identity</label>
+            <input type="text" id="bulkModelName" class="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500" placeholder="e.g. Sarah">
+            <div class="flex items-center mt-2">
+                <input type="checkbox" id="bulkReplaceModel" class="w-4 h-4 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-600" checked>
+                <label for="bulkReplaceModel" class="ml-2 text-sm text-gray-400">Replace existing model tags?</label>
+            </div>
+            <p class="text-xs text-gray-500 mt-1">If unchecked, the new name will be added alongside existing ones.</p>
+        </div>
+
+        <!-- 2. Add Tags -->
+        <div class="mb-4">
+            <label class="block text-sm text-gray-400 mb-1">Add Tags</label>
+            <input type="text" id="bulkAddTags" class="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500" placeholder="comma, separated, tags">
+        </div>
+
+        <!-- 3. Update NSFW -->
+        <div class="mb-4">
+            <label class="block text-sm text-gray-400 mb-1">Update NSFW Status</label>
+            <select id="bulkNsfwSelect" class="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-purple-500">
+                <option value="no-change">No Change</option>
+                <option value="mark-nsfw">Mark all as NSFW</option>
+                <option value="mark-sfw">Mark all as Safe</option>
+            </select>
+        </div>
+
+        <div id="bulkEditError" class="text-red-400 text-sm mt-4 hidden"></div>
+        <div id="bulkEditSuccess" class="text-green-400 text-sm mt-4 hidden"></div>
+
+        <div class="mt-6 flex justify-end space-x-3">
+          <button type="button" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors" onclick="closeBulkEditModal()">Cancel</button>
+          <button type="submit" class="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors">Apply Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Quick Edit Modal (Existing) -->
+  <div id="quick-edit-modal" class="fixed inset-0 z-[210] flex items-center justify-center bg-black bg-opacity-80 p-4" style="display: none;">
+      <!-- ... (Keep existing structure, omitting for brevity if not changed, but must exist for JS to work) ... -->
+       <div class="bg-gray-900 p-6 rounded-lg shadow-xl w-full max-w-lg border border-gray-700 max-h-[90vh] overflow-y-auto">
+        <h3 class="text-xl font-semibold text-white mb-4">Quick Edit</h3>
+        <form id="quickEditForm">
+            <input type="hidden" id="quickEditCardId">
+            <textarea id="quickEditModelUrl" rows="3" class="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white mb-4 placeholder-gray-500" placeholder="URL"></textarea>
+            
+            <div class="mt-2">
+                <label class="text-sm text-gray-400 mb-2 block">Tags</label>
+                <div id="quickEditSelectedTagsContainer" class="flex flex-wrap gap-2 p-2 bg-gray-800 border border-gray-700 rounded-lg min-h-[40px]"></div>
+            </div>
+            
+            <div class="flex gap-2 mt-2 mb-4">
+                <select id="quickEditAvailableTags" class="flex-grow p-2 bg-gray-800 border border-gray-700 rounded-lg text-white">
+                    <option value="">Select tags to add</option>
+                </select>
+                <button type="button" onclick="addTagToQuickEdit()" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg">Add</button>
+            </div>
+            
+            <div class="flex items-center mb-4">
+                <input type="checkbox" id="quickEditModelNsfw" class="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded">
+                <label for="quickEditModelNsfw" class="ml-2 text-sm text-gray-300">NSFW</label>
+            </div>
+
+            <div id="quickEditErrorMessage" class="text-red-400 text-sm mt-2" style="display:none;"></div>
+            
+            <div class="flex justify-end space-x-3">
+                <button type="button" onclick="closeQuickEditModal()" class="px-4 py-2 bg-gray-700 text-white rounded-lg">Cancel</button>
+                <button type="submit" class="px-5 py-2 bg-green-600 text-white rounded-lg">Update</button>
+            </div>
+        </form>
+       </div>
+  </div>
+  
+  <div id="manage-tags-popup" class="fixed inset-0 z-[210] flex items-center justify-center bg-black bg-opacity-80 p-4" style="display: none;">
+      <div class="bg-gray-900 p-6 rounded-lg shadow-xl w-full max-w-md border border-gray-700 max-h-[80vh] overflow-y-auto">
+          <h3 class="text-xl font-semibold text-white mb-4">Manage Tags</h3>
+          <div id="existingTagsListContainer" class="space-y-1 mb-4 border border-gray-700 rounded p-2 max-h-60 overflow-y-auto bg-gray-800"></div>
+          
+          <div class="flex gap-2 mb-4">
+             <button onclick="selectAllManageTags(true)" class="text-xs text-blue-400 hover:text-white">Select All</button>
+             <button onclick="selectAllManageTags(false)" class="text-xs text-blue-400 hover:text-white">Deselect All</button>
+          </div>
+
+          <div class="border-t border-gray-700 pt-4 mb-4">
+              <label class="text-sm text-gray-400 block mb-1">Add New Tag</label>
+              <div class="flex gap-2">
+                  <input type="text" id="newTagName" class="flex-grow p-2 bg-gray-800 border border-gray-700 rounded text-white text-sm" placeholder="Tag name">
+                  <button onclick="handleAddNewTag()" class="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded">Add</button>
+              </div>
+          </div>
+          
+          <div id="manageTagsErrorMessage" class="text-red-400 text-xs mb-2" style="display:none;"></div>
+
+          <div class="flex justify-between items-center border-t border-gray-700 pt-4">
+               <div class="flex gap-2">
+                   <button onclick="handleDeleteSelectedTags()" class="px-3 py-1 bg-red-900 hover:bg-red-700 text-red-200 text-sm rounded">Delete Selected</button>
+                   <button onclick="handleRenameSelectedTag()" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded">Rename</button>
+               </div>
+               <button onclick="closeManageTagsPopup()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded">Done</button>
+          </div>
+      </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js"></script>
@@ -793,7 +907,7 @@
       
       window.addEventListener('keydown', e => {
         if (e.key === "Escape") {
-          closePopup(); closeImageViewer(); closeQuickEditModal(); closeManageTagsPopup(); closeCompareViewer(); closeMobileReelViewer();
+          closePopup(); closeImageViewer(); closeQuickEditModal(); closeManageTagsPopup(); closeCompareViewer(); closeMobileReelViewer(); closeBulkEditModal();
         }
         if (imageViewer.style.display === 'flex') {
           if (e.key === 'ArrowLeft') prevImage();
@@ -825,6 +939,11 @@
           quickEditForm.addEventListener('submit', async (e) => { e.preventDefault(); await handleQuickUpdate(); });
       }
       
+      const bulkEditForm = document.getElementById('bulkEditForm');
+      if (bulkEditForm) {
+          bulkEditForm.addEventListener('submit', async (e) => { e.preventDefault(); await performBulkEdit(); });
+      }
+
       const addTagForm = document.getElementById('addTagForm');
       if (addTagForm) {
           addTagForm.addEventListener('submit', async (e) => { e.preventDefault(); await handleAddNewTag(); });
@@ -2768,7 +2887,7 @@
         btn.classList.add('bg-blue-600'); btn.classList.remove('bg-gray-700', 'hover:bg-gray-600'); btn.textContent = "Cancel";
         gallery.classList.add('compare-mode-active');
       } else {
-        btn.classList.remove('bg-blue-600'); btn.classList.add('bg-gray-700', 'hover:bg-gray-600'); btn.textContent = "Compare";
+        btn.classList.remove('bg-blue-600'); btn.classList.add('bg-gray-700', 'hover:bg-gray-600'); btn.textContent = "Select / Compare";
         gallery.classList.remove('compare-mode-active');
         compareSelection = [];
         document.querySelectorAll('.compare-checkbox:checked').forEach(cb => cb.checked = false);
@@ -2791,9 +2910,112 @@
       const bar = document.getElementById('compare-sticky-bar');
       const count = compareSelection.length;
       document.getElementById('compare-count').textContent = `${count} model${count!==1?'s':''} selected`;
-      const btn = document.getElementById('start-compare-btn');
-      btn.disabled = count < 2;
+      
+      const compareBtn = document.getElementById('start-compare-btn');
+      compareBtn.disabled = count < 2;
+
+      const bulkEditBtn = document.getElementById('bulk-edit-btn');
+      bulkEditBtn.disabled = count < 1;
+      
       if (count > 0 && isCompareModeActive) bar.classList.add('show'); else bar.classList.remove('show');
+    }
+
+    // --- NEW: Bulk Edit Functions ---
+    function openBulkEditModal() {
+        if (compareSelection.length === 0) return;
+        document.getElementById('bulk-edit-count').textContent = compareSelection.length;
+        document.getElementById('bulk-edit-modal').style.display = 'flex';
+        document.getElementById('bulkEditForm').reset();
+        document.getElementById('bulkEditError').classList.add('hidden');
+        document.getElementById('bulkEditSuccess').classList.add('hidden');
+    }
+
+    function closeBulkEditModal() {
+        document.getElementById('bulk-edit-modal').style.display = 'none';
+    }
+
+    async function performBulkEdit() {
+        const modelNameInput = document.getElementById('bulkModelName').value.trim();
+        const addTagsInput = document.getElementById('bulkAddTags').value.trim();
+        const nsfwAction = document.getElementById('bulkNsfwSelect').value; // 'no-change', 'mark-nsfw', 'mark-sfw'
+        const replaceModel = document.getElementById('bulkReplaceModel').checked;
+        const submitBtn = document.getElementById('bulkEditForm').querySelector('button[type="submit"]');
+        const statusMsg = document.getElementById('bulkEditSuccess');
+        const errorMsg = document.getElementById('bulkEditError');
+
+        if (!modelNameInput && !addTagsInput && nsfwAction === 'no-change') {
+            closeBulkEditModal();
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Updating...";
+        
+        try {
+             // 1. Fetch ALL selected items to get current tags
+            const { data: cards, error } = await supabase.from('models').select('id, tags, nsfw').in('id', compareSelection);
+            
+            if (error) throw error;
+
+            const updates = cards.map(card => {
+                let currentTags = card.tags ? card.tags.split(',').map(t => t.trim()) : [];
+
+                // Handle Model Name
+                if (modelNameInput) {
+                    const newModelTag = 'model:' + modelNameInput.toLowerCase().replace(/\s+/g, '-');
+                    
+                    if (replaceModel) {
+                        // Remove ANY existing model tags
+                        currentTags = currentTags.filter(t => !t.startsWith('model:'));
+                    }
+                    
+                    // Add new model tag if not present
+                    if (!currentTags.includes(newModelTag)) {
+                        currentTags.push(newModelTag);
+                    }
+                }
+
+                // Handle Additional Tags
+                if (addTagsInput) {
+                    const newTags = addTagsInput.split(',').map(t => t.trim());
+                    newTags.forEach(nt => {
+                        if(nt && !currentTags.includes(nt)) {
+                            currentTags.push(nt);
+                        }
+                    });
+                }
+
+                // Handle NSFW
+                let isNsfw = card.nsfw;
+                if (nsfwAction === 'mark-nsfw') isNsfw = true;
+                if (nsfwAction === 'mark-sfw') isNsfw = false;
+
+                // Perform update for THIS specific card
+                return supabase.from('models').update({
+                    tags: currentTags.join(', '),
+                    nsfw: isNsfw
+                }).eq('id', card.id);
+            });
+
+            await Promise.all(updates);
+            
+            statusMsg.textContent = `Successfully updated ${updates.length} items!`;
+            statusMsg.classList.remove('hidden');
+
+            setTimeout(() => {
+                closeBulkEditModal();
+                toggleCompareMode(); // Exit selection mode
+                loadCards(true); // Refresh grid
+                refreshTagData(); // Refresh sidebar tags
+            }, 1500);
+
+        } catch (err) {
+            console.error(err);
+            errorMsg.textContent = "Error updating items: " + err.message;
+            errorMsg.classList.remove('hidden');
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Apply Changes";
+        }
     }
     
     function openCompareViewer() {
