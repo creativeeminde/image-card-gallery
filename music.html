@@ -827,14 +827,36 @@
                 document.documentElement.style.setProperty('--secondary-color', primaryColor); // Simplified secondary
 
             } catch (e) {
-                // Fallback if CORS blocks access (common with external images)
-                console.warn("Could not extract colors (likely CORS restricted). Using default theme.");
+                // This catch often handles "Tainted Canvas" errors when CORS is not allowed.
+                // We fallback to default theme, but image stays visible if loaded.
                 resetTheme();
             }
         });
         
-        // Reset to default blue theme if image fails or errors
-        mainCover.addEventListener('error', resetTheme);
+        // ERROR HANDLER FOR IMAGES (FALLBACK STRATEGY)
+        mainCover.addEventListener('error', function() {
+            // If the image fails to load, it might be blocked by CORS due to the 'crossorigin' attribute.
+            // We check if crossorigin is currently set.
+            if (this.getAttribute('crossorigin') === 'anonymous') {
+                console.warn("Image failed with CORS. Retrying without CORS...");
+                // Remove the attribute to allow the browser to load it as a standard image
+                this.removeAttribute('crossorigin');
+                
+                // Force reload by resetting src (browsers usually re-fetch)
+                const currentSrc = this.src;
+                this.src = currentSrc;
+                
+                // We must reset theme since we can't extract colors from non-CORS image
+                resetTheme();
+            } else {
+                // If it fails even without CORS, the URL is broken. Show placeholder.
+                console.warn("Image broken. Showing placeholder.");
+                if (!this.src.includes('via.placeholder.com')) {
+                    this.src = 'https://via.placeholder.com/300/1e293b/ffffff?text=Music';
+                }
+                resetTheme();
+            }
+        });
 
         function resetTheme() {
             document.documentElement.style.setProperty('--bg-gradient', defaultTheme.bg);
@@ -960,9 +982,12 @@
             mainTitle.innerText = song.song_title;
             mainArtist.innerText = song.artist;
             
+            // Reset to attempt CORS extraction first
+            mainCover.setAttribute('crossorigin', 'anonymous');
+
             // Important: src assignment triggers the 'load' event listener which calculates colors
             // If url is empty, default placeholder is used
-            mainCover.src = song.cover_url || 'https://via.placeholder.com/300';
+            mainCover.src = song.cover_url || 'https://via.placeholder.com/300/1e293b/ffffff?text=Music';
             
             // Setup Download Link
             downloadBtn.href = song.mp3_url;
