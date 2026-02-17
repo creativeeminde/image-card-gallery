@@ -542,6 +542,50 @@
             opacity: 1;
         }
 
+        /* Segment Loop Controls */
+        .loop-range-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 8px;
+            font-size: 0.8rem;
+        }
+        .loop-input {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            border-radius: 6px;
+            padding: 4px 8px;
+            width: 65px;
+            text-align: center;
+            font-size: 0.8rem;
+            outline: none;
+        }
+        .loop-input:focus {
+            border-color: var(--primary-color);
+            background: rgba(255,255,255,0.15);
+        }
+        .loop-action-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.9rem;
+            padding: 4px;
+            transition: color 0.2s;
+        }
+        .loop-action-btn:hover { color: white; }
+        .loop-action-btn.active { color: var(--primary-color); }
+        .loop-active-indicator {
+            width: 8px;
+            height: 8px;
+            background-color: #fbbf24;
+            border-radius: 50%;
+            display: none;
+            box-shadow: 0 0 5px rgba(251, 191, 36, 0.5);
+        }
+
         .volume-controls {
             display: flex;
             align-items: center;
@@ -824,6 +868,17 @@
                 <div class="progress-bar-wrapper" id="progress-container">
                     <div class="progress-bar" id="progress-bar"></div>
                 </div>
+                
+                <!-- Segment Loop Controls -->
+                <div class="loop-range-controls">
+                    <span style="color:var(--text-muted); font-size:0.75rem;">Segment Loop:</span>
+                    <input type="text" id="loop-start-input" class="loop-input" placeholder="0:00">
+                    <span style="color:var(--text-muted);">-</span>
+                    <input type="text" id="loop-end-input" class="loop-input" placeholder="0:00">
+                    <button class="loop-action-btn" onclick="setCustomLoop()" title="Apply Loop"><i class="fas fa-check"></i></button>
+                    <button class="loop-action-btn" onclick="clearCustomLoop()" title="Clear Loop"><i class="fas fa-times"></i></button>
+                    <div id="loop-indicator" class="loop-active-indicator" title="Loop Active"></div>
+                </div>
             </div>
 
             <div class="volume-controls">
@@ -924,6 +979,11 @@
         let currentMood = 'All'; 
         let currentIndex = -1;
         let isPlaying = false;
+        
+        // Loop Segment State
+        let customLoopStart = null;
+        let customLoopEnd = null;
+        let isCustomLoopActive = false;
         
         // Default Theme
         const defaultTheme = {
@@ -1176,6 +1236,10 @@
             
             downloadBtn.href = song.mp3_url;
             audio.src = song.mp3_url;
+            
+            // Clear loop when loading new song
+            clearCustomLoop();
+            
             renderSongList(); 
         }
 
@@ -1218,7 +1282,8 @@
         }
 
         function handleSongEnd() {
-            if (!audio.loop) nextSong();
+            if (!audio.loop && !isCustomLoopActive) nextSong();
+            // If custom loop is active, the updateProgress handles the looping
         }
 
         function nextSong() {
@@ -1242,6 +1307,17 @@
         function updateProgress(e) {
             const { duration, currentTime } = e.srcElement;
             if (isNaN(duration)) return;
+            
+            // CUSTOM LOOP LOGIC
+            if (isCustomLoopActive && customLoopEnd !== null && customLoopStart !== null) {
+                if (currentTime >= customLoopEnd) {
+                    audio.currentTime = customLoopStart;
+                    // Force play if paused
+                    if (!isPlaying) playAudio();
+                    return; // Prevent progress bar jitter
+                }
+            }
+
             const progressPercent = (currentTime / duration) * 100;
             progressBar.style.width = `${progressPercent}%`;
             const formatTime = (time) => {
@@ -1263,6 +1339,46 @@
 
         function setVolume(val) {
             audio.volume = val;
+        }
+        
+        // --- CUSTOM LOOP FUNCTIONS ---
+        function parseTime(timeStr) {
+            if (!timeStr) return null;
+            const parts = timeStr.split(':');
+            if (parts.length === 2) {
+                return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+            }
+            return parseFloat(timeStr);
+        }
+
+        function setCustomLoop() {
+            const startStr = document.getElementById('loop-start-input').value;
+            const endStr = document.getElementById('loop-end-input').value;
+            
+            const start = parseTime(startStr);
+            const end = parseTime(endStr);
+            
+            if (start !== null && end !== null && end > start) {
+                customLoopStart = start;
+                customLoopEnd = end;
+                isCustomLoopActive = true;
+                document.getElementById('loop-indicator').style.display = 'block';
+                // Jump to start if currently outside
+                if (audio.currentTime < start || audio.currentTime > end) {
+                    audio.currentTime = start;
+                }
+            } else {
+                alert("Invalid Time Range. Use mm:ss format (e.g. 0:35 - 1:01)");
+            }
+        }
+
+        function clearCustomLoop() {
+            isCustomLoopActive = false;
+            customLoopStart = null;
+            customLoopEnd = null;
+            document.getElementById('loop-start-input').value = '';
+            document.getElementById('loop-end-input').value = '';
+            document.getElementById('loop-indicator').style.display = 'none';
         }
 
         // --- 9. MODAL & UPLOAD/EDIT ---
