@@ -716,6 +716,7 @@
                 <div class="form-group">
                     <label>Playlist</label>
                     <select id="in-playlist" onchange="checkNewPlaylist(this)">
+                        <!-- Dynamic options injected here via JS -->
                         <option value="Favorites">Favorites</option>
                         <option value="Chill">Chill</option>
                         <option value="Workout">Workout</option>
@@ -1120,11 +1121,16 @@
         const idInput = document.getElementById('in-id');
 
         function openModal(mode) {
+            populatePlaylistOptions();
             modal.classList.add('open');
             modalTitle.innerText = "Add New Song";
             idInput.value = ""; // Clear ID implies create mode
             document.getElementById('upload-form').reset();
             newPlaylistInput.style.display = 'none';
+             // Reset playlist selection to first option after reset() might have changed it
+            if(document.getElementById('in-playlist').options.length > 0) {
+                 document.getElementById('in-playlist').selectedIndex = 0;
+            }
         }
 
         function openEditModal(filterIndex, e) {
@@ -1132,6 +1138,8 @@
             
             const song = filteredSongs[filterIndex];
             if(!song) return;
+
+            populatePlaylistOptions(song.playlist);
 
             modalTitle.innerText = "Edit Song";
             modal.classList.add('open');
@@ -1145,15 +1153,43 @@
             document.getElementById('in-genre').value = song.genre || 'Pop';
             
             // Handle playlist
-            const exists = [...playlistSelect.options].some(o => o.value === song.playlist);
-            if (exists) {
-                playlistSelect.value = song.playlist;
+            const select = document.getElementById('in-playlist');
+            if ([...select.options].some(o => o.value === song.playlist)) {
+                select.value = song.playlist;
                 newPlaylistInput.style.display = 'none';
             } else {
-                playlistSelect.value = 'new_playlist_option';
+                select.value = 'new_playlist_option';
                 newPlaylistInput.style.display = 'block';
                 newPlaylistInput.value = song.playlist;
             }
+        }
+        
+        function populatePlaylistOptions(activePlaylist) {
+             const select = document.getElementById('in-playlist');
+             const defaultOptions = ['Favorites', 'Chill', 'Workout', 'Road Trip'];
+             
+             // Extract unique playlists from DB
+             const dbPlaylists = [...new Set(songs.map(s => s.playlist))].filter(p => p);
+             
+             // Merge and remove duplicates
+             const allPlaylists = [...new Set([...defaultOptions, ...dbPlaylists])];
+             
+             // Clear existing
+             select.innerHTML = '';
+             
+             // Add options
+             allPlaylists.forEach(p => {
+                 const opt = document.createElement('option');
+                 opt.value = p;
+                 opt.innerText = p;
+                 select.appendChild(opt);
+             });
+             
+             // Add Create New
+             const newOpt = document.createElement('option');
+             newOpt.value = 'new_playlist_option';
+             newOpt.innerText = '+ Create New...';
+             select.appendChild(newOpt);
         }
 
         function closeModal() {
