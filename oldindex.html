@@ -698,9 +698,12 @@
         <div id="bulkEditError" class="text-red-400 text-sm mt-4 hidden"></div>
         <div id="bulkEditSuccess" class="text-green-400 text-sm mt-4 hidden"></div>
 
-        <div class="mt-6 flex justify-end space-x-3">
-          <button type="button" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors" onclick="closeBulkEditModal()">Cancel</button>
-          <button type="submit" class="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors">Apply Changes</button>
+        <div class="mt-6 flex justify-between items-center">
+          <button type="button" onclick="performBulkDelete()" class="px-4 py-2 bg-red-900/80 hover:bg-red-700 text-red-100 text-sm font-medium rounded-lg transition-colors border border-red-800">Delete Selected</button>
+          <div class="flex space-x-3">
+            <button type="button" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors" onclick="closeBulkEditModal()">Cancel</button>
+            <button type="submit" class="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors">Apply Changes</button>
+          </div>
         </div>
       </form>
     </div>
@@ -3092,6 +3095,46 @@
             errorMsg.classList.remove('hidden');
             submitBtn.disabled = false;
             submitBtn.textContent = "Apply Changes";
+        }
+    }
+
+    async function performBulkDelete() {
+        if (compareSelection.length === 0) return;
+        
+        if (!confirm(`Are you sure you want to PERMANENTLY DELETE ${compareSelection.length} items? This cannot be undone.`)) {
+            return;
+        }
+
+        const submitBtn = document.getElementById('bulkEditForm').querySelector('button[type="submit"]');
+        const deleteBtn = document.querySelector('#bulk-edit-modal button[onclick="performBulkDelete()"]');
+        const statusMsg = document.getElementById('bulkEditSuccess');
+        const errorMsg = document.getElementById('bulkEditError');
+
+        if(deleteBtn) { deleteBtn.disabled = true; deleteBtn.textContent = "Deleting..."; }
+        if(submitBtn) submitBtn.disabled = true;
+
+        try {
+            const { error } = await supabase.from('models').delete().in('id', compareSelection);
+            if (error) throw error;
+
+            statusMsg.textContent = `Deleted ${compareSelection.length} items.`;
+            statusMsg.classList.remove('hidden');
+            errorMsg.classList.add('hidden');
+
+            setTimeout(() => {
+                closeBulkEditModal();
+                if (isCompareModeActive) toggleCompareMode(); // Exit selection mode & clear selection
+                loadCards(true); // Refresh grid
+                loadTotalCardCount();
+                refreshTagData();
+            }, 1000);
+
+        } catch (err) {
+            console.error(err);
+            errorMsg.textContent = "Delete failed: " + err.message;
+            errorMsg.classList.remove('hidden');
+            if(deleteBtn) { deleteBtn.disabled = false; deleteBtn.textContent = "Delete Selected"; }
+            if(submitBtn) submitBtn.disabled = false;
         }
     }
     
