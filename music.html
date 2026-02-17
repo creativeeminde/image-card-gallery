@@ -38,6 +38,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            transition: background 1s ease; /* Smooth background transition */
         }
 
         /* --- Layout --- */
@@ -140,11 +141,11 @@
             align-items: center;
             gap: 0.5rem;
             transition: all 0.2s;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
         }
 
         .btn-primary:hover {
-            background: var(--secondary-color);
+            filter: brightness(1.1);
             transform: translateY(-1px);
         }
 
@@ -174,9 +175,9 @@
         }
 
         .tab.active {
-            background: rgba(59, 130, 246, 0.2);
-            color: var(--secondary-color);
-            border-color: rgba(59, 130, 246, 0.3);
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--primary-color);
+            border-color: var(--primary-color);
         }
 
         /* Song List */
@@ -206,6 +207,7 @@
             border-radius: 12px;
             transition: background 0.2s;
             cursor: pointer;
+            position: relative;
         }
 
         .song-item:hover {
@@ -213,12 +215,12 @@
         }
 
         .song-item.active {
-            background: rgba(59, 130, 246, 0.15);
+            background: rgba(255, 255, 255, 0.1);
             border-left: 4px solid var(--primary-color);
         }
 
         .song-item.active .song-title {
-            color: var(--secondary-color);
+            color: var(--primary-color);
         }
 
         .song-thumb {
@@ -254,10 +256,6 @@
             gap: 1rem;
         }
 
-        .song-duration {
-            font-variant-numeric: tabular-nums;
-        }
-
         .play-icon-overlay {
             width: 30px;
             height: 30px;
@@ -276,6 +274,43 @@
         .song-item.active .play-icon-overlay {
             opacity: 1;
             transform: scale(1);
+        }
+
+        /* Actions for Edit/Delete */
+        .song-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-left: 1rem;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .song-item:hover .song-actions {
+            opacity: 1;
+        }
+
+        .action-btn {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: var(--text-muted);
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .action-btn:hover {
+            background: white;
+            color: var(--primary-color);
+        }
+
+        .action-btn.delete:hover {
+            color: #ef4444;
+            background: white;
         }
 
         /* --- Player Bar --- */
@@ -305,10 +340,23 @@
             cursor: pointer;
             font-size: 1.2rem;
             transition: color 0.2s;
+            display: flex; /* For anchor tags behaving like buttons */
+            align-items: center;
+            text-decoration: none;
         }
 
         .ctrl-btn:hover {
             color: white;
+        }
+        
+        .ctrl-btn.active {
+            color: var(--primary-color);
+        }
+        
+        .skip-btn {
+            font-size: 0.85rem;
+            font-weight: 600;
+            width: 40px;
         }
 
         .play-pause-btn {
@@ -361,7 +409,7 @@
             border-radius: 3px;
             width: 0%;
             position: relative;
-            transition: width 0.1s linear;
+            transition: width 0.1s linear, background 0.5s ease;
         }
 
         .progress-bar::after {
@@ -562,7 +610,8 @@
         <!-- Left Sidebar: Active Song -->
         <aside class="sidebar">
             <div class="album-art-large">
-                <img id="current-cover" src="https://via.placeholder.com/300/1e293b/ffffff?text=Music" alt="Album Cover">
+                <!-- IMPORTANT: crossorigin="anonymous" enables canvas analysis for dynamic colors -->
+                <img id="current-cover" crossorigin="anonymous" src="https://via.placeholder.com/300/1e293b/ffffff?text=Music" alt="Album Cover">
             </div>
             <div class="current-track-info">
                 <h2 id="current-title">No Song Selected</h2>
@@ -574,7 +623,7 @@
         <main class="main-content">
             <header class="header">
                 <h1>Library</h1>
-                <button class="btn-primary" onclick="openModal()">
+                <button class="btn-primary" onclick="openModal('add')">
                     <i class="fas fa-plus"></i> Upload Song
                 </button>
             </header>
@@ -594,11 +643,21 @@
         <!-- Player Bar -->
         <div class="player-bar">
             <div class="player-controls">
+                <button class="ctrl-btn" id="loop-btn" onclick="toggleLoop()" title="Loop Song"><i class="fas fa-repeat"></i></button>
                 <button class="ctrl-btn" onclick="prevSong()"><i class="fas fa-step-backward"></i></button>
+                <button class="ctrl-btn skip-btn" onclick="skipTime(-10)">-10s</button>
+                
                 <button class="play-pause-btn" onclick="togglePlay()">
                     <i class="fas fa-play" id="play-icon"></i>
                 </button>
+                
+                <button class="ctrl-btn skip-btn" onclick="skipTime(10)">+10s</button>
                 <button class="ctrl-btn" onclick="nextSong()"><i class="fas fa-step-forward"></i></button>
+                
+                <!-- Download Button -->
+                <a id="download-btn" href="#" target="_blank" class="ctrl-btn" title="Download Song">
+                    <i class="fas fa-download"></i>
+                </a>
             </div>
 
             <div class="progress-container">
@@ -618,11 +677,13 @@
         </div>
     </div>
 
-    <!-- Upload Modal -->
+    <!-- Upload/Edit Modal -->
     <div class="modal-overlay" id="upload-modal">
         <div class="modal">
-            <h2>Add New Song</h2>
+            <h2 id="modal-title">Add New Song</h2>
             <form id="upload-form" onsubmit="handleUpload(event)">
+                <input type="hidden" id="in-id"> <!-- Hidden ID for edits -->
+                
                 <div class="form-group">
                     <label>Song Title</label>
                     <input type="text" id="in-title" required placeholder="e.g. Midnight City">
@@ -636,8 +697,8 @@
                     <input type="url" id="in-mp3" required placeholder="https://example.com/song.mp3">
                 </div>
                 <div class="form-group">
-                    <label>Cover Image URL</label>
-                    <input type="url" id="in-cover" required placeholder="https://example.com/image.jpg">
+                    <label>Cover Image URL (Optional)</label>
+                    <input type="url" id="in-cover" placeholder="https://example.com/image.jpg">
                 </div>
                 <div class="form-group">
                     <label>Genre</label>
@@ -688,6 +749,12 @@
         let currentIndex = -1;
         let isPlaying = false;
         
+        // Default Theme
+        const defaultTheme = {
+            bg: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #000000 100%)',
+            primary: '#3b82f6'
+        };
+        
         // Audio Object
         const audio = new Audio();
 
@@ -699,6 +766,8 @@
         const progressContainer = document.getElementById('progress-container');
         const currTimeEl = document.getElementById('curr-time');
         const durTimeEl = document.getElementById('dur-time');
+        const loopBtn = document.getElementById('loop-btn');
+        const downloadBtn = document.getElementById('download-btn');
         
         // Large Display Elements
         const mainCover = document.getElementById('current-cover');
@@ -711,13 +780,67 @@
             
             // Audio Event Listeners
             audio.addEventListener('timeupdate', updateProgress);
-            audio.addEventListener('ended', nextSong);
+            audio.addEventListener('ended', handleSongEnd);
             
             // Click on progress bar
             progressContainer.addEventListener('click', setProgress);
         });
+        
+        // --- 5. IMAGE COLOR EXTRACTION ---
+        // Triggered when the main cover loads
+        mainCover.addEventListener('load', () => {
+            try {
+                // Create a 1x1 canvas to draw the image and extract the pixel
+                const canvas = document.createElement('canvas');
+                canvas.width = 1;
+                canvas.height = 1;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(mainCover, 0, 0, 1, 1);
+                
+                // Get Pixel Data
+                const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+                
+                // 1. Set Background (Dark Version of the color)
+                // We mix it with black to ensure it remains a background
+                const darkR = Math.floor(r * 0.3);
+                const darkG = Math.floor(g * 0.3);
+                const darkB = Math.floor(b * 0.3);
+                const bgGradient = `linear-gradient(135deg, rgb(${darkR},${darkG},${darkB}) 0%, #000000 100%)`;
+                
+                // 2. Set Primary Color (Ensure readability)
+                // Calculate brightness to see if the color is too dark
+                const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                let primaryColor = `rgb(${r},${g},${b})`;
+                
+                // If the color is too dark (brightness < 80), lighten it artificially
+                if (brightness < 80) {
+                   const lightR = Math.min(r + 120, 255);
+                   const lightG = Math.min(g + 120, 255);
+                   const lightB = Math.min(b + 120, 255);
+                   primaryColor = `rgb(${lightR},${lightG},${lightB})`;
+                }
 
-        // --- 5. DATA FETCHING ---
+                document.documentElement.style.setProperty('--bg-gradient', bgGradient);
+                document.documentElement.style.setProperty('--primary-color', primaryColor);
+                document.documentElement.style.setProperty('--secondary-color', primaryColor); // Simplified secondary
+
+            } catch (e) {
+                // Fallback if CORS blocks access (common with external images)
+                console.warn("Could not extract colors (likely CORS restricted). Using default theme.");
+                resetTheme();
+            }
+        });
+        
+        // Reset to default blue theme if image fails or errors
+        mainCover.addEventListener('error', resetTheme);
+
+        function resetTheme() {
+            document.documentElement.style.setProperty('--bg-gradient', defaultTheme.bg);
+            document.documentElement.style.setProperty('--primary-color', defaultTheme.primary);
+            document.documentElement.style.setProperty('--secondary-color', '#60a5fa');
+        }
+
+        // --- 6. DATA FETCHING ---
         async function fetchSongs() {
             songListEl.innerHTML = '<div class="loading-container"><div class="loading-spinner" style="display:block"></div></div>';
             
@@ -738,19 +861,14 @@
             renderPlaylists();
             
             // Render Songs
-            filterPlaylist('All');
+            filterPlaylist(currentPlaylist); // Keep current filter
 
-            // Load first song but don't play
-            if (songs.length > 0) {
-                // Do not auto load to player to avoid empty state confusion, 
-                // just let user click. Or auto-load index 0 without playing:
-                // loadSongData(songs[0]);
-            } else {
+            if (songs.length === 0) {
                 songListEl.innerHTML = '<div class="empty-state">No songs found. Click "Upload Song" to add one!</div>';
             }
         }
 
-        // --- 6. RENDERING ---
+        // --- 7. RENDERING ---
         function renderPlaylists() {
             const playlists = ['Favorites', ...new Set(songs.map(s => s.playlist).filter(p => p !== 'Favorites'))];
             
@@ -811,12 +929,17 @@
                     <div class="play-icon-overlay">
                         <i class="fas fa-play" style="color:white; font-size: 0.8rem; margin-left:2px;"></i>
                     </div>
+                    <!-- Actions -->
+                    <div class="song-actions">
+                        <button class="action-btn" onclick="openEditModal(${index}, event)" title="Edit"><i class="fas fa-edit"></i></button>
+                        <button class="action-btn delete" onclick="deleteSong(${song.id}, event)" title="Delete"><i class="fas fa-trash"></i></button>
+                    </div>
                 `;
                 songListEl.appendChild(el);
             });
         }
 
-        // --- 7. PLAYER LOGIC ---
+        // --- 8. PLAYER LOGIC ---
         function playSongFromFilterList(filterIndex) {
             // Find the actual index in the main 'songs' array
             const selectedSong = filteredSongs[filterIndex];
@@ -834,7 +957,13 @@
 
             mainTitle.innerText = song.song_title;
             mainArtist.innerText = song.artist;
+            
+            // Important: src assignment triggers the 'load' event listener which calculates colors
+            // If url is empty, default placeholder is used
             mainCover.src = song.cover_url || 'https://via.placeholder.com/300';
+            
+            // Setup Download Link
+            downloadBtn.href = song.mp3_url;
             
             audio.src = song.mp3_url;
             
@@ -873,11 +1002,32 @@
             playBtnIcon.classList.add('fa-play');
         }
 
+        function toggleLoop() {
+            audio.loop = !audio.loop;
+            if(audio.loop) {
+                loopBtn.classList.add('active');
+            } else {
+                loopBtn.classList.remove('active');
+            }
+        }
+
+        function skipTime(seconds) {
+            if (!audio.src) return;
+            audio.currentTime += seconds;
+        }
+
+        function handleSongEnd() {
+            // If native loop is on, it loops automatically.
+            // If not, go to next.
+            if (!audio.loop) {
+                nextSong();
+            }
+        }
+
         function nextSong() {
             if (filteredSongs.length === 0) return;
             
             // Logic to play next song in CURRENT FILTERED LIST
-            // 1. Find current song in filtered list
             const currentId = songs[currentIndex]?.id;
             let filterIndex = filteredSongs.findIndex(s => s.id === currentId);
 
@@ -935,18 +1085,48 @@
             audio.volume = val;
         }
 
-        // --- 8. MODAL & UPLOAD ---
+        // --- 9. MODAL & UPLOAD/EDIT ---
         const modal = document.getElementById('upload-modal');
         const playlistSelect = document.getElementById('in-playlist');
         const newPlaylistInput = document.getElementById('in-new-playlist');
+        const modalTitle = document.getElementById('modal-title');
+        const idInput = document.getElementById('in-id');
 
-        function openModal() {
+        function openModal(mode) {
             modal.classList.add('open');
-            // Refresh playlist dropdown options
-            const playlists = ['Favorites', ...new Set(songs.map(s => s.playlist).filter(p => p !== 'Favorites'))];
+            modalTitle.innerText = "Add New Song";
+            idInput.value = ""; // Clear ID implies create mode
+            document.getElementById('upload-form').reset();
+            newPlaylistInput.style.display = 'none';
+        }
+
+        function openEditModal(filterIndex, e) {
+            e.stopPropagation(); // Stop click bubbling (don't play song)
             
-            // Clear old dynamic options (keep static top 4 + create new)
-            // Ideally we rebuild the select, but for simplicity let's just ensure defaults
+            const song = filteredSongs[filterIndex];
+            if(!song) return;
+
+            modalTitle.innerText = "Edit Song";
+            modal.classList.add('open');
+            
+            // Populate Form
+            idInput.value = song.id;
+            document.getElementById('in-title').value = song.song_title;
+            document.getElementById('in-artist').value = song.artist;
+            document.getElementById('in-mp3').value = song.mp3_url;
+            document.getElementById('in-cover').value = song.cover_url || '';
+            document.getElementById('in-genre').value = song.genre || 'Pop';
+            
+            // Handle playlist
+            const exists = [...playlistSelect.options].some(o => o.value === song.playlist);
+            if (exists) {
+                playlistSelect.value = song.playlist;
+                newPlaylistInput.style.display = 'none';
+            } else {
+                playlistSelect.value = 'new_playlist_option';
+                newPlaylistInput.style.display = 'block';
+                newPlaylistInput.value = song.playlist;
+            }
         }
 
         function closeModal() {
@@ -977,6 +1157,7 @@
             spinner.style.display = 'block';
             btn.disabled = true;
 
+            const id = document.getElementById('in-id').value; // Check if editing
             const title = document.getElementById('in-title').value;
             const artist = document.getElementById('in-artist').value;
             const mp3 = document.getElementById('in-mp3').value;
@@ -988,22 +1169,34 @@
                 playlist = document.getElementById('in-new-playlist').value || 'General';
             }
 
-            const newSong = {
+            const songData = {
                 song_title: title,
                 artist: artist,
                 mp3_url: mp3,
-                cover_url: cover,
+                cover_url: cover || null, // Allow null
                 genre: genre,
                 playlist: playlist
             };
 
-            const { data, error } = await _supabase
-                .from('songs')
-                .insert([newSong])
-                .select();
+            let error = null;
+
+            if (id) {
+                // UPDATE
+                const res = await _supabase
+                    .from('songs')
+                    .update(songData)
+                    .eq('id', id);
+                error = res.error;
+            } else {
+                // INSERT
+                const res = await _supabase
+                    .from('songs')
+                    .insert([songData]);
+                error = res.error;
+            }
 
             if (error) {
-                alert('Error uploading song: ' + error.message);
+                alert('Error saving song: ' + error.message);
                 resetBtn();
                 return;
             }
@@ -1017,6 +1210,32 @@
                 text.style.display = 'block';
                 spinner.style.display = 'none';
                 btn.disabled = false;
+            }
+        }
+
+        async function deleteSong(id, e) {
+            e.stopPropagation();
+            if(!confirm("Are you sure you want to delete this song?")) return;
+
+            const { error } = await _supabase
+                .from('songs')
+                .delete()
+                .eq('id', id);
+            
+            if (error) {
+                alert("Error deleting: " + error.message);
+            } else {
+                // If the deleted song was playing, stop it
+                if (songs[currentIndex] && songs[currentIndex].id === id) {
+                    audio.pause();
+                    audio.src = '';
+                    mainTitle.innerText = "No Song Selected";
+                    currentIndex = -1;
+                    isPlaying = false;
+                    playBtnIcon.classList.remove('fa-pause');
+                    playBtnIcon.classList.add('fa-play');
+                }
+                fetchSongs();
             }
         }
     </script>
