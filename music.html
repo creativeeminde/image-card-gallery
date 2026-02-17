@@ -1416,7 +1416,67 @@
         }
 
         // --- LYRICS LOGIC (IMPROVED) ---
-     // 3. IMPROVED MATCHING LOGIC
+        function cleanTrackTitle(title) {
+            // Remove text in parentheses or brackets, "feat.", "remastered", etc.
+            // NON-GREEDY MATCHING to preserve title parts if possible
+            return title
+                .replace(/\([^)]*\)/g, '') // Remove (content) non-greedy
+                .replace(/\[[^\]]*\]/g, '') // Remove [content] non-greedy
+                .replace(/-.*remaster.*/i, '') // Remove "- Remaster..."
+                .replace(/feat\..*/i, '') // Remove "feat..."
+                .replace(/ft\..*/i, '') // Remove "ft..."
+                .trim();
+        }
+
+        async function openLyricsModal() {
+            const modal = document.getElementById('lyrics-modal');
+            const content = document.getElementById('lyrics-content');
+            const titleEl = document.getElementById('lyrics-title');
+            
+            if (currentIndex === -1 || !songs[currentIndex]) {
+                alert("Play a song first!");
+                return;
+            }
+
+            const song = songs[currentIndex];
+            titleEl.innerText = `${song.song_title} - Lyrics`;
+            
+            modal.classList.add('open');
+            content.innerHTML = '<div class="loading-container"><div class="loading-spinner" style="display:block"></div></div>';
+
+            try {
+                // 1. Clean the title for better search accuracy
+                const cleanedTitle = cleanTrackTitle(song.song_title);
+                const searchQuery = `${song.artist} ${cleanedTitle}`;
+                console.log("Searching lyrics for:", searchQuery);
+
+                // 2. Search LRCLIB
+                const searchUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(searchQuery)}`;
+                const searchRes = await fetch(searchUrl);
+                
+                if (!searchRes.ok) throw new Error("Search failed");
+                
+                let searchData = await searchRes.json();
+
+                // FALLBACK: If specific search fails, try searching just by Title and filter later
+                if (!searchData || searchData.length === 0) {
+                    console.log("Specific search failed. Trying title fallback:", cleanedTitle);
+                    const fallbackUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(cleanedTitle)}`;
+                    const fallbackRes = await fetch(fallbackUrl);
+                    if (fallbackRes.ok) {
+                        const fallbackData = await fallbackRes.json();
+                        // We will filter these results in the matching logic below
+                        if (fallbackData && fallbackData.length > 0) {
+                            searchData = fallbackData;
+                        }
+                    }
+                }
+
+                if (!searchData || searchData.length === 0) {
+                    throw new Error("No search results found");
+                }
+
+                // 3. IMPROVED MATCHING LOGIC
                 // We want to find the result that best matches our Artist and Title
                 const targetArtist = song.artist.toLowerCase();
                 const targetTitle = cleanedTitle.toLowerCase();
@@ -1457,6 +1517,35 @@
                 }
 
                 console.log("Best match selected:", bestMatch);
+
+                // 4. Fetch details by ID
+                const getUrl = `https://lrclib.net/api/get/${bestMatch.id}`;
+                const getRes = await fetch(getUrl);
+                const lyricData = await getRes.json();
+
+                // 5. Display Lyrics (Plain preferred, fallback to cleaned synced)
+                let lyrics = lyricData.plainLyrics;
+                if (!lyrics && lyricData.syncedLyrics) {
+                    // Regex to remove [mm:ss.xx] timestamps
+                    lyrics = lyricData.syncedLyrics.replace(/\[\d{2}:\d{2}\.\d{2}\] /g, ""); 
+                }
+
+                if (lyrics) {
+                    content.innerText = lyrics;
+                } else {
+                    content.innerHTML = '<div class="empty-state">Lyrics text empty.</div>';
+                }
+
+            } catch (e) {
+                // Warn instead of Error to keep console clean for expected misses
+                console.warn("Lyrics not found:", e.message);
+                content.innerHTML = '<div class="empty-state">Lyrics not found.<br><small>Try checking the artist/title spelling.</small></div>';
+            }
+        }
+
+        function closeLyricsModal() {
+            document.getElementById('lyrics-modal').classList.remove('open');
+        }
 
         // --- 9. MODAL & UPLOAD/EDIT ---
         const modal = document.getElementById('upload-modal');
