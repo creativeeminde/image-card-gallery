@@ -762,6 +762,28 @@
             100% { transform: rotate(360deg); }
         }
 
+        /* Lyrics Modal Specifics */
+        .lyrics-content {
+            background: rgba(0,0,0,0.2);
+            border-radius: 12px;
+            padding: 1.5rem;
+            max-height: 60vh;
+            overflow-y: auto;
+            color: var(--text-muted);
+            line-height: 1.8;
+            font-size: 1rem;
+            white-space: pre-wrap;
+            text-align: center;
+        }
+        
+        .lyrics-content::-webkit-scrollbar {
+            width: 6px;
+        }
+        .lyrics-content::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+        }
+
         /* Responsive */
         @media (max-width: 900px) {
             .app-container {
@@ -854,6 +876,11 @@
                 <button class="ctrl-btn skip-btn" onclick="skipTime(10)">+10s</button>
                 <button class="ctrl-btn" onclick="nextSong()"><i class="fas fa-step-forward"></i></button>
                 
+                <!-- Lyrics Button -->
+                <button class="ctrl-btn" onclick="openLyricsModal()" title="Show Lyrics">
+                    <i class="fas fa-music"></i>
+                </button>
+
                 <!-- Download Button -->
                 <a id="download-btn" href="#" target="_blank" class="ctrl-btn" title="Download Song">
                     <i class="fas fa-download"></i>
@@ -960,6 +987,19 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Lyrics Modal -->
+    <div class="modal-overlay" id="lyrics-modal">
+        <div class="modal">
+            <h2 id="lyrics-title">Lyrics</h2>
+            <div id="lyrics-content" class="lyrics-content">
+                <!-- Content injected here -->
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-cancel" onclick="closeLyricsModal()">Close</button>
+            </div>
         </div>
     </div>
 
@@ -1379,6 +1419,52 @@
             document.getElementById('loop-start-input').value = '';
             document.getElementById('loop-end-input').value = '';
             document.getElementById('loop-indicator').style.display = 'none';
+        }
+
+        // --- LYRICS LOGIC ---
+        async function openLyricsModal() {
+            const modal = document.getElementById('lyrics-modal');
+            const content = document.getElementById('lyrics-content');
+            const titleEl = document.getElementById('lyrics-title');
+            
+            if (currentIndex === -1 || !songs[currentIndex]) {
+                alert("Play a song first!");
+                return;
+            }
+
+            const song = songs[currentIndex];
+            titleEl.innerText = `${song.song_title} - Lyrics`;
+            
+            modal.classList.add('open');
+            content.innerHTML = '<div class="loading-container"><div class="loading-spinner" style="display:block"></div></div>';
+
+            try {
+                // Using LRCLIB API
+                const url = `https://lrclib.net/api/get?artist_name=${encodeURIComponent(song.artist)}&track_name=${encodeURIComponent(song.song_title)}`;
+                const response = await fetch(url);
+                
+                if (!response.ok) throw new Error("Not found");
+                
+                const data = await response.json();
+                
+                // Prefer plain lyrics, fallback to synced lyrics (stripped of timestamps)
+                let lyrics = data.plainLyrics;
+                if (!lyrics && data.syncedLyrics) {
+                    lyrics = data.syncedLyrics.replace(/\[.*?\]/g, ""); // basic strip
+                }
+
+                if (lyrics) {
+                    content.innerText = lyrics;
+                } else {
+                    content.innerHTML = '<div class="empty-state">Lyrics not available for this track.</div>';
+                }
+            } catch (e) {
+                content.innerHTML = '<div class="empty-state">Lyrics not found.<br><small>Try checking the artist/title spelling.</small></div>';
+            }
+        }
+
+        function closeLyricsModal() {
+            document.getElementById('lyrics-modal').classList.remove('open');
         }
 
         // --- 9. MODAL & UPLOAD/EDIT ---
