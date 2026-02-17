@@ -941,15 +941,9 @@
                 
                 <!-- Mood Selection -->
                 <div class="form-group">
-                    <label>Mood</label>
+                    <label>Mood (Optional)</label>
                     <select id="in-mood" onchange="checkNewMood(this)">
-                        <option value="Dancing">Dancing</option>
-                        <option value="Chill">Chill</option>
-                        <option value="Energetic">Energetic</option>
-                        <option value="Focus">Focus</option>
-                        <option value="Sad">Sad</option>
-                        <option value="Happy">Happy</option>
-                        <option value="new_mood_option">+ Create New...</option>
+                        <!-- Mood options populated by JS -->
                     </select>
                     <input type="text" id="in-new-mood" placeholder="Enter mood name" style="display:none; margin-top:0.5rem;">
                 </div>
@@ -1464,19 +1458,16 @@
                 
                 let searchData = await searchRes.json();
 
-                // FALLBACK: If specific search fails, try searching just by Title and filter by Artist
+                // FALLBACK: If specific search fails, try searching just by Title and filter later
                 if (!searchData || searchData.length === 0) {
                     console.log("Specific search failed. Trying title fallback:", cleanedTitle);
                     const fallbackUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(cleanedTitle)}`;
                     const fallbackRes = await fetch(fallbackUrl);
                     if (fallbackRes.ok) {
                         const fallbackData = await fallbackRes.json();
-                        // Filter results that contain the artist name partially
+                        // We will filter these results in the matching logic below
                         if (fallbackData && fallbackData.length > 0) {
-                            searchData = fallbackData.filter(item => 
-                                item.artistName.toLowerCase().includes(song.artist.toLowerCase()) || 
-                                song.artist.toLowerCase().includes(item.artistName.toLowerCase())
-                            );
+                            searchData = fallbackData;
                         }
                     }
                 }
@@ -1485,9 +1476,47 @@
                     throw new Error("No search results found");
                 }
 
-                // 3. Use the best match (first result)
-                const bestMatch = searchData[0];
-                console.log("Best match found:", bestMatch);
+                // 3. IMPROVED MATCHING LOGIC
+                // We want to find the result that best matches our Artist and Title
+                const targetArtist = song.artist.toLowerCase();
+                const targetTitle = cleanedTitle.toLowerCase();
+
+                // Step A: Filter by Artist (loose match)
+                // We allow results where the API artist contains our artist OR our artist contains the API artist
+                const artistMatches = searchData.filter(item => {
+                    const itemArtist = (item.artistName || "").toLowerCase();
+                    return itemArtist.includes(targetArtist) || targetArtist.includes(itemArtist);
+                });
+
+                console.log(`Found ${artistMatches.length} artist matches out of ${searchData.length} results.`);
+
+                let bestMatch = null;
+
+                if (artistMatches.length > 0) {
+                    // Step B: Within artist matches, look for EXACT title match
+                    bestMatch = artistMatches.find(item => 
+                        (item.trackName || "").toLowerCase() === targetTitle
+                    );
+
+                    // Step C: If no exact match, look for PARTIAL title match
+                    if (!bestMatch) {
+                        bestMatch = artistMatches.find(item => 
+                            (item.trackName || "").toLowerCase().includes(targetTitle)
+                        );
+                    }
+
+                    // Step D: Fallback to the first artist match if titles don't align perfectly
+                    if (!bestMatch) {
+                        bestMatch = artistMatches[0];
+                    }
+                } else {
+                    // Step E: No artist match found? This is risky, but we take the first result from the API
+                    // assuming LRCLIB's search ranking algorithm did a decent job for the query.
+                    console.warn("No strict artist match found. Using first API result.");
+                    bestMatch = searchData[0];
+                }
+
+                console.log("Best match selected:", bestMatch);
 
                 // 4. Fetch details by ID
                 const getUrl = `https://lrclib.net/api/get/${bestMatch.id}`;
@@ -1561,6 +1590,14 @@
             const setSelectOrCustom = (selectId, inputId, value, customValue) => {
                 const select = document.getElementById(selectId);
                 const input = document.getElementById(inputId);
+                
+                // Special case for empty mood
+                if (value === null || value === "") {
+                    select.value = ""; 
+                    input.style.display = 'none';
+                    return;
+                }
+
                 if ([...select.options].some(o => o.value === value)) {
                     select.value = value;
                     input.style.display = 'none';
@@ -1572,7 +1609,8 @@
             };
 
             setSelectOrCustom('in-genre', 'in-new-genre', song.genre, 'new_genre_option');
-            setSelectOrCustom('in-mood', 'in-new-mood', song.mood, 'new_mood_option');
+            // Ensure null/undefined mood maps to the "None" option (value="")
+            setSelectOrCustom('in-mood', 'in-new-mood', song.mood || "", 'new_mood_option');
         }
         
         // --- FAVORITE LOGIC ---
@@ -1673,7 +1711,8 @@
              const dbMoods = [...new Set(songs.map(s => s.mood))].filter(m => m);
              const allMoods = [...new Set([...defaultOptions, ...dbMoods])];
              
-             selectModal.innerHTML = '';
+             // Add "None" option first
+             selectModal.innerHTML = '<option value="">None</option>';
              allMoods.forEach(m => {
                  const opt = document.createElement('option');
                  opt.value = m; opt.innerText = m;
@@ -1739,6 +1778,8 @@
             
             if (genre === 'new_genre_option') genre = document.getElementById('in-new-genre').value || 'Unknown';
             if (mood === 'new_mood_option') mood = document.getElementById('in-new-mood').value || 'General';
+            // Treat empty mood string as null
+            if (mood === "") mood = null;
 
             const songData = {
                 song_title: title,
@@ -1751,17 +1792,42 @@
             };
 
             let error = null;
+            let res;
 
-            if (id) {
-                const res = await _supabase.from('songs').update(songData).eq('id', id);
+            try {
+                // Ensure we call .select() to verify the update happened
+                if (id) {
+                    res = await _supabase.from('songs').update(songData).eq('id', id).select();
+                } else {
+                    res = await _supabase.from('songs').insert([songData]).select();
+                }
                 error = res.error;
-            } else {
-                const res = await _supabase.from('songs').insert([songData]);
-                error = res.error;
+
+                // --- CHECK FOR "SILENT FAILURE" (RLS BLOCKING UPDATE) ---
+                if (!error && res.data && res.data.length === 0) {
+                    throw new Error("Database permission denied. You must enable UPDATE/DELETE policies in Supabase.");
+                }
+
+                // --- SAFETY FALLBACK FOR MISSING MOOD COLUMN ---
+                // If the error is about the missing mood column, remove it from payload and retry
+                if (error && error.message && error.message.includes('mood') && error.message.includes('column')) {
+                    console.warn("Supabase 'mood' column missing. Retrying without mood data.");
+                    delete songData.mood;
+                    if (id) {
+                        res = await _supabase.from('songs').update(songData).eq('id', id).select();
+                    } else {
+                        res = await _supabase.from('songs').insert([songData]).select();
+                    }
+                    error = res.error;
+                }
+                // ---------------------------------------------
+
+            } catch (err) {
+                error = err;
             }
 
             if (error) {
-                alert('Error saving song: ' + error.message);
+                alert('Error saving song: ' + (error.message || "Unknown error"));
                 resetBtn();
                 return;
             }
