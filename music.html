@@ -374,6 +374,8 @@
             width: 30px;
             height: 30px;
             border-radius: 50%;
+            position: relative;
+            z-index: 2; /* Ensure it's clickable above the row */
         }
 
         .star-btn.active {
@@ -1322,33 +1324,44 @@
         
         // --- FAVORITE LOGIC ---
         async function toggleFavorite(id, e) {
-            e.stopPropagation(); // Prevent playing song when clicking star
+            e.stopPropagation();
             
-            const song = songs.find(s => s.id === id);
-            if (!song) return;
+            const songIndex = songs.findIndex(s => s.id === id);
+            if (songIndex === -1) return;
+            const song = songs[songIndex];
 
+            // 1. Optimistic Update (Update UI immediately)
+            const wasFav = song.playlists && song.playlists.includes('Favorites');
             let newPlaylists;
-            // Check if 'Favorites' is already in the list
-            if (song.playlists.includes('Favorites')) {
-                // Remove it
-                newPlaylists = song.playlists.filter(p => p !== 'Favorites');
-            } else {
-                // Add it
-                newPlaylists = [...song.playlists, 'Favorites'];
-            }
+            
+            // Ensure playlists is an array
+            const currentPlaylists = song.playlists || [];
 
-            // Update Database
+            if (wasFav) {
+                newPlaylists = currentPlaylists.filter(p => p !== 'Favorites');
+            } else {
+                newPlaylists = [...currentPlaylists, 'Favorites'];
+            }
+            
+            // Update local model
+            songs[songIndex].playlists = newPlaylists;
+            
+            // Re-render UI to show change instantly
+            applyFilters(); 
+
+            // 2. Database Update
             const { error } = await _supabase
                 .from('songs')
                 .update({ playlist: JSON.stringify(newPlaylists) })
                 .eq('id', id);
 
+            // 3. Rollback if error
             if (error) {
                 console.error('Error updating favorite:', error);
                 alert('Could not update favorite status');
-            } else {
-                // Refresh local data to reflect change
-                await fetchSongs();
+                // Revert local change
+                songs[songIndex].playlists = wasFav ? [...newPlaylists, 'Favorites'] : newPlaylists.filter(p => p !== 'Favorites'); 
+                applyFilters();
             }
         }
 
