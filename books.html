@@ -658,35 +658,9 @@
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         const MOCK_DATA = {
-            currentlyReading: [
-                { id: 1, title: 'Fourth Wing', author: 'Rebecca Yarros', coverUrl: 'https://covers.openlibrary.org/b/isbn/9781649374042-M.jpg', progress: 37, current_page: 185, total_pages: 500, created_at: new Date().toISOString() },
-                { id: 2, title: 'The Nickel Boys', author: 'Colson Whitehead', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780385537070-M.jpg', progress: 58, current_page: 123, total_pages: 213, created_at: new Date().toISOString() },
-                { id: 3, title: 'The Only One Left', author: 'Riley Sager', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780593183428-M.jpg', progress: 90, current_page: 345, total_pages: 383, created_at: new Date().toISOString() },
-                { id: 4, title: 'Wool', author: 'Hugh Howey', coverUrl: 'https://covers.openlibrary.org/b/isbn/9781476733951-M.jpg', progress: 75, current_page: 420, total_pages: 560, created_at: new Date().toISOString() },
-            ],
-            readingLater: [
-                { id: 101, title: 'Project Hail Mary', author: 'Andy Weir', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780593135204-M.jpg', created_at: new Date().toISOString() },
-                { id: 102, title: 'Dark Matter', author: 'Blake Crouch', coverUrl: 'https://covers.openlibrary.org/b/isbn/9781101904220-M.jpg', created_at: new Date().toISOString() }
-            ],
-            readBooks: [
-                { id: 201, title: '1984', author: 'George Orwell', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780451524935-M.jpg', created_at: new Date().toISOString() },
-                { id: 202, title: 'Educated', author: 'Tara Westover', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780399590504-M.jpg', created_at: new Date().toISOString() }
-            ],
-            customLists: [
-                { id: 'mock_1', name: 'Summer Reads', description: 'Beach vibes and light thrillers' },
-                { id: 'mock_2', name: 'Sci-Fi Masterpieces', description: 'Best space operas out there' }
-            ],
-            listItems: [
-                { id: 'mock_item1', list_id: 'mock_1', book_key: '/works/OL20807755W', title: 'Verity', author: 'Colleen Hoover', coverUrl: 'https://covers.openlibrary.org/b/isbn/9781538724736-M.jpg' }
-            ],
             recommended: [
                 { id: 5, title: 'Onyx Storm', author: 'Rebecca Yarros', coverUrl: 'https://covers.openlibrary.org/b/isbn/9781649374165-M.jpg', rating: 4.45 },
                 { id: 6, title: 'None of This is True', author: 'Lisa Jewell', coverUrl: 'https://covers.openlibrary.org/b/isbn/9781982171682-M.jpg', rating: 4.10 },
-            ],
-            challenge: { id: 1, challenge_type: 'yearly', target: 10, read: 0 },
-            allBooksList: [
-                { id: 10, title: 'Educated', author: 'Tara Westover', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780399590504-M.jpg', rating: 4.47, status: 'To read', description: 'A memoir about a woman who grows up in a strict and isolated survivalist family...' },
-                { id: 2, title: 'The Nickel Boys', author: 'Colson Whitehead', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780385537070-M.jpg', rating: 4.26, status: 'Currently reading', progress: 58, description: 'In this Pulitzer Prize-winning novel...' },
             ],
             exploreTrending: [
                 { key: '/works/OL28669460W', title: 'Warrior Girl Unearthed', author_name: ['Angeline Boulley'], coverUrl: 'https://covers.openlibrary.org/b/isbn/9781250232288-M.jpg' },
@@ -1523,6 +1497,11 @@
             if(!container) return;
             container.innerHTML = '';
             
+            if (!books || books.length === 0) {
+                container.innerHTML = '<p class="col-span-full text-center text-sm text-brand-muted py-8">You are not reading any books right now.</p>';
+                return;
+            }
+
             books.forEach(book => {
                 const bookEl = document.createElement('div');
                 bookEl.className = 'flex flex-col items-center group cursor-pointer';
@@ -1630,6 +1609,11 @@
             if(!container) return;
             container.innerHTML = '';
             
+            if (!books || books.length === 0) {
+                container.innerHTML = '<p class="col-span-full text-center text-sm text-brand-muted py-6">No books in this list yet.</p>';
+                return;
+            }
+
             books.forEach(book => {
                 const bookEl = document.createElement('div');
                 bookEl.className = 'flex flex-col items-center group cursor-pointer';
@@ -1691,6 +1675,12 @@
             if(!container) return; 
             container.innerHTML = ''; 
             
+            if (!books || books.length === 0) {
+                container.innerHTML = '<p class="text-sm text-brand-muted py-8 px-4">No books currently being read.</p>';
+                if(dotsContainer) dotsContainer.innerHTML = '';
+                return;
+            }
+
             const booksToShow = books.slice(0, 10); // Show up to 10 active reading books
             
             booksToShow.forEach(book => { 
@@ -1909,19 +1899,19 @@
         }
 
         async function fetchSupabaseData() {
-            // 1. Initialize variables with Mock Fallbacks
-            let activeCurrentlyReading = MOCK_DATA.currentlyReading;
-            let readingLaterList = MOCK_DATA.readingLater;
-            let readBooksList = MOCK_DATA.readBooks;
-            let challengeData = MOCK_DATA.challenge;
+            // 1. Initialize variables (Strictly empty, rely on Supabase as source of truth)
+            let activeCurrentlyReading = [];
+            let readingLaterList = [];
+            let readBooksList = [];
+            let challengeData = globalChallenge;
             
-            globalCustomLists = MOCK_DATA.customLists;
-            globalListItems = MOCK_DATA.listItems;
+            globalCustomLists = [];
+            globalListItems = [];
 
             // 2. Fetch each table independently so one failure doesn't break the whole app
             try {
                 const { data, error } = await supabaseClient.from('currently_reading').select('*').order('created_at', { ascending: false }).limit(4);
-                if (!error && data && data.length > 0) activeCurrentlyReading = data;
+                if (!error && data) activeCurrentlyReading = data;
             } catch(e) { console.warn("Failed to fetch currently_reading"); }
 
             try {
