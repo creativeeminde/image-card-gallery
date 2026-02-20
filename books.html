@@ -100,6 +100,15 @@
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
             background: #94a3b8;
         }
+
+        /* Hide scrollbar for carousel but keep it scrollable */
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
     </style>
 </head>
 <body class="min-h-screen font-sans flex flex-col items-center pt-6 px-4 sm:px-8">
@@ -129,6 +138,32 @@
             
             <button onclick="saveProgress()" class="w-full bg-brand-primary text-white font-semibold py-3 rounded-xl shadow-md hover:bg-brand-primaryDark transition-colors">
                 Save Progress
+            </button>
+        </div>
+    </div>
+
+    <!-- Challenge Settings Modal -->
+    <div id="challenge-modal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center backdrop-blur-sm transition-opacity">
+        <div class="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl transform transition-transform">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="font-semibold text-lg text-brand-text">Challenge Settings</h3>
+                <button onclick="closeChallengeModal()" class="text-brand-muted hover:text-brand-primary transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="flex flex-col gap-4 mb-8">
+                <div class="flex flex-col">
+                    <label class="text-xs font-semibold text-brand-text mb-1">Challenge Type</label>
+                    <select id="challenge-type-input" class="w-full border border-gray-200 rounded-xl p-3 text-sm text-brand-text focus:ring-2 focus:ring-brand-primary outline-none shadow-sm bg-white cursor-pointer">
+                        <option value="yearly">Yearly Challenge</option>
+                        <option value="monthly">Monthly Challenge</option>
+                    </select>
+                </div>
+                <div class="flex flex-col">
+                    <label class="text-xs font-semibold text-brand-text mb-1">Target Books</label>
+                    <input type="number" id="challenge-target-input" min="1" class="w-full border border-gray-200 rounded-xl p-3 text-sm text-brand-text focus:ring-2 focus:ring-brand-primary outline-none shadow-sm">
+                </div>
+            </div>
+            <button onclick="saveChallengeSettings()" class="w-full bg-brand-primary text-white font-semibold py-3 rounded-xl shadow-md hover:bg-brand-primaryDark transition-colors">
+                Save Changes
             </button>
         </div>
     </div>
@@ -246,7 +281,12 @@
             <!-- Bottom Section: Challenge & Stats -->
             <section class="lg:col-span-3 bg-brand-card rounded-3xl p-8 shadow-sm flex flex-col md:flex-row items-center gap-10">
                 <div class="w-full md:w-5/12 flex flex-col items-center md:items-start pl-0 md:pl-10">
-                    <h2 class="font-semibold text-lg mb-6 text-center md:text-left w-full" id="challenge-title">2025 Book challenge</h2>
+                    <div class="flex justify-between items-center w-full mb-6 relative">
+                        <h2 class="font-semibold text-lg text-center md:text-left flex-1" id="challenge-title">Book challenge</h2>
+                        <button onclick="openChallengeModal()" class="text-brand-muted hover:text-brand-primary transition-colors focus:outline-none shrink-0" title="Challenge Settings">
+                            <i data-lucide="settings" class="w-5 h-5"></i>
+                        </button>
+                    </div>
                     <div class="w-full relative progress-container flex items-center mb-2">
                         <div id="challenge-progress-bar" class="bg-brand-primary h-[10px] rounded-full" style="width: 20%;"></div>
                         <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -308,15 +348,13 @@
         <div id="view-books" class="hidden flex-col gap-10">
             <!-- Top Carousel Section -->
             <div class="w-full flex flex-col items-center mt-2">
-                <div class="flex items-center w-full justify-between gap-4">
-                    <button class="text-brand-muted hover:text-brand-text transition-colors p-2"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>
-                    <div id="books-carousel-content" class="flex-1 flex gap-8 overflow-hidden justify-center items-center pt-2"></div>
-                    <button class="text-brand-muted hover:text-brand-text transition-colors p-2"><i data-lucide="chevron-right" class="w-5 h-5"></i></button>
+                <div class="flex items-center w-full justify-between gap-2 sm:gap-4 relative">
+                    <button onclick="scrollBooksCarousel(-1)" class="text-brand-muted hover:text-brand-primary transition-colors p-2 z-10 bg-brand-surface/50 rounded-full sm:bg-transparent shrink-0 focus:outline-none"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>
+                    <div id="books-carousel-content" class="flex-1 flex gap-6 sm:gap-8 overflow-x-auto snap-x snap-mandatory scroll-smooth justify-start items-center pt-2 pb-4 hide-scrollbar px-2"></div>
+                    <button onclick="scrollBooksCarousel(1)" class="text-brand-muted hover:text-brand-primary transition-colors p-2 z-10 bg-brand-surface/50 rounded-full sm:bg-transparent shrink-0 focus:outline-none"><i data-lucide="chevron-right" class="w-5 h-5"></i></button>
                 </div>
-                <div class="flex justify-center gap-1.5 mt-6">
-                    <div class="w-6 h-1 bg-brand-primary rounded-full"></div>
-                    <div class="w-1.5 h-1.5 bg-brand-primaryLight rounded-full mt-[1px]"></div>
-                    <div class="w-1.5 h-1.5 bg-brand-primaryLight rounded-full mt-[1px]"></div>
+                <div id="books-carousel-dots" class="flex justify-center gap-1.5 mt-2">
+                    <!-- Dots updated via JS -->
                 </div>
             </div>
 
@@ -342,14 +380,12 @@
                     </button>
                 </div>
                 <div id="books-list-container" class="flex flex-col"></div>
-                <div class="flex justify-between items-center mt-8 pt-4">
-                    <button class="text-brand-muted hover:text-brand-text"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
-                    <div class="flex gap-2">
-                        <div class="w-6 h-1 bg-brand-primary rounded-full"></div>
-                        <div class="w-1.5 h-1.5 bg-brand-primaryLight rounded-full mt-[1px]"></div>
-                        <div class="w-1.5 h-1.5 bg-brand-primaryLight rounded-full mt-[1px]"></div>
+                <div class="flex justify-between items-center mt-8 pt-6 border-t border-gray-100">
+                    <button id="books-list-prev" onclick="changeBooksPage(-1)" class="text-brand-muted hover:text-brand-primary transition-colors p-2 disabled:opacity-30 disabled:cursor-not-allowed focus:outline-none"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>
+                    <div id="books-list-dots" class="flex gap-2 items-center">
+                        <!-- Dots updated via JS -->
                     </div>
-                    <button class="text-brand-muted hover:text-brand-text"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                    <button id="books-list-next" onclick="changeBooksPage(1)" class="text-brand-muted hover:text-brand-primary transition-colors p-2 disabled:opacity-30 disabled:cursor-not-allowed focus:outline-none"><i data-lucide="chevron-right" class="w-5 h-5"></i></button>
                 </div>
             </div>
         </div>
@@ -578,6 +614,7 @@
         
         let globalCustomLists = [];
         let globalListItems = [];
+        let globalChallenge = { id: 1, challenge_type: 'yearly', target: 10, read: 0 };
         
         let lastViewBeforeDetails = 'home';
         let lastActiveTab = 'home';
@@ -585,12 +622,17 @@
         let currentlyEditingBookId = null;
         let lastGenreViewContext = 'explore'; 
         let currentViewedListId = null;
-        let currentlyAddingBook = null; // Book data temporarily held to add to a custom list
+        let currentlyAddingBook = null; 
         
         // Pagination Trackers
         let currentSearchQuery = '';
         let currentSearchPage = 1;
         let totalSearchPages = 1;
+
+        // Books List Trackers
+        let globalCombinedLibrary = [];
+        let currentBooksListPage = 1;
+        const BOOKS_PER_PAGE = 5;
 
         // Predefined Extensive Genre List
         const ALL_GENRES = [
@@ -622,18 +664,18 @@
 
         const MOCK_DATA = {
             currentlyReading: [
-                { id: 1, title: 'Fourth Wing', author: 'Rebecca Yarros', coverUrl: 'https://covers.openlibrary.org/b/isbn/9781649374042-M.jpg', progress: 37, current_page: 185, total_pages: 500 },
-                { id: 2, title: 'The Nickel Boys', author: 'Colson Whitehead', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780385537070-M.jpg', progress: 58, current_page: 123, total_pages: 213 },
-                { id: 3, title: 'The Only One Left', author: 'Riley Sager', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780593183428-M.jpg', progress: 90, current_page: 345, total_pages: 383 },
-                { id: 4, title: 'Wool', author: 'Hugh Howey', coverUrl: 'https://covers.openlibrary.org/b/isbn/9781476733951-M.jpg', progress: 75, current_page: 420, total_pages: 560 },
+                { id: 1, title: 'Fourth Wing', author: 'Rebecca Yarros', coverUrl: 'https://covers.openlibrary.org/b/isbn/9781649374042-M.jpg', progress: 37, current_page: 185, total_pages: 500, created_at: new Date().toISOString() },
+                { id: 2, title: 'The Nickel Boys', author: 'Colson Whitehead', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780385537070-M.jpg', progress: 58, current_page: 123, total_pages: 213, created_at: new Date().toISOString() },
+                { id: 3, title: 'The Only One Left', author: 'Riley Sager', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780593183428-M.jpg', progress: 90, current_page: 345, total_pages: 383, created_at: new Date().toISOString() },
+                { id: 4, title: 'Wool', author: 'Hugh Howey', coverUrl: 'https://covers.openlibrary.org/b/isbn/9781476733951-M.jpg', progress: 75, current_page: 420, total_pages: 560, created_at: new Date().toISOString() },
             ],
             readingLater: [
-                { id: 101, title: 'Project Hail Mary', author: 'Andy Weir', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780593135204-M.jpg' },
-                { id: 102, title: 'Dark Matter', author: 'Blake Crouch', coverUrl: 'https://covers.openlibrary.org/b/isbn/9781101904220-M.jpg' }
+                { id: 101, title: 'Project Hail Mary', author: 'Andy Weir', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780593135204-M.jpg', created_at: new Date().toISOString() },
+                { id: 102, title: 'Dark Matter', author: 'Blake Crouch', coverUrl: 'https://covers.openlibrary.org/b/isbn/9781101904220-M.jpg', created_at: new Date().toISOString() }
             ],
             readBooks: [
-                { id: 201, title: '1984', author: 'George Orwell', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780451524935-M.jpg' },
-                { id: 202, title: 'Educated', author: 'Tara Westover', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780399590504-M.jpg' }
+                { id: 201, title: '1984', author: 'George Orwell', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780451524935-M.jpg', created_at: new Date().toISOString() },
+                { id: 202, title: 'Educated', author: 'Tara Westover', coverUrl: 'https://covers.openlibrary.org/b/isbn/9780399590504-M.jpg', created_at: new Date().toISOString() }
             ],
             customLists: [
                 { id: 'mock_1', name: 'Summer Reads', description: 'Beach vibes and light thrillers' },
@@ -646,7 +688,7 @@
                 { id: 5, title: 'Onyx Storm', author: 'Rebecca Yarros', coverUrl: 'https://covers.openlibrary.org/b/isbn/9781649374165-M.jpg', rating: 4.45 },
                 { id: 6, title: 'None of This is True', author: 'Lisa Jewell', coverUrl: 'https://covers.openlibrary.org/b/isbn/9781982171682-M.jpg', rating: 4.10 },
             ],
-            challenge: { year: 2025, read: 2, target: 10 },
+            challenge: { id: 1, challenge_type: 'yearly', target: 10, read: 0 },
             stats: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             fullStats: {
                 pagesRead: [100, 250, null, null, null, null, null, null, null, null, null, null],
@@ -737,6 +779,110 @@
                 setTimeout(() => toast.remove(), 300);
             }, 3000);
         }
+
+        async function saveBookToLibrary(statusTable) {
+            const book = currentlyViewingBook;
+            if (!book) return;
+
+            const dropdown = document.getElementById('dropdown-details');
+            if(dropdown) dropdown.classList.add('hidden');
+
+            const title = book.title || 'Unknown Title';
+            const author = book.author_name ? book.author_name[0] : (book.author || 'Unknown Author');
+            const coverUrl = book.coverUrl || (book.cover_i ? `https://covers.openlibrary.org/b/id/${book.cover_i}-M.jpg` : ''); 
+
+            try {
+                const payload = { title, author, coverUrl };
+                if (statusTable === 'currently_reading') {
+                    payload.progress = 0;
+                    payload.current_page = 0;
+                    payload.total_pages = book.total_pages || 300;
+                }
+
+                const { error } = await supabaseClient.from(statusTable).insert([payload]);
+                
+                if (error) {
+                    if (error.code === '42P01') throw new Error(`Table '${statusTable}' does not exist.`);
+                    if (error.code === '42501') throw new Error(`Permission denied.`);
+                    throw error;
+                }
+                
+                let statusText = statusTable === 'currently_reading' ? 'Currently Reading' : (statusTable === 'reading_later' ? 'Reading Later' : 'Read');
+                showToast(`Added to ${statusText}!`);
+                
+                fetchSupabaseData(); // Refresh UI lists
+            } catch (err) {
+                console.error("Save failed:", err);
+                showToast(err.message || 'Failed to add book.', 'error');
+            }
+        }
+
+        // --- Challenge Settings Logic ---
+        function calculateChallengeProgress() {
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth();
+
+            let readCount = 0;
+            globalLibrary.forEach(book => {
+                if (book.tableName === 'read_books') {
+                    // Use database created_at date, or fallback to now if missing
+                    const readDate = book.created_at ? new Date(book.created_at) : new Date();
+                    
+                    if (globalChallenge.challenge_type === 'monthly') {
+                        if (readDate.getFullYear() === currentYear && readDate.getMonth() === currentMonth) {
+                            readCount++;
+                        }
+                    } else { // default yearly
+                        if (readDate.getFullYear() === currentYear) {
+                            readCount++;
+                        }
+                    }
+                }
+            });
+
+            globalChallenge.read = readCount;
+            renderChallenge(globalChallenge);
+        }
+
+        function openChallengeModal() {
+            document.getElementById('challenge-type-input').value = globalChallenge.challenge_type || 'yearly';
+            document.getElementById('challenge-target-input').value = globalChallenge.target || 10;
+            document.getElementById('challenge-modal').classList.remove('hidden');
+        }
+
+        function closeChallengeModal() {
+            document.getElementById('challenge-modal').classList.add('hidden');
+        }
+
+        async function saveChallengeSettings() {
+            const type = document.getElementById('challenge-type-input').value;
+            const target = parseInt(document.getElementById('challenge-target-input').value) || 1;
+
+            globalChallenge.challenge_type = type;
+            globalChallenge.target = target;
+
+            try {
+                // Update the single row in the challenge table (assuming id=1 exists)
+                const { error } = await supabaseClient
+                    .from('reading_challenge')
+                    .update({ challenge_type: type, target: target })
+                    .eq('id', globalChallenge.id || 1);
+                    
+                if (error) {
+                    if (error.code === '42703') throw new Error('Schema update needed for challenge_type column.');
+                    throw error;
+                }
+                showToast('Challenge settings saved!');
+            } catch (e) {
+                console.warn(e);
+                showToast('Challenge updated locally. ' + (e.message.includes('Schema') ? 'Update DB Schema.' : ''), 'success');
+            }
+
+            closeChallengeModal();
+            calculateChallengeProgress(); // Re-render instantly
+        }
+
 
         // --- List Management UI Logic ---
         function openCreateListModal(fromAddModal = false) {
@@ -1371,12 +1517,31 @@
         }
 
         function renderChallenge(challenge) {
-            document.getElementById('challenge-title').textContent = `${challenge.year} Book challenge`;
-            const percentage = (challenge.read / challenge.target) * 100;
+            const now = new Date();
+            const year = now.getFullYear();
+            const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            const month = monthNames[now.getMonth()];
+
+            const titlePrefix = challenge.challenge_type === 'monthly' ? `${month} ${year}` : `${year}`;
+            
+            document.getElementById('challenge-title').textContent = `${titlePrefix} Book Challenge`;
+            
+            const percentage = Math.min(100, (challenge.read / challenge.target) * 100) || 0;
             document.getElementById('challenge-progress-bar').style.width = `${percentage}%`;
             document.getElementById('challenge-text').textContent = `${challenge.read}/${challenge.target} books read`;
-            document.getElementById('full-stats-challenge-title').textContent = `${challenge.year} reading challenge`;
-            document.getElementById('stats-donut-text').textContent = `${challenge.read}/${challenge.target}`;
+            
+            // Sync with stats view if it exists
+            const statsTitleEl = document.getElementById('full-stats-challenge-title');
+            if (statsTitleEl) statsTitleEl.textContent = `${titlePrefix} reading challenge`;
+            
+            const statsTextEl = document.getElementById('stats-donut-text');
+            if (statsTextEl) statsTextEl.textContent = `${challenge.read}/${challenge.target}`;
+
+            // Ensure the main stats chart is perfectly synchronized with the dynamic data
+            if (charts['statsPageDonut']) {
+                 charts['statsPageDonut'].data.datasets[0].data = [challenge.read, Math.max(0, challenge.target - challenge.read)];
+                 charts['statsPageDonut'].update();
+            }
         }
 
         function renderBookListBasic(books, containerId, tableName) {
@@ -1418,7 +1583,7 @@
         }
         function renderHomeChart(dataPoints) { createChart('statsChart', { type: 'line', data: { labels: ['1','2','3','4','5','6','7','8','9','10','11','12'], datasets: [{ data: dataPoints, borderColor: '#f97316', backgroundColor: '#f97316', borderWidth: 1.5, pointBackgroundColor: '#f97316', pointBorderColor: '#fff', pointBorderWidth: 2, pointRadius: (ctx) => ctx.raw > 0 ? 4 : 0, tension: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { min: 1, max: 5, ticks: { stepSize: 1, color: '#a0aec0', font: { size: 10 } }, border: { display: false }, grid: { color: '#fde9d9', drawTicks: false }, title: { display: true, text: 'Books', align: 'end', color: '#a0aec0', font: { size: 10 }, padding: { bottom: -15 } } }, x: { ticks: { color: '#a0aec0', font: { size: 10 } }, border: { display: false }, grid: { display: false }, title: { display: true, text: 'Months', align: 'end', color: '#a0aec0', font: { size: 10 } } } } } }); }
         function renderFullStatsGraphs(challenge, stats) {
-            createChart('statsPageDonut', { type: 'doughnut', data: { labels: ['Read', 'Remaining'], datasets: [{ data: [challenge.read, challenge.target - challenge.read], backgroundColor: ['#f97316', '#ffedd5'], borderWidth: 0, borderRadius: 20 }] }, options: { cutout: '75%', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } } } });
+            createChart('statsPageDonut', { type: 'doughnut', data: { labels: ['Read', 'Remaining'], datasets: [{ data: [challenge.read, Math.max(0, challenge.target - challenge.read)], backgroundColor: ['#f97316', '#ffedd5'], borderWidth: 0, borderRadius: 20 }] }, options: { cutout: '75%', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } } } });
             createChart('statsPageDualLine', { type: 'line', data: { labels: ['1','2','3','4','5','6','7','8','9','10','11','12'], datasets: [ { label: 'Pages read', data: stats.pagesRead, borderColor: '#d97706', backgroundColor: '#d97706', yAxisID: 'yPages', pointBackgroundColor: '#d97706', pointBorderColor: '#fff', pointBorderWidth: 2, pointRadius: (ctx) => ctx.raw !== null ? 4 : 0, tension: 0 }, { label: 'Books read', data: stats.booksRead, borderColor: '#fdba74', backgroundColor: '#fdba74', yAxisID: 'yBooks', pointBackgroundColor: '#fdba74', pointBorderColor: '#fff', pointBorderWidth: 2, pointRadius: (ctx) => ctx.raw !== null ? 4 : 0, tension: 0 } ] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#a0aec0', font: { size: 10 } }, grid: { display: false }, border: { display: false }, title: { display: true, text: 'Months', align: 'end', color: '#a0aec0', font: { size: 10 } } }, yBooks: { type: 'linear', position: 'left', min: 1, max: 5, ticks: { stepSize: 1, color: '#a0aec0', font: { size: 10 } }, grid: { color: '#fde9d9', drawTicks: false }, border: { display: false }, title: { display: true, text: 'Books', align: 'end', color: '#a0aec0', font: { size: 10 }, padding: { bottom: -15 } } }, yPages: { type: 'linear', position: 'right', min: 100, max: 500, ticks: { stepSize: 100, color: '#a0aec0', font: { size: 10 } }, grid: { display: false }, border: { display: false }, title: { display: true, text: 'Pages', align: 'end', color: '#a0aec0', font: { size: 10 }, padding: { bottom: -15 } } } } } });
             createChart('statsPagePie', { type: 'pie', data: { labels: ['emotional', 'mysterious', 'dark'], datasets: [{ data: [stats.mood.emotional, stats.mood.mysterious, stats.mood.dark], backgroundColor: ['#ffedd5', '#fdba74', '#d97706'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } });
             const barOptions = { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { min: 0, max: 4, ticks: { stepSize: 1, color: '#a0aec0', font: { size: 10 } }, grid: { display: false }, border: { color: '#a0aec0' } }, y: { ticks: { color: '#2d3748', font: { size: 11 } }, grid: { display: false }, border: { color: '#a0aec0' } } } };
@@ -1426,13 +1591,27 @@
             createChart('statsPageLanguages', { type: 'bar', data: { labels: ['English', 'Polish', 'Ukrainian'], datasets: [{ data: [stats.languages.english, stats.languages.polish, stats.languages.ukrainian], backgroundColor: '#f97316', barThickness: 10, borderRadius: 5 }] }, options: barOptions });
         }
 
+        // --- Carousel Logic ---
+        function scrollBooksCarousel(direction) {
+            const container = document.getElementById('books-carousel-content');
+            if (container) {
+                const item = container.firstElementChild;
+                const scrollAmount = item ? item.offsetWidth + 24 : 300; 
+                container.scrollBy({ left: direction * scrollAmount, behavior: 'smooth' });
+            }
+        }
+
         function renderBooksViewCarousel(books) { 
             const container = document.getElementById('books-carousel-content'); 
+            const dotsContainer = document.getElementById('books-carousel-dots');
             if(!container) return; 
             container.innerHTML = ''; 
-            books.slice(0, 3).forEach(book => { 
+            
+            const booksToShow = books.slice(0, 10); // Show up to 10 active reading books
+            
+            booksToShow.forEach(book => { 
                 const bookEl = document.createElement('div'); 
-                bookEl.className = 'flex items-center gap-4 w-[280px] shrink-0 cursor-pointer group'; 
+                bookEl.className = 'flex items-center gap-4 w-[280px] shrink-0 cursor-pointer group snap-center'; 
                 
                 bookEl.onclick = () => openDetailedView({
                     title: book.title,
@@ -1455,58 +1634,130 @@
                 bookEl.innerHTML = `${imgHTML}<div class="flex flex-col flex-1 min-w-0"><h4 class="font-semibold text-sm text-brand-text truncate group-hover:text-brand-primary transition-colors">${book.title}</h4><p class="text-[10px] text-brand-muted mb-2 truncate">by ${book.author}</p><div class="flex items-center gap-2 mb-2"><div class="w-full relative progress-container flex items-center"><div class="bg-brand-primary h-[10px] rounded-full" style="width: ${progressPct}%;"></div></div><span class="text-[10px] text-brand-muted font-medium">${progressPct}%</span></div><button onclick="openProgressModal('${book.id}', ${currentPage}, ${totalPages}); event.stopPropagation();" class="border border-brand-primaryLight text-brand-primary hover:bg-brand-primary hover:text-white transition-colors rounded-full px-4 py-1 text-[10px] font-semibold w-fit mx-auto mt-1">Update progress</button></div>`; 
                 container.appendChild(bookEl); 
             }); 
+            
+            // Setup dynamic dots based on scroll position
+            if (dotsContainer && booksToShow.length > 0) {
+                dotsContainer.innerHTML = '';
+                const dotCount = Math.min(booksToShow.length, 5); 
+                for(let i=0; i<dotCount; i++) {
+                    const dot = document.createElement('div');
+                    dot.className = i === 0 ? 'w-6 h-1.5 bg-brand-primary rounded-full transition-all' : 'w-1.5 h-1.5 bg-brand-primaryLight rounded-full mt-[1px] transition-all';
+                    dotsContainer.appendChild(dot);
+                }
+
+                // Sync dots on swipe/scroll
+                container.addEventListener('scroll', () => {
+                     const scrollLeft = container.scrollLeft;
+                     const maxScroll = container.scrollWidth - container.clientWidth;
+                     const pct = maxScroll > 0 ? scrollLeft / maxScroll : 0;
+                     const dots = dotsContainer.children;
+                     if(dots.length > 0) {
+                         const activeIndex = Math.round(pct * (dots.length - 1));
+                         for(let i=0; i<dots.length; i++) {
+                             dots[i].className = i === activeIndex ? 'w-6 h-1.5 bg-brand-primary rounded-full transition-all' : 'w-1.5 h-1.5 bg-brand-primaryLight rounded-full mt-[1px] transition-all';
+                         }
+                     }
+                });
+            }
         }
 
-        function renderBooksList(books) { 
+        // --- Bottom List Pagination Logic ---
+        function changeBooksPage(direction) {
+            const totalPages = Math.ceil(globalCombinedLibrary.length / BOOKS_PER_PAGE) || 1;
+            const newPage = currentBooksListPage + direction;
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentBooksListPage = newPage;
+                renderBooksList();
+                document.getElementById('books-list-container').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        function renderBooksList() { 
             const container = document.getElementById('books-list-container'); 
+            const prevBtn = document.getElementById('books-list-prev');
+            const nextBtn = document.getElementById('books-list-next');
+            const dotsContainer = document.getElementById('books-list-dots');
+            
             if(!container) return; 
             container.innerHTML = ''; 
-            books.forEach(book => { 
-                const bookEl = document.createElement('div'); 
-                bookEl.className = 'flex flex-col sm:flex-row gap-6 py-8 border-b border-gray-100 last:border-0 cursor-pointer group'; 
-                
-                bookEl.onclick = (e) => {
-                    if(e.target.closest('button') || e.target.closest('.card-menu')) return;
-                    openDetailedView({
-                        title: book.title,
-                        author_name: [book.author],
-                        coverUrl: book.coverUrl,
-                        key: typeof book.id === 'string' && book.id.startsWith('/') ? book.id : null,
-                        total_pages: book.total_pages
-                    }, 'books');
-                };
+            
+            const totalBooks = globalCombinedLibrary.length;
+            const totalPages = Math.ceil(totalBooks / BOOKS_PER_PAGE) || 1;
+            
+            // Safety guard
+            if (currentBooksListPage > totalPages) currentBooksListPage = totalPages;
+            if (currentBooksListPage < 1) currentBooksListPage = 1;
 
-                const imgHTML = `<img src="${book.coverUrl}" alt="${book.title}" class="w-[5.5rem] h-[8.5rem] object-cover rounded-md book-shadow shrink-0 transition-transform group-hover:-translate-y-1" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'88\\' height=\\'136\\' style=\\'background:%23333\\'></svg>'">`; 
-                let rightSideHTML = ''; 
-                if (book.status === 'Currently reading') { 
-                    const currentPage = book.current_page || 0;
-                    const totalPages = book.total_pages || 300;
-                    const progressPct = book.progress || Math.round((currentPage / totalPages) * 100) || 0;
-                    rightSideHTML = `<div class="w-full relative progress-container flex items-center mt-3"><div class="bg-brand-primary h-[10px] rounded-full" style="width: ${progressPct}%;"></div></div><div class="flex justify-between items-center w-full px-1 mt-1"><span class="text-[10px] text-brand-muted font-medium">${progressPct}%</span><button onclick="openProgressModal('${book.id}', ${currentPage}, ${totalPages}); event.stopPropagation();" class="text-brand-muted hover:text-brand-primary transition-colors p-1"><i data-lucide="edit-2" class="w-3 h-3"></i></button></div>`; 
-                } else if (book.status === 'Read') { 
-                    rightSideHTML = `<div class="text-[10px] text-brand-muted mt-3 text-right">Added:<br>${book.readDates || 'Recently'}</div>`; 
-                } 
+            const startIndex = (currentBooksListPage - 1) * BOOKS_PER_PAGE;
+            const booksToShow = globalCombinedLibrary.slice(startIndex, startIndex + BOOKS_PER_PAGE);
 
-                const dropdownHTML = `
-                    <div class="relative z-10 w-full sm:w-40 flex flex-col items-end shrink-0 mt-4 sm:mt-0" onclick="event.stopPropagation()">
-                        <button onclick="toggleMenu('list-menu-${book.id}', event)" class="w-full flex items-center justify-between border border-gray-300 rounded-full px-4 py-1.5 text-xs font-semibold text-brand-text hover:bg-gray-50 transition-colors focus:outline-none">
-                            ${book.status} <i data-lucide="chevron-down" class="w-3 h-3 ml-2 text-brand-muted"></i>
-                        </button>
-                        <div id="list-menu-${book.id}" class="card-menu hidden absolute top-[36px] right-0 w-40 bg-white border border-gray-100 rounded-xl shadow-lg py-1 overflow-hidden z-50">
-                            <button onclick="openAddToListModalForId('${book.id}', '${book.tableName}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors">Add to List...</button>
-                            <button onclick="moveBook('${book.id}', '${book.tableName}', 'currently_reading')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-gray-50 ${book.tableName==='currently_reading'?'hidden':''}">Move to Reading</button>
-                            <button onclick="moveBook('${book.id}', '${book.tableName}', 'reading_later')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-gray-50 ${book.tableName==='reading_later'?'hidden':''}">Move to Later</button>
-                            <button onclick="moveBook('${book.id}', '${book.tableName}', 'read_books')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-gray-50 ${book.tableName==='read_books'?'hidden':''}">Move to Read</button>
-                            <button onclick="deleteBook('${book.id}', '${book.tableName}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-red-500 hover:bg-red-50 transition-colors border-t border-gray-50">Remove from library</button>
+            if (booksToShow.length === 0) {
+                container.innerHTML = `<p class="text-center text-brand-muted py-8">Your library is currently empty.</p>`;
+            } else {
+                booksToShow.forEach(book => { 
+                    const bookEl = document.createElement('div'); 
+                    bookEl.className = 'flex flex-col sm:flex-row gap-6 py-8 border-b border-gray-100 last:border-0 cursor-pointer group'; 
+                    
+                    bookEl.onclick = (e) => {
+                        if(e.target.closest('button') || e.target.closest('.card-menu')) return;
+                        openDetailedView({
+                            title: book.title,
+                            author_name: [book.author],
+                            coverUrl: book.coverUrl,
+                            key: typeof book.id === 'string' && book.id.startsWith('/') ? book.id : null,
+                            total_pages: book.total_pages
+                        }, 'books');
+                    };
+
+                    const imgHTML = `<img src="${book.coverUrl}" alt="${book.title}" class="w-[5.5rem] h-[8.5rem] object-cover rounded-md book-shadow shrink-0 transition-transform group-hover:-translate-y-1" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'88\\' height=\\'136\\' style=\\'background:%23333\\'></svg>'">`; 
+                    let rightSideHTML = ''; 
+                    if (book.status === 'Currently reading') { 
+                        const currentPage = book.current_page || 0;
+                        const totalPages = book.total_pages || 300;
+                        const progressPct = book.progress || Math.round((currentPage / totalPages) * 100) || 0;
+                        rightSideHTML = `<div class="w-full relative progress-container flex items-center mt-3"><div class="bg-brand-primary h-[10px] rounded-full" style="width: ${progressPct}%;"></div></div><div class="flex justify-between items-center w-full px-1 mt-1"><span class="text-[10px] text-brand-muted font-medium">${progressPct}%</span><button onclick="openProgressModal('${book.id}', ${currentPage}, ${totalPages}); event.stopPropagation();" class="text-brand-muted hover:text-brand-primary transition-colors p-1"><i data-lucide="edit-2" class="w-3 h-3"></i></button></div>`; 
+                    } else if (book.status === 'Read') { 
+                        rightSideHTML = `<div class="text-[10px] text-brand-muted mt-3 text-right">Added:<br>${book.readDates || 'Recently'}</div>`; 
+                    } 
+
+                    const dropdownHTML = `
+                        <div class="relative z-10 w-full sm:w-40 flex flex-col items-end shrink-0 mt-4 sm:mt-0" onclick="event.stopPropagation()">
+                            <button onclick="toggleMenu('list-menu-${book.id}', event)" class="w-full flex items-center justify-between border border-gray-300 rounded-full px-4 py-1.5 text-xs font-semibold text-brand-text hover:bg-gray-50 transition-colors focus:outline-none">
+                                ${book.status} <i data-lucide="chevron-down" class="w-3 h-3 ml-2 text-brand-muted"></i>
+                            </button>
+                            <div id="list-menu-${book.id}" class="card-menu hidden absolute top-[36px] right-0 w-40 bg-white border border-gray-100 rounded-xl shadow-lg py-1 overflow-hidden z-50">
+                                <button onclick="openAddToListModalForId('${book.id}', '${book.tableName}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors">Add to List...</button>
+                                <button onclick="moveBook('${book.id}', '${book.tableName}', 'currently_reading')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-gray-50 ${book.tableName==='currently_reading'?'hidden':''}">Move to Reading</button>
+                                <button onclick="moveBook('${book.id}', '${book.tableName}', 'reading_later')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-gray-50 ${book.tableName==='reading_later'?'hidden':''}">Move to Later</button>
+                                <button onclick="moveBook('${book.id}', '${book.tableName}', 'read_books')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-gray-50 ${book.tableName==='read_books'?'hidden':''}">Move to Read</button>
+                                <button onclick="deleteBook('${book.id}', '${book.tableName}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-red-500 hover:bg-red-50 transition-colors border-t border-gray-50">Remove from library</button>
+                            </div>
+                            ${rightSideHTML}
                         </div>
-                        ${rightSideHTML}
-                    </div>
-                `;
+                    `;
 
-                bookEl.innerHTML = `${imgHTML}<div class="flex-1 flex flex-col"><h3 class="text-lg font-semibold text-brand-text mb-0.5 group-hover:text-brand-primary transition-colors">${book.title}</h3><p class="text-sm text-brand-muted mb-3">by ${book.author}</p><p class="text-sm text-brand-text leading-relaxed line-clamp-3 mb-3">${book.description}</p><div class="flex items-center text-sm font-semibold text-brand-text mt-auto"><i data-lucide="star" class="w-4 h-4 text-brand-primary fill-brand-primary mr-1"></i> ${book.rating.toFixed(2)}</div></div>${dropdownHTML}`; 
-                container.appendChild(bookEl); 
-            }); 
-            lucide.createIcons(); 
+                    bookEl.innerHTML = `${imgHTML}<div class="flex-1 flex flex-col"><h3 class="text-lg font-semibold text-brand-text mb-0.5 group-hover:text-brand-primary transition-colors">${book.title}</h3><p class="text-sm text-brand-muted mb-3">by ${book.author}</p><p class="text-sm text-brand-text leading-relaxed line-clamp-3 mb-3">${book.description}</p><div class="flex items-center text-sm font-semibold text-brand-text mt-auto"><i data-lucide="star" class="w-4 h-4 text-brand-primary fill-brand-primary mr-1"></i> ${book.rating.toFixed(2)}</div></div>${dropdownHTML}`; 
+                    container.appendChild(bookEl); 
+                }); 
+                lucide.createIcons(); 
+            }
+
+            // Update Pagination UI
+            if (prevBtn) prevBtn.disabled = currentBooksListPage === 1;
+            if (nextBtn) nextBtn.disabled = currentBooksListPage === totalPages;
+
+            if (dotsContainer) {
+                dotsContainer.innerHTML = '';
+                const maxDots = Math.min(totalPages, 5); // visually constrain dots
+                for(let i=1; i<=maxDots; i++) {
+                    const dot = document.createElement('div');
+                    dot.className = i === currentBooksListPage 
+                        ? 'w-6 h-1.5 bg-brand-primary rounded-full transition-all' 
+                        : 'w-1.5 h-1.5 bg-brand-primaryLight rounded-full mt-[1px] transition-all cursor-pointer hover:bg-brand-primary';
+                    if (i !== currentBooksListPage) dot.onclick = () => { currentBooksListPage = i; renderBooksList(); };
+                    dotsContainer.appendChild(dot);
+                }
+            }
         }
 
         function renderExploreGrid(books, containerId, context = 'explore') { 
@@ -1612,7 +1863,7 @@
 
             try {
                 const { data, error } = await supabaseClient.from('reading_challenge').select('*').single();
-                if (!error && data) challengeData = data;
+                if (!error && data) globalChallenge = { ...globalChallenge, ...data }; // Merge data so challenge_type persists
             } catch(e) { console.warn("Failed to fetch reading_challenge"); }
 
             try {
@@ -1626,8 +1877,7 @@
             renderCurrentlyReading(activeCurrentlyReading);
             renderBookListBasic(readingLaterList, 'reading-later-container', 'reading_later');
             renderBookListBasic(readBooksList, 'read-container', 'read_books');
-            renderChallenge(challengeData);
-
+            
             if (statsData && statsData.length > 0) {
                 let chartArr = new Array(12).fill(0);
                 statsData.forEach(item => chartArr[item.month - 1] = item.count);
@@ -1637,27 +1887,30 @@
             }
 
             // Compile Books Tab Data from User's Shelves
-            const mappedCurrentlyReading = activeCurrentlyReading.map(b => ({ ...b, status: 'Currently reading', tableName: 'currently_reading' }));
-            const mappedReadingLater = readingLaterList.map(b => ({ ...b, status: 'Reading later', tableName: 'reading_later' }));
+            const mappedCurrentlyReading = activeCurrentlyReading.map(b => ({ ...b, status: 'Currently reading', tableName: 'currently_reading', created_at: b.created_at || new Date().toISOString() }));
+            const mappedReadingLater = readingLaterList.map(b => ({ ...b, status: 'Reading later', tableName: 'reading_later', created_at: b.created_at || new Date().toISOString() }));
             const mappedRead = readBooksList.map(b => ({ 
                 ...b, 
                 status: 'Read', 
                 tableName: 'read_books',
+                created_at: b.created_at || new Date().toISOString(), // Keep raw date to calculate monthly challenges correctly
                 readDates: b.created_at ? new Date(b.created_at).toLocaleDateString() : 'Recently'
             }));
             
             globalLibrary = [...mappedCurrentlyReading, ...mappedReadingLater, ...mappedRead];
 
-            const combinedLibrary = globalLibrary.map(b => ({
+            globalCombinedLibrary = globalLibrary.map(b => ({
                 ...b,
                 rating: b.rating || parseFloat((Math.random() * (4.9 - 3.8) + 3.8).toFixed(2)),
                 description: b.description || 'A fascinating book from your personal library collection.'
             }));
 
             renderBooksViewCarousel(activeCurrentlyReading);
-            renderBooksList(combinedLibrary.length > 0 ? combinedLibrary : MOCK_DATA.allBooksList);
+            renderBooksList();
             
-            renderFullStatsGraphs(challengeData, MOCK_DATA.fullStats);
+            // Calculate progress dynamically based on 'read_books' created_at dates, then render graphs
+            calculateChallengeProgress();
+            renderFullStatsGraphs(globalChallenge, MOCK_DATA.fullStats);
 
             // 4. Background dynamic recommendations
             globalUserAuthors = [...new Set(globalLibrary.map(b => b.author).filter(Boolean))];
