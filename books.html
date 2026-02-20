@@ -863,11 +863,16 @@
             globalChallenge.target = target;
 
             try {
-                // Update the single row in the challenge table (assuming id=1 exists)
+                // FIXED: Use upsert instead of update. If the reading_challenge table is currently 
+                // empty, update() returns successfully but does nothing! upsert() inserts if missing.
                 const { error } = await supabaseClient
                     .from('reading_challenge')
-                    .update({ challenge_type: type, target: target })
-                    .eq('id', globalChallenge.id || 1);
+                    .upsert({ 
+                        id: globalChallenge.id || 1, 
+                        year: new Date().getFullYear(),
+                        challenge_type: type, 
+                        target: target 
+                    }, { onConflict: 'id' });
                     
                 if (error) {
                     if (error.code === '42703') throw new Error('Schema update needed for challenge_type column.');
