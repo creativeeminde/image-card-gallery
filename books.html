@@ -612,6 +612,8 @@
         let globalUserAuthors = [];
         let globalUserTitles = [];
         let globalCurrentlyReading = []; 
+        let globalReadingLater = []; 
+        let globalReadBooks = []; 
         let globalLibrary = []; 
         let globalTrendingBooks = []; 
         
@@ -620,6 +622,12 @@
         let globalNotes = [];
         let globalChallenge = { id: 1, challenge_type: 'yearly', target: 10, read: 0 };
         
+        let sectionExpanded = {
+            currently_reading: false,
+            reading_later: false,
+            read_books: false
+        };
+
         let lastViewBeforeDetails = 'home';
         let lastActiveTab = 'home';
         let currentlyViewingBook = null;
@@ -636,7 +644,7 @@
         // Books List Trackers
         let globalCombinedLibrary = [];
         let currentBooksListPage = 1;
-        const BOOKS_PER_PAGE = 5;
+        const BOOKS_PER_PAGE = 10;
 
         // Predefined Extensive Genre List
         const ALL_GENRES = [
@@ -1498,6 +1506,37 @@
             fetchSupabaseData(); // Refresh UI
         }
 
+        function updateSeeMoreButton(sectionEl, sectionKey, totalBooks) {
+            let actionDiv = sectionEl.querySelector('.see-more-action');
+            if (!actionDiv) {
+                actionDiv = document.createElement('div');
+                actionDiv.className = 'see-more-action text-center mt-8 w-full';
+                sectionEl.appendChild(actionDiv);
+            }
+
+            if (totalBooks > 6) {
+                actionDiv.classList.remove('hidden');
+                const isExp = sectionExpanded[sectionKey];
+                actionDiv.innerHTML = `<a href="#" class="text-sm text-brand-muted hover:text-brand-text underline underline-offset-4 decoration-gray-300">${isExp ? 'See less' : 'See more'}</a>`;
+                actionDiv.querySelector('a').onclick = (e) => {
+                    e.preventDefault();
+                    toggleSection(sectionKey);
+                };
+            } else {
+                actionDiv.classList.add('hidden');
+            }
+        }
+
+        function toggleSection(sectionKey) {
+            sectionExpanded[sectionKey] = !sectionExpanded[sectionKey];
+            if (sectionKey === 'currently_reading') {
+                renderCurrentlyReading(globalCurrentlyReading);
+            } else if (sectionKey === 'reading_later') {
+                renderBookListBasic(globalReadingLater, 'reading-later-container', 'reading_later');
+            } else if (sectionKey === 'read_books') {
+                renderBookListBasic(globalReadBooks, 'read-container', 'read_books');
+            }
+        }
 
         // --- Render UI Data ---
         function renderCurrentlyReading(books) {
@@ -1508,10 +1547,16 @@
             
             if (!books || books.length === 0) {
                 container.innerHTML = '<p class="col-span-full text-center text-sm text-brand-muted py-8">You are not reading any books right now.</p>';
+                updateSeeMoreButton(container.parentElement, 'currently_reading', 0);
                 return;
             }
 
-            books.forEach(book => {
+            let booksToShow = books;
+            if (!sectionExpanded.currently_reading && books.length > 6) {
+                booksToShow = books.slice(0, 6);
+            }
+
+            booksToShow.forEach(book => {
                 const bookEl = document.createElement('div');
                 bookEl.className = 'flex flex-col items-center group cursor-pointer';
                 
@@ -1549,6 +1594,7 @@
                 container.appendChild(bookEl);
             });
             lucide.createIcons();
+            updateSeeMoreButton(container.parentElement, 'currently_reading', books.length);
         }
 
         function renderRecommended(books) {
@@ -1620,10 +1666,16 @@
             
             if (!books || books.length === 0) {
                 container.innerHTML = '<p class="col-span-full text-center text-sm text-brand-muted py-6">No books in this list yet.</p>';
+                updateSeeMoreButton(container.parentElement, tableName, 0);
                 return;
             }
 
-            books.forEach(book => {
+            let booksToShow = books;
+            if (!sectionExpanded[tableName] && books.length > 6) {
+                booksToShow = books.slice(0, 6);
+            }
+
+            booksToShow.forEach(book => {
                 const bookEl = document.createElement('div');
                 bookEl.className = 'flex flex-col items-center group cursor-pointer';
                 
@@ -1647,6 +1699,7 @@
                 `;
                 container.appendChild(bookEl);
             });
+            updateSeeMoreButton(container.parentElement, tableName, books.length);
         }
 
         // --- Chart Methods ---
@@ -1932,19 +1985,19 @@
             globalCustomLists = [];
             globalListItems = [];
 
-            // 2. Fetch each table independently so one failure doesn't break the whole app
+            // 2. Fetch each table independently without limit caps to fetch all user entries
             try {
-                const { data, error } = await supabaseClient.from('currently_reading').select('*').order('created_at', { ascending: false }).limit(4);
+                const { data, error } = await supabaseClient.from('currently_reading').select('*').order('created_at', { ascending: false });
                 if (!error && data) activeCurrentlyReading = data;
             } catch(e) { console.warn("Failed to fetch currently_reading"); }
 
             try {
-                const { data, error } = await supabaseClient.from('reading_later').select('*').order('created_at', { ascending: false }).limit(6);
+                const { data, error } = await supabaseClient.from('reading_later').select('*').order('created_at', { ascending: false });
                 if (!error && data) readingLaterList = data;
             } catch(e) { console.warn("Failed to fetch reading_later"); }
 
             try {
-                const { data, error } = await supabaseClient.from('read_books').select('*').order('created_at', { ascending: false }).limit(6);
+                const { data, error } = await supabaseClient.from('read_books').select('*').order('created_at', { ascending: false });
                 if (!error && data) readBooksList = data;
             } catch(e) { console.warn("Failed to fetch read_books"); }
 
@@ -1970,6 +2023,10 @@
                     globalNotes = data.map(n => ({...n, coverUrl: n.coverUrl || n.coverurl}));
                 }
             } catch(e) { console.warn("Failed to fetch notes"); }
+
+            // Apply to global state for inline toggle logic
+            globalReadingLater = readingLaterList;
+            globalReadBooks = readBooksList;
 
             // 3. Render UI with whatever data we successfully gathered
             renderCustomLists();
