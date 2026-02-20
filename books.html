@@ -1574,128 +1574,104 @@
         }
 
         async function fetchSupabaseData() {
+            // 1. Initialize variables with Mock Fallbacks
+            let activeCurrentlyReading = MOCK_DATA.currentlyReading;
+            let readingLaterList = MOCK_DATA.readingLater;
+            let readBooksList = MOCK_DATA.readBooks;
+            let challengeData = MOCK_DATA.challenge;
+            let statsData = null; 
+            
+            globalCustomLists = MOCK_DATA.customLists;
+            globalListItems = MOCK_DATA.listItems;
+
+            // 2. Fetch each table independently so one failure doesn't break the whole app
             try {
-                const { data: readingData, error: readErr } = await supabaseClient.from('currently_reading').select('*').order('created_at', { ascending: false }).limit(4);
-                if (readErr) throw readErr;
+                const { data, error } = await supabaseClient.from('currently_reading').select('*').order('created_at', { ascending: false }).limit(4);
+                if (!error && data && data.length > 0) activeCurrentlyReading = data;
+            } catch(e) { console.warn("Failed to fetch currently_reading"); }
 
-                const { data: challengeData, error: chalErr } = await supabaseClient.from('reading_challenge').select('*').single();
-                if (chalErr) throw chalErr;
+            try {
+                const { data, error } = await supabaseClient.from('reading_later').select('*').order('created_at', { ascending: false }).limit(6);
+                if (!error && data) readingLaterList = data;
+            } catch(e) { console.warn("Failed to fetch reading_later"); }
 
-                const { data: statsData, error: statErr } = await supabaseClient.from('monthly_stats').select('month, count').order('month', { ascending: true });
-                if (statErr) throw statErr;
+            try {
+                const { data, error } = await supabaseClient.from('read_books').select('*').order('created_at', { ascending: false }).limit(6);
+                if (!error && data) readBooksList = data;
+            } catch(e) { console.warn("Failed to fetch read_books"); }
 
-                let readingLaterList = MOCK_DATA.readingLater;
-                let readBooksList = MOCK_DATA.readBooks;
-                let cLists = MOCK_DATA.customLists;
-                let cItems = MOCK_DATA.listItems;
-                
-                try {
-                    const { data: laterData, error: laterErr } = await supabaseClient.from('reading_later').select('*').order('created_at', { ascending: false }).limit(6);
-                    if (!laterErr && laterData) readingLaterList = laterData;
-                } catch(e) {}
+            try {
+                const { data, error } = await supabaseClient.from('custom_lists').select('*').order('created_at', { ascending: false });
+                if (!error && data) globalCustomLists = data;
+            } catch(e) { console.warn("Failed to fetch custom_lists"); }
 
-                try {
-                    const { data: rData, error: rErr } = await supabaseClient.from('read_books').select('*').order('created_at', { ascending: false }).limit(6);
-                    if (!rErr && rData) readBooksList = rData;
-                } catch(e) {}
-                
-                try {
-                    const { data: listsData, error: listsErr } = await supabaseClient.from('custom_lists').select('*').order('created_at', { ascending: false });
-                    if (!listsErr && listsData) cLists = listsData;
-                    
-                    const { data: itemsData, error: itemsErr } = await supabaseClient.from('list_items').select('*');
-                    if (!itemsErr && itemsData) cItems = itemsData;
-                } catch(e) {}
+            try {
+                const { data, error } = await supabaseClient.from('list_items').select('*');
+                if (!error && data) globalListItems = data;
+            } catch(e) { console.warn("Failed to fetch list_items"); }
 
-                globalCustomLists = cLists;
-                globalListItems = cItems;
-                renderCustomLists();
+            try {
+                const { data, error } = await supabaseClient.from('reading_challenge').select('*').single();
+                if (!error && data) challengeData = data;
+            } catch(e) { console.warn("Failed to fetch reading_challenge"); }
 
-                const activeCurrentlyReading = readingData && readingData.length > 0 ? readingData : MOCK_DATA.currentlyReading;
-                renderCurrentlyReading(activeCurrentlyReading);
-                renderBookListBasic(readingLaterList, 'reading-later-container', 'reading_later');
-                renderBookListBasic(readBooksList, 'read-container', 'read_books');
-                renderChallenge(challengeData ? challengeData : MOCK_DATA.challenge);
-                
-                // Track global authors/titles for recommendations page & globalLibrary for management
-                const allUserBooks = [...activeCurrentlyReading, ...readingLaterList, ...readBooksList];
-                globalUserAuthors = [...new Set(allUserBooks.map(b => b.author).filter(Boolean))];
-                globalUserTitles = allUserBooks.map(b => b.title);
+            try {
+                const { data, error } = await supabaseClient.from('monthly_stats').select('month, count').order('month', { ascending: true });
+                if (!error && data) statsData = data;
+            } catch(e) { console.warn("Failed to fetch monthly_stats"); }
 
-                // Show default while fetching
-                renderRecommended(MOCK_DATA.recommended);
-                renderExploreGrid(MOCK_DATA.exploreForYou, 'explore-foryou-container', 'explore');
 
-                if (globalUserAuthors.length > 0) {
-                    fetchDynamicRecommendations(globalUserAuthors, globalUserTitles, 4).then(dynamicRecs => {
-                        if (dynamicRecs.length > 0) {
-                            let homeRecs = dynamicRecs.slice(0, 2);
-                            let exploreRecs = dynamicRecs.slice(0, 4);
+            // 3. Render UI with whatever data we successfully gathered
+            renderCustomLists();
+            renderCurrentlyReading(activeCurrentlyReading);
+            renderBookListBasic(readingLaterList, 'reading-later-container', 'reading_later');
+            renderBookListBasic(readBooksList, 'read-container', 'read_books');
+            renderChallenge(challengeData);
 
-                            if (homeRecs.length < 2) homeRecs = [...homeRecs, ...MOCK_DATA.recommended.slice(0, 2 - homeRecs.length)];
-                            if (exploreRecs.length < 4) exploreRecs = [...exploreRecs, ...MOCK_DATA.exploreForYou.slice(0, 4 - exploreRecs.length)];
-
-                            renderRecommended(homeRecs);
-                            renderExploreGrid(exploreRecs, 'explore-foryou-container', 'explore');
-                        }
-                    });
-                }
-
-                if (statsData && statsData.length > 0) {
-                    let chartArr = new Array(12).fill(0);
-                    statsData.forEach(item => chartArr[item.month - 1] = item.count);
-                    renderHomeChart(chartArr);
-                } else {
-                    renderHomeChart(MOCK_DATA.stats);
-                }
-
-                // Compile Books Tab Data from User's Shelves
-                const mappedCurrentlyReading = activeCurrentlyReading.map(b => ({ ...b, status: 'Currently reading', tableName: 'currently_reading' }));
-                const mappedReadingLater = readingLaterList.map(b => ({ ...b, status: 'Reading later', tableName: 'reading_later' }));
-                const mappedRead = readBooksList.map(b => ({ 
-                    ...b, 
-                    status: 'Read', 
-                    tableName: 'read_books',
-                    readDates: b.created_at ? new Date(b.created_at).toLocaleDateString() : 'Recently'
-                }));
-                
-                globalLibrary = [...mappedCurrentlyReading, ...mappedReadingLater, ...mappedRead];
-
-                const combinedLibrary = globalLibrary.map(b => ({
-                    ...b,
-                    rating: b.rating || parseFloat((Math.random() * (4.9 - 3.8) + 3.8).toFixed(2)),
-                    description: b.description || 'A fascinating book from your personal library collection.'
-                }));
-
-                renderBooksViewCarousel(activeCurrentlyReading);
-                renderBooksList(combinedLibrary.length > 0 ? combinedLibrary : MOCK_DATA.allBooksList);
-                
-                renderFullStatsGraphs(challengeData ? challengeData : MOCK_DATA.challenge, MOCK_DATA.fullStats);
-
-            } catch (error) {
-                console.log("Supabase missing/empty. Using fallback data.", error.message);
-                
-                globalCustomLists = MOCK_DATA.customLists;
-                globalListItems = MOCK_DATA.listItems;
-                renderCustomLists();
-                
-                renderCurrentlyReading(MOCK_DATA.currentlyReading);
-                renderBookListBasic(MOCK_DATA.readingLater, 'reading-later-container', 'reading_later');
-                renderBookListBasic(MOCK_DATA.readBooks, 'read-container', 'read_books');
-                renderChallenge(MOCK_DATA.challenge);
+            if (statsData && statsData.length > 0) {
+                let chartArr = new Array(12).fill(0);
+                statsData.forEach(item => chartArr[item.month - 1] = item.count);
+                renderHomeChart(chartArr);
+            } else {
                 renderHomeChart(MOCK_DATA.stats);
-                
-                const allMockBooks = [...MOCK_DATA.currentlyReading, ...MOCK_DATA.readingLater, ...MOCK_DATA.readBooks];
-                globalUserAuthors = [...new Set(allMockBooks.map(b => b.author).filter(Boolean))];
-                globalUserTitles = allMockBooks.map(b => b.title);
+            }
 
-                renderRecommended(MOCK_DATA.recommended);
-                renderExploreGrid(MOCK_DATA.exploreForYou, 'explore-foryou-container', 'explore');
+            // Compile Books Tab Data from User's Shelves
+            const mappedCurrentlyReading = activeCurrentlyReading.map(b => ({ ...b, status: 'Currently reading', tableName: 'currently_reading' }));
+            const mappedReadingLater = readingLaterList.map(b => ({ ...b, status: 'Reading later', tableName: 'reading_later' }));
+            const mappedRead = readBooksList.map(b => ({ 
+                ...b, 
+                status: 'Read', 
+                tableName: 'read_books',
+                readDates: b.created_at ? new Date(b.created_at).toLocaleDateString() : 'Recently'
+            }));
+            
+            globalLibrary = [...mappedCurrentlyReading, ...mappedReadingLater, ...mappedRead];
 
-                fetchDynamicRecommendations(globalUserAuthors, globalUserTitles, 4).then(recs => {
-                    if (recs.length > 0) {
-                        let homeRecs = recs.slice(0, 2);
-                        let exploreRecs = recs.slice(0, 4);
+            const combinedLibrary = globalLibrary.map(b => ({
+                ...b,
+                rating: b.rating || parseFloat((Math.random() * (4.9 - 3.8) + 3.8).toFixed(2)),
+                description: b.description || 'A fascinating book from your personal library collection.'
+            }));
+
+            renderBooksViewCarousel(activeCurrentlyReading);
+            renderBooksList(combinedLibrary.length > 0 ? combinedLibrary : MOCK_DATA.allBooksList);
+            
+            renderFullStatsGraphs(challengeData, MOCK_DATA.fullStats);
+
+            // 4. Background dynamic recommendations
+            globalUserAuthors = [...new Set(globalLibrary.map(b => b.author).filter(Boolean))];
+            globalUserTitles = globalLibrary.map(b => b.title);
+            
+            renderRecommended(MOCK_DATA.recommended); // Mock initial state
+            renderExploreGrid(MOCK_DATA.exploreForYou, 'explore-foryou-container', 'explore'); // Mock initial state
+
+            if (globalUserAuthors.length > 0) {
+                fetchDynamicRecommendations(globalUserAuthors, globalUserTitles, 4).then(dynamicRecs => {
+                    if (dynamicRecs.length > 0) {
+                        let homeRecs = dynamicRecs.slice(0, 2);
+                        let exploreRecs = dynamicRecs.slice(0, 4);
+
                         if (homeRecs.length < 2) homeRecs = [...homeRecs, ...MOCK_DATA.recommended.slice(0, 2 - homeRecs.length)];
                         if (exploreRecs.length < 4) exploreRecs = [...exploreRecs, ...MOCK_DATA.exploreForYou.slice(0, 4 - exploreRecs.length)];
 
@@ -1703,23 +1679,6 @@
                         renderExploreGrid(exploreRecs, 'explore-foryou-container', 'explore');
                     }
                 });
-                
-                // Fallback compilation for Books Tab
-                const mappedMockCR = MOCK_DATA.currentlyReading.map(b => ({ ...b, status: 'Currently reading', tableName: 'currently_reading' }));
-                const mappedMockRL = MOCK_DATA.readingLater.map(b => ({ ...b, status: 'Reading later', tableName: 'reading_later' }));
-                const mappedMockR = MOCK_DATA.readBooks.map(b => ({ ...b, status: 'Read', tableName: 'read_books', readDates: 'Recently' }));
-                
-                globalLibrary = [...mappedMockCR, ...mappedMockRL, ...mappedMockR];
-                const combinedMockLibrary = globalLibrary.map(b => ({
-                    ...b,
-                    rating: b.rating || parseFloat((Math.random() * (4.9 - 3.8) + 3.8).toFixed(2)),
-                    description: b.description || 'A fascinating book from your personal library collection.'
-                }));
-
-                renderBooksViewCarousel(MOCK_DATA.currentlyReading);
-                renderBooksList(combinedMockLibrary);
-                
-                renderFullStatsGraphs(MOCK_DATA.challenge, MOCK_DATA.fullStats);
             }
         }
 
