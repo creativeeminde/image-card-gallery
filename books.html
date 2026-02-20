@@ -404,7 +404,8 @@
         // Global State Trackers
         let globalUserAuthors = [];
         let globalUserTitles = [];
-        let globalCurrentlyReading = []; // Track to update progress easily
+        let globalCurrentlyReading = []; 
+        let globalLibrary = []; // NEW: Track all books across all tables for moving/deleting
         let lastViewBeforeDetails = 'home';
         let lastActiveTab = 'home';
         let currentlyViewingBook = null;
@@ -486,14 +487,87 @@
             lastActiveTab = tabId;
         }
 
-        // --- Progress Update Logic ---
-        function openProgressModal(bookId) {
-            const book = globalCurrentlyReading.find(b => b.id === bookId);
-            if(!book) return;
+        // --- Library Management Logic (Move & Delete) ---
+        function toggleMenu(menuId, event) {
+            event.stopPropagation();
+            const menu = document.getElementById(menuId);
+            const isHidden = menu.classList.contains('hidden');
             
+            // Hide all open menus
+            document.querySelectorAll('.card-menu').forEach(el => el.classList.add('hidden'));
+            
+            if (isHidden) {
+                menu.classList.remove('hidden');
+            }
+        }
+
+        // Close dropdowns if clicked outside
+        document.addEventListener('click', () => {
+            document.querySelectorAll('.card-menu').forEach(el => el.classList.add('hidden'));
+        });
+
+        function getCardMenuHTML(bookId, currentTable) {
+            return `
+                <button onclick="toggleMenu('menu-${currentTable}-${bookId}', event)" class="absolute top-1 right-1 bg-white/90 p-1.5 rounded-full shadow-sm backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all z-20 hover:bg-brand-surface hover:text-brand-primary text-brand-muted focus:outline-none" title="Manage book">
+                    <i data-lucide="more-vertical" class="w-[14px] h-[14px]"></i>
+                </button>
+                <div id="menu-${currentTable}-${bookId}" class="card-menu hidden absolute top-8 right-1 w-36 bg-white border border-gray-100 rounded-xl shadow-lg py-1 z-30 text-left cursor-default" onclick="event.stopPropagation()">
+                    <button onclick="moveBook('${bookId}', '${currentTable}', 'currently_reading')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors ${currentTable==='currently_reading'?'hidden':''}">Move to Reading</button>
+                    <button onclick="moveBook('${bookId}', '${currentTable}', 'reading_later')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-gray-50 ${currentTable==='reading_later'?'hidden':''}">Move to Later</button>
+                    <button onclick="moveBook('${bookId}', '${currentTable}', 'read_books')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-gray-50 ${currentTable==='read_books'?'hidden':''}">Move to Read</button>
+                    <button onclick="deleteBook('${bookId}', '${currentTable}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-red-500 hover:bg-red-50 transition-colors border-t border-gray-50">Remove</button>
+                </div>
+            `;
+        }
+
+        async function moveBook(bookId, currentTable, newTable) {
+            if (currentTable === newTable) return;
+            const book = globalLibrary.find(b => String(b.id) === String(bookId) && b.tableName === currentTable);
+            if (!book) return;
+
+            const payload = { title: book.title, author: book.author, coverUrl: book.coverUrl };
+            if (newTable === 'currently_reading') {
+                payload.progress = book.progress || 0;
+                payload.current_page = book.current_page || 0;
+                payload.total_pages = book.total_pages || 300;
+            }
+
+            try {
+                // 1. Insert into new collection
+                const { error: insertErr } = await supabaseClient.from(newTable).insert([payload]);
+                if (insertErr) throw insertErr;
+
+                // 2. Delete from old collection
+                const { error: deleteErr } = await supabaseClient.from(currentTable).delete().eq('id', book.id);
+                if (deleteErr) throw deleteErr;
+
+                const prettyName = newTable === 'currently_reading' ? 'Currently Reading' : (newTable === 'reading_later' ? 'Reading Later' : 'Read');
+                showToast(`Moved to ${prettyName}!`);
+                fetchSupabaseData(); // Refresh UI
+            } catch (e) {
+                console.error('Move failed:', e);
+                showToast('Failed to move book. Ensure DELETE permissions are set!', 'error');
+            }
+        }
+
+        async function deleteBook(bookId, currentTable) {
+            try {
+                const { error } = await supabaseClient.from(currentTable).delete().eq('id', bookId);
+                if (error) throw error;
+                
+                showToast('Book removed from library.');
+                fetchSupabaseData(); // Refresh UI
+            } catch (e) {
+                console.error('Delete failed:', e);
+                showToast('Failed to remove book. Ensure DELETE permissions are set!', 'error');
+            }
+        }
+
+        // --- Progress Update Logic ---
+        function openProgressModal(bookId, currentPg = 0, totalPgs = 300) {
             currentlyEditingBookId = bookId;
-            document.getElementById('progress-current').value = book.current_page || 0;
-            document.getElementById('progress-total').value = book.total_pages || 300;
+            document.getElementById('progress-current').value = currentPg;
+            document.getElementById('progress-total').value = totalPgs;
             
             const modal = document.getElementById('progress-modal');
             modal.classList.remove('hidden');
@@ -511,25 +585,21 @@
             const total = parseInt(document.getElementById('progress-total').value) || 1;
             const pct = Math.min(100, Math.round((current / total) * 100));
 
-            // Update fallback mock data instantly
-            const mockBook = MOCK_DATA.currentlyReading.find(b => b.id === currentlyEditingBookId);
-            if(mockBook) {
-                mockBook.current_page = current;
-                mockBook.total_pages = total;
-                mockBook.progress = pct;
-            }
-
             try {
                 const { error } = await supabaseClient
                     .from('currently_reading')
                     .update({ current_page: current, total_pages: total, progress: pct })
                     .eq('id', currentlyEditingBookId);
                     
-                if (error) throw error;
-                showToast('Progress saved!');
+                if (error) {
+                    if (error.code === '42501') throw new Error('Permission denied! Run the SQL UPDATE policy.');
+                    throw error;
+                }
+                
+                showToast('Progress saved successfully!');
             } catch(e) {
-                console.warn('DB update failed, using local state.', e);
-                showToast('Progress updated locally.', 'success');
+                console.error('DB update failed:', e);
+                showToast(e.message || 'Failed to save progress.', 'error');
             }
 
             closeProgressModal();
@@ -548,7 +618,6 @@
                 const bookEl = document.createElement('div');
                 bookEl.className = 'flex flex-col items-center group cursor-pointer';
                 
-                // Make the Currently Reading books clickable
                 bookEl.onclick = () => openDetailedView({
                     title: book.title,
                     author_name: [book.author],
@@ -561,7 +630,12 @@
                 const totalPages = book.total_pages || 300;
                 const progressPct = book.progress || Math.round((currentPage / totalPages) * 100) || 0;
 
-                const imgHTML = `<img src="${book.coverUrl}" alt="${book.title}" class="w-full aspect-[2/3] object-cover rounded-md mb-2 book-shadow transition-transform group-hover:-translate-y-1" onerror="this.onerror=null; this.outerHTML='<div class=\\'w-full aspect-[2/3] bg-gray-800 text-white rounded-md mb-2 book-shadow flex items-center justify-center p-2 text-center text-xs font-semibold\\'>${book.title}</div>'">`;
+                const imgHTML = `
+                    <div class="relative w-full">
+                        <img src="${book.coverUrl}" alt="${book.title}" class="w-full aspect-[2/3] object-cover rounded-md mb-2 book-shadow transition-transform group-hover:-translate-y-1" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'150\\' style=\\'background:%23e2e8f0\\'></svg>'">
+                        ${getCardMenuHTML(book.id, 'currently_reading')}
+                    </div>
+                `;
                 
                 bookEl.innerHTML = `
                     ${imgHTML}
@@ -570,7 +644,7 @@
                     </div>
                     <div class="flex justify-between items-center w-full px-1">
                         <span class="text-[11px] text-brand-muted font-medium">${progressPct}%</span>
-                        <button onclick="openProgressModal('${book.id}' || ${book.id}); event.stopPropagation();" class="text-brand-muted hover:text-brand-primary transition-colors p-1" title="Update progress">
+                        <button onclick="openProgressModal('${book.id}', ${currentPage}, ${totalPages}); event.stopPropagation();" class="text-brand-muted hover:text-brand-primary transition-colors p-1" title="Update progress">
                             <i data-lucide="edit-2" class="w-[14px] h-[14px]"></i>
                         </button>
                     </div>
@@ -623,7 +697,7 @@
             document.getElementById('stats-donut-text').textContent = `${challenge.read}/${challenge.target}`;
         }
 
-        function renderBookListBasic(books, containerId) {
+        function renderBookListBasic(books, containerId, tableName) {
             const container = document.getElementById(containerId);
             if(!container) return;
             container.innerHTML = '';
@@ -632,7 +706,6 @@
                 const bookEl = document.createElement('div');
                 bookEl.className = 'flex flex-col items-center group cursor-pointer';
                 
-                // Make the Reading Later and Read books clickable
                 bookEl.onclick = () => openDetailedView({
                     title: book.title,
                     author_name: [book.author],
@@ -640,7 +713,12 @@
                     key: typeof book.id === 'string' && book.id.startsWith('/') ? book.id : null
                 }, 'home');
 
-                const imgHTML = `<img src="${book.coverUrl}" alt="${book.title}" class="w-full aspect-[2/3] object-cover rounded-md mb-3 book-shadow transition-transform group-hover:-translate-y-1" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'150\\' style=\\'background:%23e2e8f0\\'></svg>'">`;
+                const imgHTML = `
+                    <div class="relative w-full">
+                        <img src="${book.coverUrl}" alt="${book.title}" class="w-full aspect-[2/3] object-cover rounded-md mb-3 book-shadow transition-transform group-hover:-translate-y-1" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'150\\' style=\\'background:%23e2e8f0\\'></svg>'">
+                        ${getCardMenuHTML(book.id, tableName)}
+                    </div>
+                `;
                 bookEl.innerHTML = `
                     ${imgHTML}
                     <h4 class="font-semibold text-xs text-brand-text text-center line-clamp-1 w-full" title="${book.title}">${book.title}</h4>
@@ -674,7 +752,6 @@
                 const bookEl = document.createElement('div'); 
                 bookEl.className = 'flex items-center gap-4 w-[280px] shrink-0 cursor-pointer group'; 
                 
-                // Make carousel items clickable
                 bookEl.onclick = () => openDetailedView({
                     title: book.title,
                     author_name: [book.author],
@@ -687,8 +764,13 @@
                 const totalPages = book.total_pages || 300;
                 const progressPct = book.progress || Math.round((currentPage / totalPages) * 100) || 0;
 
-                const imgHTML = `<img src="${book.coverUrl}" alt="${book.title}" class="w-16 h-[6.5rem] object-cover rounded-md book-shadow shrink-0 transition-transform group-hover:scale-105" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'64\\' height=\\'104\\' style=\\'background:%23333\\'></svg>'">`; 
-                bookEl.innerHTML = `${imgHTML}<div class="flex flex-col flex-1 min-w-0"><h4 class="font-semibold text-sm text-brand-text truncate group-hover:text-brand-primary transition-colors">${book.title}</h4><p class="text-[10px] text-brand-muted mb-2 truncate">by ${book.author}</p><div class="flex items-center gap-2 mb-2"><div class="w-full relative progress-container flex items-center"><div class="bg-brand-primary h-[10px] rounded-full" style="width: ${progressPct}%;"></div></div><span class="text-[10px] text-brand-muted font-medium">${progressPct}%</span></div><button onclick="openProgressModal('${book.id}' || ${book.id}); event.stopPropagation();" class="border border-brand-primaryLight text-brand-primary hover:bg-brand-primary hover:text-white transition-colors rounded-full px-4 py-1 text-[10px] font-semibold w-fit mx-auto mt-1">Update progress</button></div>`; 
+                const imgHTML = `
+                    <div class="relative h-full">
+                        <img src="${book.coverUrl}" alt="${book.title}" class="w-16 h-[6.5rem] object-cover rounded-md book-shadow shrink-0 transition-transform group-hover:scale-105" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'64\\' height=\\'104\\' style=\\'background:%23333\\'></svg>'">
+                        ${getCardMenuHTML(book.id, 'currently_reading')}
+                    </div>
+                `; 
+                bookEl.innerHTML = `${imgHTML}<div class="flex flex-col flex-1 min-w-0"><h4 class="font-semibold text-sm text-brand-text truncate group-hover:text-brand-primary transition-colors">${book.title}</h4><p class="text-[10px] text-brand-muted mb-2 truncate">by ${book.author}</p><div class="flex items-center gap-2 mb-2"><div class="w-full relative progress-container flex items-center"><div class="bg-brand-primary h-[10px] rounded-full" style="width: ${progressPct}%;"></div></div><span class="text-[10px] text-brand-muted font-medium">${progressPct}%</span></div><button onclick="openProgressModal('${book.id}', ${currentPage}, ${totalPages}); event.stopPropagation();" class="border border-brand-primaryLight text-brand-primary hover:bg-brand-primary hover:text-white transition-colors rounded-full px-4 py-1 text-[10px] font-semibold w-fit mx-auto mt-1">Update progress</button></div>`; 
                 container.appendChild(bookEl); 
             }); 
         }
@@ -701,10 +783,8 @@
                 const bookEl = document.createElement('div'); 
                 bookEl.className = 'flex flex-col sm:flex-row gap-6 py-8 border-b border-gray-100 last:border-0 cursor-pointer group'; 
                 
-                // Make list items clickable
                 bookEl.onclick = (e) => {
-                    // Prevent triggering if they clicked the status button
-                    if(e.target.closest('button')) return;
+                    if(e.target.closest('button') || e.target.closest('.card-menu')) return;
                     openDetailedView({
                         title: book.title,
                         author_name: [book.author],
@@ -720,11 +800,27 @@
                     const currentPage = book.current_page || 0;
                     const totalPages = book.total_pages || 300;
                     const progressPct = book.progress || Math.round((currentPage / totalPages) * 100) || 0;
-                    rightSideHTML = `<div class="w-full relative progress-container flex items-center mt-3"><div class="bg-brand-primary h-[10px] rounded-full" style="width: ${progressPct}%;"></div></div><span class="text-[10px] text-brand-muted font-medium w-full text-center mt-1">${progressPct}%</span>`; 
+                    rightSideHTML = `<div class="w-full relative progress-container flex items-center mt-3"><div class="bg-brand-primary h-[10px] rounded-full" style="width: ${progressPct}%;"></div></div><div class="flex justify-between items-center w-full px-1 mt-1"><span class="text-[10px] text-brand-muted font-medium">${progressPct}%</span><button onclick="openProgressModal('${book.id}', ${currentPage}, ${totalPages}); event.stopPropagation();" class="text-brand-muted hover:text-brand-primary transition-colors p-1"><i data-lucide="edit-2" class="w-3 h-3"></i></button></div>`; 
                 } else if (book.status === 'Read') { 
                     rightSideHTML = `<div class="text-[10px] text-brand-muted mt-3 text-right">Added:<br>${book.readDates || 'Recently'}</div>`; 
                 } 
-                bookEl.innerHTML = `${imgHTML}<div class="flex-1 flex flex-col"><h3 class="text-lg font-semibold text-brand-text mb-0.5 group-hover:text-brand-primary transition-colors">${book.title}</h3><p class="text-sm text-brand-muted mb-3">by ${book.author}</p><p class="text-sm text-brand-text leading-relaxed line-clamp-3 mb-3">${book.description}</p><div class="flex items-center text-sm font-semibold text-brand-text mt-auto"><i data-lucide="star" class="w-4 h-4 text-brand-primary fill-brand-primary mr-1"></i> ${book.rating.toFixed(2)}</div></div><div class="w-full sm:w-40 flex flex-col items-end shrink-0 mt-4 sm:mt-0"><button class="w-full flex items-center justify-between border border-gray-300 rounded-full px-4 py-1.5 text-xs font-semibold text-brand-text hover:bg-gray-50 transition-colors">${book.status} <i data-lucide="chevron-down" class="w-3 h-3 ml-2 text-brand-muted"></i></button>${rightSideHTML}</div>`; 
+
+                const dropdownHTML = `
+                    <div class="relative z-10 w-full sm:w-40 flex flex-col items-end shrink-0 mt-4 sm:mt-0" onclick="event.stopPropagation()">
+                        <button onclick="toggleMenu('list-menu-${book.id}', event)" class="w-full flex items-center justify-between border border-gray-300 rounded-full px-4 py-1.5 text-xs font-semibold text-brand-text hover:bg-gray-50 transition-colors focus:outline-none">
+                            ${book.status} <i data-lucide="chevron-down" class="w-3 h-3 ml-2 text-brand-muted"></i>
+                        </button>
+                        <div id="list-menu-${book.id}" class="card-menu hidden absolute top-[36px] right-0 w-40 bg-white border border-gray-100 rounded-xl shadow-lg py-1 overflow-hidden z-50">
+                            <button onclick="moveBook('${book.id}', '${book.tableName}', 'currently_reading')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors ${book.tableName==='currently_reading'?'hidden':''}">Move to Reading</button>
+                            <button onclick="moveBook('${book.id}', '${book.tableName}', 'reading_later')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-gray-50 ${book.tableName==='reading_later'?'hidden':''}">Move to Later</button>
+                            <button onclick="moveBook('${book.id}', '${book.tableName}', 'read_books')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-gray-50 ${book.tableName==='read_books'?'hidden':''}">Move to Read</button>
+                            <button onclick="deleteBook('${book.id}', '${book.tableName}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-red-500 hover:bg-red-50 transition-colors border-t border-gray-50">Remove from library</button>
+                        </div>
+                        ${rightSideHTML}
+                    </div>
+                `;
+
+                bookEl.innerHTML = `${imgHTML}<div class="flex-1 flex flex-col"><h3 class="text-lg font-semibold text-brand-text mb-0.5 group-hover:text-brand-primary transition-colors">${book.title}</h3><p class="text-sm text-brand-muted mb-3">by ${book.author}</p><p class="text-sm text-brand-text leading-relaxed line-clamp-3 mb-3">${book.description}</p><div class="flex items-center text-sm font-semibold text-brand-text mt-auto"><i data-lucide="star" class="w-4 h-4 text-brand-primary fill-brand-primary mr-1"></i> ${book.rating.toFixed(2)}</div></div>${dropdownHTML}`; 
                 container.appendChild(bookEl); 
             }); 
             lucide.createIcons(); 
@@ -786,11 +882,11 @@
 
                 const activeCurrentlyReading = readingData && readingData.length > 0 ? readingData : MOCK_DATA.currentlyReading;
                 renderCurrentlyReading(activeCurrentlyReading);
-                renderBookListBasic(readingLaterList, 'reading-later-container');
-                renderBookListBasic(readBooksList, 'read-container');
+                renderBookListBasic(readingLaterList, 'reading-later-container', 'reading_later');
+                renderBookListBasic(readBooksList, 'read-container', 'read_books');
                 renderChallenge(challengeData ? challengeData : MOCK_DATA.challenge);
                 
-                // Track global authors/titles for recommendations page
+                // Track global authors/titles for recommendations page & globalLibrary for management
                 const allUserBooks = [...activeCurrentlyReading, ...readingLaterList, ...readBooksList];
                 globalUserAuthors = [...new Set(allUserBooks.map(b => b.author).filter(Boolean))];
                 globalUserTitles = allUserBooks.map(b => b.title);
@@ -815,15 +911,18 @@
                 }
 
                 // Compile Books Tab Data from User's Shelves
-                const mappedCurrentlyReading = activeCurrentlyReading.map(b => ({ ...b, status: 'Currently reading' }));
-                const mappedReadingLater = readingLaterList.map(b => ({ ...b, status: 'Reading later' }));
+                const mappedCurrentlyReading = activeCurrentlyReading.map(b => ({ ...b, status: 'Currently reading', tableName: 'currently_reading' }));
+                const mappedReadingLater = readingLaterList.map(b => ({ ...b, status: 'Reading later', tableName: 'reading_later' }));
                 const mappedRead = readBooksList.map(b => ({ 
                     ...b, 
                     status: 'Read', 
+                    tableName: 'read_books',
                     readDates: b.created_at ? new Date(b.created_at).toLocaleDateString() : 'Recently'
                 }));
                 
-                const combinedLibrary = [...mappedCurrentlyReading, ...mappedReadingLater, ...mappedRead].map(b => ({
+                globalLibrary = [...mappedCurrentlyReading, ...mappedReadingLater, ...mappedRead];
+
+                const combinedLibrary = globalLibrary.map(b => ({
                     ...b,
                     rating: b.rating || parseFloat((Math.random() * (4.9 - 3.8) + 3.8).toFixed(2)),
                     description: b.description || 'A fascinating book from your personal library collection.'
@@ -840,8 +939,8 @@
                 console.log("Supabase missing/empty. Using fallback data.", error.message);
                 
                 renderCurrentlyReading(MOCK_DATA.currentlyReading);
-                renderBookListBasic(MOCK_DATA.readingLater, 'reading-later-container');
-                renderBookListBasic(MOCK_DATA.readBooks, 'read-container');
+                renderBookListBasic(MOCK_DATA.readingLater, 'reading-later-container', 'reading_later');
+                renderBookListBasic(MOCK_DATA.readBooks, 'read-container', 'read_books');
                 renderChallenge(MOCK_DATA.challenge);
                 renderHomeChart(MOCK_DATA.stats);
                 
@@ -855,10 +954,12 @@
                 });
                 
                 // Fallback compilation for Books Tab
-                const mappedMockCR = MOCK_DATA.currentlyReading.map(b => ({ ...b, status: 'Currently reading' }));
-                const mappedMockRL = MOCK_DATA.readingLater.map(b => ({ ...b, status: 'Reading later' }));
-                const mappedMockR = MOCK_DATA.readBooks.map(b => ({ ...b, status: 'Read', readDates: 'Recently' }));
-                const combinedMockLibrary = [...mappedMockCR, ...mappedMockRL, ...mappedMockR].map(b => ({
+                const mappedMockCR = MOCK_DATA.currentlyReading.map(b => ({ ...b, status: 'Currently reading', tableName: 'currently_reading' }));
+                const mappedMockRL = MOCK_DATA.readingLater.map(b => ({ ...b, status: 'Reading later', tableName: 'reading_later' }));
+                const mappedMockR = MOCK_DATA.readBooks.map(b => ({ ...b, status: 'Read', tableName: 'read_books', readDates: 'Recently' }));
+                
+                globalLibrary = [...mappedMockCR, ...mappedMockRL, ...mappedMockR];
+                const combinedMockLibrary = globalLibrary.map(b => ({
                     ...b,
                     rating: b.rating || parseFloat((Math.random() * (4.9 - 3.8) + 3.8).toFixed(2)),
                     description: b.description || 'A fascinating book from your personal library collection.'
