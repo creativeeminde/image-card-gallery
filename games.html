@@ -113,14 +113,7 @@
                     <i data-lucide="compass" class="w-5 h-5"></i>
                     <span class="font-medium text-sm">Discover Games</span>
                 </a>
-                <a href="#" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:text-white hover:bg-dark-hover rounded-xl transition-colors pointer-events-none opacity-50">
-                    <i data-lucide="users" class="w-5 h-5"></i>
-                    <span class="font-medium text-sm">Community</span>
-                </a>
-                <a href="#" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:text-white hover:bg-dark-hover rounded-xl transition-colors pointer-events-none opacity-50">
-                    <i data-lucide="settings" class="w-5 h-5"></i>
-                    <span class="font-medium text-sm">Settings</span>
-                </a>
+                
             </nav>
         </div>
 
@@ -154,13 +147,7 @@
                     <span class="absolute top-0 right-0 w-2 h-2 bg-brand rounded-full border border-dark"></span>
                 </button>
                 
-                <div class="flex items-center gap-3 cursor-pointer hover:bg-dark-hover p-1.5 rounded-full pr-4 transition-colors">
-                    <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=150&auto=format&fit=crop" alt="User Profile" class="w-8 h-8 rounded-full object-cover">
-                    <div class="flex flex-col">
-                        <span class="text-sm font-semibold leading-tight text-gray-200">SolGuruz</span>
-                        <span class="text-[10px] font-bold text-brand uppercase tracking-wider">PRO PASS</span>
-                    </div>
-                </div>
+                
             </div>
         </header>
 
@@ -779,6 +766,280 @@
 
         lucide.createIcons();
 
+        // --- FETCHERS ---
+        async function fetchHomeGames() {
+            try {
+                const res = await fetch(`${RAWG_BASE_URL}?key=${RAWG_API_KEY}&ordering=-added&page_size=30`);
+                if (!res.ok) throw new Error('API limit reached');
+                const json = await res.json();
+                const data = json.results;
+                
+                if (data && data.length > 0) {
+                    window.currentHomeData = data;
+                    data.forEach(g => globalGameCache.set(g.id, g));
+                    
+                    const container = document.getElementById('featured-games-container');
+                    if(container && currentActiveTab === 'home') {
+                        renderFeaturedGames(data.slice(0, 3));
+                        renderTopDeals(data.slice(9, 14));
+                    }
+                }
+            } catch (err) { console.error("RAWG Home Error", err); }
+        }
+
+        async function fetchTopRatedGames() {
+            try {
+                const url = `${RAWG_BASE_URL}?key=${RAWG_API_KEY}&ordering=-metacritic&page_size=6&metacritic=80,100`;
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('API limit reached');
+                const json = await res.json();
+                const data = json.results || [];
+                
+                if (data.length > 0) {
+                    window.currentTopRatedData = data;
+                    data.forEach(g => globalGameCache.set(g.id, g));
+                    const container = document.getElementById('top-rated-container');
+                    if(container && currentActiveTab === 'home') renderTopRatedGames(data);
+                }
+            } catch (err) { 
+                console.error("RAWG Top Rated Error", err); 
+            }
+        }
+
+        async function fetchTopPicks() {
+            try {
+                let genreQuery = '';
+                if (libraryMap.size > 0) {
+                    const genres = Array.from(libraryMap.values()).map(g => g.genre ? g.genre.toLowerCase() : '');
+                    const validGenres = genres.filter(g => g && g !== 'game' && g !== 'unknown');
+                    if (validGenres.length > 0) {
+                        const randomUserGenre = validGenres[Math.floor(Math.random() * validGenres.length)];
+                        const genreMap = { 
+                            'rpg': 'role-playing-games-rpg', 
+                            'action rpg': 'action',
+                            'battle royale': 'shooter',
+                            'moba': 'strategy',
+                            'card game': 'board-games'
+                        };
+                        const mappedGenre = genreMap[randomUserGenre] || randomUserGenre.replace(/\s+/g, '-');
+                        genreQuery = `&genres=${mappedGenre}`;
+                    }
+                }
+
+                const randomPage = Math.floor(Math.random() * 4) + 1;
+                const url = `${RAWG_BASE_URL}?key=${RAWG_API_KEY}&ordering=-rating${genreQuery}&page_size=15&page=${randomPage}`;
+                
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('API limit reached');
+                const json = await res.json();
+                let data = json.results || [];
+                
+                if (data.length > 0) {
+                    for (let i = data.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [data[i], data[j]] = [data[j], data[i]];
+                    }
+                    
+                    window.currentTopPicksData = data.slice(0, 6);
+                    window.currentTopPicksData.forEach(g => globalGameCache.set(g.id, g));
+                    
+                    const container = document.getElementById('top-picks-container');
+                    if(container && currentActiveTab === 'home') {
+                        renderTopPicks(window.currentTopPicksData);
+                    }
+                }
+            } catch (err) { 
+                console.error("RAWG Top Picks Error", err); 
+            }
+        }
+
+        async function fetchNewPlayStationReleases() {
+            try {
+                const date = new Date();
+                const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0];
+                const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0];
+                
+                const url = `${RAWG_BASE_URL}?key=${RAWG_API_KEY}&platforms=187,18&dates=${startOfMonth},${endOfMonth}&ordering=-released&page_size=6`;
+                
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('API limit reached');
+                const json = await res.json();
+                const data = json.results || [];
+                
+                if (data.length > 0) {
+                    window.currentNewReleasesData = data;
+                    data.forEach(g => globalGameCache.set(g.id, g));
+                    const container = document.getElementById('new-releases-container');
+                    if(container && currentActiveTab === 'home') renderNewReleases(data);
+                } else {
+                    const container = document.getElementById('new-releases-container');
+                    if(container && currentActiveTab === 'home') {
+                        container.innerHTML = `
+                            <div class="col-span-full flex flex-col items-center justify-center py-10 text-center">
+                                <i data-lucide="calendar-x" class="w-8 h-8 text-gray-600 mb-2"></i>
+                                <p class="text-gray-500 text-sm">No new PlayStation releases found for this month.</p>
+                            </div>
+                        `;
+                    }
+                    lucide.createIcons();
+                }
+            } catch (err) { 
+                console.error("RAWG New Releases Error", err); 
+            }
+        }
+
+        async function fetchDiscoverResults(isLoadMore = false) {
+            const container = document.getElementById('discover-results-container');
+            const loader = document.getElementById('discover-loading');
+            const emptyState = document.getElementById('discover-empty');
+            const countText = document.getElementById('results-count');
+            const loadMoreContainer = document.getElementById('discover-load-more-container');
+            const loadMoreBtn = document.getElementById('discover-load-more-btn');
+            const loadMoreSpinner = document.getElementById('discover-load-more-spinner');
+            
+            if(!container || !loader || !emptyState || !countText) return;
+
+            if (!isLoadMore) {
+                container.classList.add('hidden');
+                emptyState.classList.add('hidden');
+                if (loadMoreContainer) loadMoreContainer.classList.add('hidden');
+                loader.classList.remove('hidden');
+                loader.classList.add('flex');
+                countText.innerHTML = 'Searching the global vault...';
+                discoverNextUrl = null;
+            } else {
+                if (loadMoreBtn) loadMoreBtn.classList.add('hidden');
+                if (loadMoreSpinner) loadMoreSpinner.classList.remove('hidden');
+            }
+
+            try {
+                let url;
+                if (isLoadMore && discoverNextUrl) {
+                    url = discoverNextUrl;
+                } else {
+                    url = `${RAWG_BASE_URL}?key=${RAWG_API_KEY}&page_size=24&ordering=${discoverState.sort}`;
+                    if (discoverState.search) url += `&search=${encodeURIComponent(discoverState.search)}`;
+                    if (discoverState.platform) url += `&platforms=${discoverState.platform}`;
+                    if (discoverState.genre) url += `&genres=${discoverState.genre}`;
+                }
+
+                const res = await fetch(url);
+                const json = await res.json();
+                const results = json.results || [];
+                
+                discoverNextUrl = json.next;
+                
+                if (!isLoadMore) {
+                    window.currentDiscoverData = results; 
+                } else {
+                    window.currentDiscoverData = [...(window.currentDiscoverData || []), ...results];
+                }
+                
+                results.forEach(g => globalGameCache.set(g.id, g));
+
+                if (!isLoadMore) {
+                    loader.classList.add('hidden');
+                    loader.classList.remove('flex');
+                } else {
+                    if (loadMoreSpinner) loadMoreSpinner.classList.add('hidden');
+                    if (loadMoreBtn) loadMoreBtn.classList.remove('hidden');
+                }
+                
+                if (window.currentDiscoverData.length === 0) {
+                    emptyState.classList.remove('hidden');
+                    emptyState.classList.add('flex');
+                    countText.innerHTML = '<span class="text-gray-500">0 results found</span>';
+                    if (loadMoreContainer) {
+                        loadMoreContainer.classList.add('hidden');
+                        loadMoreContainer.classList.remove('flex');
+                    }
+                } else {
+                    container.classList.remove('hidden');
+                    if (!isLoadMore) {
+                        countText.innerHTML = `<span class="text-brand font-medium">Found ${json.count ? json.count.toLocaleString() : 'Many'} Games</span>`;
+                    }
+                    renderDiscoverResults(results, isLoadMore);
+                    
+                    if (loadMoreContainer) {
+                        if (discoverNextUrl) {
+                            loadMoreContainer.classList.remove('hidden');
+                            loadMoreContainer.classList.add('flex');
+                        } else {
+                            loadMoreContainer.classList.add('hidden');
+                            loadMoreContainer.classList.remove('flex');
+                        }
+                    }
+                }
+            } catch (error) {
+                if (!isLoadMore) {
+                    loader.classList.add('hidden');
+                    loader.classList.remove('flex');
+                    emptyState.classList.remove('hidden');
+                    emptyState.classList.add('flex');
+                } else {
+                    if (loadMoreSpinner) loadMoreSpinner.classList.add('hidden');
+                    if (loadMoreBtn) loadMoreBtn.classList.remove('hidden');
+                    showToast("Failed to load more games.");
+                }
+            }
+        }
+
+        function loadMoreDiscover() {
+            if (discoverNextUrl) {
+                fetchDiscoverResults(true);
+            }
+        }
+
+        // --- GAME DETAILS API ---
+        async function viewGameDetails(gameId) {
+            switchTab('details');
+            currentGameId = gameId; 
+            
+            try {
+                const url = new URL(window.location);
+                url.searchParams.set('tab', 'details');
+                url.searchParams.set('id', gameId);
+                window.history.pushState({}, '', url);
+            } catch(e) {}
+
+            const content = document.getElementById('details-content');
+            const loading = document.getElementById('details-loading');
+            const errState = document.getElementById('details-error');
+            
+            content.classList.add('hidden');
+            errState.classList.add('hidden');
+            loading.classList.remove('hidden');
+            loading.classList.add('flex');
+
+            try {
+                const res = await fetch(`${RAWG_BASE_URL}/${gameId}?key=${RAWG_API_KEY}`);
+                if (!res.ok) throw new Error("Game fetch failed");
+                const game = await res.json();
+                
+                const ssRes = await fetch(`${RAWG_BASE_URL}/${gameId}/screenshots?key=${RAWG_API_KEY}`);
+                const ssData = ssRes.ok ? await ssRes.json() : { results: [] };
+
+                const achRes = await fetch(`${RAWG_BASE_URL}/${gameId}/achievements?key=${RAWG_API_KEY}`);
+                const achData = achRes.ok ? await achRes.json() : { results: [] };
+                
+                globalGameCache.set(game.id, game);
+                renderGameDetails(game, ssData.results, achData.results);
+                
+                fetchCustomMissions(gameId);
+                
+                loading.classList.add('hidden');
+                loading.classList.remove('flex');
+                content.classList.remove('hidden');
+                content.classList.add('flex');
+            } catch (err) {
+                loading.classList.add('hidden');
+                loading.classList.remove('flex');
+                errState.classList.remove('hidden');
+                errState.classList.add('flex');
+            }
+        }
+
+
         // --- GLOBAL EVENT LISTENERS ---
         window.addEventListener('click', function(e) {
             const dropdown = document.getElementById('pl-dropdown-menu');
@@ -967,7 +1228,7 @@
             if (currentActiveTab === 'home') {
                 if(window.currentHomeData) {
                     renderFeaturedGames(window.currentHomeData.slice(0, 3));
-                    renderTopDeals(window.currentHomeData.slice(9, 14)); // Note: Reverted this slice to accurately grab mock deals from the array tail based on previous setup
+                    renderTopDeals(window.currentHomeData.slice(9, 14)); 
                 }
                 if(window.currentTopPicksData) {
                     renderTopPicks(window.currentTopPicksData);
@@ -1432,6 +1693,105 @@
             progressContainers.forEach(el => el.innerHTML = progressHtml);
             listContainers.forEach(el => el.innerHTML = listHtml);
             lucide.createIcons();
+        }
+
+        function renderGameDetails(game, screenshots, achievements) {
+            document.getElementById('detail-hero').src = game.background_image || game.background_image_additional || 'https://via.placeholder.com/1200x500/1a1a1a/333333';
+            document.getElementById('detail-title').innerText = game.name;
+            
+            let tagsHtml = '';
+            if (game.rating >= 4.5) tagsHtml += `<span class="bg-yellow-500 text-black text-[10px] font-bold px-2 py-1 rounded uppercase flex items-center gap-1"><i data-lucide="award" class="w-3 h-3"></i> Top Rated</span>`;
+            if (game.released) tagsHtml += `<span class="bg-brand/20 text-brand border border-brand/30 text-[10px] font-bold px-2 py-1 rounded uppercase">${game.released.split('-')[0]}</span>`;
+            document.getElementById('detail-tags').innerHTML = tagsHtml;
+            
+            document.getElementById('detail-library-action').innerHTML = generateLibraryActionHTML(game.id);
+            const pDropdown = document.getElementById('pl-dropdown-menu');
+            if(pDropdown) { pDropdown.classList.add('hidden'); pDropdown.classList.remove('flex'); }
+
+            document.getElementById('detail-description').innerHTML = game.description || "No description available.";
+            document.getElementById('detail-released').innerHTML = game.released ? `<i data-lucide="calendar" class="w-4 h-4 text-brand"></i> ${new Date(game.released).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}` : 'TBA';
+            
+            const metaColor = game.metacritic >= 75 ? 'text-brand border-brand/30' : (game.metacritic >= 50 ? 'text-yellow-500 border-yellow-500/30' : 'text-red-500 border-red-500/30');
+            document.getElementById('detail-metacritic').innerHTML = game.metacritic 
+                ? `<div class="inline-flex items-center justify-center w-10 h-10 rounded border-2 ${metaColor} font-bold text-lg bg-dark/50">${game.metacritic}</div>` 
+                : `<span class="text-gray-500 text-sm italic">N/A</span>`;
+                
+            document.getElementById('detail-playtime').innerText = game.playtime ? `~${game.playtime} Hours` : 'N/A';
+            
+            if (game.platforms && game.platforms.length > 0) {
+                document.getElementById('detail-platforms').innerHTML = game.platforms.map(p => 
+                    `<span class="bg-dark-input px-2.5 py-1 rounded text-[10px] font-bold text-gray-300 uppercase border border-gray-700">${p.platform.name}</span>`
+                ).join('');
+            } else {
+                document.getElementById('detail-platforms').innerHTML = `<span class="text-gray-500 text-sm">Unknown</span>`;
+            }
+
+            if (game.genres && game.genres.length > 0) {
+                document.getElementById('detail-genres').innerHTML = game.genres.map(g => 
+                    `<span class="bg-brand/10 text-brand px-2.5 py-1 rounded text-[10px] font-bold uppercase">${g.name}</span>`
+                ).join('');
+            } else {
+                document.getElementById('detail-genres').innerHTML = `<span class="text-gray-500 text-sm">None</span>`;
+            }
+
+            document.getElementById('detail-developer').innerText = game.developers && game.developers.length > 0 ? game.developers.map(d=>d.name).join(', ') : 'Unknown';
+            document.getElementById('detail-publisher').innerText = game.publishers && game.publishers.length > 0 ? game.publishers.map(p=>p.name).join(', ') : 'Unknown';
+
+            const ssContainer = document.getElementById('detail-screenshots');
+            if (screenshots && screenshots.length > 0) {
+                let filteredSs = screenshots.filter(s => s.image !== game.background_image).slice(0, 4); 
+                ssContainer.innerHTML = filteredSs.map(s => `
+                    <div class="aspect-video rounded-lg overflow-hidden border border-gray-800 shadow-md">
+                        <img src="${s.image}" class="w-full h-full object-cover hover:scale-105 transition-transform duration-500 cursor-pointer">
+                    </div>
+                `).join('');
+            } else {
+                ssContainer.innerHTML = `<p class="text-gray-500 text-sm col-span-2 italic">No additional screenshots available.</p>`;
+            }
+
+            const missionsContainer = document.getElementById('detail-missions');
+            if (achievements && achievements.length > 0) {
+                const renderAch = achievements.slice(0, 50);
+                missionsContainer.innerHTML = renderAch.map((ach, index) => `
+                    <div class="bg-card/40 border border-gray-800/50 rounded-xl overflow-hidden transition-colors hover:border-gray-700">
+                        <button onclick="toggleMission(${index})" class="w-full flex items-center justify-between p-4 text-left focus:outline-none group">
+                            <div class="flex items-center gap-4">
+                                ${ach.image ? `<img src="${ach.image}" class="w-10 h-10 rounded-md object-cover bg-dark flex-shrink-0">` : `<div class="w-10 h-10 rounded-md bg-dark flex items-center justify-center flex-shrink-0"><i data-lucide="award" class="w-5 h-5 text-brand"></i></div>`}
+                                <span class="text-white font-bold text-sm sm:text-base group-hover:text-brand transition-colors line-clamp-1">${ach.name}</span>
+                            </div>
+                            <div class="flex items-center gap-4 text-gray-500 flex-shrink-0 ml-2">
+                                <span class="text-xs font-medium flex items-center gap-1.5 bg-dark-input px-2 py-1 rounded-md hidden sm:flex">${ach.percent ? ach.percent + '%' : 'Hidden'}</span>
+                                <i data-lucide="chevron-down" id="mission-icon-${index}" class="w-5 h-5 transition-transform duration-300"></i>
+                            </div>
+                        </button>
+                        <div id="mission-content-${index}" class="hidden px-4 pb-4 pt-0">
+                            <div class="sm:pl-18 pr-4 py-4 border-t border-gray-800/50 mt-2 sm:mt-0">
+                                <p class="text-sm text-gray-400 leading-relaxed sm:ml-14">${ach.description || 'Secret achievement / No description provided.'}</p>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                missionsContainer.innerHTML = `
+                    <div class="p-6 text-center bg-dark rounded-xl border border-gray-800/50">
+                        <i data-lucide="info" class="w-8 h-8 text-gray-600 mx-auto mb-2"></i>
+                        <p class="text-gray-400 text-sm">No mission or achievement records found for this title.</p>
+                    </div>
+                `;
+            }
+            lucide.createIcons();
+        }
+
+        function toggleMission(index) {
+            const content = document.getElementById(`mission-content-${index}`);
+            const icon = document.getElementById(`mission-icon-${index}`);
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                icon.style.transform = 'rotate(180deg)';
+            } else {
+                content.classList.add('hidden');
+                icon.style.transform = 'rotate(0deg)';
+            }
         }
 
         // --- SUPABASE PLAYLISTS LOGIC ---
@@ -1930,221 +2290,6 @@
             }
         }
 
-        // --- FETCHERS ---
-        async function fetchHomeGames() {
-            try {
-                const res = await fetch(`${RAWG_BASE_URL}?key=${RAWG_API_KEY}&ordering=-added&page_size=30`);
-                if (!res.ok) throw new Error('API limit reached');
-                const json = await res.json();
-                const data = json.results;
-                
-                if (data && data.length > 0) {
-                    window.currentHomeData = data;
-                    data.forEach(g => globalGameCache.set(g.id, g));
-                    
-                    renderFeaturedGames(data.slice(0, 3));
-                    renderTopDeals(data.slice(9, 14)); // Reverting slice based on existing structure
-                }
-            } catch (err) { console.error("RAWG Home Error", err); }
-        }
-
-        async function fetchTopRatedGames() {
-            try {
-                const url = `${RAWG_BASE_URL}?key=${RAWG_API_KEY}&ordering=-metacritic&page_size=6&metacritic=80,100`;
-                const res = await fetch(url);
-                if (!res.ok) throw new Error('API limit reached');
-                const json = await res.json();
-                const data = json.results || [];
-                
-                if (data.length > 0) {
-                    window.currentTopRatedData = data;
-                    data.forEach(g => globalGameCache.set(g.id, g));
-                    renderTopRatedGames(data);
-                }
-            } catch (err) { 
-                console.error("RAWG Top Rated Error", err); 
-            }
-        }
-
-        async function fetchTopPicks() {
-            try {
-                let genreQuery = '';
-                if (libraryMap.size > 0) {
-                    const genres = Array.from(libraryMap.values()).map(g => g.genre ? g.genre.toLowerCase() : '');
-                    const validGenres = genres.filter(g => g && g !== 'game' && g !== 'unknown');
-                    if (validGenres.length > 0) {
-                        const randomUserGenre = validGenres[Math.floor(Math.random() * validGenres.length)];
-                        const genreMap = { 
-                            'rpg': 'role-playing-games-rpg', 
-                            'action rpg': 'action',
-                            'battle royale': 'shooter',
-                            'moba': 'strategy',
-                            'card game': 'board-games'
-                        };
-                        const mappedGenre = genreMap[randomUserGenre] || randomUserGenre.replace(/\s+/g, '-');
-                        genreQuery = `&genres=${mappedGenre}`;
-                    }
-                }
-
-                const randomPage = Math.floor(Math.random() * 4) + 1;
-                const url = `${RAWG_BASE_URL}?key=${RAWG_API_KEY}&ordering=-rating${genreQuery}&page_size=15&page=${randomPage}`;
-                
-                const res = await fetch(url);
-                if (!res.ok) throw new Error('API limit reached');
-                const json = await res.json();
-                let data = json.results || [];
-                
-                if (data.length > 0) {
-                    for (let i = data.length - 1; i > 0; i--) {
-                        const j = Math.floor(Math.random() * (i + 1));
-                        [data[i], data[j]] = [data[j], data[i]];
-                    }
-                    
-                    window.currentTopPicksData = data.slice(0, 6);
-                    window.currentTopPicksData.forEach(g => globalGameCache.set(g.id, g));
-                    
-                    const container = document.getElementById('top-picks-container');
-                    if(container && currentActiveTab === 'home') {
-                        renderTopPicks(window.currentTopPicksData);
-                    }
-                }
-            } catch (err) { 
-                console.error("RAWG Top Picks Error", err); 
-            }
-        }
-
-        async function fetchNewPlayStationReleases() {
-            try {
-                const date = new Date();
-                const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0];
-                const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0];
-                
-                const url = `${RAWG_BASE_URL}?key=${RAWG_API_KEY}&platforms=187,18&dates=${startOfMonth},${endOfMonth}&ordering=-released&page_size=6`;
-                
-                const res = await fetch(url);
-                if (!res.ok) throw new Error('API limit reached');
-                const json = await res.json();
-                const data = json.results || [];
-                
-                if (data.length > 0) {
-                    window.currentNewReleasesData = data;
-                    data.forEach(g => globalGameCache.set(g.id, g));
-                    renderNewReleases(data);
-                } else {
-                    const container = document.getElementById('new-releases-container');
-                    if(container) {
-                        container.innerHTML = `
-                            <div class="col-span-full flex flex-col items-center justify-center py-10 text-center">
-                                <i data-lucide="calendar-x" class="w-8 h-8 text-gray-600 mb-2"></i>
-                                <p class="text-gray-500 text-sm">No new PlayStation releases found for this month.</p>
-                            </div>
-                        `;
-                    }
-                    lucide.createIcons();
-                }
-            } catch (err) { 
-                console.error("RAWG New Releases Error", err); 
-            }
-        }
-
-        async function fetchDiscoverResults(isLoadMore = false) {
-            const container = document.getElementById('discover-results-container');
-            const loader = document.getElementById('discover-loading');
-            const emptyState = document.getElementById('discover-empty');
-            const countText = document.getElementById('results-count');
-            const loadMoreContainer = document.getElementById('discover-load-more-container');
-            const loadMoreBtn = document.getElementById('discover-load-more-btn');
-            const loadMoreSpinner = document.getElementById('discover-load-more-spinner');
-            
-            if(!container || !loader || !emptyState || !countText) return;
-
-            if (!isLoadMore) {
-                container.classList.add('hidden');
-                emptyState.classList.add('hidden');
-                loadMoreContainer.classList.add('hidden');
-                loader.classList.remove('hidden');
-                loader.classList.add('flex');
-                countText.innerHTML = 'Searching the global vault...';
-                discoverNextUrl = null;
-            } else {
-                loadMoreBtn.classList.add('hidden');
-                loadMoreSpinner.classList.remove('hidden');
-            }
-
-            try {
-                let url;
-                if (isLoadMore && discoverNextUrl) {
-                    url = discoverNextUrl;
-                } else {
-                    url = `${RAWG_BASE_URL}?key=${RAWG_API_KEY}&page_size=24&ordering=${discoverState.sort}`;
-                    if (discoverState.search) url += `&search=${encodeURIComponent(discoverState.search)}`;
-                    if (discoverState.platform) url += `&platforms=${discoverState.platform}`;
-                    if (discoverState.genre) url += `&genres=${discoverState.genre}`;
-                }
-
-                const res = await fetch(url);
-                const json = await res.json();
-                const results = json.results || [];
-                
-                discoverNextUrl = json.next;
-                
-                if (!isLoadMore) {
-                    window.currentDiscoverData = results; 
-                } else {
-                    window.currentDiscoverData = [...window.currentDiscoverData, ...results];
-                }
-                
-                results.forEach(g => globalGameCache.set(g.id, g));
-
-                if (!isLoadMore) {
-                    loader.classList.add('hidden');
-                    loader.classList.remove('flex');
-                } else {
-                    loadMoreSpinner.classList.add('hidden');
-                    loadMoreBtn.classList.remove('hidden');
-                }
-                
-                if (window.currentDiscoverData.length === 0) {
-                    emptyState.classList.remove('hidden');
-                    emptyState.classList.add('flex');
-                    countText.innerHTML = '<span class="text-gray-500">0 results found</span>';
-                    loadMoreContainer.classList.add('hidden');
-                    loadMoreContainer.classList.remove('flex');
-                } else {
-                    container.classList.remove('hidden');
-                    if (!isLoadMore) {
-                        countText.innerHTML = `<span class="text-brand font-medium">Found ${json.count.toLocaleString()} Games</span>`;
-                    }
-                    renderDiscoverResults(results, isLoadMore);
-                    
-                    if (discoverNextUrl) {
-                        loadMoreContainer.classList.remove('hidden');
-                        loadMoreContainer.classList.add('flex');
-                    } else {
-                        loadMoreContainer.classList.add('hidden');
-                        loadMoreContainer.classList.remove('flex');
-                    }
-                }
-            } catch (error) {
-                if (!isLoadMore) {
-                    loader.classList.add('hidden');
-                    loader.classList.remove('flex');
-                    emptyState.classList.remove('hidden');
-                    emptyState.classList.add('flex');
-                } else {
-                    loadMoreSpinner.classList.add('hidden');
-                    loadMoreBtn.classList.remove('hidden');
-                    showToast("Failed to load more games.");
-                }
-            }
-        }
-
-        function loadMoreDiscover() {
-            if (discoverNextUrl) {
-                fetchDiscoverResults(true);
-            }
-        }
-
         // --- RENDER DOM GRIDS ---
         function getPlatformIcon(platforms) {
             if(!platforms) return `<i data-lucide="gamepad-2" class="w-3.5 h-3.5"></i>`;
@@ -2310,6 +2455,86 @@
                 </div>`;
             }
             container.innerHTML = html;
+        }
+
+        function renderCategoryData(games) {
+            const container = document.getElementById('category-results-container');
+            let dataToRender = [...games];
+
+            if (currentCategoryType === 'top-deals') {
+                const sort = document.getElementById('cat-filter-sort').value;
+                if (sort === 'price-asc') {
+                    dataToRender.sort((a,b) => a.mockSalePrice - b.mockSalePrice);
+                } else if (sort === 'price-desc') {
+                    dataToRender.sort((a,b) => b.mockSalePrice - a.mockSalePrice);
+                } else if (sort === 'discount-high') {
+                    dataToRender.sort((a,b) => b.mockDiscount - a.mockDiscount);
+                }
+            }
+
+            container.innerHTML = dataToRender.map(game => {
+                const bg = game.background_image || 'https://via.placeholder.com/400x300/1a1a1a/333333?text=No+Image';
+                const platformIcon = getPlatformIcon(game.platforms);
+                const platformText = game.platforms && game.platforms.length > 0 ? game.platforms[0].platform.name : 'Unknown';
+                const ratingBlock = game.rating ? `<i data-lucide="star" class="w-3 h-3 text-yellow-500 fill-yellow-500 inline pb-[1px]"></i> ${game.rating}` : '';
+
+                let metaBlock = '';
+                if (currentCategoryType === 'top-deals') {
+                    metaBlock = `
+                        <div class="flex flex-col items-end">
+                            <span class="bg-brand text-black text-[9px] font-black px-1.5 py-0.5 rounded mb-1">-${game.mockDiscount}%</span>
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-[10px] text-gray-500 line-through">$${game.mockOriginalPrice}</span>
+                                <span class="text-sm font-bold text-white">$${game.mockSalePrice}</span>
+                            </div>
+                        </div>
+                    `;
+                } else if (currentCategoryType === 'new-releases') {
+                    metaBlock = `
+                        <div class="flex flex-col items-end">
+                            <span class="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-0.5">Released</span>
+                            <span class="text-xs font-bold text-brand">${game.released ? new Date(game.released).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) : 'TBA'}</span>
+                        </div>
+                    `;
+                } else if (currentCategoryType === 'top-rated') {
+                    const metaColor = game.metacritic >= 75 ? 'text-brand border-brand/30' : (game.metacritic >= 50 ? 'text-yellow-500 border-yellow-500/30' : 'text-red-500 border-red-500/30');
+                    metaBlock = `
+                        <div class="flex flex-col items-end gap-1">
+                            ${game.metacritic ? `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded border ${metaColor} bg-dark/50">CRITIC: ${game.metacritic}</span>` : ''}
+                            ${game.rating ? `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded border border-yellow-500/30 text-yellow-500 bg-dark/50"><i data-lucide="star" class="w-2.5 h-2.5 inline fill-yellow-500"></i> ${game.rating}</span>` : ''}
+                        </div>
+                    `;
+                } else {
+                    metaBlock = `
+                        <div class="flex flex-col items-end">
+                            <span class="text-xs font-medium text-gray-400">${ratingBlock}</span>
+                        </div>
+                    `;
+                }
+
+                return `
+                <div onclick="viewGameDetails(${game.id})" class="cursor-pointer hover-card group relative flex flex-col bg-card rounded-xl overflow-hidden border border-gray-800 hover:border-brand/50 transition-colors shadow-lg shadow-black/30 h-full">
+                    <div class="relative h-40 w-full flex-shrink-0 bg-dark overflow-hidden">
+                        <img src="${bg}" loading="lazy" class="img-transition w-full h-full object-cover">
+                        <div class="absolute bottom-2 left-2">
+                            <span class="bg-black/80 backdrop-blur-sm text-[10px] font-bold text-white px-2 py-1 rounded uppercase border border-gray-700/50 flex items-center gap-1.5">
+                                ${platformIcon} ${platformText.split(' ')[0]}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="p-4 flex-1 flex flex-col justify-between">
+                        <div class="mb-4">
+                            <h4 class="text-base font-bold text-white group-hover:text-brand transition-colors line-clamp-2 leading-tight">${game.name}</h4>
+                        </div>
+                        <div class="flex items-end justify-between mt-auto pt-3 border-t border-gray-800/50">
+                            <div class="w-24" onclick="event.stopPropagation()">${generateLibraryActionHTML(game.id)}</div>
+                            ${metaBlock}
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+            
+            lucide.createIcons();
         }
 
         function renderDiscoverResults(games, append = false) {
