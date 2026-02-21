@@ -50,7 +50,25 @@
         .hover-card:hover .img-transition { transform: scale(1.05); }
     </style>
 </head>
-<body class="bg-dark text-white font-sans h-screen overflow-hidden flex">
+<body class="bg-dark text-white font-sans h-screen overflow-hidden flex relative">
+
+    <!-- Custom Input Modal -->
+    <div id="custom-modal" onclick="if(event.target === this) closeModal(null)" class="hidden fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm items-center justify-center p-4 transition-opacity">
+        <div class="bg-card border border-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-6 transform transition-transform scale-95 opacity-0" id="custom-modal-content">
+            <h3 id="modal-title" class="text-xl font-bold text-white mb-4">Create Playlist</h3>
+            <input type="text" id="modal-input" class="w-full bg-dark text-white rounded-lg px-4 py-3 border border-gray-700 focus:border-brand focus:ring-1 focus:ring-brand outline-none transition-all mb-6 placeholder-gray-600" placeholder="Enter name...">
+            <div class="flex justify-end gap-3">
+                <button onclick="closeModal(null)" class="px-5 py-2.5 rounded-lg text-gray-400 hover:text-white font-medium transition-colors">Cancel</button>
+                <button onclick="submitModal()" class="px-5 py-2.5 bg-brand hover:bg-brand-dark text-black font-bold rounded-lg transition-colors">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification (Fixed Position & Glow Effect) -->
+    <div id="toast" class="fixed top-12 right-8 bg-brand text-black font-bold px-5 py-3 rounded-xl shadow-[0_10px_40px_-10px_rgba(126,211,33,0.5)] transform transition-all duration-300 translate-y-[-150%] opacity-0 z-[110] flex items-center gap-3 border border-brand-dark">
+        <i data-lucide="check-circle" class="w-5 h-5"></i>
+        <span id="toast-msg">Updated!</span>
+    </div>
 
     <!-- Sidebar -->
     <aside class="w-64 bg-[#121212] border-r border-gray-800 flex flex-col justify-between h-full py-6 flex-shrink-0 z-20">
@@ -107,12 +125,6 @@
     <!-- Main Content Area -->
     <div class="flex-1 flex flex-col h-full overflow-hidden relative">
         
-        <!-- Toast Notification -->
-        <div id="toast" class="absolute top-24 right-8 bg-brand text-black font-bold px-4 py-2 rounded-lg shadow-lg transform transition-all duration-300 translate-y-[-150%] opacity-0 z-50 flex items-center gap-2">
-            <i data-lucide="check-circle" class="w-5 h-5"></i>
-            <span id="toast-msg">Updated!</span>
-        </div>
-
         <!-- Top Navigation -->
         <header class="h-20 flex items-center justify-between px-8 bg-dark/95 backdrop-blur-sm z-10 sticky top-0 border-b border-gray-800/50">
             <!-- Search Bar -->
@@ -435,7 +447,7 @@
                             <div class="flex flex-col sm:flex-row gap-3 flex-shrink-0 min-w-[200px] z-20">
                                 
                                 <!-- Custom Playlist Dropdown -->
-                                <div class="relative">
+                                <div class="relative" id="pl-dropdown-wrapper">
                                     <button onclick="togglePLDropdown(event)" class="w-full sm:w-auto px-4 py-2.5 bg-dark/80 backdrop-blur-md hover:bg-dark text-white border border-gray-700 hover:border-brand rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors">
                                         <i data-lucide="list-plus" class="w-4 h-4"></i> Playlists
                                     </button>
@@ -530,6 +542,60 @@
     </div>
 
     <script>
+        // --- CUSTOM MODAL LOGIC ---
+        let modalResolveFunc = null;
+
+        function openModal(title, defaultValue, placeholder) {
+            return new Promise((resolve) => {
+                document.getElementById('modal-title').innerText = title;
+                const input = document.getElementById('modal-input');
+                input.value = defaultValue;
+                input.placeholder = placeholder;
+                
+                const modal = document.getElementById('custom-modal');
+                const modalContent = document.getElementById('custom-modal-content');
+                
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                
+                // Trigger animation after slight delay to allow display:flex to apply
+                setTimeout(() => {
+                    modalContent.classList.remove('scale-95', 'opacity-0');
+                    modalContent.classList.add('scale-100', 'opacity-100');
+                    input.focus();
+                }, 10);
+                
+                modalResolveFunc = resolve;
+            });
+        }
+
+        function closeModal(val = null) {
+            const modal = document.getElementById('custom-modal');
+            const modalContent = document.getElementById('custom-modal-content');
+            
+            modalContent.classList.remove('scale-100', 'opacity-100');
+            modalContent.classList.add('scale-95', 'opacity-0');
+            
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                if (modalResolveFunc) {
+                    modalResolveFunc(val);
+                    modalResolveFunc = null;
+                }
+            }, 150); // wait for scale down transition
+        }
+
+        function submitModal() {
+            const val = document.getElementById('modal-input').value;
+            closeModal(val);
+        }
+
+        document.getElementById('modal-input').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') submitModal();
+        });
+
+
         // --- SUPABASE SETUP ---
         var SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
         var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
@@ -556,7 +622,8 @@
         window.addEventListener('click', function(e) {
             const dropdown = document.getElementById('pl-dropdown-menu');
             if (dropdown && !dropdown.classList.contains('hidden')) {
-                if (!e.target.closest('#pl-dropdown-wrapper') && !e.target.closest('button[onclick="togglePLDropdown(event)"]')) {
+                // Fixed: Ensures clicking inside the dropdown wrapper doesn't instantly close it
+                if (!e.target.closest('#pl-dropdown-wrapper')) {
                     dropdown.classList.add('hidden');
                 }
             }
@@ -582,7 +649,7 @@
         }
 
         async function createNewPlaylist() {
-            const name = prompt("Enter a name for your new playlist:");
+            const name = await openModal("Create New Playlist", "", "Enter playlist name...");
             if (!name || name.trim() === '') return;
 
             try {
@@ -594,6 +661,13 @@
                 if (error) throw error;
                 showToast("Playlist created!");
                 await fetchSupabasePlaylists();
+                
+                // If the user had the dropdown open on details page, update it
+                if(currentActiveTab === 'details') {
+                    const gameId = parseInt(new URLSearchParams(window.location.search).get('id'));
+                    if(gameId) updatePlaylistDropdownUI(gameId);
+                }
+
             } catch (err) {
                 console.error("Failed to create playlist", err);
                 showToast("Error creating playlist");
@@ -604,7 +678,7 @@
             const currentPL = playlistsList.find(p => p.id === activePlaylistId);
             if (!currentPL) return;
 
-            const newName = prompt("Enter new name:", currentPL.name);
+            const newName = await openModal("Rename Playlist", currentPL.name, "Enter new name...");
             if (!newName || newName.trim() === '' || newName === currentPL.name) return;
 
             try {
@@ -667,7 +741,7 @@
             }
 
             try {
-                // Optimistic UI Update
+                // Optimistic UI Update - Instant visual feedback
                 playlist.games = updatedGames;
                 updatePlaylistDropdownUI(gameId);
                 showToast(actionMsg);
@@ -813,7 +887,6 @@
 
         // --- PLAYLIST DROPDOWN MENU (GAME DETAILS) ---
         function togglePLDropdown(event) {
-            event.stopPropagation();
             const dropdown = document.getElementById('pl-dropdown-menu');
             dropdown.classList.toggle('hidden');
             dropdown.classList.toggle('flex');
@@ -840,7 +913,8 @@
                 
                 return `
                 <button onclick="toggleGameInPlaylist('${pl.id}', ${gameId})" class="w-full text-left px-3 py-2.5 hover:bg-dark-hover rounded-md text-sm text-gray-200 transition-colors flex items-center gap-3">
-                    ${icon} <span class="truncate">${pl.name}</span>
+                    <span class="w-4 h-4 flex-shrink-0 transition-transform active:scale-75">${icon}</span>
+                    <span class="truncate">${pl.name}</span>
                 </button>
                 `;
             }).join('');
@@ -919,6 +993,19 @@
             `;
         }
 
+        // --- GLOBAL UI HELPERS ---
+        let toastTimeout;
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-msg').innerText = message;
+            toast.classList.remove('translate-y-[-150%]', 'opacity-0');
+            
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => { 
+                toast.classList.add('translate-y-[-150%]', 'opacity-0'); 
+            }, 3000);
+        }
+
         // --- TAB SWITCHING & ROUTING ---
         function switchTab(tab, event) {
             if(event) event.preventDefault();
@@ -953,7 +1040,6 @@
                 if (el) {
                     el.classList.toggle('hidden', tab !== t);
                     
-                    // specific display types
                     if (tab === t) {
                         if (['discover', 'mygames', 'playlists', 'playlist-details', 'details'].includes(t)) {
                             el.classList.add('flex');
@@ -992,6 +1078,78 @@
                 renderMyGames();
             } else if (tab === 'playlists') {
                 renderPlaylists();
+            }
+        }
+
+        // --- MY GAMES UI LOGIC ---
+        function setLibraryFilter(filter) {
+            currentLibraryFilter = filter;
+            ['All', 'Wishlist', 'Playing', 'Completed', 'Downloaded'].forEach(f => {
+                const btn = document.getElementById(`lib-filter-${f}`);
+                if(btn) btn.className = f === filter ? "px-4 py-1.5 rounded-lg bg-dark-hover text-white text-sm font-semibold shadow-sm transition-colors" : "px-4 py-1.5 rounded-lg text-gray-400 hover:text-white text-sm font-semibold transition-colors";
+            });
+            renderMyGames();
+        }
+
+        function renderMyGames() {
+            const container = document.getElementById('library-results-container');
+            const emptyState = document.getElementById('library-empty');
+            
+            let games = Array.from(libraryMap.values());
+            games.sort((a,b) => new Date(b.added_at) - new Date(a.added_at));
+
+            if (currentLibraryFilter !== 'All') {
+                games = games.filter(g => g.status === currentLibraryFilter);
+            }
+
+            document.getElementById('library-count').innerText = `${games.length} Game${games.length !== 1 ? 's' : ''} in Library`;
+
+            if (games.length === 0) {
+                container.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+            } else {
+                emptyState.classList.add('hidden');
+                emptyState.classList.remove('flex');
+                container.classList.remove('hidden');
+                
+                container.innerHTML = games.map(game => {
+                    const bg = game.thumbnail || 'https://via.placeholder.com/400x300/1a1a1a/333333?text=No+Image';
+                    const statusColors = {
+                        'Wishlist': 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+                        'Playing': 'bg-green-500/20 text-brand border-brand/30',
+                        'Completed': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+                        'Downloaded': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+                        'Paused': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+                        'Quit': 'bg-red-500/20 text-red-400 border-red-500/30'
+                    };
+                    const badgeClass = statusColors[game.status] || statusColors['Wishlist'];
+
+                    return `
+                    <div onclick="viewGameDetails(${game.game_id})" class="cursor-pointer hover-card group relative aspect-[3/4] sm:aspect-auto sm:h-[320px] rounded-xl overflow-hidden shadow-lg border border-transparent hover:border-brand/50 transition-all flex flex-col bg-card">
+                        <div class="relative h-[170px] w-full flex-shrink-0 overflow-hidden bg-dark">
+                            <img src="${bg}" loading="lazy" alt="${game.title}" class="img-transition w-full h-full object-cover">
+                            <div class="absolute top-3 right-3">
+                                <span class="px-2.5 py-1 rounded border text-[10px] font-bold uppercase tracking-wider backdrop-blur-md ${badgeClass}">
+                                    ${game.status}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="p-4 flex-1 flex flex-col relative z-10">
+                            <div class="mb-2">
+                                <span class="text-[10px] text-brand font-bold uppercase tracking-wider mb-1 block">${game.genre}</span>
+                                <h4 class="font-bold text-lg text-white leading-tight line-clamp-1 group-hover:text-brand transition-colors">${game.title}</h4>
+                            </div>
+                            
+                            <div class="mt-auto pt-3 border-t border-gray-800 flex items-center justify-between">
+                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider"><i data-lucide="gamepad-2" class="w-3.5 h-3.5 inline"></i> ${game.platform.split(' ')[0]}</span>
+                                <div class="w-32">${generateLibraryActionHTML(game.game_id)}</div>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }).join('');
+                lucide.createIcons();
             }
         }
 
@@ -1165,78 +1323,6 @@
             } else {
                 content.classList.add('hidden');
                 icon.style.transform = 'rotate(0deg)';
-            }
-        }
-
-        // --- MY GAMES RENDERING ---
-        function setLibraryFilter(filter) {
-            currentLibraryFilter = filter;
-            ['All', 'Wishlist', 'Playing', 'Completed', 'Downloaded'].forEach(f => {
-                const btn = document.getElementById(`lib-filter-${f}`);
-                if(btn) btn.className = f === filter ? "px-4 py-1.5 rounded-lg bg-dark-hover text-white text-sm font-semibold shadow-sm transition-colors" : "px-4 py-1.5 rounded-lg text-gray-400 hover:text-white text-sm font-semibold transition-colors";
-            });
-            renderMyGames();
-        }
-
-        function renderMyGames() {
-            const container = document.getElementById('library-results-container');
-            const emptyState = document.getElementById('library-empty');
-            
-            let games = Array.from(libraryMap.values());
-            games.sort((a,b) => new Date(b.added_at) - new Date(a.added_at));
-
-            if (currentLibraryFilter !== 'All') {
-                games = games.filter(g => g.status === currentLibraryFilter);
-            }
-
-            document.getElementById('library-count').innerText = `${games.length} Game${games.length !== 1 ? 's' : ''} in Library`;
-
-            if (games.length === 0) {
-                container.classList.add('hidden');
-                emptyState.classList.remove('hidden');
-                emptyState.classList.add('flex');
-            } else {
-                emptyState.classList.add('hidden');
-                emptyState.classList.remove('flex');
-                container.classList.remove('hidden');
-                
-                container.innerHTML = games.map(game => {
-                    const bg = game.thumbnail || 'https://via.placeholder.com/400x300/1a1a1a/333333?text=No+Image';
-                    const statusColors = {
-                        'Wishlist': 'bg-pink-500/20 text-pink-400 border-pink-500/30',
-                        'Playing': 'bg-green-500/20 text-brand border-brand/30',
-                        'Completed': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-                        'Downloaded': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-                        'Paused': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-                        'Quit': 'bg-red-500/20 text-red-400 border-red-500/30'
-                    };
-                    const badgeClass = statusColors[game.status] || statusColors['Wishlist'];
-
-                    return `
-                    <div onclick="viewGameDetails(${game.game_id})" class="cursor-pointer hover-card group relative aspect-[3/4] sm:aspect-auto sm:h-[320px] rounded-xl overflow-hidden shadow-lg border border-transparent hover:border-brand/50 transition-all flex flex-col bg-card">
-                        <div class="relative h-[170px] w-full flex-shrink-0 overflow-hidden bg-dark">
-                            <img src="${bg}" loading="lazy" alt="${game.title}" class="img-transition w-full h-full object-cover">
-                            <div class="absolute top-3 right-3">
-                                <span class="px-2.5 py-1 rounded border text-[10px] font-bold uppercase tracking-wider backdrop-blur-md ${badgeClass}">
-                                    ${game.status}
-                                </span>
-                            </div>
-                        </div>
-                        <div class="p-4 flex-1 flex flex-col relative z-10">
-                            <div class="mb-2">
-                                <span class="text-[10px] text-brand font-bold uppercase tracking-wider mb-1 block">${game.genre}</span>
-                                <h4 class="font-bold text-lg text-white leading-tight line-clamp-1 group-hover:text-brand transition-colors">${game.title}</h4>
-                            </div>
-                            
-                            <div class="mt-auto pt-3 border-t border-gray-800 flex items-center justify-between">
-                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider"><i data-lucide="gamepad-2" class="w-3.5 h-3.5 inline"></i> ${game.platform.split(' ')[0]}</span>
-                                <div class="w-32">${generateLibraryActionHTML(game.game_id)}</div>
-                            </div>
-                        </div>
-                    </div>
-                    `;
-                }).join('');
-                lucide.createIcons();
             }
         }
 
