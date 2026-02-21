@@ -1,0 +1,1554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GAMERZ. Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        dark: {
+                            DEFAULT: '#0f0f0f',
+                            card: '#1a1a1a',
+                            hover: '#2a2a2a',
+                            input: '#1e1e1e'
+                        },
+                        brand: {
+                            DEFAULT: '#7ed321',
+                            dark: '#65a81a'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f0f0f; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Smooth transitions for images */
+        .img-transition { transition: transform 0.5s ease; }
+        .hover-card:hover .img-transition { transform: scale(1.05); }
+    </style>
+</head>
+<body class="bg-dark text-white font-sans h-screen overflow-hidden flex">
+
+    <!-- Sidebar -->
+    <aside class="w-64 bg-[#121212] border-r border-gray-800 flex flex-col justify-between h-full py-6 flex-shrink-0 z-20">
+        <div>
+            <!-- Logo -->
+            <div class="px-8 mb-10 flex items-center gap-2 cursor-pointer" onclick="switchTab('home')">
+                <div class="w-6 h-6 relative flex flex-wrap gap-1">
+                    <div class="w-2.5 h-2.5 bg-brand rounded-sm"></div>
+                    <div class="w-2.5 h-2.5 bg-brand rounded-sm"></div>
+                    <div class="w-2.5 h-2.5 bg-brand rounded-sm"></div>
+                    <div class="w-2.5 h-2.5 bg-brand rounded-sm"></div>
+                </div>
+                <h1 class="text-xl font-bold tracking-wider">GAMERZ<span class="text-brand">.</span></h1>
+            </div>
+
+            <!-- Navigation Links -->
+            <nav class="space-y-2 px-4" id="main-nav">
+                <a href="#" onclick="switchTab('home', event)" id="nav-home" class="flex items-center gap-4 px-4 py-3 bg-dark-hover rounded-xl text-white transition-colors">
+                    <i data-lucide="home" class="w-5 h-5 opacity-90"></i>
+                    <span class="font-medium text-sm">Home</span>
+                </a>
+                <a href="#" onclick="switchTab('mygames', event)" id="nav-mygames" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:text-white hover:bg-dark-hover rounded-xl transition-colors">
+                    <i data-lucide="gamepad-2" class="w-5 h-5"></i>
+                    <span class="font-medium text-sm">My Games</span>
+                </a>
+                <a href="#" onclick="switchTab('playlists', event)" id="nav-playlists" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:text-white hover:bg-dark-hover rounded-xl transition-colors">
+                    <i data-lucide="list-video" class="w-5 h-5"></i>
+                    <span class="font-medium text-sm">Playlists</span>
+                </a>
+                <a href="#" onclick="switchTab('discover', event)" id="nav-discover" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:text-white hover:bg-dark-hover rounded-xl transition-colors">
+                    <i data-lucide="compass" class="w-5 h-5"></i>
+                    <span class="font-medium text-sm">Discover Games</span>
+                </a>
+                <a href="#" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:text-white hover:bg-dark-hover rounded-xl transition-colors pointer-events-none opacity-50">
+                    <i data-lucide="users" class="w-5 h-5"></i>
+                    <span class="font-medium text-sm">Community</span>
+                </a>
+                <a href="#" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:text-white hover:bg-dark-hover rounded-xl transition-colors pointer-events-none opacity-50">
+                    <i data-lucide="settings" class="w-5 h-5"></i>
+                    <span class="font-medium text-sm">Settings</span>
+                </a>
+            </nav>
+        </div>
+
+        <!-- Help Link -->
+        <div class="px-4">
+            <a href="#" class="flex items-center gap-4 px-4 py-3 text-gray-400 hover:text-white hover:bg-dark-hover rounded-xl transition-colors pointer-events-none opacity-50">
+                <i data-lucide="message-circle" class="w-5 h-5"></i>
+                <span class="font-medium text-sm">Help</span>
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="flex-1 flex flex-col h-full overflow-hidden relative">
+        
+        <!-- Toast Notification -->
+        <div id="toast" class="absolute top-24 right-8 bg-brand text-black font-bold px-4 py-2 rounded-lg shadow-lg transform transition-all duration-300 translate-y-[-150%] opacity-0 z-50 flex items-center gap-2">
+            <i data-lucide="check-circle" class="w-5 h-5"></i>
+            <span id="toast-msg">Updated!</span>
+        </div>
+
+        <!-- Top Navigation -->
+        <header class="h-20 flex items-center justify-between px-8 bg-dark/95 backdrop-blur-sm z-10 sticky top-0 border-b border-gray-800/50">
+            <!-- Search Bar -->
+            <div class="relative w-96">
+                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <i data-lucide="search" class="w-4 h-4 text-gray-400"></i>
+                </div>
+                <input type="text" id="global-search" oninput="handleGlobalSearch(event)" onfocus="if(currentActiveTab!=='discover') switchTab('discover');" placeholder="Find hitman, gta, add-ons, and more..." 
+                    class="w-full bg-dark-input text-sm text-white placeholder-gray-500 rounded-full pl-11 pr-4 py-2.5 focus:outline-none focus:ring-1 focus:ring-brand transition-shadow border border-transparent focus:border-brand/30">
+            </div>
+
+            <!-- Profile & Notifications -->
+            <div class="flex items-center gap-6">
+                <button class="text-gray-400 hover:text-white transition-colors relative">
+                    <i data-lucide="bell" class="w-5 h-5"></i>
+                    <span class="absolute top-0 right-0 w-2 h-2 bg-brand rounded-full border border-dark"></span>
+                </button>
+                
+                <div class="flex items-center gap-3 cursor-pointer hover:bg-dark-hover p-1.5 rounded-full pr-4 transition-colors">
+                    <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=150&auto=format&fit=crop" alt="User Profile" class="w-8 h-8 rounded-full object-cover">
+                    <div class="flex flex-col">
+                        <span class="text-sm font-semibold leading-tight text-gray-200">SolGuruz</span>
+                        <span class="text-[10px] font-bold text-brand uppercase tracking-wider">PRO PASS</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Scrollable Page Content -->
+        <main class="flex-1 overflow-y-auto px-8 py-6 pb-20 relative" id="main-scroll-area">
+            
+            <!-- HOME VIEW -->
+            <div id="home-view" class="block">
+                <section class="mb-10">
+                    <h2 class="text-xl font-bold mb-4 text-gray-100">Featured Games</h2>
+                    <div id="featured-games-container" class="grid grid-cols-1 lg:grid-cols-4 gap-6 h-80">
+                        <div class="col-span-1 lg:col-span-4 flex items-center justify-center h-full">
+                            <div class="w-8 h-8 border-4 border-brand border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="mb-10">
+                    <div class="flex justify-between items-end mb-4">
+                        <div>
+                            <h2 class="text-xl font-bold text-gray-100 mb-0.5">Top Picks For You</h2>
+                            <p class="text-xs text-gray-400">Discover games curated only for you</p>
+                        </div>
+                        <a href="#" onclick="switchTab('discover', event)" class="text-brand text-sm font-semibold hover:text-brand-dark transition-colors flex items-center gap-1">
+                            See All <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                        </a>
+                    </div>
+                    <div id="top-picks-container" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                        <div class="col-span-full flex items-center justify-center py-10">
+                            <div class="w-6 h-6 border-4 border-brand border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="mb-10">
+                    <div class="flex justify-between items-end mb-4">
+                        <div>
+                            <h2 class="text-xl font-bold text-gray-100 mb-0.5">Top Deals For You</h2>
+                            <p class="text-xs text-gray-400">Trending releases across platforms</p>
+                        </div>
+                        <a href="#" onclick="switchTab('discover', event)" class="text-brand text-sm font-semibold hover:text-brand-dark transition-colors flex items-center gap-1">
+                            See All <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                        </a>
+                    </div>
+                    <div id="top-deals-container" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                        <div class="col-span-full flex items-center justify-center py-10">
+                            <div class="w-6 h-6 border-4 border-brand border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- MY GAMES VIEW (LIBRARY) -->
+            <div id="mygames-view" class="hidden flex-col h-full min-h-[800px]">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 gap-4">
+                    <div>
+                        <h2 class="text-3xl font-bold text-gray-100">My Collection</h2>
+                        <p id="library-count" class="text-sm text-gray-400 mt-1">0 Games in Library</p>
+                    </div>
+                    
+                    <div class="flex flex-wrap gap-2 bg-dark-input p-1 rounded-xl border border-gray-800">
+                        <button onclick="setLibraryFilter('All')" id="lib-filter-All" class="px-4 py-1.5 rounded-lg bg-dark-hover text-white text-sm font-semibold shadow-sm transition-colors">All</button>
+                        <button onclick="setLibraryFilter('Wishlist')" id="lib-filter-Wishlist" class="px-4 py-1.5 rounded-lg text-gray-400 hover:text-white text-sm font-semibold transition-colors">Wishlist</button>
+                        <button onclick="setLibraryFilter('Playing')" id="lib-filter-Playing" class="px-4 py-1.5 rounded-lg text-gray-400 hover:text-white text-sm font-semibold transition-colors">Playing</button>
+                        <button onclick="setLibraryFilter('Completed')" id="lib-filter-Completed" class="px-4 py-1.5 rounded-lg text-gray-400 hover:text-white text-sm font-semibold transition-colors">Completed</button>
+                        <button onclick="setLibraryFilter('Downloaded')" id="lib-filter-Downloaded" class="px-4 py-1.5 rounded-lg text-gray-400 hover:text-white text-sm font-semibold transition-colors">Downloaded</button>
+                    </div>
+                </div>
+
+                <div id="library-results-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6 pb-10">
+                    <!-- Populated by JS -->
+                </div>
+
+                <div id="library-empty" class="hidden flex-col items-center justify-center py-20 mt-10 text-center bg-card/20 rounded-2xl border border-gray-800/50 border-dashed">
+                    <div class="bg-dark p-4 rounded-full mb-4">
+                        <i data-lucide="package-open" class="w-8 h-8 text-gray-600"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-200 mb-2">Your library is empty</h3>
+                    <p class="text-gray-500 text-sm max-w-sm mx-auto">You haven't added any games with this status yet. Head over to the Discover tab to find your next adventure!</p>
+                    <button onclick="switchTab('discover')" class="mt-6 px-5 py-2.5 bg-brand text-black font-bold text-sm rounded-lg transition-transform hover:scale-105">Discover Games</button>
+                </div>
+            </div>
+
+            <!-- PLAYLISTS VIEW -->
+            <div id="playlists-view" class="hidden flex-col h-full min-h-[800px]">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 gap-4 border-b border-gray-800 pb-6">
+                    <div>
+                        <h2 class="text-3xl font-bold text-gray-100">My Playlists</h2>
+                        <p id="playlists-count" class="text-sm text-gray-400 mt-1">Loading playlists...</p>
+                    </div>
+                    <button onclick="createNewPlaylist()" class="px-5 py-2.5 bg-brand text-black font-bold text-sm rounded-lg transition-transform hover:scale-105 flex items-center gap-2">
+                        <i data-lucide="plus" class="w-4 h-4"></i> New Playlist
+                    </button>
+                </div>
+
+                <div id="playlists-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-10">
+                    <!-- Populated by JS -->
+                </div>
+
+                <div id="playlists-empty" class="hidden flex-col items-center justify-center py-20 mt-10 text-center bg-card/20 rounded-2xl border border-gray-800/50 border-dashed">
+                    <div class="bg-dark p-4 rounded-full mb-4">
+                        <i data-lucide="list-video" class="w-8 h-8 text-gray-600"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-200 mb-2">No Playlists Found</h3>
+                    <p class="text-gray-500 text-sm max-w-sm mx-auto mb-6">Create a playlist to start organizing your favorite games into custom collections.</p>
+                    <button onclick="createNewPlaylist()" class="px-5 py-2.5 bg-brand text-black font-bold text-sm rounded-lg transition-transform hover:scale-105">Create First Playlist</button>
+                </div>
+            </div>
+
+            <!-- PLAYLIST DETAILS VIEW -->
+            <div id="playlist-details-view" class="hidden flex-col h-full min-h-[800px] w-full pb-10">
+                <button onclick="switchTab('playlists')" class="flex items-center gap-2 text-gray-400 hover:text-brand transition-colors mb-6 w-fit text-sm font-semibold">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to Playlists
+                </button>
+                
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4 border-b border-gray-800 pb-6">
+                    <div>
+                        <h2 id="pl-detail-name" class="text-3xl font-bold text-white mb-2">Playlist Name</h2>
+                        <p id="pl-detail-count" class="text-sm text-brand font-medium">0 Games</p>
+                    </div>
+                    
+                    <div class="flex flex-wrap items-center gap-3">
+                        <div class="relative">
+                            <select id="pl-detail-sort" onchange="sortPlaylistDetails()" class="bg-dark-input text-white text-sm rounded-lg pl-4 pr-8 py-2 border border-gray-700 focus:border-brand outline-none appearance-none font-medium cursor-pointer">
+                                <option value="newest">Recently Added</option>
+                                <option value="name">Alphabetical (A-Z)</option>
+                                <option value="rating">Highest Rated</option>
+                            </select>
+                            <i data-lucide="chevron-down" class="w-4 h-4 absolute right-3 top-2.5 text-gray-500 pointer-events-none"></i>
+                        </div>
+                        <button onclick="renameActivePlaylist()" class="px-4 py-2 bg-dark-input hover:bg-dark-hover text-white text-sm font-semibold rounded-lg transition-colors border border-gray-700 flex items-center gap-2"><i data-lucide="edit-2" class="w-4 h-4"></i> Rename</button>
+                        <button onclick="deleteActivePlaylist()" class="px-4 py-2 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white text-sm font-semibold rounded-lg transition-colors border border-red-500/30 flex items-center gap-2"><i data-lucide="trash-2" class="w-4 h-4"></i> Delete</button>
+                    </div>
+                </div>
+
+                <div id="playlist-games-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6 pb-10">
+                    <!-- Populated by JS -->
+                </div>
+
+                <div id="playlist-games-empty" class="hidden flex-col items-center justify-center py-20 mt-10 text-center bg-card/20 rounded-2xl border border-gray-800/50 border-dashed">
+                    <div class="bg-dark p-4 rounded-full mb-4">
+                        <i data-lucide="folder-open" class="w-8 h-8 text-gray-600"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-200 mb-2">This playlist is empty</h3>
+                    <p class="text-gray-500 text-sm max-w-sm mx-auto">Explore games and use the "Add to Playlist" button to fill this collection.</p>
+                    <button onclick="switchTab('discover')" class="mt-6 px-5 py-2.5 bg-brand text-black font-bold text-sm rounded-lg transition-transform hover:scale-105">Find Games</button>
+                </div>
+            </div>
+
+            <!-- DISCOVER VIEW -->
+            <div id="discover-view" class="hidden flex-col lg:flex-row gap-8 h-full min-h-[800px]">
+                <!-- Filter Sidebar -->
+                <aside class="w-full lg:w-64 flex-shrink-0 space-y-6 bg-card/40 p-5 rounded-2xl border border-gray-800/50 h-fit sticky top-0">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="font-bold text-lg text-white">Filters</h3>
+                        <button onclick="clearFilters()" class="text-xs font-semibold text-gray-400 hover:text-brand transition-colors">Clear All</button>
+                    </div>
+                    
+                    <!-- Search Filter -->
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Search</label>
+                        <div class="relative">
+                            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-gray-500"></i>
+                            <input type="text" id="filter-search" oninput="handleSearch(event)" class="w-full bg-dark text-white rounded-lg pl-10 pr-4 py-2 text-sm border border-gray-800 focus:border-brand focus:ring-1 focus:ring-brand outline-none transition-all placeholder-gray-600" placeholder="Game title...">
+                        </div>
+                    </div>
+
+                    <!-- Platform Filter -->
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Platform</label>
+                        <div class="relative">
+                            <select id="filter-platform" onchange="handleFilterChange('platform', event)" class="w-full bg-dark text-white rounded-lg px-4 py-2 text-sm border border-gray-800 focus:border-brand focus:ring-1 focus:ring-brand outline-none appearance-none cursor-pointer">
+                                <option value="">All Platforms</option>
+                                <option value="4">PC</option>
+                                <option value="187,18,16">PlayStation</option>
+                                <option value="1,186,14">Xbox</option>
+                                <option value="7">Nintendo Switch</option>
+                                <option value="21">Android</option>
+                                <option value="3">iOS</option>
+                            </select>
+                            <i data-lucide="chevron-down" class="w-4 h-4 absolute right-3 top-2.5 text-gray-500 pointer-events-none"></i>
+                        </div>
+                    </div>
+
+                    <!-- Genre Filter -->
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Genre</label>
+                        <div class="relative">
+                            <select id="filter-genre" onchange="handleFilterChange('genre', event)" class="w-full bg-dark text-white rounded-lg px-4 py-2 text-sm border border-gray-800 focus:border-brand focus:ring-1 focus:ring-brand outline-none appearance-none cursor-pointer">
+                                <option value="">All Genres</option>
+                                <option value="action">Action</option>
+                                <option value="shooter">Shooter</option>
+                                <option value="role-playing-games-rpg">RPG</option>
+                                <option value="strategy">Strategy</option>
+                                <option value="adventure">Adventure</option>
+                                <option value="sports">Sports</option>
+                                <option value="racing">Racing</option>
+                                <option value="fighting">Fighting</option>
+                            </select>
+                            <i data-lucide="chevron-down" class="w-4 h-4 absolute right-3 top-2.5 text-gray-500 pointer-events-none"></i>
+                        </div>
+                    </div>
+
+                    <!-- Sort Options -->
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Sort By</label>
+                        <div class="relative">
+                            <select id="filter-sort" onchange="handleFilterChange('sort', event)" class="w-full bg-dark text-white rounded-lg px-4 py-2 text-sm border border-gray-800 focus:border-brand focus:ring-1 focus:ring-brand outline-none appearance-none cursor-pointer">
+                                <option value="-added">Popularity (High-Low)</option>
+                                <option value="-rating">Rating (High-Low)</option>
+                                <option value="-released">Release Date (Newest)</option>
+                                <option value="name">Alphabetical (A-Z)</option>
+                            </select>
+                            <i data-lucide="chevron-down" class="w-4 h-4 absolute right-3 top-2.5 text-gray-500 pointer-events-none"></i>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- Results Content Area -->
+                <div class="flex-1 flex flex-col h-full">
+                    
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-6 gap-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-100">Discover Vault</h2>
+                            <p id="results-count" class="text-sm text-gray-400 mt-1">Fetching catalogue...</p>
+                        </div>
+                        
+                        <div class="flex gap-2 bg-dark-input p-1 rounded-lg border border-gray-800">
+                            <button onclick="setViewMode('grid')" id="btn-view-grid" class="p-1.5 rounded bg-dark-hover text-white shadow-sm transition-colors" title="Grid View">
+                                <i data-lucide="grid" class="w-4 h-4"></i>
+                            </button>
+                            <button onclick="setViewMode('list')" id="btn-view-list" class="p-1.5 rounded text-gray-500 hover:text-white transition-colors" title="List View">
+                                <i data-lucide="list" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="discover-results-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6 pb-10">
+                        <!-- Populated by JS -->
+                    </div>
+                    
+                    <div id="discover-loading" class="hidden flex-col items-center justify-center py-20 mt-10">
+                        <div class="w-10 h-10 border-4 border-brand border-t-transparent rounded-full animate-spin mb-4 shadow-lg shadow-brand/20"></div>
+                        <p class="text-gray-400 font-medium text-sm">Searching the global vault...</p>
+                    </div>
+                    
+                    <div id="discover-empty" class="hidden flex-col items-center justify-center py-20 mt-10 text-center bg-card/20 rounded-2xl border border-gray-800/50 border-dashed">
+                        <div class="bg-dark p-4 rounded-full mb-4">
+                            <i data-lucide="ghost" class="w-8 h-8 text-gray-600"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-200 mb-2">No matching games</h3>
+                        <p class="text-gray-500 text-sm max-w-sm mx-auto">We couldn't find any games matching your current filters. Try adjusting them or clear everything to start over.</p>
+                        <button onclick="clearFilters()" class="mt-6 px-5 py-2.5 bg-brand/10 text-brand hover:bg-brand hover:text-black font-semibold text-sm rounded-lg transition-colors">Clear Filters</button>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- GAME DETAILS VIEW -->
+            <div id="game-details-view" class="hidden flex-col w-full pb-10">
+                <!-- Back Action -->
+                <button onclick="goBackFromDetails()" class="flex items-center gap-2 text-gray-400 hover:text-brand transition-colors mb-6 w-fit text-sm font-semibold">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to <span id="back-target-name">Dashboard</span>
+                </button>
+
+                <!-- Loading State -->
+                <div id="details-loading" class="hidden flex-col items-center justify-center py-32">
+                    <div class="w-12 h-12 border-4 border-brand border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <p class="text-gray-400 font-medium">Decrypting game files...</p>
+                </div>
+
+                <!-- Error State -->
+                <div id="details-error" class="hidden flex-col items-center justify-center py-32 text-center bg-card/20 rounded-2xl border border-gray-800/50">
+                    <i data-lucide="alert-triangle" class="w-10 h-10 text-red-500 mb-4"></i>
+                    <h3 class="text-2xl font-bold text-gray-200 mb-2">Game Not Found</h3>
+                    <p class="text-gray-500 mb-6">The requested game details could not be retrieved.</p>
+                    <button onclick="goBackFromDetails()" class="px-6 py-2 bg-dark-input hover:bg-brand hover:text-black transition-colors rounded-lg font-bold">Go Back</button>
+                </div>
+
+                <!-- Actual Details Content -->
+                <div id="details-content" class="hidden flex-col gap-8">
+                    <!-- Hero Banner & Header -->
+                    <div class="relative w-full h-[400px] rounded-3xl overflow-hidden shadow-2xl border border-gray-800">
+                        <img id="detail-hero" src="" alt="Game Banner" class="absolute inset-0 w-full h-full object-cover">
+                        <div class="absolute inset-0 bg-gradient-to-t from-dark via-dark/70 to-transparent"></div>
+                        <div class="absolute bottom-8 left-8 right-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+                            <div class="flex-1">
+                                <div id="detail-tags" class="flex flex-wrap gap-2 mb-3">
+                                    <!-- Populated dynamically -->
+                                </div>
+                                <h2 id="detail-title" class="text-4xl md:text-5xl font-black text-white drop-shadow-lg leading-tight"></h2>
+                            </div>
+                            
+                            <!-- Action Buttons Container -->
+                            <div class="flex flex-col sm:flex-row gap-3 flex-shrink-0 min-w-[200px] z-20">
+                                
+                                <!-- Custom Playlist Dropdown -->
+                                <div class="relative">
+                                    <button onclick="togglePLDropdown(event)" class="w-full sm:w-auto px-4 py-2.5 bg-dark/80 backdrop-blur-md hover:bg-dark text-white border border-gray-700 hover:border-brand rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors">
+                                        <i data-lucide="list-plus" class="w-4 h-4"></i> Playlists
+                                    </button>
+                                    
+                                    <!-- The Dropdown Menu -->
+                                    <div id="pl-dropdown-menu" class="hidden absolute bottom-full left-0 mb-2 w-56 bg-card border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden flex-col max-h-[300px]">
+                                        <div class="p-3 border-b border-gray-700 bg-dark">
+                                            <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Save to Playlist</span>
+                                        </div>
+                                        <div id="pl-dropdown-list" class="flex-1 overflow-y-auto p-1">
+                                            <!-- Injected dynamically -->
+                                        </div>
+                                        <div class="p-2 border-t border-gray-700 bg-dark">
+                                            <button onclick="createNewPlaylist()" class="w-full text-left px-3 py-2 hover:bg-brand/10 text-brand rounded-md text-sm font-semibold transition-colors flex items-center gap-2">
+                                                <i data-lucide="plus" class="w-4 h-4"></i> Create New
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="detail-library-action" class="w-full sm:w-auto">
+                                    <!-- Library Dropdown injected here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Two Column Grid for Info -->
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        
+                        <!-- Left Main Column -->
+                        <div class="lg:col-span-2 space-y-10">
+                            <div>
+                                <h3 class="text-2xl font-bold text-white mb-4 flex items-center gap-2"><i data-lucide="info" class="w-5 h-5 text-brand"></i> About the Game</h3>
+                                <div id="detail-description" class="text-gray-300 text-sm leading-loose bg-card/30 p-6 rounded-2xl border border-gray-800/50">
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <h3 class="text-2xl font-bold text-white mb-4 flex items-center gap-2"><i data-lucide="image" class="w-5 h-5 text-brand"></i> Screenshots</h3>
+                                <div id="detail-screenshots" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                </div>
+                            </div>
+
+                            <div class="pt-4">
+                                <h3 class="text-2xl font-bold text-white mb-4 flex items-center gap-2"><i data-lucide="list-checks" class="w-5 h-5 text-brand"></i> Missions & Achievements</h3>
+                                <div id="detail-missions" class="space-y-3 max-h-[450px] overflow-y-auto pr-2">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Sidebar Column -->
+                        <div class="space-y-6">
+                            <div class="bg-card/40 p-6 rounded-2xl border border-gray-800/50 backdrop-blur-sm space-y-6">
+                                <div>
+                                    <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Release Date</h4>
+                                    <p id="detail-released" class="text-white font-medium flex items-center gap-2"></p>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Metacritic</h4>
+                                        <div id="detail-metacritic"></div>
+                                    </div>
+                                    <div>
+                                        <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Playtime</h4>
+                                        <p id="detail-playtime" class="text-white font-medium"></p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Platforms</h4>
+                                    <div id="detail-platforms" class="flex flex-wrap gap-2"></div>
+                                </div>
+                                <div>
+                                    <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Genres</h4>
+                                    <div id="detail-genres" class="flex flex-wrap gap-2"></div>
+                                </div>
+                                <div class="pt-4 border-t border-gray-800/50">
+                                    <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Developer</h4>
+                                    <p id="detail-developer" class="text-white font-medium"></p>
+                                </div>
+                                <div>
+                                    <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Publisher</h4>
+                                    <p id="detail-publisher" class="text-white font-medium"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        // --- SUPABASE SETUP ---
+        var SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
+        var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
+        var supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        // --- GLOBAL STATE ---
+        var RAWG_API_KEY = 'c04531d68ff945e1a71861a13287e192'; 
+        var RAWG_BASE_URL = 'https://api.rawg.io/api/games';
+
+        var globalGameCache = new Map(); // Stores RAWG game objects by ID
+        var libraryMap = new Map(); // user_games table
+        var playlistsList = []; // user_playlists table
+        var activePlaylistId = null; // currently viewed playlist id
+
+        var discoverState = { search: '', platform: '', genre: '', sort: '-added', view: 'grid' };
+        var currentActiveTab = 'home';
+        var previousTab = 'home'; 
+        var currentLibraryFilter = 'All';
+
+        lucide.createIcons();
+
+        // --- GLOBAL EVENT LISTENERS ---
+        // Close playlist dropdown when clicking outside
+        window.addEventListener('click', function(e) {
+            const dropdown = document.getElementById('pl-dropdown-menu');
+            if (dropdown && !dropdown.classList.contains('hidden')) {
+                if (!e.target.closest('#pl-dropdown-wrapper') && !e.target.closest('button[onclick="togglePLDropdown(event)"]')) {
+                    dropdown.classList.add('hidden');
+                }
+            }
+        });
+
+        // --- SUPABASE PLAYLISTS LOGIC (NEW) ---
+        async function fetchSupabasePlaylists() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('user_playlists')
+                    .select('*')
+                    .eq('user_id', 'default_user')
+                    .order('created_at', { ascending: false });
+                
+                if (error) throw error;
+                playlistsList = data || [];
+                
+                if (currentActiveTab === 'playlists') renderPlaylists();
+                if (currentActiveTab === 'playlist-details' && activePlaylistId) renderPlaylistDetails();
+            } catch (err) {
+                console.error("Error fetching playlists:", err);
+            }
+        }
+
+        async function createNewPlaylist() {
+            const name = prompt("Enter a name for your new playlist:");
+            if (!name || name.trim() === '') return;
+
+            try {
+                const { data, error } = await supabaseClient
+                    .from('user_playlists')
+                    .insert([{ user_id: 'default_user', name: name.trim(), games: [] }])
+                    .select();
+
+                if (error) throw error;
+                showToast("Playlist created!");
+                await fetchSupabasePlaylists();
+            } catch (err) {
+                console.error("Failed to create playlist", err);
+                showToast("Error creating playlist");
+            }
+        }
+
+        async function renameActivePlaylist() {
+            const currentPL = playlistsList.find(p => p.id === activePlaylistId);
+            if (!currentPL) return;
+
+            const newName = prompt("Enter new name:", currentPL.name);
+            if (!newName || newName.trim() === '' || newName === currentPL.name) return;
+
+            try {
+                const { error } = await supabaseClient
+                    .from('user_playlists')
+                    .update({ name: newName.trim() })
+                    .eq('id', activePlaylistId);
+
+                if (error) throw error;
+                showToast("Playlist renamed!");
+                await fetchSupabasePlaylists();
+            } catch (err) { console.error("Failed to rename", err); }
+        }
+
+        async function deleteActivePlaylist() {
+            if (!confirm("Are you sure you want to delete this playlist? This cannot be undone.")) return;
+
+            try {
+                const { error } = await supabaseClient
+                    .from('user_playlists')
+                    .delete()
+                    .eq('id', activePlaylistId);
+
+                if (error) throw error;
+                showToast("Playlist deleted!");
+                activePlaylistId = null;
+                switchTab('playlists');
+                await fetchSupabasePlaylists();
+            } catch (err) { console.error("Failed to delete", err); }
+        }
+
+        async function toggleGameInPlaylist(playlistId, gameId) {
+            const playlist = playlistsList.find(p => p.id === playlistId);
+            const gameData = globalGameCache.get(gameId);
+            
+            if (!playlist || !gameData) return;
+
+            let updatedGames = [...(playlist.games || [])];
+            const gameIndex = updatedGames.findIndex(g => g.id === gameId);
+            let actionMsg = "";
+
+            if (gameIndex >= 0) {
+                // Remove game
+                updatedGames.splice(gameIndex, 1);
+                actionMsg = `Removed from ${playlist.name}`;
+            } else {
+                // Add game (Store minimal data necessary to render cards to save DB space)
+                const minimalGameData = {
+                    id: gameData.id,
+                    name: gameData.name,
+                    background_image: gameData.background_image,
+                    rating: gameData.rating,
+                    released: gameData.released,
+                    genres: gameData.genres,
+                    platforms: gameData.platforms,
+                    added_to_playlist_at: new Date().toISOString()
+                };
+                updatedGames.push(minimalGameData);
+                actionMsg = `Added to ${playlist.name}`;
+            }
+
+            try {
+                // Optimistic UI Update
+                playlist.games = updatedGames;
+                updatePlaylistDropdownUI(gameId);
+                showToast(actionMsg);
+
+                // If we are currently viewing this playlist, re-render it
+                if (currentActiveTab === 'playlist-details' && activePlaylistId === playlistId) {
+                    renderPlaylistDetails();
+                }
+                
+                // Backend Sync
+                const { error } = await supabaseClient
+                    .from('user_playlists')
+                    .update({ games: updatedGames })
+                    .eq('id', playlistId);
+                    
+                if (error) throw error;
+            } catch (err) {
+                console.error("Failed to update playlist games", err);
+                fetchSupabasePlaylists(); // Revert on failure
+            }
+        }
+
+        // --- PLAYLIST UI RENDERING ---
+        function renderPlaylists() {
+            const container = document.getElementById('playlists-container');
+            const emptyState = document.getElementById('playlists-empty');
+            
+            document.getElementById('playlists-count').innerText = `${playlistsList.length} Playlist${playlistsList.length !== 1 ? 's' : ''}`;
+
+            if (playlistsList.length === 0) {
+                container.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            emptyState.classList.remove('flex');
+            container.classList.remove('hidden');
+
+            container.innerHTML = playlistsList.map(pl => {
+                const gameCount = pl.games ? pl.games.length : 0;
+                // Get cover of first game, else placeholder
+                const coverImg = (gameCount > 0 && pl.games[0].background_image) ? pl.games[0].background_image : 'https://via.placeholder.com/400x300/1a1a1a/333333?text=Empty+Playlist';
+                
+                return `
+                <div onclick="viewPlaylistDetails('${pl.id}')" class="cursor-pointer hover-card group relative aspect-video rounded-2xl overflow-hidden shadow-lg border border-transparent hover:border-brand/50 transition-all flex flex-col bg-card">
+                    <img src="${coverImg}" class="img-transition absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-80">
+                    <div class="absolute inset-0 bg-gradient-to-t from-dark/95 via-dark/40 to-transparent"></div>
+                    <div class="absolute inset-0 p-5 flex flex-col justify-end">
+                        <div class="flex items-center gap-2 mb-1">
+                            <i data-lucide="list-video" class="w-4 h-4 text-brand"></i>
+                            <span class="text-xs font-bold text-gray-300 uppercase tracking-wider">${gameCount} Games</span>
+                        </div>
+                        <h3 class="text-2xl font-bold text-white group-hover:text-brand transition-colors line-clamp-1">${pl.name}</h3>
+                    </div>
+                </div>
+                `;
+            }).join('');
+            
+            lucide.createIcons();
+        }
+
+        function viewPlaylistDetails(id) {
+            activePlaylistId = id;
+            switchTab('playlist-details');
+            renderPlaylistDetails();
+        }
+
+        function sortPlaylistDetails() {
+            renderPlaylistDetails();
+        }
+
+        function renderPlaylistDetails() {
+            const playlist = playlistsList.find(p => p.id === activePlaylistId);
+            if (!playlist) {
+                switchTab('playlists');
+                return;
+            }
+
+            document.getElementById('pl-detail-name').innerText = playlist.name;
+            const games = [...(playlist.games || [])];
+            document.getElementById('pl-detail-count').innerText = `${games.length} Game${games.length !== 1 ? 's' : ''}`;
+
+            const container = document.getElementById('playlist-games-container');
+            const emptyState = document.getElementById('playlist-games-empty');
+
+            if (games.length === 0) {
+                container.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            emptyState.classList.remove('flex');
+            container.classList.remove('hidden');
+
+            // Apply Sort
+            const sortVal = document.getElementById('pl-detail-sort').value;
+            if (sortVal === 'name') {
+                games.sort((a,b) => a.name.localeCompare(b.name));
+            } else if (sortVal === 'rating') {
+                games.sort((a,b) => (b.rating || 0) - (a.rating || 0));
+            } else { // newest
+                games.sort((a,b) => new Date(b.added_to_playlist_at || 0) - new Date(a.added_to_playlist_at || 0));
+            }
+
+            container.innerHTML = games.map(game => {
+                const bg = game.background_image || 'https://via.placeholder.com/400x300/1a1a1a/333333?text=No+Image';
+                const platformIcon = getPlatformIcon(game.platforms);
+                const platformText = game.platforms && game.platforms.length > 0 ? game.platforms[0].platform.name : 'Unknown';
+                const genreText = game.genres && game.genres.length > 0 ? game.genres[0].name : 'Game';
+                const ratingBlock = game.rating ? `<i data-lucide="star" class="w-3.5 h-3.5 text-yellow-500 fill-yellow-500 inline pb-0.5"></i> ${game.rating}` : '';
+
+                return `
+                <div class="group relative aspect-[3/4] sm:aspect-auto sm:h-[320px] rounded-xl overflow-hidden shadow-lg border border-gray-800 hover:border-brand/50 transition-all flex flex-col bg-card">
+                    <div onclick="viewGameDetails(${game.id})" class="cursor-pointer relative h-[170px] w-full flex-shrink-0 overflow-hidden bg-dark">
+                        <img src="${bg}" loading="lazy" class="img-transition w-full h-full object-cover">
+                        <div class="absolute bottom-3 left-3">
+                            <span class="bg-black/80 backdrop-blur-sm text-[10px] font-bold text-white px-2 py-1 rounded uppercase border border-gray-700/50 flex items-center gap-1.5">
+                                ${platformIcon} ${platformText.split(' ')[0]}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="p-4 flex-1 flex flex-col relative z-10">
+                        <div onclick="viewGameDetails(${game.id})" class="cursor-pointer mb-2">
+                            <span class="text-[10px] text-brand font-bold uppercase tracking-wider mb-1 block">${genreText}</span>
+                            <h4 class="font-bold text-lg text-white leading-tight line-clamp-1 group-hover:text-brand transition-colors">${game.name}</h4>
+                        </div>
+                        <div class="mt-auto pt-3 border-t border-gray-800 flex items-center justify-between">
+                            <span class="text-xs font-medium text-gray-400">${ratingBlock}</span>
+                            <button onclick="toggleGameInPlaylist('${playlist.id}', ${game.id})" class="text-xs font-semibold text-red-500 hover:bg-red-500/10 px-3 py-1.5 rounded transition-colors" title="Remove from playlist">
+                                Remove
+                            </button>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+            
+            lucide.createIcons();
+        }
+
+        // --- PLAYLIST DROPDOWN MENU (GAME DETAILS) ---
+        function togglePLDropdown(event) {
+            event.stopPropagation();
+            const dropdown = document.getElementById('pl-dropdown-menu');
+            dropdown.classList.toggle('hidden');
+            dropdown.classList.toggle('flex');
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const gameId = parseInt(urlParams.get('id'));
+            if(gameId) updatePlaylistDropdownUI(gameId);
+        }
+
+        function updatePlaylistDropdownUI(gameId) {
+            const listContainer = document.getElementById('pl-dropdown-list');
+            if(!listContainer) return;
+
+            if (playlistsList.length === 0) {
+                listContainer.innerHTML = `<div class="px-3 py-4 text-center text-xs text-gray-500">No playlists available.</div>`;
+                return;
+            }
+
+            listContainer.innerHTML = playlistsList.map(pl => {
+                const isInPlaylist = (pl.games || []).some(g => g.id === gameId);
+                const icon = isInPlaylist 
+                    ? `<i data-lucide="check-square" class="w-4 h-4 text-brand"></i>` 
+                    : `<i data-lucide="square" class="w-4 h-4 text-gray-500"></i>`;
+                
+                return `
+                <button onclick="toggleGameInPlaylist('${pl.id}', ${gameId})" class="w-full text-left px-3 py-2.5 hover:bg-dark-hover rounded-md text-sm text-gray-200 transition-colors flex items-center gap-3">
+                    ${icon} <span class="truncate">${pl.name}</span>
+                </button>
+                `;
+            }).join('');
+            
+            lucide.createIcons();
+        }
+
+
+        // --- SUPABASE LIBRARY LOGIC (EXISTING) ---
+        async function fetchSupabaseLibrary() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('user_games')
+                    .select('*')
+                    .eq('user_id', 'default_user');
+                if (error) throw error;
+                if (data) {
+                    data.forEach(game => libraryMap.set(game.game_id, game));
+                }
+                refreshActiveView();
+            } catch (err) { console.error("Error fetching library from Supabase:", err); }
+        }
+
+        async function handleLibraryAction(gameId, status) {
+            if (status === 'REMOVE') {
+                libraryMap.delete(gameId);
+                showToast('Removed from library');
+                refreshActiveView();
+                await supabaseClient.from('user_games').delete().match({ user_id: 'default_user', game_id: gameId });
+                return;
+            }
+
+            const game = globalGameCache.get(gameId);
+            if (!game && !libraryMap.has(gameId)) return;
+
+            const libEntry = {
+                user_id: 'default_user',
+                game_id: gameId,
+                title: game ? game.name : libraryMap.get(gameId).title,
+                thumbnail: game ? (game.background_image || '') : libraryMap.get(gameId).thumbnail,
+                genre: game ? (game.genres?.[0]?.name || 'Game') : libraryMap.get(gameId).genre,
+                platform: game ? (game.platforms?.[0]?.platform?.name || 'Unknown') : libraryMap.get(gameId).platform,
+                status: status
+            };
+
+            libraryMap.set(gameId, libEntry);
+            showToast(`Status updated to ${status}`);
+            refreshActiveView();
+
+            const { error } = await supabaseClient.from('user_games').upsert(libEntry, { onConflict: 'user_id, game_id' });
+            if (error) console.error("Supabase Save Error:", error);
+        }
+
+        function generateLibraryActionHTML(gameId) {
+            const libEntry = libraryMap.get(gameId);
+            const currentStatus = libEntry ? libEntry.status : '';
+
+            const baseClass = "w-full text-xs font-bold px-3 py-2 rounded-lg transition-colors cursor-pointer outline-none border focus:ring-1 focus:ring-brand";
+            const colorClass = currentStatus 
+                ? "bg-brand/10 text-brand border-brand/30 hover:bg-brand hover:text-black" 
+                : "bg-dark-input text-white border-gray-700 hover:border-brand";
+
+            return `
+                <div onclick="event.stopPropagation()">
+                    <select onchange="handleLibraryAction(${gameId}, this.value)" class="${baseClass} ${colorClass}">
+                        <option value="" ${!currentStatus ? 'selected' : ''} class="bg-dark text-white">✚ Add to Library</option>
+                        <option value="Wishlist" ${currentStatus === 'Wishlist' ? 'selected' : ''} class="bg-dark text-white">Wishlist</option>
+                        <option value="Downloaded" ${currentStatus === 'Downloaded' ? 'selected' : ''} class="bg-dark text-white">Downloaded</option>
+                        <option value="Playing" ${currentStatus === 'Playing' ? 'selected' : ''} class="bg-dark text-white">Playing</option>
+                        <option value="Paused" ${currentStatus === 'Paused' ? 'selected' : ''} class="bg-dark text-white">Paused</option>
+                        <option value="Completed" ${currentStatus === 'Completed' ? 'selected' : ''} class="bg-dark text-white">Completed</option>
+                        <option value="Quit" ${currentStatus === 'Quit' ? 'selected' : ''} class="bg-dark text-white">Quit</option>
+                        ${currentStatus ? `<option value="REMOVE" class="bg-dark text-red-500 font-bold">🗑 Remove from Library</option>` : ''}
+                    </select>
+                </div>
+            `;
+        }
+
+        // --- TAB SWITCHING & ROUTING ---
+        function switchTab(tab, event) {
+            if(event) event.preventDefault();
+            
+            if (tab === 'details') {
+                previousTab = (currentActiveTab !== 'details' && currentActiveTab !== 'playlist-details') ? currentActiveTab : 'home';
+                if(previousTab === 'home') document.getElementById('back-target-name').innerText = 'Dashboard';
+                else if(previousTab === 'mygames') document.getElementById('back-target-name').innerText = 'My Games';
+                else if(previousTab === 'discover') document.getElementById('back-target-name').innerText = 'Discover';
+                else document.getElementById('back-target-name').innerText = 'Dashboard';
+            } else if (tab !== 'playlist-details') {
+                currentActiveTab = tab;
+            }
+            
+            document.getElementById('main-scroll-area').scrollTo(0, 0);
+
+            if (tab !== 'details' && tab !== 'playlist-details') {
+                document.querySelectorAll('#main-nav a').forEach(a => {
+                    a.classList.remove('bg-dark-hover', 'text-white');
+                    a.classList.add('text-gray-400');
+                });
+                const activeLink = document.getElementById(`nav-${tab}`);
+                if(activeLink) {
+                    activeLink.classList.remove('text-gray-400');
+                    activeLink.classList.add('bg-dark-hover', 'text-white');
+                }
+            }
+
+            ['home', 'discover', 'mygames', 'playlists', 'playlist-details', 'details'].forEach(t => {
+                const targetId = t === 'details' ? 'game-details-view' : `${t}-view`;
+                const el = document.getElementById(targetId);
+                if (el) {
+                    el.classList.toggle('hidden', tab !== t);
+                    
+                    // specific display types
+                    if (tab === t) {
+                        if (['discover', 'mygames', 'playlists', 'playlist-details', 'details'].includes(t)) {
+                            el.classList.add('flex');
+                            el.style.display = 'flex';
+                        } else {
+                            el.classList.add('block');
+                            el.style.display = 'block';
+                        }
+                    } else {
+                        el.classList.remove('flex', 'block');
+                        el.style.display = 'none';
+                    }
+                }
+            });
+
+            try {
+                const url = new URL(window.location);
+                if (tab === 'home') {
+                    url.searchParams.delete('tab');
+                    url.searchParams.delete('id');
+                } else if (tab !== 'details' && tab !== 'playlist-details') {
+                    url.searchParams.set('tab', tab);
+                    url.searchParams.delete('id');
+                }
+                window.history.pushState({}, '', url);
+            } catch (error) {}
+
+            if (tab === 'discover') {
+                const currentSearch = document.getElementById('global-search').value;
+                if(currentSearch && currentSearch !== discoverState.search) {
+                    discoverState.search = currentSearch;
+                    document.getElementById('filter-search').value = currentSearch;
+                }
+                if(!window.currentDiscoverData) fetchDiscoverResults();
+            } else if (tab === 'mygames') {
+                renderMyGames();
+            } else if (tab === 'playlists') {
+                renderPlaylists();
+            }
+        }
+
+        function refreshActiveView() {
+            if (currentActiveTab === 'home') {
+                if(window.currentHomeData) {
+                    renderFeaturedGames(window.currentHomeData.slice(0, 3));
+                    renderTopPicks(window.currentHomeData.slice(3, 9));
+                    renderTopDeals(window.currentHomeData.slice(9, 14));
+                }
+            } else if (currentActiveTab === 'discover') {
+                if(window.currentDiscoverData) renderDiscoverResults(window.currentDiscoverData);
+            } else if (currentActiveTab === 'mygames') {
+                renderMyGames();
+            } else if (currentActiveTab === 'playlists') {
+                renderPlaylists();
+            }
+            
+            if(document.getElementById('game-details-view').style.display === 'flex') {
+                const idParam = new URLSearchParams(window.location.search).get('id');
+                if (idParam) {
+                    document.getElementById('detail-library-action').innerHTML = generateLibraryActionHTML(idParam);
+                }
+            }
+        }
+
+        function goBackFromDetails() {
+            switchTab(previousTab);
+        }
+
+        // --- GAME DETAILS API ---
+        async function viewGameDetails(gameId) {
+            switchTab('details');
+            
+            try {
+                const url = new URL(window.location);
+                url.searchParams.set('tab', 'details');
+                url.searchParams.set('id', gameId);
+                window.history.pushState({}, '', url);
+            } catch(e) {}
+
+            const content = document.getElementById('details-content');
+            const loading = document.getElementById('details-loading');
+            const errState = document.getElementById('details-error');
+            
+            content.classList.add('hidden');
+            errState.classList.add('hidden');
+            loading.classList.remove('hidden');
+            loading.classList.add('flex');
+
+            try {
+                const res = await fetch(`${RAWG_BASE_URL}/${gameId}?key=${RAWG_API_KEY}`);
+                if (!res.ok) throw new Error("Game fetch failed");
+                const game = await res.json();
+                
+                const ssRes = await fetch(`${RAWG_BASE_URL}/${gameId}/screenshots?key=${RAWG_API_KEY}`);
+                const ssData = ssRes.ok ? await ssRes.json() : { results: [] };
+
+                const achRes = await fetch(`${RAWG_BASE_URL}/${gameId}/achievements?key=${RAWG_API_KEY}`);
+                const achData = achRes.ok ? await achRes.json() : { results: [] };
+                
+                globalGameCache.set(game.id, game);
+                renderGameDetails(game, ssData.results, achData.results);
+                
+                loading.classList.add('hidden');
+                loading.classList.remove('flex');
+                content.classList.remove('hidden');
+                content.classList.add('flex');
+            } catch (err) {
+                loading.classList.add('hidden');
+                loading.classList.remove('flex');
+                errState.classList.remove('hidden');
+                errState.classList.add('flex');
+            }
+        }
+
+        function renderGameDetails(game, screenshots, achievements) {
+            document.getElementById('detail-hero').src = game.background_image || game.background_image_additional || 'https://via.placeholder.com/1200x500/1a1a1a/333333';
+            document.getElementById('detail-title').innerText = game.name;
+            
+            let tagsHtml = '';
+            if (game.rating >= 4.5) tagsHtml += `<span class="bg-yellow-500 text-black text-[10px] font-bold px-2 py-1 rounded uppercase flex items-center gap-1"><i data-lucide="award" class="w-3 h-3"></i> Top Rated</span>`;
+            if (game.released) tagsHtml += `<span class="bg-brand/20 text-brand border border-brand/30 text-[10px] font-bold px-2 py-1 rounded uppercase">${game.released.split('-')[0]}</span>`;
+            document.getElementById('detail-tags').innerHTML = tagsHtml;
+            
+            document.getElementById('detail-library-action').innerHTML = generateLibraryActionHTML(game.id);
+            // Hide the playlist dropdown menu proactively
+            const pDropdown = document.getElementById('pl-dropdown-menu');
+            if(pDropdown) { pDropdown.classList.add('hidden'); pDropdown.classList.remove('flex'); }
+
+            document.getElementById('detail-description').innerHTML = game.description || "No description available.";
+            document.getElementById('detail-released').innerHTML = game.released ? `<i data-lucide="calendar" class="w-4 h-4 text-brand"></i> ${new Date(game.released).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}` : 'TBA';
+            
+            const metaColor = game.metacritic >= 75 ? 'text-brand border-brand/30' : (game.metacritic >= 50 ? 'text-yellow-500 border-yellow-500/30' : 'text-red-500 border-red-500/30');
+            document.getElementById('detail-metacritic').innerHTML = game.metacritic 
+                ? `<div class="inline-flex items-center justify-center w-10 h-10 rounded border-2 ${metaColor} font-bold text-lg bg-dark/50">${game.metacritic}</div>` 
+                : `<span class="text-gray-500 text-sm italic">N/A</span>`;
+                
+            document.getElementById('detail-playtime').innerText = game.playtime ? `~${game.playtime} Hours` : 'N/A';
+            
+            if (game.platforms && game.platforms.length > 0) {
+                document.getElementById('detail-platforms').innerHTML = game.platforms.map(p => 
+                    `<span class="bg-dark-input px-2.5 py-1 rounded text-[10px] font-bold text-gray-300 uppercase border border-gray-700">${p.platform.name}</span>`
+                ).join('');
+            } else {
+                document.getElementById('detail-platforms').innerHTML = `<span class="text-gray-500 text-sm">Unknown</span>`;
+            }
+
+            if (game.genres && game.genres.length > 0) {
+                document.getElementById('detail-genres').innerHTML = game.genres.map(g => 
+                    `<span class="bg-brand/10 text-brand px-2.5 py-1 rounded text-[10px] font-bold uppercase">${g.name}</span>`
+                ).join('');
+            } else {
+                document.getElementById('detail-genres').innerHTML = `<span class="text-gray-500 text-sm">None</span>`;
+            }
+
+            document.getElementById('detail-developer').innerText = game.developers && game.developers.length > 0 ? game.developers.map(d=>d.name).join(', ') : 'Unknown';
+            document.getElementById('detail-publisher').innerText = game.publishers && game.publishers.length > 0 ? game.publishers.map(p=>p.name).join(', ') : 'Unknown';
+
+            const ssContainer = document.getElementById('detail-screenshots');
+            if (screenshots && screenshots.length > 0) {
+                let filteredSs = screenshots.filter(s => s.image !== game.background_image).slice(0, 4); 
+                ssContainer.innerHTML = filteredSs.map(s => `
+                    <div class="aspect-video rounded-lg overflow-hidden border border-gray-800 shadow-md">
+                        <img src="${s.image}" class="w-full h-full object-cover hover:scale-105 transition-transform duration-500 cursor-pointer">
+                    </div>
+                `).join('');
+            } else {
+                ssContainer.innerHTML = `<p class="text-gray-500 text-sm col-span-2 italic">No additional screenshots available.</p>`;
+            }
+
+            const missionsContainer = document.getElementById('detail-missions');
+            if (achievements && achievements.length > 0) {
+                const renderAch = achievements.slice(0, 50);
+                missionsContainer.innerHTML = renderAch.map((ach, index) => `
+                    <div class="bg-card/40 border border-gray-800/50 rounded-xl overflow-hidden transition-colors hover:border-gray-700">
+                        <button onclick="toggleMission(${index})" class="w-full flex items-center justify-between p-4 text-left focus:outline-none group">
+                            <div class="flex items-center gap-4">
+                                ${ach.image ? `<img src="${ach.image}" class="w-10 h-10 rounded-md object-cover bg-dark flex-shrink-0">` : `<div class="w-10 h-10 rounded-md bg-dark flex items-center justify-center flex-shrink-0"><i data-lucide="award" class="w-5 h-5 text-brand"></i></div>`}
+                                <span class="text-white font-bold text-sm sm:text-base group-hover:text-brand transition-colors line-clamp-1">${ach.name}</span>
+                            </div>
+                            <div class="flex items-center gap-4 text-gray-500 flex-shrink-0 ml-2">
+                                <span class="text-xs font-medium flex items-center gap-1.5 bg-dark-input px-2 py-1 rounded-md hidden sm:flex">${ach.percent ? ach.percent + '%' : 'Hidden'}</span>
+                                <i data-lucide="chevron-down" id="mission-icon-${index}" class="w-5 h-5 transition-transform duration-300"></i>
+                            </div>
+                        </button>
+                        <div id="mission-content-${index}" class="hidden px-4 pb-4 pt-0">
+                            <div class="sm:pl-18 pr-4 py-4 border-t border-gray-800/50 mt-2 sm:mt-0">
+                                <p class="text-sm text-gray-400 leading-relaxed sm:ml-14">${ach.description || 'Secret achievement / No description provided.'}</p>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                missionsContainer.innerHTML = `
+                    <div class="p-6 text-center bg-dark rounded-xl border border-gray-800/50">
+                        <i data-lucide="info" class="w-8 h-8 text-gray-600 mx-auto mb-2"></i>
+                        <p class="text-gray-400 text-sm">No mission or achievement records found for this title.</p>
+                    </div>
+                `;
+            }
+            lucide.createIcons();
+        }
+
+        function toggleMission(index) {
+            const content = document.getElementById(`mission-content-${index}`);
+            const icon = document.getElementById(`mission-icon-${index}`);
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                icon.style.transform = 'rotate(180deg)';
+            } else {
+                content.classList.add('hidden');
+                icon.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        // --- MY GAMES RENDERING ---
+        function setLibraryFilter(filter) {
+            currentLibraryFilter = filter;
+            ['All', 'Wishlist', 'Playing', 'Completed', 'Downloaded'].forEach(f => {
+                const btn = document.getElementById(`lib-filter-${f}`);
+                if(btn) btn.className = f === filter ? "px-4 py-1.5 rounded-lg bg-dark-hover text-white text-sm font-semibold shadow-sm transition-colors" : "px-4 py-1.5 rounded-lg text-gray-400 hover:text-white text-sm font-semibold transition-colors";
+            });
+            renderMyGames();
+        }
+
+        function renderMyGames() {
+            const container = document.getElementById('library-results-container');
+            const emptyState = document.getElementById('library-empty');
+            
+            let games = Array.from(libraryMap.values());
+            games.sort((a,b) => new Date(b.added_at) - new Date(a.added_at));
+
+            if (currentLibraryFilter !== 'All') {
+                games = games.filter(g => g.status === currentLibraryFilter);
+            }
+
+            document.getElementById('library-count').innerText = `${games.length} Game${games.length !== 1 ? 's' : ''} in Library`;
+
+            if (games.length === 0) {
+                container.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+            } else {
+                emptyState.classList.add('hidden');
+                emptyState.classList.remove('flex');
+                container.classList.remove('hidden');
+                
+                container.innerHTML = games.map(game => {
+                    const bg = game.thumbnail || 'https://via.placeholder.com/400x300/1a1a1a/333333?text=No+Image';
+                    const statusColors = {
+                        'Wishlist': 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+                        'Playing': 'bg-green-500/20 text-brand border-brand/30',
+                        'Completed': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+                        'Downloaded': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+                        'Paused': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+                        'Quit': 'bg-red-500/20 text-red-400 border-red-500/30'
+                    };
+                    const badgeClass = statusColors[game.status] || statusColors['Wishlist'];
+
+                    return `
+                    <div onclick="viewGameDetails(${game.game_id})" class="cursor-pointer hover-card group relative aspect-[3/4] sm:aspect-auto sm:h-[320px] rounded-xl overflow-hidden shadow-lg border border-transparent hover:border-brand/50 transition-all flex flex-col bg-card">
+                        <div class="relative h-[170px] w-full flex-shrink-0 overflow-hidden bg-dark">
+                            <img src="${bg}" loading="lazy" alt="${game.title}" class="img-transition w-full h-full object-cover">
+                            <div class="absolute top-3 right-3">
+                                <span class="px-2.5 py-1 rounded border text-[10px] font-bold uppercase tracking-wider backdrop-blur-md ${badgeClass}">
+                                    ${game.status}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="p-4 flex-1 flex flex-col relative z-10">
+                            <div class="mb-2">
+                                <span class="text-[10px] text-brand font-bold uppercase tracking-wider mb-1 block">${game.genre}</span>
+                                <h4 class="font-bold text-lg text-white leading-tight line-clamp-1 group-hover:text-brand transition-colors">${game.title}</h4>
+                            </div>
+                            
+                            <div class="mt-auto pt-3 border-t border-gray-800 flex items-center justify-between">
+                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider"><i data-lucide="gamepad-2" class="w-3.5 h-3.5 inline"></i> ${game.platform.split(' ')[0]}</span>
+                                <div class="w-32">${generateLibraryActionHTML(game.game_id)}</div>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }).join('');
+                lucide.createIcons();
+            }
+        }
+
+        // --- DISCOVER SEARCH/FILTER LOGIC ---
+        let debounceTimer;
+        function handleGlobalSearch(event) {
+            const val = event.target.value;
+            document.getElementById('filter-search').value = val;
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                if(currentActiveTab !== 'discover') switchTab('discover');
+                handleFilterChange('search', { target: { value: val }});
+            }, 600);
+        }
+
+        function handleSearch(event) {
+            const val = event.target.value;
+            document.getElementById('global-search').value = val;
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => { handleFilterChange('search', event); }, 600);
+        }
+
+        function handleFilterChange(key, event) {
+            discoverState[key] = event.target.value.toLowerCase();
+            updateURLFilters();
+            fetchDiscoverResults();
+        }
+
+        function setViewMode(mode) {
+            discoverState.view = mode;
+            document.getElementById('btn-view-grid').className = mode === 'grid' ? 'p-1.5 rounded bg-dark-hover text-white shadow-sm transition-colors' : 'p-1.5 rounded text-gray-500 hover:text-white transition-colors';
+            document.getElementById('btn-view-list').className = mode === 'list' ? 'p-1.5 rounded bg-dark-hover text-white shadow-sm transition-colors' : 'p-1.5 rounded text-gray-500 hover:text-white transition-colors';
+            updateURLFilters();
+            if(window.currentDiscoverData) renderDiscoverResults(window.currentDiscoverData);
+        }
+
+        function clearFilters() {
+            discoverState = { search: '', platform: '', genre: '', sort: '-added', view: discoverState.view };
+            document.getElementById('global-search').value = '';
+            document.getElementById('filter-search').value = '';
+            document.getElementById('filter-platform').value = '';
+            document.getElementById('filter-genre').value = '';
+            document.getElementById('filter-sort').value = '-added';
+            updateURLFilters();
+            fetchDiscoverResults();
+        }
+
+        function updateURLFilters() {
+            try {
+                const url = new URL(window.location);
+                ['search', 'platform', 'genre'].forEach(key => {
+                    if (discoverState[key]) url.searchParams.set(key, discoverState[key]);
+                    else url.searchParams.delete(key);
+                });
+                if (discoverState.sort !== '-added') url.searchParams.set('sort', discoverState.sort);
+                else url.searchParams.delete('sort');
+                if (discoverState.view !== 'grid') url.searchParams.set('view', discoverState.view);
+                else url.searchParams.delete('view');
+                window.history.replaceState({}, '', url);
+            } catch (e) {}
+        }
+
+        // --- FETCHERS ---
+        async function fetchHomeGames() {
+            try {
+                const res = await fetch(`${RAWG_BASE_URL}?key=${RAWG_API_KEY}&ordering=-added&page_size=20`);
+                if (!res.ok) throw new Error('API limit reached');
+                const json = await res.json();
+                const data = json.results;
+                
+                if (data && data.length > 0) {
+                    window.currentHomeData = data;
+                    data.forEach(g => globalGameCache.set(g.id, g));
+                    
+                    renderFeaturedGames(data.slice(0, 3));
+                    renderTopPicks(data.slice(3, 9));
+                    renderTopDeals(data.slice(9, 14));
+                }
+            } catch (err) { console.error("RAWG Home Error", err); }
+        }
+
+        async function fetchDiscoverResults() {
+            const container = document.getElementById('discover-results-container');
+            const loader = document.getElementById('discover-loading');
+            const emptyState = document.getElementById('discover-empty');
+            const countText = document.getElementById('results-count');
+            
+            container.classList.add('hidden');
+            emptyState.classList.add('hidden');
+            loader.classList.remove('hidden');
+            loader.classList.add('flex');
+            countText.innerHTML = 'Searching the global vault...';
+
+            try {
+                let url = `${RAWG_BASE_URL}?key=${RAWG_API_KEY}&page_size=24&ordering=${discoverState.sort}`;
+                if (discoverState.search) url += `&search=${encodeURIComponent(discoverState.search)}`;
+                if (discoverState.platform) url += `&platforms=${discoverState.platform}`;
+                if (discoverState.genre) url += `&genres=${discoverState.genre}`;
+
+                const res = await fetch(url);
+                const json = await res.json();
+                const results = json.results || [];
+                
+                window.currentDiscoverData = results; 
+                results.forEach(g => globalGameCache.set(g.id, g));
+
+                loader.classList.add('hidden');
+                loader.classList.remove('flex');
+                
+                if (results.length === 0) {
+                    emptyState.classList.remove('hidden');
+                    emptyState.classList.add('flex');
+                    countText.innerHTML = '<span class="text-gray-500">0 results found</span>';
+                } else {
+                    container.classList.remove('hidden');
+                    countText.innerHTML = `<span class="text-brand font-medium">Found ${json.count.toLocaleString()} Games</span>`;
+                    renderDiscoverResults(results);
+                }
+            } catch (error) {
+                loader.classList.add('hidden');
+                loader.classList.remove('flex');
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+            }
+        }
+
+        // --- RENDER DOM GRIDS ---
+        function getPlatformIcon(platforms) {
+            if(!platforms) return `<i data-lucide="gamepad-2" class="w-3.5 h-3.5"></i>`;
+            const hasPC = platforms.some(p => p.platform.name.toLowerCase().includes('pc'));
+            const hasPS = platforms.some(p => p.platform.name.toLowerCase().includes('playstation'));
+            if (hasPC) return `<i data-lucide="monitor" class="w-3.5 h-3.5"></i>`;
+            if (hasPS) return `<i data-lucide="gamepad-2" class="w-3.5 h-3.5"></i>`;
+            return `<i data-lucide="smartphone" class="w-3.5 h-3.5"></i>`;
+        }
+
+        function renderFeaturedGames(games) {
+            const container = document.getElementById('featured-games-container');
+            if(!games || games.length < 3) return;
+            const g1 = games[0], g2 = games[1], g3 = games[2];
+            
+            container.innerHTML = `
+                <div onclick="viewGameDetails(${g1.id})" class="cursor-pointer hover-card lg:col-span-2 relative rounded-2xl overflow-hidden group shadow-lg shadow-black/50 block h-full">
+                    <img src="${g1.background_image}" class="img-transition absolute inset-0 w-full h-full object-cover">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/95 via-black/50 to-transparent"></div>
+                    <div class="absolute inset-0 p-6 flex flex-col justify-between">
+                        <div><span class="bg-brand text-black text-xs font-bold px-3 py-1 rounded-md tracking-wider">#1 POPULAR</span></div>
+                        <div>
+                            <h3 class="text-3xl font-bold mb-2 text-white group-hover:text-brand transition-colors">${g1.name}</h3>
+                            <div class="flex items-center gap-4 mt-4 w-48">
+                                ${generateLibraryActionHTML(g1.id)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div onclick="viewGameDetails(${g2.id})" class="cursor-pointer hover-card relative rounded-2xl overflow-hidden group shadow-lg shadow-black/50 block h-full">
+                    <img src="${g2.background_image}" class="img-transition absolute inset-0 w-full h-full object-cover">
+                    <div class="absolute inset-0 bg-gradient-to-t from-red-900/90 via-black/40 to-transparent"></div>
+                    <div class="absolute inset-0 p-4 flex flex-col justify-between">
+                        <div><span class="bg-red-600 text-white text-xs font-semibold px-3 py-1 rounded-md">${g2.genres[0]?.name || 'Action'}</span></div>
+                        <div class="text-center pb-2">
+                            <h4 class="text-xl font-black uppercase tracking-wider text-white drop-shadow-md px-2 leading-tight mb-2 group-hover:text-brand transition-colors">${g2.name}</h4>
+                            ${generateLibraryActionHTML(g2.id)}
+                        </div>
+                    </div>
+                </div>
+                <div onclick="viewGameDetails(${g3.id})" class="cursor-pointer hover-card relative rounded-2xl overflow-hidden group shadow-lg shadow-black/50 block h-full">
+                    <img src="${g3.background_image}" class="img-transition absolute inset-0 w-full h-full object-cover">
+                    <div class="absolute inset-0 bg-gradient-to-t from-blue-900/90 via-black/40 to-transparent"></div>
+                    <div class="absolute inset-0 p-4 flex flex-col justify-between">
+                        <div class="flex justify-end"><span class="bg-black/80 backdrop-blur-sm text-white text-xs font-semibold px-3 py-1 rounded-md">Trending</span></div>
+                        <div class="text-center pb-2">
+                            <h4 class="text-xl font-black uppercase tracking-tight text-white drop-shadow-lg px-2 leading-tight mb-2 group-hover:text-brand transition-colors">${g3.name}</h4>
+                            ${generateLibraryActionHTML(g3.id)}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTopPicks(games) {
+            const container = document.getElementById('top-picks-container');
+            container.innerHTML = games.map(game => `
+                <div onclick="viewGameDetails(${game.id})" class="cursor-pointer hover-card group block relative">
+                    <div class="relative aspect-[3/4] rounded-xl overflow-hidden mb-2 shadow-lg border border-transparent hover:border-brand/30 transition-colors">
+                        <img src="${game.background_image}" class="img-transition w-full h-full object-cover">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-90 group-hover:opacity-100 transition-opacity"></div>
+                        <div class="absolute bottom-3 left-3 right-3 flex flex-col items-start gap-2">
+                            <div>
+                                <p class="font-bold text-sm leading-tight text-white drop-shadow-md mb-0.5 group-hover:text-brand transition-colors">${game.name}</p>
+                                <p class="text-[10px] text-brand font-medium uppercase tracking-wider">${game.genres[0]?.name || 'Game'}</p>
+                            </div>
+                            <div class="w-full">${generateLibraryActionHTML(game.id)}</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderTopDeals(games) {
+            const container = document.getElementById('top-deals-container');
+            let html = '';
+            for(let i=0; i < 4 && i < games.length; i++) {
+                html += `
+                <div onclick="viewGameDetails(${games[i].id})" class="cursor-pointer hover-card group block relative">
+                    <div class="relative aspect-[3/4] rounded-xl overflow-hidden bg-gray-800 shadow-lg border border-transparent hover:border-brand/30 transition-colors">
+                        <img src="${games[i].background_image}" class="img-transition w-full h-full object-cover">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-90 group-hover:opacity-100 transition-opacity"></div>
+                        <div class="absolute bottom-3 left-3 right-3 flex flex-col items-start gap-2">
+                            <div>
+                                <p class="font-bold text-sm leading-tight text-white drop-shadow-md mb-0.5 group-hover:text-brand transition-colors">${games[i].name}</p>
+                            </div>
+                            <div class="w-full">${generateLibraryActionHTML(games[i].id)}</div>
+                        </div>
+                    </div>
+                </div>`;
+            }
+            if (games.length >= 5) {
+                html += `
+                <div onclick="viewGameDetails(${games[4].id})" class="cursor-pointer hover-card group lg:col-span-2 block h-full min-h-[150px] relative">
+                    <div class="relative h-full rounded-xl overflow-hidden bg-gray-800 shadow-lg border border-transparent hover:border-brand/30 transition-colors">
+                        <img src="${games[4].background_image}" class="img-transition w-full h-full object-cover">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
+                        <div class="absolute bottom-4 left-4 right-4 flex justify-between items-end">
+                            <div>
+                                <span class="bg-brand text-black text-[10px] font-bold px-2 py-0.5 rounded uppercase mb-1.5 inline-block">Top Rated</span>
+                                <h4 class="text-xl font-bold uppercase tracking-wider text-white line-clamp-1 group-hover:text-brand transition-colors">${games[4].name}</h4>
+                            </div>
+                            <div class="w-48">${generateLibraryActionHTML(games[4].id)}</div>
+                        </div>
+                    </div>
+                </div>`;
+            }
+            container.innerHTML = html;
+        }
+
+        function renderDiscoverResults(games) {
+            const container = document.getElementById('discover-results-container');
+            container.className = discoverState.view === 'list' 
+                ? 'flex flex-col gap-4 pb-10' 
+                : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6 pb-10';
+            
+            container.innerHTML = games.map(game => {
+                const bg = game.background_image || 'https://via.placeholder.com/400x300/1a1a1a/333333?text=No+Image';
+                const platformIcon = getPlatformIcon(game.platforms);
+                const platformText = game.platforms && game.platforms.length > 0 ? game.platforms[0].platform.name : 'Unknown';
+                const genreText = game.genres && game.genres.length > 0 ? game.genres[0].name : 'Game';
+                const ratingBlock = game.rating ? `<i data-lucide="star" class="w-3.5 h-3.5 text-yellow-500 fill-yellow-500 inline pb-0.5"></i> ${game.rating}` : '';
+
+                if (discoverState.view === 'list') {
+                    return `
+                    <div onclick="viewGameDetails(${game.id})" class="cursor-pointer hover-card group flex flex-col sm:flex-row bg-card rounded-xl overflow-hidden border border-gray-800 hover:border-brand/50 transition-colors shadow-lg shadow-black/30">
+                        <div class="w-full sm:w-72 h-40 relative flex-shrink-0 bg-dark overflow-hidden">
+                            <img src="${bg}" loading="lazy" class="img-transition w-full h-full object-cover">
+                        </div>
+                        <div class="p-5 flex-1 flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-start mb-1">
+                                    <h4 class="text-xl font-bold text-white group-hover:text-brand transition-colors">${game.name}</h4>
+                                    <span class="bg-dark-input text-gray-300 text-[10px] px-2 py-1 rounded uppercase font-bold border border-gray-700 flex items-center gap-1.5 ml-2">
+                                        ${platformIcon} ${platformText.split(' ')[0]}
+                                    </span>
+                                </div>
+                                <div class="flex gap-3 text-xs text-gray-400 mt-2 font-medium">
+                                    <span>${ratingBlock}</span><span>Release: ${game.released || 'TBA'}</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between mt-auto pt-3 border-t border-gray-800/50">
+                                <span class="text-xs font-semibold px-2 py-1 bg-brand/10 text-brand rounded-md">${genreText}</span>
+                                <div class="w-48">${generateLibraryActionHTML(game.id)}</div>
+                            </div>
+                        </div>
+                    </div>`;
+                } else {
+                    return `
+                    <div onclick="viewGameDetails(${game.id})" class="cursor-pointer hover-card group relative aspect-[3/4] sm:aspect-auto sm:h-[320px] rounded-xl overflow-hidden shadow-lg border border-transparent hover:border-brand/50 transition-all flex flex-col bg-card">
+                        <div class="relative h-[170px] w-full flex-shrink-0 overflow-hidden bg-dark">
+                            <img src="${bg}" loading="lazy" class="img-transition w-full h-full object-cover">
+                            <div class="absolute bottom-3 left-3">
+                                <span class="bg-black/80 backdrop-blur-sm text-[10px] font-bold text-white px-2 py-1 rounded uppercase border border-gray-700/50 flex items-center gap-1.5">
+                                    ${platformIcon} ${platformText.split(' ')[0]}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="p-4 flex-1 flex flex-col relative z-10">
+                            <div class="mb-2">
+                                <span class="text-[10px] text-brand font-bold uppercase tracking-wider mb-1 block">${genreText}</span>
+                                <h4 class="font-bold text-lg text-white leading-tight line-clamp-1 group-hover:text-brand transition-colors">${game.name}</h4>
+                            </div>
+                            <div class="mt-auto pt-3 border-t border-gray-800 flex items-center justify-between">
+                                <span class="text-xs font-medium text-gray-400">${ratingBlock}</span>
+                                <div class="w-32">${generateLibraryActionHTML(game.id)}</div>
+                            </div>
+                        </div>
+                    </div>`;
+                }
+            }).join('');
+            lucide.createIcons();
+        }
+
+        // --- INIT ---
+        Promise.all([fetchSupabaseLibrary(), fetchSupabasePlaylists()]).then(() => {
+            fetchHomeGames();
+            try {
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('tab') === 'discover') switchTab('discover');
+                if (params.get('tab') === 'mygames') switchTab('mygames');
+                if (params.get('tab') === 'playlists') switchTab('playlists');
+                if (params.get('tab') === 'details' && params.get('id')) viewGameDetails(params.get('id'));
+            } catch(e) {}
+        });
+
+    </script>
+</body>
+</html>
