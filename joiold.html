@@ -1,0 +1,1818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="robots" content="noindex, nofollow">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudioHub</title>
+    <!-- Favicon matching the StudioHub theme -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2212%22 fill=%22%237fe826%22/><path d=%22M13 2L3 14h7v8l11-12h-7L13 2z%22 fill=%22%23fff%22/></svg>">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <!-- Dark Mode Init (Prevents Flash) -->
+    <script>
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+    <!-- Supabase JS Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        
+        body { 
+            font-family: 'Inter', sans-serif; 
+        }
+
+        /* Hide scrollbar for clean look */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+        
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
+
+        /* Modals and Toasts */
+        .modal {
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .modal.active {
+            display: flex;
+            opacity: 1;
+        }
+        #successToast {
+            transform: translateY(100%);
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        #successToast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        /* Models Grid Hover Effects */
+        .gallery-model-card {
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .gallery-model-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+        }
+        .dark .gallery-model-card:hover {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+        }
+        .gallery-model-img-wrapper img, .gallery-model-img-wrapper video {
+            transition: transform 0.5s ease;
+        }
+        .gallery-model-card:hover .gallery-model-img-wrapper img, .gallery-model-card:hover .gallery-model-img-wrapper video {
+            transform: scale(1.05);
+        }
+
+        /* Custom Progress Bar Handles */
+        .progress-handle {
+            position: absolute;
+            right: 2px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 20px;
+            background-color: #111;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+            line-height: 1;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        .dark .progress-handle {
+            background-color: #f8fafc;
+            color: #111;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col overflow-x-hidden bg-[#f1f5f0] text-[#1a1a1a] dark:bg-slate-900 dark:text-slate-100 transition-colors duration-300">
+
+    <!-- FLOATING TOP HEADER - Symmetric Grid ensures Navigation is dead-center -->
+    <header class="w-full px-6 py-5 z-40 relative">
+        <div class="max-w-[1500px] mx-auto grid grid-cols-[1fr_auto_1fr] items-center">
+            
+            <!-- Left: Brand -->
+            <div class="flex items-center justify-self-start min-w-0">
+                <div class="bg-white dark:bg-slate-800 rounded-full p-2 px-4 shadow-sm flex items-center gap-2 transition-colors duration-300">
+                    <div class="w-6 h-6 bg-[#7fe826] rounded-full flex items-center justify-center text-white text-xs">⚡</div>
+                    <span class="font-bold text-sm tracking-tight hidden sm:block truncate dark:text-white">StudioHub</span>
+                </div>
+            </div>
+
+            <!-- Center: Nav Pills (Dead Center) -->
+            <nav class="bg-[#e4ece3] dark:bg-slate-800 p-1.5 rounded-full flex gap-1 shadow-inner justify-self-center overflow-x-auto max-w-full no-scrollbar transition-colors duration-300">
+                <button class="nav-item px-4 sm:px-6 py-2.5 rounded-full bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm font-medium text-xs sm:text-sm transition-all whitespace-nowrap" data-target="modelsView">Models</button>
+                <button class="nav-item px-4 sm:px-6 py-2.5 rounded-full text-slate-500 dark:text-slate-400 font-medium text-xs sm:text-sm transition-all whitespace-nowrap" data-target="closeUpView">Close Up</button>
+                <button class="nav-item px-4 sm:px-6 py-2.5 rounded-full text-slate-500 dark:text-slate-400 font-medium text-xs sm:text-sm transition-all whitespace-nowrap" data-target="clipsView">OnlyClips</button>
+                <button class="nav-item px-4 sm:px-6 py-2.5 rounded-full text-slate-500 dark:text-slate-400 font-medium text-xs sm:text-sm transition-all whitespace-nowrap" data-target="assetsView">OnlyAssets</button>
+            </nav>
+
+            <!-- Right: Actions -->
+            <div class="flex items-center gap-2 sm:gap-3 justify-self-end min-w-0">
+                <button onclick="toggleTheme()" class="bg-white dark:bg-slate-800 w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center shadow-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors">
+                    <svg id="themeToggleIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                </button>
+                <button onclick="openModelModal()" class="bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center shadow-sm hover:bg-black dark:hover:bg-[#6ed11f] transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT AREA -->
+    <main class="flex-1 w-full pb-8 flex flex-col justify-center">
+
+        <!-- MODELS VIEW -->
+        <div id="modelsView" class="view-section block px-6 sm:px-8 max-w-[1400px] mx-auto w-full">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 mt-4">
+                <div>
+                    <h2 class="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Models Gallery</h2>
+                    <p class="text-slate-500 dark:text-slate-400 mt-1 text-sm">Manage and view your 3D models and character assets.</p>
+                </div>
+                
+                <!-- Filters Container -->
+                <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto flex-wrap">
+                    
+                    <!-- Rating Range Filter -->
+                    <div class="flex items-center bg-white dark:bg-slate-800 rounded-full shadow-sm border border-slate-100 dark:border-slate-700 px-4 py-2 gap-3 z-10 w-full sm:w-auto flex-shrink-0 transition-colors duration-300">
+                        <span class="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider hidden sm:block">Rating</span>
+                        <span id="minRatingText" class="text-xs font-bold text-slate-700 dark:text-slate-200 w-8 text-right">0%</span>
+                        
+                        <!-- Dual Slider Track -->
+                        <div class="relative w-full sm:w-32 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center mx-2 sm:mx-0 transition-colors duration-300">
+                            <div id="sliderTrack" class="absolute h-full bg-[#7fe826] rounded-full" style="left: 0%; right: 0%;"></div>
+                            <!-- Min Thumb -->
+                            <input type="range" id="minRating" min="0" max="100" value="0" class="absolute w-full h-full appearance-none bg-transparent pointer-events-none z-20 [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-[#111] dark:[&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:bg-[#111] dark:[&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 cursor-pointer">
+                            <!-- Max Thumb -->
+                            <input type="range" id="maxRating" min="0" max="100" value="100" class="absolute w-full h-full appearance-none bg-transparent pointer-events-none z-20 [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-[#111] dark:[&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:bg-[#111] dark:[&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 cursor-pointer">
+                        </div>
+
+                        <span id="maxRatingText" class="text-xs font-bold text-slate-700 dark:text-slate-200 w-8">100%</span>
+                        <button onclick="resetRatingFilter()" class="ml-1 text-slate-300 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 transition-colors" title="Reset Filters">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        </button>
+                    </div>
+
+                    <!-- Tag Filter -->
+                    <select id="tagFilter" class="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-sm text-slate-700 dark:text-slate-200 text-sm rounded-full focus:ring-2 focus:ring-[#7fe826] block py-2.5 px-4 outline-none font-medium transition-colors cursor-pointer w-full sm:w-auto h-full min-h-[38px] flex-shrink-0">
+                        <option value="all">All Tags</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="modelsEmptyState" class="hidden flex-col items-center justify-center py-24 px-4 text-center bg-white/50 dark:bg-slate-800/50 border border-dashed border-slate-300 dark:border-slate-700 rounded-[2rem] backdrop-blur-sm transition-colors duration-300">
+                <svg class="w-16 h-16 text-slate-300 dark:text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-1">No models found</h3>
+                <p class="text-slate-500 dark:text-slate-400 max-w-sm mb-6">Your gallery is currently empty or no models match your filter.</p>
+                <button onclick="openModelModal()" class="text-[#111] dark:text-white bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-600 px-6 py-2.5 rounded-full font-semibold transition-colors">Add New Model</button>
+            </div>
+
+            <div id="modelsLoadingState" class="flex flex-col items-center justify-center py-24">
+                <div class="w-10 h-10 border-4 border-[#e4ece3] dark:border-slate-700 border-t-[#7fe826] dark:border-t-[#7fe826] rounded-full animate-spin mb-4"></div>
+                <p class="text-slate-500 dark:text-slate-400 font-medium animate-pulse text-sm">Connecting to Supabase...</p>
+            </div>
+
+            <div id="modelsGrid" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6"></div>
+        </div>
+
+        <!-- CLOSE UP VIEW - Symmetric Grid ensures Reel is dead-center -->
+        <div id="closeUpView" class="view-section hidden px-6 w-full max-w-[1500px] mx-auto">
+            <div class="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] items-start gap-8 lg:gap-10 xl:gap-14 pt-2">
+                
+                <!-- LEFT COLUMN -->
+                <div class="w-full max-w-[360px] justify-self-end space-y-5 lg:space-y-6 min-w-0">
+                    <!-- Her Rating (Hotness calculated from sliders) -->
+                    <div class="bg-white dark:bg-slate-800 rounded-[1.5rem] p-5 shadow-sm transition-colors duration-300">
+                        <p class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Opinion</p>
+                        <h3 class="text-base font-bold text-slate-900 dark:text-white mb-1">Her Rating</h3>
+                        <div class="flex items-baseline gap-2 mb-3">
+                            <span id="hotness-display-value" class="text-3xl font-extrabold tracking-tight dark:text-white">50%</span>
+                            <span class="text-xs text-slate-400 dark:text-slate-500 font-medium">Hotness</span>
+                        </div>
+                        <div class="h-8 bg-[#f1f5f0] dark:bg-slate-900 rounded-full relative overflow-hidden flex items-center px-4 transition-colors duration-300">
+                            <div class="absolute inset-0 opacity-20" style="background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, #94a3b8 5px, #94a3b8 10px);"></div>
+                            <div id="hotness-fill-bar" class="absolute left-0 top-0 bottom-0 w-[50%] bg-[#7fe826] rounded-full z-10 transition-all duration-300">
+                                <!-- Handle removed since this is calculated/read-only -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Her Balance (Interactive Sliders) -->
+                    <div class="bg-white dark:bg-slate-800 rounded-[1.5rem] p-5 shadow-sm relative transition-colors duration-300">
+                        <div class="flex justify-between items-center mb-3">
+                            <h3 class="font-bold text-slate-900 dark:text-white text-base">Her Balance</h3>
+                            <button class="w-7 h-7 rounded-full bg-slate-50 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></button>
+                        </div>
+                        <div class="space-y-3">
+                            <!-- Chest Slider -->
+                            <div class="flex items-center gap-3">
+                                <span class="w-14 text-[11px] text-slate-500 dark:text-slate-400 font-medium">Face</span>
+                                <div class="flex-1 h-[18px] bg-[#f1f5f0] dark:bg-slate-900 rounded-full relative group transition-colors duration-300">
+                                    <div class="absolute inset-0 opacity-20 rounded-full" style="background-image: repeating-linear-gradient(45deg, transparent, transparent 4px, #94a3b8 4px, #94a3b8 8px);"></div>
+                                    <div id="slider-fill-chest" class="absolute left-0 top-0 bottom-0 w-[50%] bg-[#c4b5fd] rounded-full z-10 flex items-center px-2.5 pointer-events-none">
+                                        <span id="slider-text-chest" class="text-[9px] font-bold text-[#111]">50%</span>
+                                        <div class="progress-handle shadow-sm" style="width: 12px; height: 12px; font-size: 8px;">+</div>
+                                    </div>
+                                    <input type="range" id="slider-input-chest" min="0" max="100" value="50" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20" oninput="handleSliderInput('chest', this.value)">
+                                </div>
+                                <span class="text-[10px] text-slate-400 font-medium">100%</span>
+                            </div>
+                            <!-- Biceps Slider -->
+                            <div class="flex items-center gap-3">
+                                <span class="w-14 text-[11px] text-slate-500 dark:text-slate-400 font-medium">Chest</span>
+                                <div class="flex-1 h-[18px] bg-[#f1f5f0] dark:bg-slate-900 rounded-full relative group transition-colors duration-300">
+                                    <div class="absolute inset-0 opacity-20 rounded-full" style="background-image: repeating-linear-gradient(45deg, transparent, transparent 4px, #94a3b8 4px, #94a3b8 8px);"></div>
+                                    <div id="slider-fill-biceps" class="absolute left-0 top-0 bottom-0 w-[50%] bg-[#7fe826] rounded-full z-10 flex items-center px-2.5 pointer-events-none">
+                                        <span id="slider-text-biceps" class="text-[9px] font-bold text-[#111]">50%</span>
+                                        <div class="progress-handle shadow-sm" style="width: 12px; height: 12px; font-size: 8px;">+</div>
+                                    </div>
+                                    <input type="range" id="slider-input-biceps" min="0" max="100" value="50" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20" oninput="handleSliderInput('biceps', this.value)">
+                                </div>
+                                <span class="text-[10px] text-slate-400 font-medium">100%</span>
+                            </div>
+                            <!-- Glutes Slider -->
+                            <div class="flex items-center gap-3">
+                                <span class="w-14 text-[11px] text-slate-500 dark:text-slate-400 font-medium">Glutes</span>
+                                <div class="flex-1 h-[18px] bg-[#f1f5f0] dark:bg-slate-900 rounded-full relative group transition-colors duration-300">
+                                    <div class="absolute inset-0 opacity-20 rounded-full" style="background-image: repeating-linear-gradient(45deg, transparent, transparent 4px, #94a3b8 4px, #94a3b8 8px);"></div>
+                                    <div id="slider-fill-glutes" class="absolute left-0 top-0 bottom-0 w-[50%] bg-[#fca5a5] rounded-full z-10 flex items-center px-2.5 pointer-events-none">
+                                        <span id="slider-text-glutes" class="text-[9px] font-bold text-[#111]">50%</span>
+                                        <div class="progress-handle shadow-sm" style="width: 12px; height: 12px; font-size: 8px;">+</div>
+                                    </div>
+                                    <input type="range" id="slider-input-glutes" min="0" max="100" value="50" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20" oninput="handleSliderInput('glutes', this.value)">
+                                </div>
+                                <span class="text-[10px] text-slate-400 font-medium">100%</span>
+                            </div>
+                            <!-- Shoulders Slider -->
+                            <div class="flex items-center gap-3">
+                                <span class="w-14 text-[11px] text-slate-500 dark:text-slate-400 font-medium">Puss</span>
+                                <div class="flex-1 h-[18px] bg-[#f1f5f0] dark:bg-slate-900 rounded-full relative group transition-colors duration-300">
+                                    <div class="absolute inset-0 opacity-20 rounded-full" style="background-image: repeating-linear-gradient(45deg, transparent, transparent 4px, #94a3b8 4px, #94a3b8 8px);"></div>
+                                    <div id="slider-fill-shoulders" class="absolute left-0 top-0 bottom-0 w-[50%] bg-[#fde047] rounded-full z-10 flex items-center px-2.5 pointer-events-none">
+                                        <span id="slider-text-shoulders" class="text-[9px] font-bold text-[#111]">50%</span>
+                                        <div class="progress-handle shadow-sm" style="width: 12px; height: 12px; font-size: 8px;">+</div>
+                                    </div>
+                                    <input type="range" id="slider-input-shoulders" min="0" max="100" value="50" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20" oninput="handleSliderInput('shoulders', this.value)">
+                                </div>
+                                <span class="text-[10px] text-slate-400 font-medium">100%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="font-bold text-slate-900 dark:text-white mb-3 px-1 text-sm">Assets</h3>
+                        <div id="closeUpAssetsGrid" class="grid grid-cols-3 gap-3"></div>
+                    </div>
+                </div>
+
+                <!-- CENTER COLUMN (Anchored Dead Center) -->
+                <div class="relative w-[280px] sm:w-[320px] xl:w-[360px] aspect-[9/16] justify-self-center z-10 flex-shrink-0">
+                    <img id="closeUpMainImage" src="https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=800&q=80" alt="Main Model" class="w-full h-full object-cover object-center rounded-[2.5rem] shadow-sm border-[6px] border-white dark:border-slate-800 bg-slate-200 dark:bg-slate-700 transition-all duration-500">
+                </div>
+
+                <!-- RIGHT COLUMN -->
+                <div class="w-full max-w-[480px] justify-self-start space-y-6 lg:space-y-8 min-w-0">
+                    <div>
+                        <h2 class="text-[17px] font-bold text-slate-900 dark:text-white mb-4 text-center">Class Section</h2>
+                        <div id="closeUpClassSectionGrid" class="flex items-center justify-center gap-3 xl:gap-4 flex-wrap"></div>
+                    </div>
+                    <div>
+                        <h2 class="text-[17px] font-bold text-slate-900 dark:text-white mb-4 text-center">Amazing At</h2>
+                        <div id="closeUpAmazingAtGrid" class="flex items-center justify-center gap-3 xl:gap-4 flex-wrap"></div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-[17px] font-bold text-slate-900 dark:text-white">Saved Clips</h2>
+                        
+                        </div>
+                        <div id="closeUpClipsGrid" class="grid grid-cols-3 gap-4"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GLOBAL ASSETS VIEW (OnlyAssets Tab) -->
+        <div id="assetsView" class="view-section hidden px-6 sm:px-8 max-w-[1400px] mx-auto w-full">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 mt-4">
+                <div>
+                    <h2 class="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Global Assets</h2>
+                    <p class="text-slate-500 dark:text-slate-400 mt-1 text-sm">Browse all asset images across your models.</p>
+                </div>
+                <div class="flex items-center gap-3 w-full sm:w-auto">
+                    <select id="globalAssetTagFilter" class="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-sm text-slate-700 dark:text-slate-200 text-sm rounded-full focus:ring-2 focus:ring-[#7fe826] block py-2.5 px-4 outline-none font-medium transition-colors cursor-pointer w-full sm:w-auto min-h-[38px]">
+                        <option value="all">All Asset Tags</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="globalAssetsEmptyState" class="hidden flex-col items-center justify-center py-24 px-4 text-center bg-white/50 dark:bg-slate-800/50 border border-dashed border-slate-300 dark:border-slate-700 rounded-[2rem] backdrop-blur-sm transition-colors duration-300">
+                <svg class="w-16 h-16 text-slate-300 dark:text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-1">No assets found</h3>
+                <p class="text-slate-500 dark:text-slate-400 max-w-sm">No assets match your current filter, or your gallery is empty.</p>
+            </div>
+
+            <div id="globalAssetsGrid" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6"></div>
+        </div>
+        
+        <!-- GLOBAL CLIPS VIEW (OnlyClips Tab) -->
+        <div id="clipsView" class="view-section hidden px-6 sm:px-8 max-w-[1400px] mx-auto w-full">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 mt-4">
+                <div>
+                    <h2 class="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Global Clips</h2>
+                    <p class="text-slate-500 dark:text-slate-400 mt-1 text-sm">Browse all video clips across your models.</p>
+                </div>
+                <div class="flex items-center gap-3 w-full sm:w-auto">
+                    <select id="globalClipTagFilter" class="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-sm text-slate-700 dark:text-slate-200 text-sm rounded-full focus:ring-2 focus:ring-[#7fe826] block py-2.5 px-4 outline-none font-medium transition-colors cursor-pointer w-full sm:w-auto min-h-[38px]">
+                        <option value="all">All Clip Tags</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="globalClipsEmptyState" class="hidden flex-col items-center justify-center py-24 px-4 text-center bg-white/50 dark:bg-slate-800/50 border border-dashed border-slate-300 dark:border-slate-700 rounded-[2rem] backdrop-blur-sm transition-colors duration-300">
+                <svg class="w-16 h-16 text-slate-300 dark:text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-1">No clips found</h3>
+                <p class="text-slate-500 dark:text-slate-400 max-w-sm">No clips match your current filter, or your gallery is empty.</p>
+            </div>
+
+            <div id="globalClipsGrid" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6"></div>
+        </div>
+
+        <div id="allAssetsView" class="view-section hidden px-6 w-full max-w-[1200px] mx-auto">
+            <div class="flex items-center justify-between mb-8 pt-2">
+                <div class="flex items-center gap-4">
+                    <button onclick="document.querySelector('[data-target=\'closeUpView\']').click()" class="p-2 bg-white dark:bg-slate-800 rounded-full shadow-sm text-slate-500 dark:text-slate-400 hover:text-[#111] dark:hover:text-white transition-colors border border-slate-200 dark:border-slate-700"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button>
+                    <h2 class="text-2xl font-bold text-slate-900 dark:text-white">All Assets</h2>
+                </div>
+                <button onclick="openAddMediaModal(false)" class="bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] px-5 py-2.5 rounded-full text-sm font-bold shadow-sm hover:bg-black dark:hover:bg-[#6ed11f] transition-colors flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    Add More
+                </button>
+            </div>
+            
+            <!-- Dynamic Layout Grid for Assets (Auto-span based on orientation) -->
+            <div id="fullAssetsGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 w-full max-w-[1000px] mx-auto items-start"></div>
+        </div>
+
+        <div id="allClipsView" class="view-section hidden px-6 w-full max-w-[1200px] mx-auto">
+            <div class="flex items-center justify-between mb-8 pt-2">
+                <div class="flex items-center gap-4">
+                    <button onclick="document.querySelector('[data-target=\'closeUpView\']').click()" class="p-2 bg-white dark:bg-slate-800 rounded-full shadow-sm text-slate-500 dark:text-slate-400 hover:text-[#111] dark:hover:text-white transition-colors border border-slate-200 dark:border-slate-700"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button>
+                    <h2 class="text-2xl font-bold text-slate-900 dark:text-white">All Saved Clips</h2>
+                </div>
+                <button onclick="openAddMediaModal(true)" class="bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] px-5 py-2.5 rounded-full text-sm font-bold shadow-sm hover:bg-black dark:hover:bg-[#6ed11f] transition-colors flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    Add More
+                </button>
+            </div>
+            
+            <!-- Dynamic Layout Grid for Clips matching Assets layout -->
+            <div id="fullClipsGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 w-full max-w-[1000px] mx-auto items-start"></div>
+        </div>
+    </main>
+
+    <!-- Add Media Modal (For URLs) -->
+    <div id="addMediaModal" class="modal fixed inset-0 z-[110] bg-slate-900/50 backdrop-blur-sm items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all flex flex-col max-h-[90vh]">
+            <div class="px-6 py-5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/80 flex-shrink-0">
+                <h3 id="addMediaTitle" class="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Add New Media</h3>
+                <button onclick="closeAddMediaModal()" class="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            
+            <form id="addMediaForm" class="p-6 space-y-4 overflow-y-auto">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Media URL</label>
+                    <input type="url" id="mediaUrlInput" required class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#7fe826] outline-none transition-all shadow-sm" placeholder="https://example.com/media...">
+                    <p id="mediaUrlError" class="text-red-500 text-xs font-medium mt-2 hidden">Please enter a valid URL.</p>
+                </div>
+                
+                <div class="pt-4 flex gap-3 flex-shrink-0">
+                    <button type="button" onclick="closeAddMediaModal()" class="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 py-3 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">Cancel</button>
+                    <button type="submit" class="flex-1 bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] py-3 rounded-xl font-bold hover:bg-black dark:hover:bg-[#6ed11f] transition-colors shadow-sm">Save Media</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Global Tag Picker Modal -->
+    <div id="tagPickerModal" class="modal fixed inset-0 z-[120] bg-slate-900/50 backdrop-blur-sm items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all flex flex-col max-h-[85vh]">
+            <div class="px-6 py-5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/80 flex-shrink-0">
+                <div>
+                    <h3 id="tagPickerTitle" class="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Select Tags</h3>
+                    <p id="tagPickerSubtitle" class="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5 uppercase tracking-wide"></p>
+                </div>
+                <button onclick="closeTagPicker()" class="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-white transition-colors"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <!-- Search Bar for Tags -->
+            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 flex-shrink-0">
+                <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
+                    <input type="text" id="tagSearchInput" onkeyup="renderPickerTags()" placeholder="Search existing tags..." class="w-full pl-9 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-[#7fe826] outline-none transition-all shadow-sm text-slate-800 dark:text-slate-200">
+                </div>
+            </div>
+            <div class="p-6 overflow-y-auto custom-scrollbar bg-white dark:bg-slate-800">
+                <div id="pickerTagsGrid" class="flex flex-wrap gap-2.5"></div>
+            </div>
+            <div class="p-4 border-t border-slate-100 dark:border-slate-700 flex justify-center bg-slate-50/50 dark:bg-slate-800/80 flex-shrink-0">
+                <button onclick="closeTagPicker()" class="bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] px-10 py-3 rounded-2xl font-bold hover:bg-black dark:hover:bg-[#6ed11f] transition-colors shadow-lg">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Model Modal -->
+    <div id="addModelModal" class="modal fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all flex flex-col max-h-[90vh]">
+            <div class="px-6 py-5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/80 flex-shrink-0">
+                <h3 class="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Add New Model</h3>
+                <button onclick="closeModelModal()" class="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            
+            <form id="addModelForm" class="p-6 space-y-4 overflow-y-auto">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Model Name</label>
+                    <input type="text" id="modelName" required class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#7fe826] outline-none transition-all shadow-sm" placeholder="e.g. Cyberpunk Character">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Tags</label>
+                    <div id="tagSelectionContainer" class="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-1 custom-scrollbar mb-4"></div>
+                    <div id="createNewTagContainer" class="hidden flex gap-2 mb-3 items-center animate-in slide-in-from-top duration-300">
+                        <input type="text" id="newTagInput" class="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-[#7fe826] outline-none transition-all shadow-sm text-sm" placeholder="Enter tag name..." onkeydown="if(event.key === 'Enter'){ event.preventDefault(); document.getElementById('addNewTagBtn').click(); }">
+                        <button type="button" id="addNewTagBtn" class="bg-[#7fe826] text-[#111] px-4 py-2 rounded-xl font-bold text-sm hover:bg-[#6ed11f] transition-colors shadow-sm">Save</button>
+                    </div>
+                    <button type="button" id="showTagInputBtn" class="text-xs font-bold text-[#7fe826] hover:text-[#5fb51a] flex items-center gap-1 mt-1 transition-colors">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                        Create New Tag
+                    </button>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Image URL</label>
+                    <input type="url" id="modelImage" required class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#7fe826] outline-none transition-all shadow-sm" placeholder="https://example.com/image.jpg">
+                </div>
+                
+                <div class="pt-6 flex gap-3 flex-shrink-0">
+                    <button type="button" onclick="closeModelModal()" class="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 py-3 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">Cancel</button>
+                    <button type="submit" class="flex-1 bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] py-3 rounded-xl font-bold hover:bg-black dark:hover:bg-[#6ed11f] transition-colors shadow-sm">Add to Gallery</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Success Toast Notification -->
+    <div id="successToast" class="fixed bottom-6 right-6 bg-[#111] dark:bg-slate-800 text-white px-6 py-4 rounded-2xl shadow-2xl font-medium flex items-center gap-3 z-[130]">
+        <div class="w-6 h-6 rounded-full bg-[#7fe826] flex items-center justify-center text-[#111]"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg></div>
+        <span id="toastMessage">Action completed successfully!</span>
+    </div>
+
+    <!-- Full Screen Universal Lightbox Viewer -->
+    <div id="lightboxModal" class="modal fixed inset-0 z-[100] bg-black/95 backdrop-blur-md items-center justify-center p-4 cursor-pointer" onclick="closeLightbox()">
+        <!-- Close Button -->
+        <button onclick="closeLightbox()" class="absolute top-6 right-6 text-white/60 hover:text-white transition-colors z-50 p-2 bg-black/20 rounded-full hover:bg-black/40">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+        
+        <!-- Delete Button -->
+        <button onclick="deleteCurrentMedia(this, event)" class="absolute top-6 left-6 text-red-400 hover:text-red-500 transition-all z-50 p-2 bg-black/20 rounded-full hover:bg-black/40 min-w-[40px] flex justify-center items-center h-10 shadow-lg backdrop-blur-sm">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+        </button>
+        
+        <!-- Left Nav -->
+        <button onclick="navigateLightbox(-1); event.stopPropagation();" class="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors z-50 p-2 transform hover:scale-110 bg-black/10 rounded-full hover:bg-black/30">
+            <svg class="w-10 h-10 sm:w-12 sm:h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+        </button>
+
+        <!-- Media Container (Handles both img and video) -->
+        <div class="relative max-w-[95%] max-h-[90vh] flex flex-col items-center justify-center">
+            
+            <div class="relative max-w-full flex items-center justify-center group" onclick="event.stopPropagation();">
+                <img id="lightboxImage" src="" class="hidden max-w-full max-h-[75vh] object-contain shadow-2xl transition-all duration-300 opacity-100 scale-100 rounded-lg cursor-default" onclick="event.stopPropagation();">
+                
+                <video id="lightboxVideo" loop playsinline class="hidden max-w-full max-h-[75vh] object-contain shadow-2xl transition-all duration-300 opacity-100 scale-100 rounded-lg cursor-pointer" onclick="togglePlayPause(event)"></video>
+
+                <!-- Video Controls Overlay -->
+                <div id="videoControls" class="hidden absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-xl rounded-2xl px-6 py-2 items-center gap-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300 shadow-2xl border border-white/10" onclick="event.stopPropagation();">
+                    <button onclick="skipVideo(-10, event)" class="flex flex-col items-center text-white/80 hover:text-white transition group/btn">
+                        <svg class="w-6 h-6 group-hover/btn:-translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.333 4zM4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z"></path></svg>
+                        <span class="text-[9px] font-bold mt-0.5 tracking-wider">-10s</span>
+                    </button>
+                    <button onclick="togglePlayPause(event)" class="text-[#111] bg-white hover:bg-[#7fe826] p-3 rounded-full transition-colors shadow-lg">
+                        <!-- Pause Icon (Default) -->
+                        <svg id="pauseIcon" class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z"></path></svg>
+                        <!-- Play Icon -->
+                        <svg id="playIcon" class="hidden w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
+                    </button>
+                    <button onclick="skipVideo(10, event)" class="flex flex-col items-center text-white/80 hover:text-white transition group/btn">
+                        <svg class="w-6 h-6 group-hover/btn:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.933 12.8a1 1 0 000-1.6l-5.333-4A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.334-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.334-4z"></path></svg>
+                        <span class="text-[9px] font-bold mt-0.5 tracking-wider">+10s</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tags & Caption Area -->
+            <div class="mt-5 flex flex-col items-center gap-3 w-full" onclick="event.stopPropagation();">
+                <div id="lightboxCounter" class="text-white/60 text-xs font-bold tracking-widest uppercase"></div>
+                <div id="lightboxTagsContainer" class="flex flex-wrap items-center justify-center gap-2 max-w-3xl"></div>
+            </div>
+        </div>
+
+        <!-- Right Nav -->
+        <button onclick="navigateLightbox(1); event.stopPropagation();" class="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors z-50 p-2 transform hover:scale-110 bg-black/10 rounded-full hover:bg-black/30">
+            <svg class="w-10 h-10 sm:w-12 sm:h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+        </button>
+    </div>
+
+    <script>
+        // ==========================================
+        // GLOBAL VARIABLES
+        // ==========================================
+        const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
+        let supabaseClient;
+        let masterTagsList = []; 
+        let selectedModalTags = new Set();
+        let currentActiveModelData = null;
+        let pickerTargetType = null;
+        let galleryModelCount = 0;
+        
+        // Data caching for instant filtering
+        let allLoadedCards = [];
+        
+        // Rating Filter State
+        let currentMinRating = 0;
+        let currentMaxRating = 100;
+        
+        // Global Asset State
+        let globalAssetsList = [];
+        let globalClipsList = [];
+        let isGlobalViewer = false;
+        
+        // Lightbox & Viewer state variables
+        let lightboxMediaList = [];
+        let currentLightboxIndex = 0;
+        let isClipViewer = false;
+        
+        // Add Media state variable
+        let isAddingClip = false;
+        let deleteConfirmTimeout;
+        
+        // Timeout for debouncing slider saves
+        let saveRatingsTimeout;
+
+        // ==========================================
+        // THEME / DARK MODE TOGGLE
+        // ==========================================
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const iconEl = document.getElementById('themeToggleIcon');
+            
+            if (isDark) {
+                document.documentElement.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+                if (iconEl) { // Change to Moon
+                    iconEl.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>`;
+                }
+            } else {
+                document.documentElement.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+                if (iconEl) { // Change to Sun
+                    iconEl.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>`;
+                }
+            }
+        }
+
+        // ==========================================
+        // GLOBAL FUNCTIONS
+        // ==========================================
+        function openModelModal() { document.getElementById('addModelModal').classList.add('active'); }
+        function closeModelModal() { document.getElementById('addModelModal').classList.remove('active'); selectedModalTags.clear(); renderModalTags(); }
+        
+        function showSuccessToast(msg) { 
+            const toastMsg = document.getElementById('toastMessage');
+            if (toastMsg) {
+                toastMsg.innerText = typeof msg === 'string' ? msg : 'Action completed successfully!';
+            }
+            document.getElementById('successToast').classList.add('show'); 
+            setTimeout(() => document.getElementById('successToast').classList.remove('show'), 3000); 
+        }
+        
+        function openAddMediaModal(isClip) {
+            isAddingClip = isClip;
+            document.getElementById('addMediaTitle').innerText = isAddingClip ? 'Add New Clip' : 'Add New Asset';
+            document.getElementById('mediaUrlInput').placeholder = isAddingClip ? 'Enter video URL (mp4, webm, etc.)' : 'Enter image URL (jpg, png, etc.)';
+            document.getElementById('mediaUrlInput').value = '';
+            document.getElementById('mediaUrlError').classList.add('hidden');
+            document.getElementById('addMediaModal').classList.add('active');
+        }
+        
+        function closeAddMediaModal() {
+            document.getElementById('addMediaModal').classList.remove('active');
+        }
+
+        function closeTagPicker() { document.getElementById('tagPickerModal').classList.remove('active'); }
+
+        function openTagPicker(type) {
+            pickerTargetType = type;
+            const searchInput = document.getElementById('tagSearchInput');
+            if(searchInput) searchInput.value = ''; // Reset search on open
+
+            if (type === 'class') {
+                document.getElementById('tagPickerTitle').innerText = 'Class Section Tags';
+                document.getElementById('tagPickerSubtitle').innerText = 'Select categories';
+            } else if (type === 'amazing') {
+                document.getElementById('tagPickerTitle').innerText = 'Amazing At Tags';
+                document.getElementById('tagPickerSubtitle').innerText = 'Select skills';
+            } else if (type === 'media') {
+                document.getElementById('tagPickerTitle').innerText = isClipViewer ? 'Clip Tags' : 'Asset Tags';
+                document.getElementById('tagPickerSubtitle').innerText = 'Assign tags to this media';
+            }
+
+            renderPickerTags();
+            document.getElementById('tagPickerModal').classList.add('active');
+        }
+
+        async function toggleTagInPicker(tag) {
+            if (pickerTargetType === 'media') {
+                const currentMedia = lightboxMediaList[currentLightboxIndex];
+                if (typeof currentMedia === 'string') {
+                    lightboxMediaList[currentLightboxIndex] = { url: currentMedia, tags: isClipViewer ? 'Clip' : 'Asset' };
+                    if (isGlobalViewer) lightboxMediaList[currentLightboxIndex].cardId = currentMedia.cardId;
+                }
+                
+                let tags = (lightboxMediaList[currentLightboxIndex].tags || '').split(',').map(t => t.trim()).filter(Boolean);
+                const idx = tags.findIndex(t => t.toLowerCase() === tag.toLowerCase());
+                
+                if (idx > -1) tags.splice(idx, 1); 
+                else tags.push(tag);
+                
+                lightboxMediaList[currentLightboxIndex].tags = tags.join(', ');
+                
+                renderPickerTags();
+                renderLightboxTags();
+                
+                if (isGlobalViewer) {
+                    await saveGlobalMediaToSupabase(lightboxMediaList[currentLightboxIndex]);
+                    if (isClipViewer) buildGlobalClipsList();
+                    else buildGlobalAssetsList();
+                } else {
+                    await saveMediaTagsToSupabase();
+                    if (isClipViewer && !document.getElementById('allClipsView').classList.contains('hidden')) {
+                        document.getElementById('fullClipsGrid').innerHTML = lightboxMediaList.map((clip, idx) => generateClipCardHTML(clip, idx)).join('');
+                    } else if (!isClipViewer && !document.getElementById('allAssetsView').classList.contains('hidden')) {
+                         document.getElementById('fullAssetsGrid').innerHTML = lightboxMediaList.map((asset, idx) => generateFullAssetMasonryHTML(asset, idx)).join('');
+                    }
+                }
+            } else {
+                const col = pickerTargetType === 'class' ? 'class_tags' : 'amazing_at_tags';
+                let tags = currentActiveModelData[col] ? currentActiveModelData[col].split(',').map(t => t.trim()).filter(Boolean) : [];
+                const idx = tags.findIndex(t => t.toLowerCase() === tag.toLowerCase());
+                if (idx > -1) tags.splice(idx, 1); else tags.push(tag);
+                currentActiveModelData[col] = tags.join(', ');
+                if (pickerTargetType === 'class') renderClassSection(); else renderAmazingAtSection();
+                renderPickerTags();
+                if (supabaseClient && currentActiveModelData.id) {
+                    await supabaseClient.from('cards').update({ [col]: currentActiveModelData[col] }).eq('id', currentActiveModelData.id);
+                }
+            }
+        }
+
+        async function saveMediaTagsToSupabase() {
+            if (!supabaseClient || !currentActiveModelData || !currentActiveModelData.id) return;
+            const colName = isClipViewer ? 'related_videos_with_tags' : 'related_images_with_tags';
+            
+            currentActiveModelData[colName] = [...lightboxMediaList];
+            try {
+                await supabaseClient.from('cards').update({ [colName]: currentActiveModelData[colName] }).eq('id', currentActiveModelData.id);
+            } catch (err) {
+                console.error("Failed to save media tags", err);
+            }
+        }
+        
+        async function saveGlobalMediaToSupabase(mediaObj) {
+            if (!supabaseClient || !mediaObj.cardId) return;
+            const card = allLoadedCards.find(c => c.id === mediaObj.cardId);
+            if (!card) return;
+            const colName = isClipViewer ? 'related_videos_with_tags' : 'related_images_with_tags';
+            const itemIndex = card[colName].findIndex(a => (a.url || a) === (mediaObj.url || mediaObj));
+            if (itemIndex > -1) {
+                if (typeof card[colName][itemIndex] === 'string') {
+                    card[colName][itemIndex] = { url: card[colName][itemIndex], tags: mediaObj.tags };
+                } else {
+                    card[colName][itemIndex].tags = mediaObj.tags;
+                }
+            }
+            try {
+                await supabaseClient.from('cards').update({ [colName]: card[colName] }).eq('id', card.id);
+            } catch(err) { console.error("Failed to save global media tags", err); }
+        }
+
+        async function removeMediaTag(tagToRemove, event) {
+            event.stopPropagation();
+            if (typeof lightboxMediaList[currentLightboxIndex] === 'string') {
+                lightboxMediaList[currentLightboxIndex] = { url: lightboxMediaList[currentLightboxIndex], tags: isClipViewer ? 'Clip' : 'Asset' };
+            }
+            
+            let tags = (lightboxMediaList[currentLightboxIndex].tags || '').split(',').map(t => t.trim()).filter(Boolean);
+            tags = tags.filter(t => t.toLowerCase() !== tagToRemove.toLowerCase());
+            lightboxMediaList[currentLightboxIndex].tags = tags.join(', ');
+            
+            renderLightboxTags();
+            
+            if (isGlobalViewer) {
+                await saveGlobalMediaToSupabase(lightboxMediaList[currentLightboxIndex]);
+                if (isClipViewer) buildGlobalClipsList();
+                else buildGlobalAssetsList();
+            } else {
+                await saveMediaTagsToSupabase();
+                
+                if (isClipViewer && !document.getElementById('allClipsView').classList.contains('hidden')) {
+                    document.getElementById('fullClipsGrid').innerHTML = lightboxMediaList.map((clip, idx) => generateClipCardHTML(clip, idx)).join('');
+                } else if (!isClipViewer && !document.getElementById('allAssetsView').classList.contains('hidden')) {
+                    document.getElementById('fullAssetsGrid').innerHTML = lightboxMediaList.map((asset, idx) => generateFullAssetMasonryHTML(asset, idx)).join('');
+                }
+            }
+        }
+
+        function openAllAssetsView() {
+            document.querySelectorAll('.view-section').forEach(s => s.classList.add('hidden'));
+            document.getElementById('allAssetsView').classList.remove('hidden');
+            
+            lightboxMediaList = currentActiveModelData?.related_images_with_tags || [];
+            isClipViewer = false;
+            isGlobalViewer = false;
+            
+            document.getElementById('fullAssetsGrid').innerHTML = lightboxMediaList.map((asset, idx) => generateFullAssetMasonryHTML(asset, idx)).join('');
+        }
+
+        function openAllClipsView() {
+            document.querySelectorAll('.view-section').forEach(s => s.classList.add('hidden'));
+            document.getElementById('allClipsView').classList.remove('hidden');
+            
+            lightboxMediaList = currentActiveModelData?.related_videos_with_tags || [];
+            isClipViewer = true;
+            isGlobalViewer = false;
+            
+            document.getElementById('fullClipsGrid').innerHTML = lightboxMediaList.map((clip, idx) => generateClipCardHTML(clip, idx)).join('');
+        }
+
+        function openCloseUpPage(cardData) {
+            currentActiveModelData = cardData;
+            document.querySelector('.nav-item[data-target="closeUpView"]').click();
+            document.getElementById('closeUpMainImage').src = cardData.main_image_url;
+            
+            // Initialize rating sliders from db data or default to 50
+            ['chest', 'biceps', 'glutes', 'shoulders'].forEach(metric => {
+                let val = currentActiveModelData[`rating_${metric}`];
+                if (val === undefined || val === null) val = 50;
+                currentActiveModelData[`rating_${metric}`] = val; // Set memory state
+                
+                const input = document.getElementById(`slider-input-${metric}`);
+                if (input) {
+                    input.value = val;
+                    updateSliderVisual(metric, val);
+                }
+            });
+            calculateHotness(); // Sets read-only Hotness automatically
+            
+            renderClassSection(); renderAmazingAtSection();
+            
+            const assetsGrid = document.getElementById('closeUpAssetsGrid');
+            const assets = cardData.related_images_with_tags || [];
+            assetsGrid.innerHTML = assets.slice(0, 2).map(asset => generatePreviewCardHTML(asset, 'Asset')).join('') + 
+                `<div onclick="openAllAssetsView()" class="aspect-[4/5] rounded-[1rem] border-2 border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/60 flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:bg-white dark:hover:bg-slate-700 transition shadow-sm group"><div class="w-8 h-8 bg-[#111] dark:bg-slate-600 group-hover:bg-[#7fe826] dark:group-hover:bg-[#7fe826] rounded-full flex items-center justify-center text-white text-sm font-bold transition-colors">${assets.length > 2 ? 'All' : '+'}</div><span class="text-[10px] font-bold text-slate-600 dark:text-slate-300">See more</span></div>`;
+            
+            const clipsGrid = document.getElementById('closeUpClipsGrid');
+            const clips = cardData.related_videos_with_tags || [];
+            clipsGrid.innerHTML = clips.slice(0, 2).map((clip) => generatePreviewCardHTML(clip, 'Clip', true)).join('') + 
+                `<div onclick="openAllClipsView()" class="aspect-[4/5] rounded-[1rem] border-2 border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/60 flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:bg-white dark:hover:bg-slate-700 transition shadow-sm group"><div class="w-8 h-8 bg-[#111] dark:bg-slate-600 group-hover:bg-[#7fe826] dark:group-hover:bg-[#7fe826] rounded-full flex items-center justify-center text-white text-lg font-bold transition-colors">${clips.length > 2 ? 'All' : '+'}</div><span class="text-[11px] font-bold text-slate-600 dark:text-slate-300">See more</span></div>`;
+        }
+
+        // ==========================================
+        // SLIDERS & RATING FUNCTIONS
+        // ==========================================
+        function handleSliderInput(metric, value) {
+            if (!currentActiveModelData) return;
+            const parsedVal = parseInt(value);
+            currentActiveModelData[`rating_${metric}`] = parsedVal;
+            
+            updateSliderVisual(metric, parsedVal);
+            calculateHotness();
+            debouncedSaveRatings();
+            
+            // Sync array item directly so returning to gallery doesn't show old rating
+            const idx = allLoadedCards.findIndex(c => c.id === currentActiveModelData.id);
+            if (idx > -1) {
+                allLoadedCards[idx][`rating_${metric}`] = parsedVal;
+                allLoadedCards[idx].rating_hotness = currentActiveModelData.rating_hotness;
+            }
+        }
+
+        function updateSliderVisual(metric, value) {
+            const fillBar = document.getElementById(`slider-fill-${metric}`);
+            const textSpan = document.getElementById(`slider-text-${metric}`);
+            if (fillBar) fillBar.style.width = `${value}%`;
+            if (textSpan) textSpan.innerText = `${value}%`;
+        }
+
+        function calculateHotness() {
+            if (!currentActiveModelData) return;
+            const chest = currentActiveModelData.rating_chest ?? 50;
+            const biceps = currentActiveModelData.rating_biceps ?? 50;
+            const glutes = currentActiveModelData.rating_glutes ?? 50;
+            const shoulders = currentActiveModelData.rating_shoulders ?? 50;
+            
+            // Standard average
+            const avg = Math.round((chest + biceps + glutes + shoulders) / 4);
+            currentActiveModelData.rating_hotness = avg;
+            
+            const hotnessDisplay = document.getElementById('hotness-display-value');
+            const hotnessFill = document.getElementById('hotness-fill-bar');
+            
+            if (hotnessDisplay) hotnessDisplay.innerText = `${avg}%`;
+            if (hotnessFill) hotnessFill.style.width = `${avg}%`;
+        }
+
+        function debouncedSaveRatings() {
+            clearTimeout(saveRatingsTimeout);
+            saveRatingsTimeout = setTimeout(async () => {
+                if (!supabaseClient || !currentActiveModelData || !currentActiveModelData.id) return;
+                
+                const updates = {
+                    rating_chest: currentActiveModelData.rating_chest,
+                    rating_biceps: currentActiveModelData.rating_biceps,
+                    rating_glutes: currentActiveModelData.rating_glutes,
+                    rating_shoulders: currentActiveModelData.rating_shoulders,
+                    rating_hotness: currentActiveModelData.rating_hotness
+                };
+                
+                try {
+                    await supabaseClient.from('cards').update(updates).eq('id', currentActiveModelData.id);
+                    // Re-render gallery in background so cards show new rating if User hits back
+                    applyFilters();
+                } catch (err) {
+                    console.error("Failed to save slider ratings", err);
+                }
+            }, 500); // 500ms delay after interaction stops
+        }
+        
+        function updateRatingFilter(e) {
+            const minRatingInput = document.getElementById('minRating');
+            const maxRatingInput = document.getElementById('maxRating');
+            const sliderTrack = document.getElementById('sliderTrack');
+            
+            let minVal = parseInt(minRatingInput.value);
+            let maxVal = parseInt(maxRatingInput.value);
+
+            // Prevent thumbs from crossing
+            if (minVal >= maxVal && e) {
+                if (e.target === minRatingInput) {
+                    minRatingInput.value = maxVal;
+                    minVal = maxVal;
+                } else {
+                    maxRatingInput.value = minVal;
+                    maxVal = minVal;
+                }
+            }
+
+            currentMinRating = minVal;
+            currentMaxRating = maxVal;
+
+            document.getElementById('minRatingText').innerText = minVal + '%';
+            document.getElementById('maxRatingText').innerText = maxVal + '%';
+
+            sliderTrack.style.left = minVal + '%';
+            sliderTrack.style.right = (100 - maxVal) + '%';
+
+            applyFilters();
+        }
+
+        function resetRatingFilter() {
+            const minRatingInput = document.getElementById('minRating');
+            const maxRatingInput = document.getElementById('maxRating');
+            minRatingInput.value = 0;
+            maxRatingInput.value = 100;
+            updateRatingFilter();
+        }
+
+        // ==========================================
+        // LIGHTBOX & MEDIA FUNCTIONS
+        // ==========================================
+        function openLightbox(index, isClip = false) {
+            currentLightboxIndex = index;
+            isClipViewer = isClip;
+            updateLightboxContent();
+            document.getElementById('lightboxModal').classList.add('active');
+            document.body.classList.add('overflow-hidden'); // Prevent background scrolling
+        }
+        
+        function openGlobalLightbox(index, filteredMedia, isClip = false) {
+            lightboxMediaList = filteredMedia;
+            currentLightboxIndex = index;
+            isClipViewer = isClip;
+            isGlobalViewer = true;
+            updateLightboxContent();
+            document.getElementById('lightboxModal').classList.add('active');
+            document.body.classList.add('overflow-hidden');
+        }
+
+        function closeLightbox() {
+            document.getElementById('lightboxModal').classList.remove('active');
+            document.body.classList.remove('overflow-hidden');
+            
+            const vidEl = document.getElementById('lightboxVideo');
+            if (vidEl) {
+                vidEl.pause();
+                vidEl.removeAttribute('src'); // Stop buffering
+                vidEl.load();
+            }
+        }
+
+        function navigateLightbox(direction) {
+            if (lightboxMediaList.length === 0) return;
+            
+            currentLightboxIndex = (currentLightboxIndex + direction + lightboxMediaList.length) % lightboxMediaList.length;
+            
+            const imgEl = document.getElementById('lightboxImage');
+            const vidEl = document.getElementById('lightboxVideo');
+            const videoControls = document.getElementById('videoControls');
+            
+            // Fast fade out scale effect
+            imgEl.style.opacity = '0';
+            imgEl.style.transform = 'scale(0.97)';
+            vidEl.style.opacity = '0';
+            vidEl.style.transform = 'scale(0.97)';
+            if(videoControls) videoControls.style.opacity = '0';
+            
+            setTimeout(() => {
+                updateLightboxContent();
+                // Fade back in smoothly
+                imgEl.style.opacity = '1';
+                imgEl.style.transform = 'scale(1)';
+                vidEl.style.opacity = '1';
+                vidEl.style.transform = 'scale(1)';
+                if(videoControls) videoControls.style.opacity = '';
+            }, 200); // 200ms matches the quick transition snap
+        }
+
+        function updateLightboxContent() {
+            const media = lightboxMediaList[currentLightboxIndex];
+            if (!media) return;
+            const url = media.url || media.image_url || media.video_url || media.src || (typeof media === 'string' ? media : 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400');
+            
+            const imgEl = document.getElementById('lightboxImage');
+            const vidEl = document.getElementById('lightboxVideo');
+            const videoControls = document.getElementById('videoControls');
+
+            const isMock = url.includes('unsplash.com');
+            const isVideo = url.match(/\.(mp4|webm|ogg|mov)$/i) || (!isMock && !url.match(/\.(jpeg|jpg|gif|png|webp)$/i) && isClipViewer);
+
+            if (isVideo) {
+                imgEl.classList.add('hidden');
+                
+                vidEl.classList.remove('hidden');
+                videoControls.classList.remove('hidden');
+                videoControls.classList.add('flex');
+                
+                vidEl.src = url;
+                const playPromise = vidEl.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.log('Playback was interrupted or blocked');
+                    });
+                }
+                
+                // Reset to playing state
+                document.getElementById('playIcon').classList.add('hidden');
+                document.getElementById('pauseIcon').classList.remove('hidden');
+            } else {
+                vidEl.classList.add('hidden');
+                vidEl.pause();
+                vidEl.removeAttribute('src'); // Stop buffering old video
+                vidEl.load();
+                
+                videoControls.classList.remove('flex');
+                videoControls.classList.add('hidden');
+
+                imgEl.classList.remove('hidden');
+                imgEl.src = url;
+            }
+
+            document.getElementById('lightboxCounter').innerText = `${isClipViewer ? 'Clip' : 'Image'} ${currentLightboxIndex + 1} of ${lightboxMediaList.length}`;
+            renderLightboxTags();
+        }
+
+        function togglePlayPause(e) {
+            if(e) e.stopPropagation();
+            const vid = document.getElementById('lightboxVideo');
+            if (!vid || vid.classList.contains('hidden')) return;
+            
+            const playIcon = document.getElementById('playIcon');
+            const pauseIcon = document.getElementById('pauseIcon');
+            
+            if (vid.paused) {
+                const playPromise = vid.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.log('Playback was interrupted or blocked');
+                    });
+                }
+                playIcon.classList.add('hidden');
+                pauseIcon.classList.remove('hidden');
+            } else {
+                vid.pause();
+                playIcon.classList.remove('hidden');
+                pauseIcon.classList.add('hidden');
+            }
+        }
+
+        function skipVideo(seconds, e) {
+            if(e) e.stopPropagation();
+            const vid = document.getElementById('lightboxVideo');
+            if (!vid || vid.classList.contains('hidden')) return;
+            vid.currentTime += seconds;
+        }
+
+        function renderLightboxTags() {
+            const media = lightboxMediaList[currentLightboxIndex];
+            if (!media) return;
+            
+            let tagsStr = '';
+            if (typeof media === 'string') tagsStr = isClipViewer ? 'Clip' : 'Asset';
+            else tagsStr = media.tags || '';
+
+            const activeTags = tagsStr.split(',').map(t => t.trim()).filter(Boolean);
+            const container = document.getElementById('lightboxTagsContainer');
+            
+            let html = activeTags.map(tag => `
+                <div class="flex items-center gap-1.5 bg-white/10 backdrop-blur-md text-white px-3.5 py-1.5 rounded-full text-[11px] font-semibold border border-white/20 shadow-sm transition hover:bg-white/20">
+                    ${tag}
+                    <button onclick="removeMediaTag('${tag.replace(/'/g, "\\'")}', event)" class="hover:text-red-400 focus:outline-none rounded-full ml-1"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                </div>
+            `).join('');
+
+            html += `<button onclick="openTagPicker('media'); event.stopPropagation();" class="flex items-center gap-1 bg-[#7fe826] text-[#111] px-4 py-1.5 rounded-full text-[11px] font-bold shadow-sm hover:bg-[#6ed11f] transition transform hover:scale-105 ml-1">+ Add Tag</button>`;
+            
+            container.innerHTML = html;
+        }
+        
+        function deleteCurrentMedia(btn, event) {
+            if (event) event.stopPropagation();
+            
+            if (btn.classList.contains('confirming')) {
+                executeMediaDeletion();
+                resetDeleteButton(btn);
+            } else {
+                btn.classList.add('confirming');
+                btn.innerHTML = `<span class="text-[11px] font-bold px-2 text-white">Confirm?</span>`;
+                btn.classList.replace('text-red-400', 'text-white');
+                btn.classList.replace('bg-black/20', 'bg-red-500');
+                btn.classList.replace('hover:bg-black/40', 'hover:bg-red-600');
+                
+                deleteConfirmTimeout = setTimeout(() => {
+                    resetDeleteButton(btn);
+                }, 3000);
+            }
+        }
+        
+        function resetDeleteButton(btn) {
+            btn.classList.remove('confirming');
+            btn.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>`;
+            btn.classList.replace('text-white', 'text-red-400');
+            btn.classList.replace('bg-red-500', 'bg-black/20');
+            btn.classList.replace('hover:bg-red-600', 'hover:bg-black/40');
+            clearTimeout(deleteConfirmTimeout);
+        }
+        
+        async function executeMediaDeletion() {
+            const mediaToDelete = lightboxMediaList[currentLightboxIndex];
+            if (!mediaToDelete || !supabaseClient) return;
+
+            if (isGlobalViewer) {
+                const card = allLoadedCards.find(c => c.id === mediaToDelete.cardId);
+                if (card) {
+                    const colName = isClipViewer ? 'related_videos_with_tags' : 'related_images_with_tags';
+                    card[colName] = card[colName].filter(a => (a.url || a) !== (mediaToDelete.url || mediaToDelete));
+                    try {
+                        await supabaseClient.from('cards').update({ [colName]: card[colName] }).eq('id', card.id);
+                    } catch(e) { console.error("Failed to delete from global", e); }
+                }
+                
+                lightboxMediaList.splice(currentLightboxIndex, 1);
+                showSuccessToast(isClipViewer ? "Clip deleted successfully!" : "Asset deleted successfully!");
+                
+                if (isClipViewer) buildGlobalClipsList();
+                else buildGlobalAssetsList(); 
+                
+            } else {
+                if (!currentActiveModelData) return;
+                
+                lightboxMediaList.splice(currentLightboxIndex, 1); 
+                const colName = isClipViewer ? 'related_videos_with_tags' : 'related_images_with_tags';
+                currentActiveModelData[colName] = lightboxMediaList; 
+
+                try {
+                    const { error } = await supabaseClient.from('cards').update({ [colName]: currentActiveModelData[colName] }).eq('id', currentActiveModelData.id);
+                    if (error) throw error;
+                    
+                    showSuccessToast(isClipViewer ? "Clip deleted successfully!" : "Asset deleted successfully!");
+                    
+                    if (isClipViewer) {
+                        document.getElementById('fullClipsGrid').innerHTML = lightboxMediaList.map((clip, idx) => generateClipCardHTML(clip, idx)).join('');
+                    } else {
+                        document.getElementById('fullAssetsGrid').innerHTML = lightboxMediaList.map((asset, idx) => generateFullAssetMasonryHTML(asset, idx)).join('');
+                    }
+                    
+                    buildGlobalAssetsList();
+                    buildGlobalClipsList(); 
+                } catch (err) {
+                    console.error("Failed to delete media", err);
+                }
+            }
+
+            // Close viewer if gallery is empty, otherwise smoothly jump to next available item
+            if (lightboxMediaList.length === 0) {
+                closeLightbox();
+            } else {
+                if (currentLightboxIndex >= lightboxMediaList.length) {
+                    currentLightboxIndex = lightboxMediaList.length - 1;
+                }
+                updateLightboxContent();
+            }
+        }
+
+        // Handle Keyboard Events for Lightbox
+        document.addEventListener('keydown', (e) => {
+            const lightbox = document.getElementById('lightboxModal');
+            if (lightbox && lightbox.classList.contains('active')) {
+                // Ignore key events if typing in search input
+                if (document.activeElement && (document.activeElement.id === 'tagSearchInput' || document.activeElement.id === 'mediaUrlInput')) return;
+                
+                if (e.key === 'Escape') closeLightbox();
+                if (e.key === 'ArrowLeft') navigateLightbox(-1);
+                if (e.key === 'ArrowRight') navigateLightbox(1);
+                if (e.key === ' ' || e.code === 'Space') {
+                    e.preventDefault();
+                    togglePlayPause();
+                }
+            }
+        });
+
+        // ==========================================
+        // MAIN GALLERY FILTERING & RENDERING
+        // ==========================================
+        
+        function updateTagFilterDropdown() {
+            const filterEl = document.getElementById('tagFilter');
+            if (!filterEl) return;
+            
+            const currentSelection = filterEl.value;
+            const uniqueTagMap = new Map();
+            
+            // Extract all unique assigned tags from main tags, class_tags, and amazing_at_tags
+            allLoadedCards.forEach(card => {
+                const sources = [card.tags, card.class_tags, card.amazing_at_tags];
+                sources.forEach(source => {
+                    if (source) {
+                        source.split(',').forEach(tag => {
+                            const t = tag.trim();
+                            if (t && !uniqueTagMap.has(t.toLowerCase())) {
+                                uniqueTagMap.set(t.toLowerCase(), t);
+                            }
+                        });
+                    }
+                });
+            });
+            
+            const sortedTags = Array.from(uniqueTagMap.values()).sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base'}));
+            
+            filterEl.innerHTML = '<option value="all">All Tags</option>';
+            sortedTags.forEach(tag => {
+                const option = document.createElement('option');
+                option.value = tag;
+                option.textContent = tag;
+                filterEl.appendChild(option);
+            });
+            
+            // Restore previous selection if it still exists
+            const selectionExists = sortedTags.some(t => t.toLowerCase() === currentSelection.toLowerCase());
+            if (selectionExists && currentSelection !== 'all') {
+                const matchingTag = sortedTags.find(t => t.toLowerCase() === currentSelection.toLowerCase());
+                filterEl.value = matchingTag;
+            } else {
+                filterEl.value = 'all';
+            }
+        }
+        
+        function applyFilters() {
+            const filterTag = document.getElementById('tagFilter') ? document.getElementById('tagFilter').value : 'all';
+            const grid = document.getElementById('modelsGrid');
+            const emptyState = document.getElementById('modelsEmptyState');
+            
+            if (!grid || !emptyState) return;
+            
+            grid.innerHTML = '';
+            galleryModelCount = 0; // Reset counter for empty state logic
+            
+            const filteredCards = allLoadedCards.filter(card => {
+                // 1. Check Tag Match Across All Sources
+                let matchesTag = true;
+                if (filterTag !== 'all') {
+                    const targetTag = filterTag.toLowerCase();
+                    matchesTag = false; // Reset to prove match exists
+                    
+                    const sources = [card.tags, card.class_tags, card.amazing_at_tags];
+                    for (const source of sources) {
+                        if (source) {
+                            const tagsList = source.split(',').map(t => t.trim().toLowerCase());
+                            if (tagsList.includes(targetTag)) {
+                                matchesTag = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                // 2. Check Rating Match
+                let cardRating = card.rating_hotness;
+                if (cardRating === undefined || cardRating === null) cardRating = 50; // Default if unset
+                let matchesRating = (cardRating >= currentMinRating && cardRating <= currentMaxRating);
+
+                return matchesTag && matchesRating;
+            });
+            
+            if (filteredCards.length > 0) {
+                emptyState.classList.add('hidden');
+                grid.classList.remove('hidden');
+                filteredCards.forEach(card => createGalleryModelCard(card, false));
+            } else {
+                emptyState.classList.remove('hidden');
+                grid.classList.add('hidden');
+            }
+        }
+        
+        // ==========================================
+        // GLOBAL ASSETS FILTERING & RENDERING
+        // ==========================================
+        function buildGlobalAssetsList() {
+            globalAssetsList = [];
+            allLoadedCards.forEach(card => {
+                if (card.related_images_with_tags && Array.isArray(card.related_images_with_tags)) {
+                    card.related_images_with_tags.forEach(asset => {
+                        let assetObj = typeof asset === 'string' ? { url: asset, tags: 'Asset' } : { ...asset };
+                        assetObj.cardId = card.id;
+                        assetObj.cardTitle = card.title; 
+                        globalAssetsList.push(assetObj);
+                    });
+                }
+            });
+            updateGlobalAssetTagFilterDropdown();
+            
+            const filterEl = document.getElementById('globalAssetTagFilter');
+            renderGlobalAssets(filterEl ? filterEl.value : 'all');
+        }
+
+        function updateGlobalAssetTagFilterDropdown() {
+            const filterEl = document.getElementById('globalAssetTagFilter');
+            if (!filterEl) return;
+            const currentSelection = filterEl.value;
+            const uniqueTags = new Set();
+            
+            globalAssetsList.forEach(asset => {
+                if (asset.tags) {
+                    asset.tags.split(',').forEach(t => uniqueTags.add(t.trim()));
+                }
+            });
+            
+            const sortedTags = Array.from(uniqueTags).filter(Boolean).sort((a,b) => a.localeCompare(b, undefined, {sensitivity: 'base'}));
+            filterEl.innerHTML = '<option value="all">All Asset Tags</option>';
+            
+            sortedTags.forEach(tag => {
+                const option = document.createElement('option');
+                option.value = tag;
+                option.textContent = tag;
+                filterEl.appendChild(option);
+            });
+            
+            if(sortedTags.includes(currentSelection)) filterEl.value = currentSelection;
+            else filterEl.value = 'all';
+        }
+
+        function renderGlobalAssets(filterTag = 'all') {
+            const grid = document.getElementById('globalAssetsGrid');
+            const emptyState = document.getElementById('globalAssetsEmptyState');
+            if (!grid || !emptyState) return;
+            grid.innerHTML = '';
+            
+            const filteredAssets = globalAssetsList.filter(asset => {
+                if (filterTag === 'all') return true;
+                if (!asset.tags) return false;
+                const assetTags = asset.tags.split(',').map(t => t.trim().toLowerCase());
+                return assetTags.includes(filterTag.toLowerCase());
+            });
+
+            if (filteredAssets.length > 0) {
+                emptyState.classList.add('hidden');
+                grid.classList.remove('hidden');
+                filteredAssets.forEach((asset, idx) => {
+                    const primaryTag = asset.tags ? asset.tags.split(',')[0].trim() : 'Asset';
+                    const card = document.createElement('div');
+                    card.className = 'gallery-model-card flex flex-col bg-white dark:bg-slate-800 rounded-3xl p-3 shadow-sm border border-slate-100/50 dark:border-slate-700/50 cursor-pointer transition-colors duration-300';
+                    card.onclick = () => openGlobalLightbox(idx, filteredAssets, false);
+                    
+                    card.innerHTML = `
+                        <div class="gallery-model-img-wrapper relative aspect-[4/5] bg-slate-100 dark:bg-slate-900 overflow-hidden rounded-[1.5rem] transition-colors duration-300">
+                            <span class="absolute top-3 right-3 z-10 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md text-slate-800 dark:text-slate-200 text-[11px] font-bold px-3 py-1.5 rounded-full shadow-sm">${primaryTag}</span>
+                            <img src="${asset.url || asset.image_url || asset.src || asset}" class="w-full h-full object-cover object-top" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400'">
+                        </div>
+                        <div class="pt-4 pb-2 px-2">
+                            <h3 class="text-base font-bold text-slate-900 dark:text-white truncate">${asset.cardTitle || 'Unknown Model'}</h3>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            } else {
+                emptyState.classList.remove('hidden');
+                grid.classList.add('hidden');
+            }
+        }
+        
+        // ==========================================
+        // GLOBAL CLIPS FILTERING & RENDERING
+        // ==========================================
+        function buildGlobalClipsList() {
+            globalClipsList = [];
+            allLoadedCards.forEach(card => {
+                if (card.related_videos_with_tags && Array.isArray(card.related_videos_with_tags)) {
+                    card.related_videos_with_tags.forEach(clip => {
+                        let clipObj = typeof clip === 'string' ? { url: clip, tags: 'Clip' } : { ...clip };
+                        clipObj.cardId = card.id;
+                        clipObj.cardTitle = card.title; 
+                        globalClipsList.push(clipObj);
+                    });
+                }
+            });
+            updateGlobalClipTagFilterDropdown();
+            
+            const filterEl = document.getElementById('globalClipTagFilter');
+            renderGlobalClips(filterEl ? filterEl.value : 'all');
+        }
+
+        function updateGlobalClipTagFilterDropdown() {
+            const filterEl = document.getElementById('globalClipTagFilter');
+            if (!filterEl) return;
+            const currentSelection = filterEl.value;
+            const uniqueTags = new Set();
+            
+            globalClipsList.forEach(clip => {
+                if (clip.tags) {
+                    clip.tags.split(',').forEach(t => uniqueTags.add(t.trim()));
+                }
+            });
+            
+            const sortedTags = Array.from(uniqueTags).filter(Boolean).sort((a,b) => a.localeCompare(b, undefined, {sensitivity: 'base'}));
+            filterEl.innerHTML = '<option value="all">All Clip Tags</option>';
+            
+            sortedTags.forEach(tag => {
+                const option = document.createElement('option');
+                option.value = tag;
+                option.textContent = tag;
+                filterEl.appendChild(option);
+            });
+            
+            if(sortedTags.includes(currentSelection)) filterEl.value = currentSelection;
+            else filterEl.value = 'all';
+        }
+
+        function renderGlobalClips(filterTag = 'all') {
+            const grid = document.getElementById('globalClipsGrid');
+            const emptyState = document.getElementById('globalClipsEmptyState');
+            if (!grid || !emptyState) return;
+            grid.innerHTML = '';
+            
+            const filteredClips = globalClipsList.filter(clip => {
+                if (filterTag === 'all') return true;
+                if (!clip.tags) return false;
+                const clipTags = clip.tags.split(',').map(t => t.trim().toLowerCase());
+                return clipTags.includes(filterTag.toLowerCase());
+            });
+
+            if (filteredClips.length > 0) {
+                emptyState.classList.add('hidden');
+                grid.classList.remove('hidden');
+                filteredClips.forEach((clip, idx) => {
+                    const primaryTag = clip.tags ? clip.tags.split(',')[0].trim() : 'Clip';
+                    const clipUrl = clip.url || clip.video_url || clip.src || clip;
+                    
+                    const isMock = clipUrl.includes('unsplash.com');
+                    const isVideo = clipUrl.match(/\.(mp4|webm|ogg|mov)$/i) || (!isMock && !clipUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i));
+                    const vidSrc = clipUrl.includes('#') ? clipUrl : clipUrl + '#t=0.001';
+                    
+                    const mediaElement = isVideo
+                        ? `<video src="${vidSrc}" preload="metadata" class="w-full h-full object-cover object-center" muted loop onmouseover="var p = this.play(); if(p !== undefined) p.catch(function(){});" onmouseout="this.pause()" playsinline></video>`
+                        : `<img src="${clipUrl}" class="w-full h-full object-cover object-center" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400'">`;
+
+                    const card = document.createElement('div');
+                    card.className = 'gallery-model-card flex flex-col bg-white dark:bg-slate-800 rounded-3xl p-3 shadow-sm border border-slate-100/50 dark:border-slate-700/50 cursor-pointer transition-colors duration-300';
+                    card.onclick = () => openGlobalLightbox(idx, filteredClips, true);
+                    
+                    card.innerHTML = `
+                        <div class="gallery-model-img-wrapper relative aspect-[4/5] bg-slate-100 dark:bg-slate-900 overflow-hidden rounded-[1.5rem] transition-colors duration-300">
+                            <span class="absolute top-3 right-3 z-10 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md text-slate-800 dark:text-slate-200 text-[11px] font-bold px-3 py-1.5 rounded-full shadow-sm">${primaryTag}</span>
+                            ${mediaElement}
+                        </div>
+                        <div class="pt-4 pb-2 px-2">
+                            <h3 class="text-base font-bold text-slate-900 dark:text-white truncate">${clip.cardTitle || 'Unknown Model'}</h3>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            } else {
+                emptyState.classList.remove('hidden');
+                grid.classList.add('hidden');
+            }
+        }
+
+        // ==========================================
+        // HELPER RENDERING FUNCTIONS
+        // ==========================================
+        
+        // Render small 4/5 preview cards (Close Up Page)
+        function generatePreviewCardHTML(media, defaultTag, isClip = false) {
+            const url = media.url || media.image_url || media.video_url || media.src || (typeof media === 'string' ? media : 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400');
+            const tagStr = media.tags || defaultTag;
+            const firstTag = tagStr.split(',')[0].trim() || defaultTag;
+            
+            const isMock = url.includes('unsplash.com');
+            const isVideo = url.match(/\.(mp4|webm|ogg|mov)$/i) || (!isMock && !url.match(/\.(jpeg|jpg|gif|png|webp)$/i) && isClip);
+            const vidSrc = url.includes('#') ? url : url + '#t=0.001';
+            
+            const mediaElement = isVideo
+                ? `<video src="${vidSrc}" preload="metadata" class="w-full h-full object-cover object-center" muted loop onmouseover="var p = this.play(); if(p !== undefined) p.catch(function(){});" onmouseout="this.pause()" playsinline></video>`
+                : `<img src="${url}" class="w-full h-full object-cover object-center" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400'">`;
+
+            return `
+                <div class="relative aspect-[4/5] rounded-[1rem] overflow-hidden bg-white dark:bg-slate-800 shadow-sm group cursor-pointer transition-colors duration-300">
+                    ${mediaElement}
+                    <div class="absolute top-2 left-2 text-white font-medium text-[10px] shadow-sm drop-shadow-md">${firstTag}</div>
+                    <div class="absolute top-2 right-2 w-5 h-5 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 shadow-sm"><svg class=\"w-2.5 h-2.5\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z\"></path></svg></div>
+                    <div class="absolute bottom-2 left-2 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm px-1.5 py-0.5 rounded-full text-[9px] font-bold text-slate-800 dark:text-slate-200 shadow-sm">70%</div>
+                </div>
+            `;
+        }
+
+        // Render balanced grid matching ratio & cinematic negative space (All Assets Page)
+        function generateFullAssetMasonryHTML(asset, index) {
+            const imgUrl = asset.url || asset.image_url || asset.src || (typeof asset === 'string' ? asset : 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400');
+            const tagStr = asset.tags || 'Asset';
+            const firstTag = tagStr.split(',')[0].trim() || 'Asset';
+            
+            return `
+                <div onclick="openLightbox(${index}, false)" class="asset-grid-card relative group cursor-pointer transition-all duration-500 hover:-translate-y-1 overflow-hidden w-full self-start">
+                    <img src="${imgUrl}" onload="if(this.naturalWidth >= this.naturalHeight) { this.closest('.asset-grid-card').classList.add('sm:col-span-2'); }" class="w-full h-auto block transition-transform duration-700 group-hover:scale-105" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400'">
+                    
+                    <!-- Overlays -->
+                    <div class="absolute top-4 left-4 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md text-[#111] dark:text-white font-bold text-[11px] px-4 py-2 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all duration-300 z-10">${firstTag}</div>
+                    <div class="absolute top-4 right-4 w-10 h-10 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-full flex items-center justify-center text-slate-700 dark:text-slate-300 shadow-sm opacity-0 group-hover:opacity-100 transition-all duration-300 z-10"><svg class=\"w-4 h-4\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z\"></path></svg></div>
+                </div>
+            `;
+        }
+
+        // Render fluid full layout for Clips page matching the Assets page behavior perfectly
+        function generateClipCardHTML(clip, index) {
+            const clipUrl = clip.url || clip.video_url || clip.src || (typeof clip === 'string' ? clip : 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=500');
+            const tagStr = clip.tags || 'Clip';
+            const firstTag = tagStr.split(',')[0].trim() || 'Clip';
+            
+            const isMock = clipUrl.includes('unsplash.com');
+            const isVideo = clipUrl.match(/\.(mp4|webm|ogg|mov)$/i) || (!isMock && !clipUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i));
+            const vidSrc = clipUrl.includes('#') ? clipUrl : clipUrl + '#t=0.001';
+            
+            const mediaElement = isVideo
+                ? `<video src="${vidSrc}" preload="metadata" onloadedmetadata="if(this.videoWidth >= this.videoHeight) { this.closest('.asset-grid-card').classList.add('sm:col-span-2'); }" class="w-full h-auto block transition-transform duration-700 group-hover:scale-105" muted loop onmouseover="var p = this.play(); if(p !== undefined) p.catch(function(){});" onmouseout="this.pause()" playsinline></video>`
+                : `<img src="${clipUrl}" onload="if(this.naturalWidth >= this.naturalHeight) { this.closest('.asset-grid-card').classList.add('sm:col-span-2'); }" class="w-full h-auto block transition-transform duration-700 group-hover:scale-105" onerror="this.src='https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=500'">`;
+
+            return `
+                <div onclick="openLightbox(${index}, true)" class="asset-grid-card relative group cursor-pointer transition-all duration-500 hover:-translate-y-1 overflow-hidden w-full self-start">
+                    ${mediaElement}
+                    
+                    <!-- Overlays -->
+                    <div class="absolute top-4 left-4 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md text-[#111] dark:text-white font-bold text-[11px] px-4 py-2 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all duration-300 z-10 flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 text-slate-800 dark:text-slate-200" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path></svg>
+                        ${firstTag}
+                    </div>
+                    <div class="absolute top-4 right-4 w-10 h-10 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-full flex items-center justify-center text-slate-700 dark:text-slate-300 shadow-sm opacity-0 group-hover:opacity-100 transition-all duration-300 z-10"><svg class=\"w-4 h-4\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z\"></path></svg></div>
+                </div>
+            `;
+        }
+        
+        function renderPickerTags() {
+            const grid = document.getElementById('pickerTagsGrid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            
+            let activeTags = [];
+            if (pickerTargetType === 'media') {
+                const media = lightboxMediaList[currentLightboxIndex];
+                const tagStr = (typeof media === 'string' ? (isClipViewer ? 'Clip' : 'Asset') : (media?.tags || ''));
+                activeTags = tagStr.split(',').map(t => t.trim().toLowerCase());
+            } else {
+                const col = pickerTargetType === 'class' ? 'class_tags' : 'amazing_at_tags';
+                activeTags = currentActiveModelData && currentActiveModelData[col] ? currentActiveModelData[col].split(',').map(t => t.trim().toLowerCase()) : [];
+            }
+            
+            const searchInput = document.getElementById('tagSearchInput');
+            const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+
+            masterTagsList.forEach(tag => {
+                if (tag.toLowerCase().startsWith('model:') || tag.toLowerCase().startsWith('pose:')) return;
+                
+                // Search filter applied
+                if (searchTerm && !tag.toLowerCase().includes(searchTerm)) return;
+
+                const isActive = activeTags.includes(tag.toLowerCase());
+                const el = document.createElement('div');
+                el.className = `cursor-pointer px-4 py-2 rounded-full text-xs font-bold transition-all border shadow-sm select-none flex items-center gap-2 ${isActive ? 'bg-[#7fe826] text-[#111] border-[#7fe826]' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-100 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-500'}`;
+                el.innerHTML = isActive ? `<span>✓</span> ${tag}` : tag;
+                el.onclick = () => toggleTagInPicker(tag);
+                grid.appendChild(el);
+            });
+        }
+
+        function renderClassSection() {
+            const container = document.getElementById('closeUpClassSectionGrid');
+            if(!container) return;
+            const activeTags = currentActiveModelData && currentActiveModelData.class_tags ? currentActiveModelData.class_tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+            container.innerHTML = activeTags.map(tag => `<div class="flex flex-col items-center gap-1.5 cursor-pointer" onclick="openTagPicker('class')"><div class="w-11 h-11 rounded-full border-2 border-[#7fe826] bg-[#7fe826] flex items-center justify-center font-bold text-sm text-[#111] shadow-sm transition-transform hover:scale-110">✓</div><span class="text-[9px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wide">${tag}</span></div>`).join('') + `<div class="flex flex-col items-center gap-1.5 cursor-pointer opacity-70 hover:opacity-100" onclick="openTagPicker('class')"><div class="w-11 h-11 rounded-full bg-[#111] dark:bg-slate-700 text-white flex items-center justify-center text-xl shadow-sm hover:bg-black dark:hover:bg-slate-600 transition-colors">+</div><span class="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Add</span></div>`;
+        }
+
+        function renderAmazingAtSection() {
+            const container = document.getElementById('closeUpAmazingAtGrid');
+            if(!container) return;
+            const activeTags = currentActiveModelData && currentActiveModelData.amazing_at_tags ? currentActiveModelData.amazing_at_tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+            container.innerHTML = activeTags.map(tag => `<div class="flex flex-col items-center gap-1.5 cursor-pointer" onclick="openTagPicker('amazing')"><div class="w-11 h-11 rounded-full bg-[#7fe826] text-[#111] flex items-center justify-center shadow-sm text-sm transition-transform hover:scale-110">✓</div><span class="text-[9px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wide flex items-center gap-0.5"><span class="text-[#7fe826] text-[10px]">▲</span> ${tag}</span></div>`).join('') + `<div class="flex flex-col items-center gap-1.5 cursor-pointer opacity-70 hover:opacity-100" onclick="openTagPicker('amazing')"><div class="w-11 h-11 rounded-full bg-[#111] dark:bg-slate-700 text-white flex items-center justify-center text-xl shadow-sm hover:bg-black dark:hover:bg-slate-600 transition-colors">+</div><span class="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Add</span></div>`;
+        }
+
+        function renderModalTags() {
+            const container = document.getElementById('tagSelectionContainer');
+            if(!container) return;
+            container.innerHTML = '';
+            masterTagsList.forEach(tag => {
+                if (tag.toLowerCase().startsWith('model:') || tag.toLowerCase().startsWith('pose:')) return;
+                const isSelected = selectedModalTags.has(tag);
+                const el = document.createElement('div');
+                el.className = `cursor-pointer px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors duration-300 ${isSelected ? 'bg-[#111] dark:bg-slate-700 text-white border-[#111] dark:border-slate-700' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'}`;
+                el.textContent = tag;
+                el.onclick = () => { if(isSelected) selectedModalTags.delete(tag); else selectedModalTags.add(tag); renderModalTags(); };
+                container.appendChild(el);
+            });
+        }
+
+        function createGalleryModelCard(cardData, prepend = true) {
+            const emptyState = document.getElementById('modelsEmptyState');
+            const grid = document.getElementById('modelsGrid');
+            if (galleryModelCount === 0 && emptyState && grid) { 
+                emptyState.classList.add('hidden'); 
+                grid.classList.remove('hidden'); 
+            }
+            galleryModelCount++;
+            
+            // Format rating for UI
+            const ratingNum = cardData.rating_hotness ?? 50;
+            const ratingBadgeHTML = `<span class="absolute bottom-3 left-3 z-10 bg-[#111]/90 dark:bg-slate-900/90 backdrop-blur-md text-white text-[10px] font-bold px-2.5 py-1 rounded-lg shadow-sm flex items-center gap-1"><svg class="w-3 h-3 text-[#7fe826]" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>${ratingNum}%</span>`;
+            
+            const card = document.createElement('div');
+            card.className = 'gallery-model-card flex flex-col bg-white dark:bg-slate-800 rounded-3xl p-3 shadow-sm border border-slate-100/50 dark:border-slate-700 transition-colors duration-300';
+            card.onclick = () => openCloseUpPage(cardData);
+            const primaryTag = cardData.tags?.split(',')[0] || 'Model';
+            card.innerHTML = `<div class="gallery-model-img-wrapper relative aspect-[4/5] bg-slate-100 dark:bg-slate-900 overflow-hidden rounded-[1.5rem] transition-colors duration-300"><span class="absolute top-3 right-3 z-10 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md text-slate-800 dark:text-slate-200 text-[11px] font-bold px-3 py-1.5 rounded-full shadow-sm">${primaryTag}</span>${ratingBadgeHTML}<img src="${cardData.main_image_url}" class="w-full h-full object-cover object-top"></div><div class="pt-4 pb-2 px-2"><h3 class="text-base font-bold text-slate-900 dark:text-white truncate">${cardData.title}</h3></div>`;
+            if (grid) {
+                if (prepend && grid.firstChild) grid.insertBefore(card, grid.firstChild); else grid.appendChild(card);
+            }
+        }
+
+
+        // ==========================================
+        // INITIALIZATION & EVENT LISTENERS
+        // ==========================================
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize Supabase
+            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            
+            // Fetch initial data
+            fetchModelsData();
+            fetchMasterTags();
+            
+            // Initialize Dual Slider Events
+            const minRatingInp = document.getElementById('minRating');
+            const maxRatingInp = document.getElementById('maxRating');
+
+            if (minRatingInp && maxRatingInp) {
+                minRatingInp.addEventListener('input', (e) => updateRatingFilter(e));
+                maxRatingInp.addEventListener('input', (e) => updateRatingFilter(e));
+            }
+
+            // Bind Global Asset Tag Filter
+            const globalAssetFilter = document.getElementById('globalAssetTagFilter');
+            if (globalAssetFilter) {
+                globalAssetFilter.addEventListener('change', (e) => {
+                    renderGlobalAssets(e.target.value);
+                });
+            }
+            
+            // Bind Global Clip Tag Filter
+            const globalClipFilter = document.getElementById('globalClipTagFilter');
+            if (globalClipFilter) {
+                globalClipFilter.addEventListener('change', (e) => {
+                    renderGlobalClips(e.target.value);
+                });
+            }
+
+            async function fetchMasterTags() {
+                try {
+                    const { data, error } = await supabaseClient.from('tags').select('name').order('name', { ascending: true });
+                    if (!error && data) { masterTagsList = data.map(t => t.name); renderModalTags(); }
+                } catch (e) { console.warn("Tags table missing", e); }
+            }
+
+            async function fetchModelsData() {
+                try {
+                    const { data, error } = await supabaseClient.from('cards').select('*').order('id', { ascending: false });
+                    if (error) throw error;
+                    const loader = document.getElementById('modelsLoadingState');
+                    const grid = document.getElementById('modelsGrid');
+                    if(loader) loader.style.display = 'none';
+                    if(grid) grid.innerHTML = '';
+                    if (data && data.length > 0) {
+                        allLoadedCards = data;
+                        updateTagFilterDropdown();
+                        applyFilters();
+                        buildGlobalAssetsList();
+                        buildGlobalClipsList();
+                    }
+                } catch (e) { console.error(e); }
+            }
+
+            // Bind Tag Filter Listener
+            const tagFilter = document.getElementById('tagFilter');
+            if (tagFilter) {
+                tagFilter.addEventListener('change', () => {
+                    applyFilters();
+                });
+            }
+
+            // Bind Navigation Listeners
+            const navItems = document.querySelectorAll('.nav-item');
+            const viewSections = document.querySelectorAll('.view-section');
+            navItems.forEach(item => {
+                item.addEventListener('click', () => {
+                    const target = item.getAttribute('data-target');
+                    navItems.forEach(n => { n.classList.remove('bg-white', 'text-slate-900', 'shadow-sm', 'dark:bg-slate-700', 'dark:text-white'); n.classList.add('text-slate-500', 'dark:text-slate-400'); });
+                    item.classList.remove('text-slate-500', 'dark:text-slate-400'); item.classList.add('bg-white', 'text-slate-900', 'shadow-sm', 'dark:bg-slate-700', 'dark:text-white');
+                    viewSections.forEach(s => s.classList.add('hidden'));
+                    const targetEl = document.getElementById(target);
+                    if(targetEl) targetEl.classList.remove('hidden');
+                });
+            });
+
+            // Bind Modal Add New Tag Listeners
+            const showTagInputBtn = document.getElementById('showTagInputBtn');
+            const createTagContainer = document.getElementById('createNewTagContainer');
+            if (showTagInputBtn && createTagContainer) {
+                showTagInputBtn.addEventListener('click', () => { 
+                    createTagContainer.classList.toggle('hidden'); 
+                });
+            }
+
+            const addNewTagBtn = document.getElementById('addNewTagBtn');
+            const newTagInput = document.getElementById('newTagInput');
+            if (addNewTagBtn && newTagInput) {
+                addNewTagBtn.addEventListener('click', async () => {
+                    const val = newTagInput.value.trim();
+                    if (val && !masterTagsList.includes(val)) {
+                        await supabaseClient.from('tags').insert([{ name: val }]);
+                        masterTagsList.unshift(val); 
+                        selectedModalTags.add(val); 
+                        renderModalTags();
+                        newTagInput.value = ''; 
+                        createTagContainer.classList.add('hidden');
+                    }
+                });
+            }
+
+            // Bind Main Form Submit
+            const modelForm = document.getElementById('addModelForm');
+            if(modelForm) {
+                modelForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const tags = Array.from(selectedModalTags).join(', ') || 'Model';
+                    const newCard = { 
+                        title: document.getElementById('modelName').value, 
+                        main_image_url: document.getElementById('modelImage').value, 
+                        tags: tags,
+                        rating_hotness: 50,
+                        rating_chest: 50,
+                        rating_biceps: 50,
+                        rating_glutes: 50,
+                        rating_shoulders: 50
+                    };
+                    if (supabaseClient) {
+                        const { data, error } = await supabaseClient.from('cards').insert([newCard]).select();
+                        if (!error && data) {
+                            allLoadedCards.unshift(data[0]); // Update local state
+                            updateTagFilterDropdown(); // Refresh dropdown 
+                            applyFilters(); // Re-run filter rules
+                            buildGlobalAssetsList(); // Update global assets
+                            buildGlobalClipsList(); // Update global clips
+                            
+                            closeModelModal();
+                            showSuccessToast();
+                        }
+                    }
+                });
+            }
+            
+            // Bind Add Media Form Submit
+            const mediaForm = document.getElementById('addMediaForm');
+            if (mediaForm) {
+                mediaForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const urlInput = document.getElementById('mediaUrlInput');
+                    const errorMsg = document.getElementById('mediaUrlError');
+                    const url = urlInput.value.trim();
+                    
+                    if (!url) return;
+                    
+                    // Basic URL validation
+                    try {
+                        new URL(url);
+                    } catch (e) {
+                        errorMsg.classList.remove('hidden');
+                        return;
+                    }
+                    errorMsg.classList.add('hidden');
+
+                    if (!currentActiveModelData) return;
+
+                    const colName = isAddingClip ? 'related_videos_with_tags' : 'related_images_with_tags';
+                    let targetArray = currentActiveModelData[colName];
+                    
+                    if (!Array.isArray(targetArray)) {
+                        targetArray = [];
+                    }
+
+                    const newMedia = { url: url, tags: isAddingClip ? 'Clip' : 'Asset' };
+                    targetArray.unshift(newMedia); // Prepend so it shows up first
+
+                    currentActiveModelData[colName] = targetArray;
+
+                    if (supabaseClient && currentActiveModelData.id) {
+                        try {
+                            const { error } = await supabaseClient.from('cards').update({ [colName]: targetArray }).eq('id', currentActiveModelData.id);
+                            if (error) throw error;
+                            
+                            closeAddMediaModal();
+                            showSuccessToast("Media added successfully!");
+                            
+                            buildGlobalAssetsList(); // Refresh global list state
+                            buildGlobalClipsList();
+                            
+                            // Re-render the exact grid the user is currently looking at
+                            if (isAddingClip) {
+                                openAllClipsView();
+                            } else {
+                                openAllAssetsView();
+                            }
+                            
+                        } catch (err) {
+                            console.error("Failed to add new media to Supabase", err);
+                        }
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
