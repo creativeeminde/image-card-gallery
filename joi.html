@@ -129,7 +129,7 @@
                     <p class="text-slate-500 mt-1 text-sm">Manage and view your 3D models and character assets.</p>
                 </div>
                 <div class="flex items-center gap-3 w-full sm:w-auto">
-                    <select id="tagFilter" class="bg-white border-0 shadow-sm text-slate-700 text-sm rounded-full focus:ring-2 focus:ring-[#7fe826] block py-2.5 px-4 outline-none font-medium transition-shadow">
+                    <select id="tagFilter" class="bg-white border-0 shadow-sm text-slate-700 text-sm rounded-full focus:ring-2 focus:ring-[#7fe826] block py-2.5 px-4 outline-none font-medium transition-shadow cursor-pointer">
                         <option value="all">All Tags</option>
                     </select>
                 </div>
@@ -463,6 +463,9 @@
         let currentActiveModelData = null;
         let pickerTargetType = null;
         let galleryModelCount = 0;
+        
+        // Data caching for instant filtering
+        let allLoadedCards = [];
         
         // Lightbox & Viewer state variables
         let lightboxMediaList = [];
@@ -866,6 +869,71 @@
         });
 
         // ==========================================
+        // MAIN GALLERY FILTERING & RENDERING
+        // ==========================================
+        
+        function updateTagFilterDropdown() {
+            const filterEl = document.getElementById('tagFilter');
+            if (!filterEl) return;
+            
+            const currentSelection = filterEl.value;
+            const uniqueTags = new Set();
+            
+            // Extract all unique assigned tags
+            allLoadedCards.forEach(card => {
+                if (card.tags) {
+                    card.tags.split(',').forEach(tag => {
+                        const t = tag.trim();
+                        if (t) uniqueTags.add(t);
+                    });
+                }
+            });
+            
+            const sortedTags = Array.from(uniqueTags).sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base'}));
+            
+            filterEl.innerHTML = '<option value="all">All Tags</option>';
+            sortedTags.forEach(tag => {
+                const option = document.createElement('option');
+                option.value = tag;
+                option.textContent = tag;
+                filterEl.appendChild(option);
+            });
+            
+            // Restore previous selection if it still exists
+            if (sortedTags.includes(currentSelection)) {
+                filterEl.value = currentSelection;
+            } else {
+                filterEl.value = 'all';
+            }
+        }
+        
+        function renderFilteredModels(filterTag) {
+            const grid = document.getElementById('modelsGrid');
+            const emptyState = document.getElementById('modelsEmptyState');
+            
+            if (!grid || !emptyState) return;
+            
+            grid.innerHTML = '';
+            galleryModelCount = 0; // Reset counter for empty state logic
+            
+            const filteredCards = allLoadedCards.filter(card => {
+                if (filterTag === 'all') return true;
+                if (!card.tags) return false;
+                const cardTags = card.tags.split(',').map(t => t.trim().toLowerCase());
+                return cardTags.includes(filterTag.toLowerCase());
+            });
+            
+            if (filteredCards.length > 0) {
+                emptyState.classList.add('hidden');
+                grid.classList.remove('hidden');
+                filteredCards.forEach(card => createGalleryModelCard(card, false));
+            } else {
+                emptyState.classList.remove('hidden');
+                grid.classList.add('hidden');
+            }
+        }
+
+        // ==========================================
         // HELPER RENDERING FUNCTIONS
         // ==========================================
         
@@ -935,7 +1003,7 @@
                 </div>
             `;
         }
-
+        
         function renderPickerTags() {
             const grid = document.getElementById('pickerTagsGrid');
             if (!grid) return;
@@ -972,14 +1040,14 @@
         function renderClassSection() {
             const container = document.getElementById('closeUpClassSectionGrid');
             if(!container) return;
-            const activeTags = currentActiveModelData.class_tags ? currentActiveModelData.class_tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+            const activeTags = currentActiveModelData && currentActiveModelData.class_tags ? currentActiveModelData.class_tags.split(',').map(t => t.trim()).filter(Boolean) : [];
             container.innerHTML = activeTags.map(tag => `<div class="flex flex-col items-center gap-1.5 cursor-pointer" onclick="openTagPicker('class')"><div class="w-11 h-11 rounded-full border-2 border-[#7fe826] bg-[#7fe826] flex items-center justify-center font-bold text-sm text-white shadow-sm transition-transform hover:scale-110">✓</div><span class="text-[9px] font-bold text-slate-700 uppercase tracking-wide">${tag}</span></div>`).join('') + `<div class="flex flex-col items-center gap-1.5 cursor-pointer opacity-70 hover:opacity-100" onclick="openTagPicker('class')"><div class="w-11 h-11 rounded-full bg-[#111] text-white flex items-center justify-center text-xl shadow-sm hover:bg-black transition-colors">+</div><span class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Add</span></div>`;
         }
 
         function renderAmazingAtSection() {
             const container = document.getElementById('closeUpAmazingAtGrid');
             if(!container) return;
-            const activeTags = currentActiveModelData.amazing_at_tags ? currentActiveModelData.amazing_at_tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+            const activeTags = currentActiveModelData && currentActiveModelData.amazing_at_tags ? currentActiveModelData.amazing_at_tags.split(',').map(t => t.trim()).filter(Boolean) : [];
             container.innerHTML = activeTags.map(tag => `<div class="flex flex-col items-center gap-1.5 cursor-pointer" onclick="openTagPicker('amazing')"><div class="w-11 h-11 rounded-full bg-[#7fe826] text-white flex items-center justify-center shadow-sm text-sm transition-transform hover:scale-110">✓</div><span class="text-[9px] font-bold text-slate-700 uppercase tracking-wide flex items-center gap-0.5"><span class="text-[#7fe826] text-[10px]">▲</span> ${tag}</span></div>`).join('') + `<div class="flex flex-col items-center gap-1.5 cursor-pointer opacity-70 hover:opacity-100" onclick="openTagPicker('amazing')"><div class="w-11 h-11 rounded-full bg-[#111] text-white flex items-center justify-center text-xl shadow-sm hover:bg-black transition-colors">+</div><span class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Add</span></div>`;
         }
 
@@ -1044,12 +1112,19 @@
                     if(loader) loader.style.display = 'none';
                     if(grid) grid.innerHTML = '';
                     if (data && data.length > 0) {
-                        const empty = document.getElementById('modelsEmptyState');
-                        if(empty) empty.classList.add('hidden');
-                        if(grid) grid.classList.remove('hidden');
-                        data.forEach(card => createGalleryModelCard(card, false));
+                        allLoadedCards = data;
+                        updateTagFilterDropdown();
+                        renderFilteredModels('all');
                     }
                 } catch (e) { console.error(e); }
+            }
+
+            // Bind Tag Filter Listener
+            const tagFilter = document.getElementById('tagFilter');
+            if (tagFilter) {
+                tagFilter.addEventListener('change', (e) => {
+                    renderFilteredModels(e.target.value);
+                });
             }
 
             // Bind Navigation Listeners
@@ -1105,7 +1180,13 @@
                     if (supabaseClient) {
                         const { data, error } = await supabaseClient.from('cards').insert([newCard]).select();
                         if (!error && data) {
-                            createGalleryModelCard(data[0], true);
+                            allLoadedCards.unshift(data[0]); // Update local state
+                            updateTagFilterDropdown(); // Refresh dropdown 
+                            
+                            // Respect the active filter setting
+                            const activeFilter = document.getElementById('tagFilter').value;
+                            renderFilteredModels(activeFilter);
+                            
                             closeModelModal();
                             showSuccessToast();
                         }
