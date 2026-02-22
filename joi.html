@@ -513,7 +513,7 @@
             <div class="relative max-w-full flex items-center justify-center group" onclick="event.stopPropagation();">
                 <img id="lightboxImage" src="" class="hidden max-w-full max-h-[75vh] object-contain shadow-2xl transition-all duration-300 opacity-100 scale-100 rounded-lg cursor-default" onclick="event.stopPropagation();">
                 
-                <video id="lightboxVideo" loop playsinline class="hidden max-w-full max-h-[75vh] object-contain shadow-2xl transition-all duration-300 opacity-100 scale-100 rounded-lg cursor-pointer" onclick="togglePlayPause(event)"></video>
+                <video id="lightboxVideo" class="hidden max-w-full max-h-[75vh] object-contain shadow-2xl transition-all duration-300 opacity-100 scale-100 rounded-lg cursor-pointer" onclick="togglePlayPause(event)"></video>
 
                 <!-- Video Controls Overlay -->
                 <div id="videoControls" class="hidden absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-xl rounded-2xl px-6 py-2 items-center gap-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300 shadow-2xl border border-white/10" onclick="event.stopPropagation();">
@@ -583,6 +583,9 @@
         
         // Timeout for debouncing slider saves
         let saveRatingsTimeout;
+        
+        // Intersection Observer for Lazy Loading Videos
+        let videoObserver;
 
         // ==========================================
         // THEME / DARK MODE TOGGLE
@@ -604,6 +607,24 @@
                     iconEl.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>`;
                 }
             }
+        }
+
+        // ==========================================
+        // LAZY LOADING VIDEOS LOGIC
+        // ==========================================
+        function observeNewVideos() {
+            if (!videoObserver) return;
+            document.querySelectorAll('.lazy-video:not(.observed)').forEach(vid => {
+                vid.classList.add('observed');
+                
+                // Explicitly set strict mobile attributes to guarantee iOS compliance
+                vid.setAttribute('playsinline', '');
+                vid.setAttribute('webkit-playsinline', '');
+                vid.setAttribute('muted', '');
+                vid.setAttribute('loop', '');
+                
+                videoObserver.observe(vid);
+            });
         }
 
         // ==========================================
@@ -683,6 +704,7 @@
                     await saveMediaTagsToSupabase();
                     if (isClipViewer && !document.getElementById('allClipsView').classList.contains('hidden')) {
                         document.getElementById('fullClipsGrid').innerHTML = lightboxMediaList.map((clip, idx) => generateClipCardHTML(clip, idx)).join('');
+                        observeNewVideos();
                     } else if (!isClipViewer && !document.getElementById('allAssetsView').classList.contains('hidden')) {
                          document.getElementById('fullAssetsGrid').innerHTML = lightboxMediaList.map((asset, idx) => generateFullAssetMasonryHTML(asset, idx)).join('');
                     }
@@ -752,6 +774,7 @@
                 
                 if (isClipViewer && !document.getElementById('allClipsView').classList.contains('hidden')) {
                     document.getElementById('fullClipsGrid').innerHTML = lightboxMediaList.map((clip, idx) => generateClipCardHTML(clip, idx)).join('');
+                    observeNewVideos();
                 } else if (!isClipViewer && !document.getElementById('allAssetsView').classList.contains('hidden')) {
                     document.getElementById('fullAssetsGrid').innerHTML = lightboxMediaList.map((asset, idx) => generateFullAssetMasonryHTML(asset, idx)).join('');
                 }
@@ -778,6 +801,7 @@
             isGlobalViewer = false;
             
             document.getElementById('fullClipsGrid').innerHTML = lightboxMediaList.map((clip, idx) => generateClipCardHTML(clip, idx)).join('');
+            observeNewVideos();
         }
 
         function openCloseUpPage(cardData) {
@@ -810,6 +834,8 @@
             const clips = cardData.related_videos_with_tags || [];
             clipsGrid.innerHTML = clips.slice(0, 2).map((clip) => generatePreviewCardHTML(clip, 'Clip', true)).join('') + 
                 `<div onclick="openAllClipsView()" class="aspect-[4/5] rounded-[1rem] border-2 border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/60 flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:bg-white dark:hover:bg-slate-700 transition shadow-sm group"><div class="w-8 h-8 bg-[#111] dark:bg-slate-600 group-hover:bg-[#7fe826] dark:group-hover:bg-[#7fe826] rounded-full flex items-center justify-center text-white text-lg font-bold transition-colors">${clips.length > 2 ? 'All' : '+'}</div><span class="text-[11px] font-bold text-slate-600 dark:text-slate-300">See more</span></div>`;
+            
+            observeNewVideos();
         }
 
         // ==========================================
@@ -998,11 +1024,21 @@
                 videoControls.classList.remove('hidden');
                 videoControls.classList.add('flex');
                 
-                vidEl.src = url;
+                // Set explicit attributes for iOS
+                vidEl.setAttribute('playsinline', '');
+                vidEl.setAttribute('webkit-playsinline', '');
+                vidEl.setAttribute('muted', '');
+                vidEl.setAttribute('loop', '');
+                vidEl.preload = "auto";
+                
+                vidEl.src = url.includes('#') ? url : url + '#t=0.001';
+                vidEl.load();
+
                 const playPromise = vidEl.play();
                 if (playPromise !== undefined) {
                     playPromise.catch(error => {
-                        console.log('Playback was interrupted or blocked');
+                        vidEl.currentTime = 0.1;
+                        console.log('Playback was interrupted or blocked', error);
                     });
                 }
                 
@@ -1143,6 +1179,7 @@
                     
                     if (isClipViewer) {
                         document.getElementById('fullClipsGrid').innerHTML = lightboxMediaList.map((clip, idx) => generateClipCardHTML(clip, idx)).join('');
+                        observeNewVideos();
                     } else {
                         document.getElementById('fullAssetsGrid').innerHTML = lightboxMediaList.map((asset, idx) => generateFullAssetMasonryHTML(asset, idx)).join('');
                     }
@@ -1414,12 +1451,13 @@
                     const clipUrl = clip.url || clip.video_url || clip.src || clip;
                     
                     const isMock = clipUrl.includes('unsplash.com');
-                    const isVideo = clipUrl.match(/\.(mp4|webm|ogg|mov)$/i) || (!isMock && !clipUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i));
-                    const vidSrc = clipUrl; // Removed #t=0.001 entirely to prevent fetching issues on iOS Safari
+                    const isVideo = clipUrl.match(/\.(mp4|webm|ogg|mov)$/i) || (!isMock && !url.match(/\.(jpeg|jpg|gif|png|webp)$/i));
+                    const vidSrc = clipUrl; 
                     
                     const mediaElement = isVideo
-                        ? `<video src="${vidSrc}" preload="metadata" class="w-full h-full object-cover object-center" muted loop onmouseover="var p = this.play(); if(p !== undefined) p.catch(function(){});" onmouseout="this.pause()" playsinline></video>
-                           <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-10 transition-opacity duration-300 group-hover:opacity-0"><div class="w-12 h-12 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center shadow-lg border border-white/20"><svg class="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div></div>`
+                        ? `<video data-src="${vidSrc}" preload="metadata" class="lazy-video w-full h-full object-cover object-center" muted loop onwaiting="this.parentElement.querySelector('.video-spinner')?.classList.remove('hidden')" onplaying="this.parentElement.querySelector('.video-spinner')?.classList.add('hidden')" oncanplay="this.parentElement.querySelector('.video-spinner')?.classList.add('hidden')"></video>
+                           <div class="video-spinner hidden absolute inset-0 flex items-center justify-center pointer-events-none z-10"><div class="w-8 h-8 border-4 border-white/30 border-t-white rounded-full animate-spin"></div></div>
+                           <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-20 transition-opacity duration-300 group-hover:opacity-0"><div class="w-12 h-12 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center shadow-lg border border-white/20"><svg class="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div></div>`
                         : `<img src="${clipUrl}" class="w-full h-full object-cover object-center" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400'">`;
 
                     const card = document.createElement('div');
@@ -1437,6 +1475,7 @@
                     `;
                     grid.appendChild(card);
                 });
+                observeNewVideos();
             } else {
                 emptyState.classList.remove('hidden');
                 grid.classList.add('hidden');
@@ -1455,11 +1494,12 @@
             
             const isMock = url.includes('unsplash.com');
             const isVideo = url.match(/\.(mp4|webm|ogg|mov)$/i) || (!isMock && !url.match(/\.(jpeg|jpg|gif|png|webp)$/i) && isClip);
-            const vidSrc = url; // Removed #t=0.001 entirely to prevent fetching issues on iOS Safari
+            const vidSrc = url; 
             
             const mediaElement = isVideo
-                ? `<video src="${vidSrc}" preload="metadata" class="w-full h-full object-cover object-center" muted loop onmouseover="var p = this.play(); if(p !== undefined) p.catch(function(){});" onmouseout="this.pause()" playsinline></video>
-                   <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-10 transition-opacity duration-300 group-hover:opacity-0"><div class="w-10 h-10 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center shadow-lg border border-white/20"><svg class="w-4 h-4 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div></div>`
+                ? `<video data-src="${vidSrc}" preload="metadata" class="lazy-video w-full h-full object-cover object-center" muted loop onwaiting="this.parentElement.querySelector('.video-spinner')?.classList.remove('hidden')" onplaying="this.parentElement.querySelector('.video-spinner')?.classList.add('hidden')" oncanplay="this.parentElement.querySelector('.video-spinner')?.classList.add('hidden')"></video>
+                   <div class="video-spinner hidden absolute inset-0 flex items-center justify-center pointer-events-none z-10"><div class="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div></div>
+                   <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-20 transition-opacity duration-300 group-hover:opacity-0"><div class="w-10 h-10 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center shadow-lg border border-white/20"><svg class="w-4 h-4 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div></div>`
                 : `<img src="${url}" class="w-full h-full object-cover object-center" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400'">`;
 
             return `
@@ -1497,11 +1537,12 @@
             
             const isMock = clipUrl.includes('unsplash.com');
             const isVideo = clipUrl.match(/\.(mp4|webm|ogg|mov)$/i) || (!isMock && !clipUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i));
-            const vidSrc = clipUrl; // Removed #t=0.001 entirely to prevent fetching issues on iOS Safari
+            const vidSrc = clipUrl; 
             
             const mediaElement = isVideo
-                ? `<video src="${vidSrc}" preload="metadata" onloadedmetadata="if(this.videoWidth >= this.videoHeight) { this.closest('.asset-grid-card').classList.add('sm:col-span-2'); }" class="w-full h-auto block transition-transform duration-700 group-hover:scale-105" muted loop onmouseover="var p = this.play(); if(p !== undefined) p.catch(function(){});" onmouseout="this.pause()" playsinline></video>
-                   <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-10 transition-opacity duration-300 group-hover:opacity-0"><div class="w-12 h-12 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center shadow-lg border border-white/20"><svg class="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div></div>`
+                ? `<video data-src="${vidSrc}" preload="metadata" onloadedmetadata="if(this.videoWidth >= this.videoHeight) { this.closest('.asset-grid-card').classList.add('sm:col-span-2'); }" class="lazy-video w-full h-auto block transition-transform duration-700 group-hover:scale-105" muted loop onwaiting="this.parentElement.querySelector('.video-spinner')?.classList.remove('hidden')" onplaying="this.parentElement.querySelector('.video-spinner')?.classList.add('hidden')" oncanplay="this.parentElement.querySelector('.video-spinner')?.classList.add('hidden')"></video>
+                   <div class="video-spinner hidden absolute inset-0 flex items-center justify-center pointer-events-none z-10"><div class="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin"></div></div>
+                   <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-20 transition-opacity duration-300 group-hover:opacity-0"><div class="w-12 h-12 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center shadow-lg border border-white/20"><svg class="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></div></div>`
                 : `<img src="${clipUrl}" onload="if(this.naturalWidth >= this.naturalHeight) { this.closest('.asset-grid-card').classList.add('sm:col-span-2'); }" class="w-full h-auto block transition-transform duration-700 group-hover:scale-105" onerror="this.src='https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=500'">`;
 
             return `
@@ -1509,11 +1550,11 @@
                     ${mediaElement}
                     
                     <!-- Overlays -->
-                    <div class="absolute top-4 left-4 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md text-[#111] dark:text-white font-bold text-[11px] px-4 py-2 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all duration-300 z-20 flex items-center gap-1.5">
+                    <div class="absolute top-4 left-4 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md text-[#111] dark:text-white font-bold text-[11px] px-4 py-2 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all duration-300 z-30 flex items-center gap-1.5">
                         <svg class="w-3.5 h-3.5 text-slate-800 dark:text-slate-200" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path></svg>
                         ${firstTag}
                     </div>
-                    <div class="absolute top-4 right-4 w-10 h-10 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-full flex items-center justify-center text-slate-700 dark:text-slate-300 shadow-sm opacity-0 group-hover:opacity-100 transition-all duration-300 z-20"><svg class=\"w-4 h-4\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z\"></path></svg></div>
+                    <div class="absolute top-4 right-4 w-10 h-10 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-full flex items-center justify-center text-slate-700 dark:text-slate-300 shadow-sm opacity-0 group-hover:opacity-100 transition-all duration-300 z-30"><svg class=\"w-4 h-4\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z\"></path></svg></div>
                 </div>
             `;
         }
@@ -1610,6 +1651,40 @@
         document.addEventListener('DOMContentLoaded', () => {
             // Initialize Supabase
             supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            
+            // Intersection Observer setup for lazy video loading
+            videoObserver = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    const video = entry.target;
+                    if (entry.isIntersecting) {
+                        // Load source if missing
+                        if (!video.src && video.dataset.src) {
+                            video.src = video.dataset.src;
+                            video.preload = "auto";
+                            video.load();
+                        }
+                        // Attempt autoplay and handle mobile rejections
+                        const playPromise = video.play();
+                        if (playPromise !== undefined) {
+                            playPromise.then(() => {
+                                const spinner = video.parentElement.querySelector('.video-spinner');
+                                if (spinner) spinner.classList.add('hidden');
+                            }).catch(error => {
+                                // Fallback: Force a frame render so it doesn't look empty
+                                video.currentTime = 0.1;
+                                const spinner = video.parentElement.querySelector('.video-spinner');
+                                if (spinner) spinner.classList.add('hidden');
+                            });
+                        }
+                    } else {
+                        // Pause when off-screen to save battery/bandwidth
+                        if (!video.paused) {
+                            const p = video.pause();
+                            if(p !== undefined) p.catch(() => {});
+                        }
+                    }
+                });
+            }, { threshold: 0.25, rootMargin: "50% 0px" });
             
             // Fetch initial data
             fetchModelsData();
