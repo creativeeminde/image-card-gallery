@@ -1189,19 +1189,24 @@
             if (!filterEl) return;
             
             const currentSelection = filterEl.value;
-            const uniqueTags = new Set();
+            const uniqueTagMap = new Map();
             
-            // Extract all unique assigned tags
+            // Extract all unique assigned tags from main tags, class_tags, and amazing_at_tags
             allLoadedCards.forEach(card => {
-                if (card.tags) {
-                    card.tags.split(',').forEach(tag => {
-                        const t = tag.trim();
-                        if (t) uniqueTags.add(t);
-                    });
-                }
+                const sources = [card.tags, card.class_tags, card.amazing_at_tags];
+                sources.forEach(source => {
+                    if (source) {
+                        source.split(',').forEach(tag => {
+                            const t = tag.trim();
+                            if (t && !uniqueTagMap.has(t.toLowerCase())) {
+                                uniqueTagMap.set(t.toLowerCase(), t);
+                            }
+                        });
+                    }
+                });
             });
             
-            const sortedTags = Array.from(uniqueTags).sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base'}));
+            const sortedTags = Array.from(uniqueTagMap.values()).sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base'}));
             
             filterEl.innerHTML = '<option value="all">All Tags</option>';
             sortedTags.forEach(tag => {
@@ -1212,8 +1217,10 @@
             });
             
             // Restore previous selection if it still exists
-            if (sortedTags.includes(currentSelection)) {
-                filterEl.value = currentSelection;
+            const selectionExists = sortedTags.some(t => t.toLowerCase() === currentSelection.toLowerCase());
+            if (selectionExists && currentSelection !== 'all') {
+                const matchingTag = sortedTags.find(t => t.toLowerCase() === currentSelection.toLowerCase());
+                filterEl.value = matchingTag;
             } else {
                 filterEl.value = 'all';
             }
@@ -1230,13 +1237,21 @@
             galleryModelCount = 0; // Reset counter for empty state logic
             
             const filteredCards = allLoadedCards.filter(card => {
-                // 1. Check Tag Match
+                // 1. Check Tag Match Across All Sources
                 let matchesTag = true;
                 if (filterTag !== 'all') {
-                    if (!card.tags) matchesTag = false;
-                    else {
-                        const cardTags = card.tags.split(',').map(t => t.trim().toLowerCase());
-                        matchesTag = cardTags.includes(filterTag.toLowerCase());
+                    const targetTag = filterTag.toLowerCase();
+                    matchesTag = false; // Reset to prove match exists
+                    
+                    const sources = [card.tags, card.class_tags, card.amazing_at_tags];
+                    for (const source of sources) {
+                        if (source) {
+                            const tagsList = source.split(',').map(t => t.trim().toLowerCase());
+                            if (tagsList.includes(targetTag)) {
+                                matchesTag = true;
+                                break;
+                            }
+                        }
                     }
                 }
                 
