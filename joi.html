@@ -43,6 +43,9 @@
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
 
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
         /* Modals and Toasts */
         .modal {
             display: none;
@@ -196,12 +199,28 @@
             <div id="modelsGrid" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6"></div>
         </div>
 
-        <!-- CLOSE UP VIEW - Symmetric Grid ensures Reel is dead-center -->
-        <div id="closeUpView" class="view-section hidden px-6 w-full max-w-[1500px] mx-auto">
-            <div class="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] items-start gap-8 lg:gap-10 xl:gap-14 pt-2">
+        <!-- CLOSE UP VIEW -->
+        <div id="closeUpView" class="view-section hidden lg:px-6 w-full max-w-[1500px] mx-auto">
+            <div class="flex flex-col lg:grid lg:grid-cols-[1fr_auto_1fr] items-start gap-0 lg:gap-10 xl:gap-14 pt-0 lg:pt-2 w-full">
                 
+                <!-- CENTER COLUMN (Moved to top on mobile for full-screen edge-to-edge experience) -->
+                <div class="relative w-full h-[calc(100dvh-85px)] lg:h-auto lg:w-[320px] xl:w-[360px] lg:aspect-[9/16] justify-self-center z-10 flex-shrink-0 order-1 lg:order-2 overflow-hidden lg:overflow-visible bg-slate-100 dark:bg-slate-900 lg:bg-transparent">
+                    <img id="closeUpMainImage" src="https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=800&q=80" alt="Main Model" class="w-full h-full object-cover object-center lg:rounded-[2.5rem] lg:shadow-sm lg:border-[6px] lg:border-white lg:dark:border-slate-800 lg:bg-slate-200 lg:dark:bg-slate-700 transition-all duration-500">
+                    
+                    <!-- Mobile Overlay & Carousel Container (Hidden on Desktop) -->
+                    <div id="mobileCarouselContainer" class="absolute bottom-0 left-0 w-full lg:hidden z-20 hidden">
+                        <!-- Gradient Overlay to make thumbnails pop -->
+                        <div class="absolute bottom-0 left-0 w-full h-40 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none"></div>
+                        
+                        <!-- Thumbnail Carousel -->
+                        <div id="mobileCloseUpCarousel" class="relative flex items-center gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory px-[calc(50vw-28px)] pb-6 pt-4">
+                            <!-- JS Injected Thumbnails -->
+                        </div>
+                    </div>
+                </div>
+
                 <!-- LEFT COLUMN -->
-                <div class="w-full max-w-[360px] justify-self-end space-y-5 lg:space-y-6 min-w-0">
+                <div class="w-full lg:max-w-[360px] justify-self-end space-y-5 lg:space-y-6 min-w-0 order-2 lg:order-1 px-6 lg:px-0 py-8 lg:py-0">
                     <!-- Her Rating (Hotness calculated from sliders) -->
                     <div class="bg-white dark:bg-slate-800 rounded-[1.5rem] p-5 shadow-sm transition-colors duration-300">
                         <p class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Opinion</p>
@@ -213,7 +232,6 @@
                         <div class="h-8 bg-[#f1f5f0] dark:bg-slate-900 rounded-full relative overflow-hidden flex items-center px-4 transition-colors duration-300">
                             <div class="absolute inset-0 opacity-20" style="background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, #94a3b8 5px, #94a3b8 10px);"></div>
                             <div id="hotness-fill-bar" class="absolute left-0 top-0 bottom-0 w-[50%] bg-[#7fe826] rounded-full z-10 transition-all duration-300">
-                                <!-- Handle removed since this is calculated/read-only -->
                             </div>
                         </div>
                     </div>
@@ -286,13 +304,8 @@
                     </div>
                 </div>
 
-                <!-- CENTER COLUMN (Anchored Dead Center) -->
-                <div class="relative w-[280px] sm:w-[320px] xl:w-[360px] aspect-[9/16] justify-self-center z-10 flex-shrink-0">
-                    <img id="closeUpMainImage" src="https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=800&q=80" alt="Main Model" class="w-full h-full object-cover object-center rounded-[2.5rem] shadow-sm border-[6px] border-white dark:border-slate-800 bg-slate-200 dark:bg-slate-700 transition-all duration-500">
-                </div>
-
                 <!-- RIGHT COLUMN -->
-                <div class="w-full max-w-[480px] justify-self-start space-y-6 lg:space-y-8 min-w-0">
+                <div class="w-full lg:max-w-[480px] justify-self-start space-y-6 lg:space-y-8 min-w-0 order-3 lg:order-3 px-6 lg:px-0 pb-10 lg:pb-0">
                     <div>
                         <h2 class="text-[17px] font-bold text-slate-900 dark:text-white mb-4 text-center">Class Section</h2>
                         <div id="closeUpClassSectionGrid" class="flex items-center justify-center gap-3 xl:gap-4 flex-wrap"></div>
@@ -778,10 +791,63 @@
             document.getElementById('fullClipsGrid').innerHTML = lightboxMediaList.map((clip, idx) => generateClipCardHTML(clip, idx)).join('');
         }
 
+        // Sets the main image and updates the styling of the mobile carousel thumbnails
+        function setMobileMainImage(url, idx) {
+            document.getElementById('closeUpMainImage').src = url;
+            
+            // Update active state of thumbnails
+            document.querySelectorAll('#mobileCloseUpCarousel .mobile-thumb').forEach((el, i) => {
+                if (i === idx) {
+                    el.classList.add('opacity-100', 'scale-110', 'border-white', 'z-10', 'shadow-xl');
+                    el.classList.remove('opacity-60', 'scale-90', 'border-transparent');
+                } else {
+                    el.classList.remove('opacity-100', 'scale-110', 'border-white', 'z-10', 'shadow-xl');
+                    el.classList.add('opacity-60', 'scale-90', 'border-transparent');
+                }
+            });
+            
+            // Scroll selected thumb to the center horizontally
+            const thumb = document.getElementById(`mobThumb-${idx}`);
+            if (thumb) {
+                thumb.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            }
+        }
+
         function openCloseUpPage(cardData) {
             currentActiveModelData = cardData;
             document.querySelector('.nav-item[data-target="closeUpView"]').click();
             document.getElementById('closeUpMainImage').src = cardData.main_image_url;
+            
+            // Mobile Overlay Carousel Initialization
+            const mobileCarousel = document.getElementById('mobileCloseUpCarousel');
+            const mobileCarouselContainer = document.getElementById('mobileCarouselContainer');
+            
+            if (mobileCarousel && mobileCarouselContainer) {
+                const assets = cardData.related_images_with_tags || [];
+                let allMedia = [cardData.main_image_url];
+                
+                // Fetch all related images to display in the coverflow selector
+                assets.forEach(a => {
+                    const url = a.url || a.image_url || a.src || (typeof a === 'string' ? a : null);
+                    // Filter out video files for the static thumbnails
+                    if (url && !url.match(/\.(mp4|webm|ogg|mov)$/i)) {
+                        allMedia.push(url);
+                    }
+                });
+                
+                if (allMedia.length > 1) {
+                    mobileCarouselContainer.classList.remove('hidden');
+                    mobileCarousel.innerHTML = allMedia.map((url, idx) => `
+                        <img src="${url}" onclick="setMobileMainImage('${url}', ${idx})" id="mobThumb-${idx}" class="mobile-thumb ${idx === 0 ? 'opacity-100 scale-110 border-white z-10 shadow-xl' : 'opacity-60 scale-90 border-transparent'} w-14 h-14 rounded-full object-cover transition-all duration-300 border-[2.5px] snap-center cursor-pointer shrink-0">
+                    `).join('');
+                    
+                    // Reset scroll to start
+                    mobileCarousel.scrollLeft = 0;
+                } else {
+                    // Hide the carousel entirely if there are no variants to show
+                    mobileCarouselContainer.classList.add('hidden');
+                }
+            }
             
             // Initialize rating sliders from db data or default to 50
             ['chest', 'biceps', 'glutes', 'shoulders'].forEach(metric => {
