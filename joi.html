@@ -58,10 +58,10 @@
             transform: translateY(-4px);
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
         }
-        .gallery-model-img-wrapper img {
+        .gallery-model-img-wrapper img, .gallery-model-img-wrapper video {
             transition: transform 0.5s ease;
         }
-        .gallery-model-card:hover .gallery-model-img-wrapper img {
+        .gallery-model-card:hover .gallery-model-img-wrapper img, .gallery-model-card:hover .gallery-model-img-wrapper video {
             transform: scale(1.05);
         }
 
@@ -195,6 +195,29 @@
             </div>
 
             <div id="globalAssetsGrid" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6"></div>
+        </div>
+        
+        <!-- GLOBAL CLIPS VIEW (OnlyClips Tab) -->
+        <div id="clipsView" class="view-section hidden px-6 sm:px-8 max-w-[1400px] mx-auto w-full">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 mt-4">
+                <div>
+                    <h2 class="text-3xl font-bold text-slate-900 tracking-tight">Global Clips</h2>
+                    <p class="text-slate-500 mt-1 text-sm">Browse all video clips across your models.</p>
+                </div>
+                <div class="flex items-center gap-3 w-full sm:w-auto">
+                    <select id="globalClipTagFilter" class="bg-white border border-slate-100 shadow-sm text-slate-700 text-sm rounded-full focus:ring-2 focus:ring-[#7fe826] block py-2.5 px-4 outline-none font-medium transition-shadow cursor-pointer w-full sm:w-auto min-h-[38px]">
+                        <option value="all">All Clip Tags</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="globalClipsEmptyState" class="hidden flex-col items-center justify-center py-24 px-4 text-center bg-white/50 border border-dashed border-slate-300 rounded-[2rem] backdrop-blur-sm">
+                <svg class="w-16 h-16 text-slate-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                <h3 class="text-xl font-bold text-slate-900 mb-1">No clips found</h3>
+                <p class="text-slate-500 max-w-sm">No clips match your current filter, or your gallery is empty.</p>
+            </div>
+
+            <div id="globalClipsGrid" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6"></div>
         </div>
 
         <!-- CLOSE UP VIEW - Symmetric Grid ensures Reel is dead-center -->
@@ -525,6 +548,7 @@
         
         // Global Asset State
         let globalAssetsList = [];
+        let globalClipsList = [];
         let isGlobalViewer = false;
         
         // Lightbox & Viewer state variables
@@ -610,7 +634,8 @@
                 
                 if (isGlobalViewer) {
                     await saveGlobalMediaToSupabase(lightboxMediaList[currentLightboxIndex]);
-                    buildGlobalAssetsList();
+                    if (isClipViewer) buildGlobalClipsList();
+                    else buildGlobalAssetsList();
                 } else {
                     await saveMediaTagsToSupabase();
                     if (isClipViewer && !document.getElementById('allClipsView').classList.contains('hidden')) {
@@ -649,7 +674,7 @@
             if (!supabaseClient || !mediaObj.cardId) return;
             const card = allLoadedCards.find(c => c.id === mediaObj.cardId);
             if (!card) return;
-            const colName = 'related_images_with_tags';
+            const colName = isClipViewer ? 'related_videos_with_tags' : 'related_images_with_tags';
             const itemIndex = card[colName].findIndex(a => (a.url || a) === (mediaObj.url || mediaObj));
             if (itemIndex > -1) {
                 if (typeof card[colName][itemIndex] === 'string') {
@@ -677,7 +702,8 @@
             
             if (isGlobalViewer) {
                 await saveGlobalMediaToSupabase(lightboxMediaList[currentLightboxIndex]);
-                buildGlobalAssetsList();
+                if (isClipViewer) buildGlobalClipsList();
+                else buildGlobalAssetsList();
             } else {
                 await saveMediaTagsToSupabase();
                 
@@ -861,10 +887,10 @@
             document.body.classList.add('overflow-hidden'); // Prevent background scrolling
         }
         
-        function openGlobalLightbox(index, filteredAssets) {
-            lightboxMediaList = filteredAssets;
+        function openGlobalLightbox(index, filteredMedia, isClip = false) {
+            lightboxMediaList = filteredMedia;
             currentLightboxIndex = index;
-            isClipViewer = false;
+            isClipViewer = isClip;
             isGlobalViewer = true;
             updateLightboxContent();
             document.getElementById('lightboxModal').classList.add('active');
@@ -1046,15 +1072,18 @@
             if (isGlobalViewer) {
                 const card = allLoadedCards.find(c => c.id === mediaToDelete.cardId);
                 if (card) {
-                    card.related_images_with_tags = card.related_images_with_tags.filter(a => (a.url || a) !== (mediaToDelete.url || mediaToDelete));
+                    const colName = isClipViewer ? 'related_videos_with_tags' : 'related_images_with_tags';
+                    card[colName] = card[colName].filter(a => (a.url || a) !== (mediaToDelete.url || mediaToDelete));
                     try {
-                        await supabaseClient.from('cards').update({ 'related_images_with_tags': card.related_images_with_tags }).eq('id', card.id);
+                        await supabaseClient.from('cards').update({ [colName]: card[colName] }).eq('id', card.id);
                     } catch(e) { console.error("Failed to delete from global", e); }
                 }
                 
                 lightboxMediaList.splice(currentLightboxIndex, 1);
-                showSuccessToast("Asset deleted successfully!");
-                buildGlobalAssetsList(); // Recalculates array & rebuilds grid matching current filter
+                showSuccessToast(isClipViewer ? "Clip deleted successfully!" : "Asset deleted successfully!");
+                
+                if (isClipViewer) buildGlobalClipsList();
+                else buildGlobalAssetsList(); 
                 
             } else {
                 if (!currentActiveModelData) return;
@@ -1074,7 +1103,9 @@
                     } else {
                         document.getElementById('fullAssetsGrid').innerHTML = lightboxMediaList.map((asset, idx) => generateFullAssetMasonryHTML(asset, idx)).join('');
                     }
-                    buildGlobalAssetsList(); // Keep global list in sync
+                    
+                    buildGlobalAssetsList();
+                    buildGlobalClipsList(); 
                 } catch (err) {
                     console.error("Failed to delete media", err);
                 }
@@ -1253,7 +1284,7 @@
                     const primaryTag = asset.tags ? asset.tags.split(',')[0].trim() : 'Asset';
                     const card = document.createElement('div');
                     card.className = 'gallery-model-card flex flex-col bg-white rounded-3xl p-3 shadow-sm border border-slate-100/50 cursor-pointer';
-                    card.onclick = () => openGlobalLightbox(idx, filteredAssets);
+                    card.onclick = () => openGlobalLightbox(idx, filteredAssets, false);
                     
                     card.innerHTML = `
                         <div class="gallery-model-img-wrapper relative aspect-[4/5] bg-slate-100 overflow-hidden rounded-[1.5rem]">
@@ -1271,7 +1302,101 @@
                 grid.classList.add('hidden');
             }
         }
+        
+        // ==========================================
+        // GLOBAL CLIPS FILTERING & RENDERING
+        // ==========================================
+        function buildGlobalClipsList() {
+            globalClipsList = [];
+            allLoadedCards.forEach(card => {
+                if (card.related_videos_with_tags && Array.isArray(card.related_videos_with_tags)) {
+                    card.related_videos_with_tags.forEach(clip => {
+                        let clipObj = typeof clip === 'string' ? { url: clip, tags: 'Clip' } : { ...clip };
+                        clipObj.cardId = card.id;
+                        clipObj.cardTitle = card.title; 
+                        globalClipsList.push(clipObj);
+                    });
+                }
+            });
+            updateGlobalClipTagFilterDropdown();
+            
+            const filterEl = document.getElementById('globalClipTagFilter');
+            renderGlobalClips(filterEl ? filterEl.value : 'all');
+        }
 
+        function updateGlobalClipTagFilterDropdown() {
+            const filterEl = document.getElementById('globalClipTagFilter');
+            if (!filterEl) return;
+            const currentSelection = filterEl.value;
+            const uniqueTags = new Set();
+            
+            globalClipsList.forEach(clip => {
+                if (clip.tags) {
+                    clip.tags.split(',').forEach(t => uniqueTags.add(t.trim()));
+                }
+            });
+            
+            const sortedTags = Array.from(uniqueTags).filter(Boolean).sort((a,b) => a.localeCompare(b, undefined, {sensitivity: 'base'}));
+            filterEl.innerHTML = '<option value="all">All Clip Tags</option>';
+            
+            sortedTags.forEach(tag => {
+                const option = document.createElement('option');
+                option.value = tag;
+                option.textContent = tag;
+                filterEl.appendChild(option);
+            });
+            
+            if(sortedTags.includes(currentSelection)) filterEl.value = currentSelection;
+            else filterEl.value = 'all';
+        }
+
+        function renderGlobalClips(filterTag = 'all') {
+            const grid = document.getElementById('globalClipsGrid');
+            const emptyState = document.getElementById('globalClipsEmptyState');
+            if (!grid || !emptyState) return;
+            grid.innerHTML = '';
+            
+            const filteredClips = globalClipsList.filter(clip => {
+                if (filterTag === 'all') return true;
+                if (!clip.tags) return false;
+                const clipTags = clip.tags.split(',').map(t => t.trim().toLowerCase());
+                return clipTags.includes(filterTag.toLowerCase());
+            });
+
+            if (filteredClips.length > 0) {
+                emptyState.classList.add('hidden');
+                grid.classList.remove('hidden');
+                filteredClips.forEach((clip, idx) => {
+                    const primaryTag = clip.tags ? clip.tags.split(',')[0].trim() : 'Clip';
+                    const clipUrl = clip.url || clip.video_url || clip.src || clip;
+                    
+                    const isMock = clipUrl.includes('unsplash.com');
+                    const isVideo = clipUrl.match(/\.(mp4|webm|ogg|mov)$/i) || (!isMock && !clipUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i));
+                    
+                    const mediaElement = isVideo
+                        ? `<video src="${clipUrl}" class="w-full h-full object-cover object-center" muted loop onmouseover="var p = this.play(); if(p !== undefined) p.catch(function(){});" onmouseout="this.pause()" playsinline></video>`
+                        : `<img src="${clipUrl}" class="w-full h-full object-cover object-center" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400'">`;
+
+                    const card = document.createElement('div');
+                    card.className = 'gallery-model-card flex flex-col bg-white rounded-3xl p-3 shadow-sm border border-slate-100/50 cursor-pointer';
+                    card.onclick = () => openGlobalLightbox(idx, filteredClips, true);
+                    
+                    card.innerHTML = `
+                        <div class="gallery-model-img-wrapper relative aspect-[4/5] bg-slate-100 overflow-hidden rounded-[1.5rem]">
+                            <span class="absolute top-3 right-3 z-10 bg-white/90 backdrop-blur-md text-slate-800 text-[11px] font-bold px-3 py-1.5 rounded-full shadow-sm">${primaryTag}</span>
+                            ${mediaElement}
+                        </div>
+                        <div class="pt-4 pb-2 px-2">
+                            <h3 class="text-base font-bold text-slate-900 truncate">${clip.cardTitle || 'Unknown Model'}</h3>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            } else {
+                emptyState.classList.remove('hidden');
+                grid.classList.add('hidden');
+            }
+        }
 
         // ==========================================
         // HELPER RENDERING FUNCTIONS
@@ -1457,6 +1582,14 @@
                     renderGlobalAssets(e.target.value);
                 });
             }
+            
+            // Bind Global Clip Tag Filter
+            const globalClipFilter = document.getElementById('globalClipTagFilter');
+            if (globalClipFilter) {
+                globalClipFilter.addEventListener('change', (e) => {
+                    renderGlobalClips(e.target.value);
+                });
+            }
 
             async function fetchMasterTags() {
                 try {
@@ -1478,6 +1611,7 @@
                         updateTagFilterDropdown();
                         applyFilters();
                         buildGlobalAssetsList();
+                        buildGlobalClipsList();
                     }
                 } catch (e) { console.error(e); }
             }
@@ -1552,6 +1686,7 @@
                             updateTagFilterDropdown(); // Refresh dropdown 
                             applyFilters(); // Re-run filter rules
                             buildGlobalAssetsList(); // Update global assets
+                            buildGlobalClipsList(); // Update global clips
                             
                             closeModelModal();
                             showSuccessToast();
@@ -1603,6 +1738,7 @@
                             showSuccessToast("Media added successfully!");
                             
                             buildGlobalAssetsList(); // Refresh global list state
+                            buildGlobalClipsList();
                             
                             // Re-render the exact grid the user is currently looking at
                             if (isAddingClip) {
