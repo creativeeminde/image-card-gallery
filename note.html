@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Interactive Notes</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        :root {
+            --bg-color: #f2f3f5;
+            --card-bg: #ffffff;
+            --text-main: #1d1d1f;
+            --text-muted: #86868b;
+            --shadow-soft: 0 10px 40px -10px rgba(0,0,0,0.08);
+            --shadow-hover: 0 20px 50px -10px rgba(0,0,0,0.12);
+            --shadow-drag: 0 30px 60px -15px rgba(0,0,0,0.2);
+            --radius-lg: 24px;
+            --radius-sm: 12px;
+            --sticky-pink: #ffd6e4;
+            --sticky-orange: #ffc4a3;
+            --sticky-yellow: #fdf2b3;
+            --transition-smooth: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            --transition-fast: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', sans-serif; background-color: var(--bg-color); color: var(--text-main);
+            overflow-x: hidden; -webkit-font-smoothing: antialiased; user-select: none;
+        }
+
+        /* Nav & Controls */
+        .top-nav {
+            position: fixed; top: 24px; left: 24px; background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-radius: 100px;
+            display: flex; align-items: center; padding: 8px 12px; gap: 16px; box-shadow: var(--shadow-soft);
+            z-index: 100; border: 1px solid rgba(255,255,255,0.4);
+        }
+        .nav-icon { cursor: pointer; color: var(--text-muted); transition: var(--transition-smooth); display: flex; align-items: center; }
+        .nav-icon:hover { color: var(--text-main); transform: scale(1.1); }
+
+        .bottom-controls { position: fixed; bottom: 32px; right: 32px; display: flex; align-items: center; gap: 16px; z-index: 100; }
+        .control-btn {
+            width: 56px; height: 56px; border-radius: 50%; background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); display: flex; align-items: center; justify-content: center;
+            cursor: pointer; box-shadow: var(--shadow-soft); border: 1px solid rgba(255,255,255,0.4);
+            color: var(--text-main); transition: var(--transition-smooth);
+        }
+        .control-btn:hover { transform: translateY(-4px) scale(1.05); box-shadow: var(--shadow-hover); }
+
+        /* Masonry Grid */
+        .grid-container {
+            padding: 100px 40px 120px; max-width: 1600px; margin: 0 auto;
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            grid-auto-rows: 20px; gap: 0 24px; opacity: 0; animation: fadeIn 0.8s ease-out forwards;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Cards */
+        .card-wrapper {
+            position: relative; cursor: grab; transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease; z-index: 1;
+        }
+        .card-wrapper:active { cursor: grabbing; }
+        .card-wrapper:hover { transform: translateY(-6px); z-index: 10; }
+        .card-wrapper:hover .card { box-shadow: var(--shadow-hover); }
+
+        .card {
+            background: var(--card-bg); border-radius: var(--radius-lg); box-shadow: var(--shadow-soft);
+            overflow: hidden; display: flex; flex-direction: column; width: 100%; margin-bottom: 24px;
+            border: 1px solid rgba(255,255,255,0.8); transition: var(--transition-smooth); pointer-events: none;
+        }
+
+        .delete-btn {
+            position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.9); border-radius: 50%;
+            width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+            color: #ff3b30; opacity: 0; transition: var(--transition-fast); z-index: 20; border: none; cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1); pointer-events: auto;
+        }
+        .card-wrapper:hover .delete-btn { opacity: 1; }
+        .delete-btn:hover { transform: scale(1.1); }
+
+        /* Card Types */
+        .card-text { padding: 32px 28px; }
+        .card-text h3 { font-size: 18px; font-weight: 600; margin-bottom: 16px; letter-spacing: -0.02em; }
+        .card-text p { font-size: 14px; line-height: 1.6; color: #4a4a4d; }
+        
+        .card-image img { width: 100%; height: auto; display: block; border-radius: var(--radius-lg); pointer-events: none; }
+        
+        .card-sticky { padding: 24px; border-radius: 16px; max-width: 85%; }
+        .card-sticky p { font-size: 13px; font-weight: 500; line-height: 1.5; color: rgba(0,0,0,0.8); }
+
+        .card-project { padding: 32px 24px; background: #f8f9fa; cursor: pointer; pointer-events: auto; }
+        .tag-open { display: inline-flex; align-items: center; gap: 6px; background: #e8e8ed; padding: 4px 10px; border-radius: 100px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 40px; color: #555; }
+        .card-project h3 { font-size: 14px; color: var(--text-muted); margin-bottom: 4px; font-weight: 500; }
+        .card-project h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+
+        /* Drag & Drop Visuals */
+        .card-wrapper.is-dragging { opacity: 0.2; transform: scale(0.95); transition: opacity 0.2s, transform 0.2s; }
+        
+        .drag-clone {
+            position: fixed; pointer-events: none !important; z-index: 9999; margin: 0 !important;
+            transition: transform 0.05s linear; /* Quick update for tracking cursor */
+        }
+        .drag-clone .card { box-shadow: var(--shadow-drag); border: 1px solid rgba(255,255,255,1); }
+        .drag-clone .delete-btn { display: none; }
+
+        .card-project.drop-target {
+            transform: scale(1.04); box-shadow: 0 0 0 4px rgba(100, 150, 255, 0.3), var(--shadow-hover);
+            background: #eef2f7; border-color: transparent;
+        }
+
+        /* Project View Fullscreen */
+        .project-view-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-color);
+            z-index: 500; opacity: 0; pointer-events: none; transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            transform: scale(0.95); display: flex; flex-direction: column; overflow-y: auto;
+        }
+        .project-view-overlay.active { opacity: 1; pointer-events: auto; transform: scale(1); }
+        
+        .project-header {
+            padding: 40px; display: flex; align-items: center; justify-content: space-between;
+            position: sticky; top: 0; background: rgba(242, 243, 245, 0.8); backdrop-filter: blur(20px); z-index: 10;
+        }
+        .project-header-left { display: flex; align-items: center; gap: 24px; }
+        .btn-back {
+            display: flex; align-items: center; gap: 8px; background: white; border: none; padding: 10px 20px;
+            border-radius: 100px; font-family: 'Inter'; font-weight: 600; font-size: 14px; cursor: pointer;
+            box-shadow: var(--shadow-soft); transition: var(--transition-smooth);
+        }
+        .btn-back:hover { transform: translateX(-4px); box-shadow: var(--shadow-hover); }
+        .project-title-display { font-size: 32px; font-weight: 700; letter-spacing: -0.03em; }
+        
+        .drop-out-zone {
+            padding: 16px 32px; background: rgba(255, 59, 48, 0.05); border: 2px dashed rgba(255, 59, 48, 0.3);
+            border-radius: 100px; color: #ff3b30; font-size: 14px; font-weight: 600; transition: var(--transition-smooth);
+            opacity: 0; pointer-events: none;
+        }
+        .drop-out-zone.visible { opacity: 1; }
+        .drop-out-zone.active-target { background: rgba(255, 59, 48, 0.15); border-color: #ff3b30; transform: scale(1.05); }
+
+        /* Modals & Forms (Unchanged style structure, hidden for brevity but included in code) */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(242, 243, 245, 0.8); backdrop-filter: blur(10px); z-index: 1000; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+        .modal-content { background: white; padding: 40px; border-radius: 30px; width: 100%; max-width: 480px; box-shadow: 0 40px 80px rgba(0,0,0,0.1); transform: scale(0.95) translateY(20px); transition: var(--transition-smooth); }
+        .modal-overlay.active .modal-content { transform: scale(1) translateY(0); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .modal-header h2 { font-size: 22px; font-weight: 600; }
+        .close-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .form-control { width: 100%; padding: 14px 16px; border-radius: 12px; border: 1px solid #e0e0e0; font-family: 'Inter', sans-serif; font-size: 15px; outline: none; transition: border-color 0.2s; background: #fafafa; }
+        .form-control:focus { border-color: #a0a0a0; background: white; }
+        textarea.form-control { resize: vertical; min-height: 100px; }
+        .btn-submit { width: 100%; padding: 16px; background: #1d1d1f; color: white; border: none; border-radius: 14px; font-size: 15px; font-weight: 600; cursor: pointer; transition: transform 0.2s, background 0.2s; margin-top: 10px; }
+        .btn-submit:hover { background: #333336; transform: translateY(-2px); }
+        .dynamic-field { display: none; }
+        .dynamic-field.active { display: block; }
+        .loader { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 40px; height: 40px; border: 4px solid #e0e0e0; border-top-color: #1d1d1f; border-radius: 50%; animation: spin 1s linear infinite; z-index: 1500; display: none; }
+        @keyframes spin { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <nav class="top-nav">
+        <div class="nav-icon"><i data-lucide="menu" size="20"></i></div>
+        <div class="nav-icon"><i data-lucide="hash" size="18"></i></div>
+        <div class="nav-icon"><i data-lucide="check" size="20"></i></div>
+    </nav>
+
+    <div class="loader" id="loader"></div>
+
+    <!-- Main Grid -->
+    <main class="grid-container" id="mainGrid"></main>
+
+    <!-- Project View Overlay -->
+    <div class="project-view-overlay" id="projectView">
+        <div class="project-header">
+            <div class="project-header-left">
+                <button class="btn-back" id="btnBackToMain"><i data-lucide="arrow-left" size="18"></i> Back</button>
+                <h2 class="project-title-display" id="projectTitleDisplay">Project Name</h2>
+            </div>
+            <div class="drop-out-zone" id="dropOutZone"><i data-lucide="log-out" size="14"></i> Drag here to remove from project</div>
+        </div>
+        <div class="grid-container" id="projectGrid"></div>
+    </div>
+
+    <!-- Bottom Controls -->
+    <div class="bottom-controls">
+        <div class="control-btn" id="btnSettings"><i data-lucide="home" size="24"></i></div>
+        <div class="control-btn" id="btnAddNote" style="background: #1d1d1f; color: white;"><i data-lucide="plus" size="26"></i></div>
+    </div>
+
+    <!-- Add Note Modal -->
+    <div class="modal-overlay" id="addModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>New Note</h2>
+                <button class="close-btn" id="btnCloseModal"><i data-lucide="x" size="24"></i></button>
+            </div>
+            <form id="noteForm">
+                <div class="form-group">
+                    <label>Card Type</label>
+                    <select class="form-control" id="noteType">
+                        <option value="text">Text Note</option>
+                        <option value="image">Image Note</option>
+                        <option value="sticky">Sticky Note</option>
+                        <option value="project">Project Card</option>
+                    </select>
+                </div>
+                <div class="form-group dynamic-field active" id="fieldTitle">
+                    <label>Title</label>
+                    <input type="text" class="form-control" id="inputTitle" placeholder="e.g. Design Philosophy">
+                </div>
+                <div class="form-group dynamic-field active" id="fieldContent">
+                    <label>Content</label>
+                    <textarea class="form-control" id="inputContent" placeholder="Write your thoughts..."></textarea>
+                </div>
+                <div class="form-group dynamic-field" id="fieldSubtitle">
+                    <label>Client Name (Subtitle)</label>
+                    <input type="text" class="form-control" id="inputSubtitle" placeholder="e.g. Client 004">
+                </div>
+                <div class="form-group dynamic-field" id="fieldImage">
+                    <label>Image URL</label>
+                    <input type="url" class="form-control" id="inputImage" placeholder="https://...">
+                </div>
+                <div class="form-group dynamic-field" id="fieldColor">
+                    <label>Sticky Color</label>
+                    <select class="form-control" id="inputColor">
+                        <option value="var(--sticky-pink)">Pink</option>
+                        <option value="var(--sticky-orange)">Orange</option>
+                        <option value="var(--sticky-yellow)">Yellow</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-submit">Save Note</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // Supabase Init
+        const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // State
+        let allNotes = [];
+        let currentOpenProjectId = null;
+
+        // Elements
+        const mainGrid = document.getElementById('mainGrid');
+        const projectView = document.getElementById('projectView');
+        const projectGrid = document.getElementById('projectGrid');
+        const loader = document.getElementById('loader');
+        const addModal = document.getElementById('addModal');
+        const dropOutZone = document.getElementById('dropOutZone');
+
+        // Form Logic
+        const noteType = document.getElementById('noteType');
+        const fields = {
+            title: document.getElementById('fieldTitle'),
+            content: document.getElementById('fieldContent'),
+            subtitle: document.getElementById('fieldSubtitle'),
+            image: document.getElementById('fieldImage'),
+            color: document.getElementById('fieldColor')
+        };
+
+        noteType.addEventListener('change', (e) => {
+            Object.values(fields).forEach(f => f.classList.remove('active'));
+            const t = e.target.value;
+            if(t === 'text') { fields.title.classList.add('active'); fields.content.classList.add('active'); }
+            else if(t === 'image') { fields.image.classList.add('active'); }
+            else if(t === 'sticky') { fields.content.classList.add('active'); fields.color.classList.add('active'); }
+            else if(t === 'project') { fields.title.classList.add('active'); fields.subtitle.classList.add('active'); }
+        });
+
+        document.getElementById('btnAddNote').addEventListener('click', () => addModal.classList.add('active'));
+        document.getElementById('btnCloseModal').addEventListener('click', () => { addModal.classList.remove('active'); document.getElementById('noteForm').reset(); noteType.dispatchEvent(new Event('change')); });
+
+        // Masonry Logic
+        function resizeGridItem(item, gridEl) {
+            const rowHeight = parseInt(window.getComputedStyle(gridEl).getPropertyValue('grid-auto-rows'));
+            const rowGap = parseInt(window.getComputedStyle(gridEl).getPropertyValue('grid-row-gap'));
+            const card = item.querySelector('.card');
+            if(!card) return;
+            
+            const img = card.querySelector('img');
+            if (img && !img.complete) { img.onload = () => resizeGridItem(item, gridEl); return; }
+
+            const rowSpan = Math.ceil((card.getBoundingClientRect().height + rowGap) / (rowHeight + rowGap));
+            item.style.gridRowEnd = "span " + rowSpan;
+        }
+
+        function resizeAllGridItems() {
+            const grids = [mainGrid, projectGrid];
+            grids.forEach(grid => {
+                const items = grid.getElementsByClassName("card-wrapper");
+                for(let i=0; i<items.length; i++) resizeGridItem(items[i], grid);
+            });
+        }
+        window.addEventListener("resize", resizeAllGridItems);
+
+        // Fetch & Render
+        async function fetchNotes() {
+            loader.style.display = 'block';
+            try {
+                const { data, error } = await supabaseClient.from('interactive_notes').select('*').order('created_at', { ascending: false });
+                if (error) throw error;
+                allNotes = data;
+                renderViews();
+            } catch (error) {
+                console.error('Error:', error);
+            } finally {
+                loader.style.display = 'none';
+            }
+        }
+
+        function renderViews() {
+            // Render Main Grid
+            const mainNotes = allNotes.filter(n => !n.project_id);
+            renderGrid(mainNotes, mainGrid);
+
+            // Render Project Grid if open
+            if(currentOpenProjectId) {
+                const projNotes = allNotes.filter(n => n.project_id === currentOpenProjectId);
+                renderGrid(projNotes, projectGrid);
+            }
+        }
+
+        function renderGrid(notes, container) {
+            container.innerHTML = '';
+            notes.forEach(note => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'card-wrapper';
+                wrapper.dataset.id = note.id;
+                wrapper.dataset.type = note.type;
+                wrapper.dataset.projectId = note.project_id || '';
+                
+                let cardHTML = ''; let extraStyles = '';
+                switch(note.type) {
+                    case 'text': cardHTML = `<div class="card card-text">${note.title ? `<h3>${note.title}</h3>` : ''}${note.content ? `<p>${note.content.replace(/\n/g, '<br>')}</p>` : ''}</div>`; break;
+                    case 'image': cardHTML = `<div class="card card-image"><img src="${note.image_url}" onerror="this.src='https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=500&q=80'"></div>`; break;
+                    case 'sticky': extraStyles = `background-color: ${note.color || 'var(--sticky-yellow)'}; border: none;`; cardHTML = `<div class="card card-sticky" style="${extraStyles}"><p>${note.content ? note.content.replace(/\n/g, '<br>') : ''}</p></div>`; break;
+                    case 'project': cardHTML = `<div class="card card-project"><div class="tag-open"><i data-lucide="arrow-up-right" size="12"></i> OPEN</div><h3>${note.subtitle || 'Folder'}</h3><h2>${note.title || 'Project'}</h2></div>`; break;
+                }
+
+                wrapper.innerHTML = `<button class="delete-btn" onclick="deleteNote('${note.id}', event)"><i data-lucide="trash-2" size="14"></i></button>${cardHTML}`;
+                
+                // Add Interactions
+                if(note.type === 'project') {
+                    wrapper.addEventListener('click', (e) => {
+                        if(e.target.closest('.delete-btn')) return;
+                        openProjectView(note);
+                    });
+                } else {
+                    // Initialize Custom Drag
+                    wrapper.addEventListener('pointerdown', handleDragStart);
+                }
+
+                container.appendChild(wrapper);
+            });
+            lucide.createIcons();
+            setTimeout(resizeAllGridItems, 50);
+        }
+
+        // Add Note
+        document.getElementById('noteForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const type = noteType.value;
+            const noteData = { type, project_id: currentOpenProjectId }; // Save to current project if open
+            
+            if(type === 'text') { noteData.title = document.getElementById('inputTitle').value; noteData.content = document.getElementById('inputContent').value; }
+            else if(type === 'image') { noteData.image_url = document.getElementById('inputImage').value; }
+            else if(type === 'sticky') { noteData.content = document.getElementById('inputContent').value; noteData.color = document.getElementById('inputColor').value; }
+            else if(type === 'project') { noteData.title = document.getElementById('inputTitle').value; noteData.subtitle = document.getElementById('inputSubtitle').value; noteData.project_id = null; } // Projects stay on main level
+
+            document.getElementById('btnCloseModal').click();
+            loader.style.display = 'block';
+            try {
+                await supabaseClient.from('interactive_notes').insert([noteData]);
+                fetchNotes();
+            } catch (err) { console.error(err); }
+        });
+
+        // Delete Note
+        window.deleteNote = async (id, event) => {
+            event.stopPropagation();
+            if(!confirm('Delete this note?')) return;
+            const card = event.target.closest('.card-wrapper');
+            card.style.opacity = '0'; card.style.transform = 'scale(0.8)';
+            setTimeout(() => card.remove(), 300);
+            try {
+                await supabaseClient.from('interactive_notes').delete().eq('id', id);
+                setTimeout(resizeAllGridItems, 350);
+            } catch (err) { fetchNotes(); }
+        };
+
+        // --- Custom Pointer Drag System ---
+        let dragInfo = {
+            isActive: false, el: null, clone: null, id: null, startX: 0, startY: 0, 
+            offsetX: 0, offsetY: 0, targetProject: null, isOutZone: false
+        };
+
+        function handleDragStart(e) {
+            if(e.button !== 0 || e.target.closest('button') || e.target.closest('input')) return; // Left click only
+            
+            const wrapper = e.currentTarget;
+            if(wrapper.dataset.type === 'project') return; // Cannot drag projects currently
+            
+            dragInfo.id = wrapper.dataset.id;
+            dragInfo.el = wrapper;
+            dragInfo.startX = e.clientX;
+            dragInfo.startY = e.clientY;
+            
+            const rect = wrapper.getBoundingClientRect();
+            dragInfo.offsetX = e.clientX - rect.left;
+            dragInfo.offsetY = e.clientY - rect.top;
+
+            document.addEventListener('pointermove', handleDragMove);
+            document.addEventListener('pointerup', handleDragEnd);
+        }
+
+        function handleDragMove(e) {
+            const dx = Math.abs(e.clientX - dragInfo.startX);
+            const dy = Math.abs(e.clientY - dragInfo.startY);
+
+            // Initiate drag if moved slightly
+            if (!dragInfo.isActive && (dx > 5 || dy > 5)) {
+                dragInfo.isActive = true;
+                
+                // Create highly fluid clone
+                const rect = dragInfo.el.getBoundingClientRect();
+                dragInfo.clone = dragInfo.el.cloneNode(true);
+                dragInfo.clone.className = 'card-wrapper drag-clone';
+                dragInfo.clone.style.width = rect.width + 'px';
+                dragInfo.clone.style.height = rect.height + 'px';
+                document.body.appendChild(dragInfo.clone);
+                
+                dragInfo.el.classList.add('is-dragging');
+                
+                // Show dropzone if in project view
+                if(currentOpenProjectId) dropOutZone.classList.add('visible');
+            }
+
+            if (dragInfo.isActive) {
+                // Animate clone position smoothly
+                const left = e.clientX - dragInfo.offsetX;
+                const top = e.clientY - dragInfo.offsetY;
+                dragInfo.clone.style.transform = `translate(${left}px, ${top}px) scale(1.05) rotate(2deg)`;
+
+                // Hit Detection using elementsFromPoint
+                const els = document.elementsFromPoint(e.clientX, e.clientY);
+                
+                // 1. Check Project Drop
+                const hoveredProject = els.find(el => el.classList && el.classList.contains('card-wrapper') && el.dataset.type === 'project');
+                if (dragInfo.targetProject && dragInfo.targetProject !== hoveredProject) {
+                    dragInfo.targetProject.querySelector('.card').classList.remove('drop-target');
+                }
+                if (hoveredProject && hoveredProject.dataset.id !== dragInfo.id) {
+                    dragInfo.targetProject = hoveredProject;
+                    dragInfo.targetProject.querySelector('.card').classList.add('drop-target');
+                } else {
+                    dragInfo.targetProject = null;
+                }
+
+                // 2. Check Drop-Out Zone (if inside project)
+                if (currentOpenProjectId) {
+                    const overZone = els.find(el => el.id === 'dropOutZone');
+                    if(overZone) {
+                        dropOutZone.classList.add('active-target');
+                        dragInfo.isOutZone = true;
+                    } else {
+                        dropOutZone.classList.remove('active-target');
+                        dragInfo.isOutZone = false;
+                    }
+                }
+            }
+        }
+
+        async function handleDragEnd(e) {
+            document.removeEventListener('pointermove', handleDragMove);
+            document.removeEventListener('pointerup', handleDragEnd);
+
+            if (dragInfo.isActive) {
+                const clone = dragInfo.clone;
+                const originalEl = dragInfo.el;
+                
+                if (dragInfo.targetProject) {
+                    // Dropped into project -> Animate into project card
+                    const targetRect = dragInfo.targetProject.getBoundingClientRect();
+                    const targetId = dragInfo.targetProject.dataset.id;
+                    
+                    clone.style.transition = 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)';
+                    clone.style.transform = `translate(${targetRect.left + 20}px, ${targetRect.top + 20}px) scale(0.2)`;
+                    clone.style.opacity = '0';
+                    dragInfo.targetProject.querySelector('.card').classList.remove('drop-target');
+                    
+                    updateNoteProject(dragInfo.id, targetId);
+                    
+                } else if (dragInfo.isOutZone) {
+                    // Dropped out of project -> Fly up
+                    clone.style.transition = 'all 0.4s ease-out';
+                    clone.style.transform = `translate(${e.clientX}px, -100px) scale(0.5)`;
+                    clone.style.opacity = '0';
+                    dropOutZone.classList.remove('active-target');
+                    
+                    updateNoteProject(dragInfo.id, null);
+                    
+                } else {
+                    // Revert to original position
+                    const origRect = originalEl.getBoundingClientRect();
+                    clone.style.transition = 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
+                    clone.style.transform = `translate(${origRect.left}px, ${origRect.top}px) scale(1) rotate(0deg)`;
+                    setTimeout(() => originalEl.classList.remove('is-dragging'), 250);
+                }
+
+                setTimeout(() => { if(clone && clone.parentNode) clone.remove(); }, 400);
+            }
+
+            // Reset state
+            dragInfo.isActive = false;
+            dragInfo.el = null;
+            if(dropOutZone) dropOutZone.classList.remove('visible');
+        }
+
+        async function updateNoteProject(noteId, projectId) {
+            // Optimistic Update locally
+            const noteIndex = allNotes.findIndex(n => n.id === noteId);
+            if(noteIndex > -1) allNotes[noteIndex].project_id = projectId;
+            renderViews(); 
+
+            // Update Database
+            try {
+                await supabaseClient.from('interactive_notes').update({ project_id: projectId }).eq('id', noteId);
+            } catch (err) {
+                console.error("DB Update Failed", err);
+                fetchNotes(); // Revert on fail
+            }
+        }
+
+        // --- Project View Handling ---
+        function openProjectView(projectNode) {
+            currentOpenProjectId = projectNode.id;
+            document.getElementById('projectTitleDisplay').innerText = projectNode.title || 'Project View';
+            
+            const projNotes = allNotes.filter(n => n.project_id === currentOpenProjectId);
+            renderGrid(projNotes, projectGrid);
+            
+            projectView.classList.add('active');
+        }
+
+        document.getElementById('btnBackToMain').addEventListener('click', () => {
+            projectView.classList.remove('active');
+            setTimeout(() => { currentOpenProjectId = null; projectGrid.innerHTML = ''; }, 400);
+        });
+
+        // Initialize App
+        fetchNotes();
+
+    </script>
+</body>
+</html>
