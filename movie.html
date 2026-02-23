@@ -41,6 +41,16 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
+
+        .fade-enter {
+            opacity: 0;
+            transform: scale(1.05);
+        }
+        .fade-enter-active {
+            opacity: 1;
+            transform: scale(1);
+            transition: opacity 700ms, transform 700ms;
+        }
     </style>
 </head>
 <body>
@@ -66,20 +76,29 @@
             return <i data-lucide={name} ref={iconRef} {...props}></i>;
         };
 
-        // --- CONSTANTS & MOCK DATA ---
+        // --- CONSTANTS ---
         const TMDB_API_KEY = 'e9b4a6ba169a41fbbe8d5db08584c138';
         const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
-        const HERO_MOVIE = {
-            title: 'Dune: Part Two',
-            year: '2025',
-            users: 243,
-            rating: 4.8,
-            comments: 18,
-            image: 'https://image.tmdb.org/t/p/original/1pdfLvkbY9ohJlCjQH2JGjjcNsV.jpg',
+        const GENRE_MAP_MOVIE = {
+            'Action': 28, 'Adventure': 12, 'Animation': 16, 'Comedy': 35,
+            'Crime': 80, 'Documentary': 99, 'Drama': 18, 'Family': 10751,
+            'Fantasy': 14, 'History': 36, 'Horror': 27, 'Music': 10402,
+            'Mystery': 9648, 'Romance': 10749, 'Sci-Fi': 878, 'Thriller': 53, 'War': 10752
         };
 
-        const GENRES = [
+        const GENRE_MAP_TV = {
+            'Action': 10759, 'Adventure': 10759, 'Animation': 16, 'Comedy': 35,
+            'Crime': 80, 'Documentary': 99, 'Drama': 18, 'Family': 10751,
+            'Fantasy': 10765, 'Mystery': 9648, 'Sci-Fi': 10765, 'Soap': 10766, 'War': 10768
+        };
+
+        const COUNTRY_MAP = {
+            'United States': 'US', 'Japan': 'JP', 'United Kingdom': 'GB', 
+            'South Korea': 'KR', 'France': 'FR', 'Spain': 'ES', 'Canada': 'CA'
+        };
+
+        const GENRES_BOARD = [
             { name: 'Action', icon: 'Swords' },
             { name: 'Comedy', icon: 'Smile' },
             { name: 'Historical', icon: 'Landmark' },
@@ -122,7 +141,7 @@
                                 <div>
                                     <div className="mb-1.5 flex items-center space-x-3 text-[11px] font-bold text-gray-500">
                                         <span className="flex items-center"><Icon name="Star" className="mr-1 h-3 w-3 text-gray-400 fill-white" /> {item.rating}</span>
-                                        <span className="flex items-center"><Icon name="MessageCircle" className="mr-1 h-3 w-3 text-gray-400" /> {item.comments}</span>
+                                        <span className="flex items-center"><Icon name="MessageCircle" className="mr-1 h-3 w-3 text-gray-400" /> {Math.floor(Math.random() * 50)}</span>
                                     </div>
                                     <h3 className="text-[15px] font-extrabold text-gray-900 truncate">{item.title}</h3>
                                 </div>
@@ -192,6 +211,16 @@
                     setSelectedItem(null);
                 }
             };
+
+            // Auto-play Hero Carousel
+            useEffect(() => {
+                if (activeTab === 'BOARD' && comingSoonItems.length > 0 && !selectedItem) {
+                    const timer = setInterval(() => {
+                        setCurrentHeroIndex(prev => (prev + 1) % comingSoonItems.length);
+                    }, 5000);
+                    return () => clearInterval(timer);
+                }
+            }, [activeTab, comingSoonItems.length, selectedItem]);
 
             // Infinite Scroll
             useEffect(() => {
@@ -272,13 +301,26 @@
                     setIsComingSoonLoading(true);
                     try {
                         const today = new Date().toISOString().split('T')[0];
-                        const res = await fetch(`${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&sort_by=popularity.desc&primary_release_date.gte=${today}&with_origin_country=US`);
-                        const data = await res.json();
-                        setComingSoonItems(data.results.filter(i => i.poster_path).slice(0, 15).map(i => ({
-                            id: i.id, type: 'movie', title: i.title, rating: i.vote_average?.toFixed(1) || 'N/A', viewers: Math.floor(Math.random()*500), comments: Math.floor(Math.random()*100),
+                        const movieUrl = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&sort_by=popularity.desc&primary_release_date.gte=${today}&with_origin_country=US&page=1`;
+                        const tvUrl = `${TMDB_BASE_URL}/discover/tv?api_key=${TMDB_API_KEY}&sort_by=popularity.desc&first_air_date.gte=${today}&with_origin_country=US&page=1`;
+                        
+                        const [mRes, tRes] = await Promise.all([fetch(movieUrl), fetch(tvUrl)]);
+                        const mData = await mRes.json();
+                        const tData = await tRes.json();
+                        
+                        const combined = [...(mData.results || []), ...(tData.results || [])]
+                            .sort((a, b) => new Date(a.release_date || a.first_air_date) - new Date(b.release_date || b.first_air_date));
+
+                        setComingSoonItems(combined.filter(i => i.poster_path || i.backdrop_path).slice(0, 15).map(i => ({
+                            id: i.id, 
+                            type: i.name ? 'tv' : 'movie', 
+                            title: i.title || i.name, 
+                            rating: i.vote_average?.toFixed(1) || 'N/A', 
+                            viewers: Math.floor(Math.random()*500 + 100), 
+                            comments: Math.floor(Math.random()*100),
                             image: `https://image.tmdb.org/t/p/w500${i.poster_path}`,
                             heroImage: `https://image.tmdb.org/t/p/original${i.backdrop_path || i.poster_path}`,
-                            dateFormatted: new Date(i.release_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                            dateFormatted: new Date(i.release_date || i.first_air_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                         })));
                     } catch (err) { console.error(err); } finally { setIsComingSoonLoading(false); }
                 };
@@ -294,26 +336,60 @@
                     setIsLoading(true);
                     try {
                         let url = '';
-                        if (activeTab === 'MOVIES') {
-                            url = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&sort_by=popularity.desc&page=${page}`;
-                            if (filterYear) url += `&primary_release_year=${filterYear}`;
-                        } else if (activeTab === 'SERIES') {
-                            url = `${TMDB_BASE_URL}/discover/tv?api_key=${TMDB_API_KEY}&sort_by=popularity.desc&page=${page}`;
-                            if (filterYear) url += `&first_air_date_year=${filterYear}`;
-                        } else if (activeTab === 'NEW') {
+                        let newItems = [];
+
+                        if (activeTab === 'NEW') {
                             const today = new Date();
-                            const past = new Date(); past.setDate(today.getDate() - parseInt(filterTimeframe));
-                            url = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&sort_by=primary_release_date.desc&page=${page}&primary_release_date.gte=${past.toISOString().split('T')[0]}&primary_release_date.lte=${today.toISOString().split('T')[0]}&with_origin_country=US`;
-                        } else if (activeTab === 'SEARCH') {
-                            url = `${TMDB_BASE_URL}/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}&page=${page}`;
+                            const past = new Date(); 
+                            past.setMonth(today.getMonth() - 2); 
+                            
+                            const dateGte = past.toISOString().split('T')[0];
+                            const dateLte = today.toISOString().split('T')[0];
+
+                            const movieUrl = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&sort_by=primary_release_date.desc&page=${page}&primary_release_date.gte=${dateGte}&primary_release_date.lte=${dateLte}&with_origin_country=US`;
+                            const tvUrl = `${TMDB_BASE_URL}/discover/tv?api_key=${TMDB_API_KEY}&sort_by=first_air_date.desc&page=${page}&first_air_date.gte=${dateGte}&first_air_date.lte=${dateLte}&with_origin_country=US`;
+
+                            const [mRes, tRes] = await Promise.all([fetch(movieUrl), fetch(tvUrl)]);
+                            const mData = await mRes.json();
+                            const tData = await tRes.json();
+
+                            const combined = [
+                                ...(mData.results || []),
+                                ...(tData.results || [])
+                            ].filter(i => i.poster_path)
+                             .sort((a, b) => new Date(b.release_date || b.first_air_date) - new Date(a.release_date || a.first_air_date))
+                             .slice(0, 10); 
+
+                            newItems = combined.map(i => ({
+                                id: `${i.id}-${page}`, 
+                                type: i.name ? 'tv' : 'movie', 
+                                name: i.title || i.name, 
+                                rating: { average: i.vote_average?.toFixed(1) || 'N/A' }, 
+                                image: { medium: `https://image.tmdb.org/t/p/w500${i.poster_path}` }
+                            }));
+                        } else {
+                            if (activeTab === 'MOVIES') {
+                                url = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&sort_by=popularity.desc&page=${page}`;
+                                if (filterYear) url += `&primary_release_year=${filterYear}`;
+                                if (filterGenre) url += `&with_genres=${GENRE_MAP_MOVIE[filterGenre]}`;
+                                if (filterCountry) url += `&with_origin_country=${COUNTRY_MAP[filterCountry]}`;
+                            } else if (activeTab === 'SERIES') {
+                                url = `${TMDB_BASE_URL}/discover/tv?api_key=${TMDB_API_KEY}&sort_by=popularity.desc&page=${page}`;
+                                if (filterYear) url += `&first_air_date_year=${filterYear}`;
+                                if (filterGenre) url += `&with_genres=${GENRE_MAP_TV[filterGenre]}`;
+                                if (filterCountry) url += `&with_origin_country=${COUNTRY_MAP[filterCountry]}`;
+                            } else if (activeTab === 'SEARCH') {
+                                url = `${TMDB_BASE_URL}/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}&page=${page}`;
+                            }
+
+                            const res = await fetch(url);
+                            const data = await res.json();
+                            newItems = (data.results || []).filter(i => i.poster_path && i.media_type !== 'person').map(i => ({
+                                id: `${i.id}-${page}`, type: i.media_type || (i.name ? 'tv' : 'movie'), name: i.title || i.name, rating: { average: i.vote_average?.toFixed(1) || 'N/A' }, image: { medium: `https://image.tmdb.org/t/p/w500${i.poster_path}` }
+                            }));
                         }
 
-                        const res = await fetch(url);
-                        const data = await res.json();
-                        const mapped = (data.results || []).filter(i => i.poster_path && i.media_type !== 'person').map(i => ({
-                            id: `${i.id}-${page}`, type: i.media_type || (i.name ? 'tv' : 'movie'), name: i.title || i.name, rating: { average: i.vote_average?.toFixed(1) || 'N/A' }, image: { medium: `https://image.tmdb.org/t/p/w500${i.poster_path}` }
-                        }));
-                        setFetchedShows(prev => page === 1 ? mapped : [...prev, ...mapped]);
+                        setFetchedShows(prev => page === 1 ? newItems : [...prev, ...newItems]);
                     } catch (err) { console.error(err); } finally { setIsLoading(false); }
                 };
                 fetchDynamicData();
@@ -328,7 +404,6 @@
 
             return (
                 <div className="min-h-screen bg-gradient-to-br from-[#f2f6f9] to-[#e4eef4] pb-20 overflow-x-hidden">
-                    {/* Header */}
                     <header className="sticky top-0 z-[100] flex h-20 items-center justify-between px-8 bg-white/40 backdrop-blur-md border-b border-white/20">
                         <div className="flex flex-col items-center justify-center pt-1 cursor-pointer" onClick={() => handleTabChange('BOARD')}>
                             <span className="text-sm font-black tracking-[0.3em] leading-none">M O V I E</span>
@@ -350,7 +425,6 @@
                         </div>
                     </header>
 
-                    {/* Main Content */}
                     <main className="mx-auto max-w-[1500px] px-8 py-8">
                         {selectedItem ? (
                             <div className="animate-in fade-in duration-500">
@@ -380,13 +454,24 @@
                                             <div className="col-span-12 lg:col-span-8 xl:col-span-9">
                                                 <h2 className="text-2xl font-black mb-4">Synopsis</h2>
                                                 <p className="text-lg text-gray-600 mb-10">{detailsData.overview}</p>
-                                                <h2 className="text-2xl font-black mb-6">Top Cast</h2>
-                                                <div ref={castScrollRef} className="flex gap-6 overflow-x-auto no-scrollbar pb-4">
-                                                    {detailsData.credits?.cast?.slice(0, 15).map(person => (
+                                                
+                                                <div className="flex items-center justify-between mb-6">
+                                                    <h2 className="text-2xl font-black">Top Cast</h2>
+                                                    <div className="flex space-x-2">
+                                                        <button onClick={() => scrollCast('left')} className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 bg-white hover:bg-gray-50 shadow-sm transition-all">
+                                                            <Icon name="ChevronLeft" className="h-5 w-5 text-gray-600" />
+                                                        </button>
+                                                        <button onClick={() => scrollCast('right')} className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 bg-white hover:bg-gray-50 shadow-sm transition-all">
+                                                            <Icon name="ChevronRight" className="h-5 w-5 text-gray-600" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div ref={castScrollRef} className="flex gap-6 overflow-x-auto no-scrollbar pb-4 scroll-smooth">
+                                                    {detailsData.credits?.cast?.map(person => (
                                                         <div key={person.id} className="w-32 flex-shrink-0 text-center">
-                                                            <img src={person.profile_path ? `https://image.tmdb.org/t/p/w185${person.profile_path}` : 'https://via.placeholder.com/185'} className="h-32 w-32 rounded-full object-cover mb-3 mx-auto" />
+                                                            <img src={person.profile_path ? `https://image.tmdb.org/t/p/w185${person.profile_path}` : 'https://via.placeholder.com/185'} className="h-32 w-32 rounded-full object-cover mb-3 mx-auto border-2 border-white shadow-sm" />
                                                             <p className="text-xs font-black line-clamp-1">{person.name}</p>
-                                                            <p className="text-[10px] text-gray-500">{person.character}</p>
+                                                            <p className="text-[10px] text-gray-500 line-clamp-1">{person.character}</p>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -398,50 +483,121 @@
                         ) : activeTab === 'BOARD' ? (
                             <>
                                 <div className="flex gap-8 mb-8 h-[400px]">
-                                    <div className="flex-1 relative overflow-hidden rounded-[2.5rem] bg-black shadow-xl cursor-pointer" onClick={() => comingSoonItems[currentHeroIndex] && openDetails(comingSoonItems[currentHeroIndex].id, 'movie')}>
+                                    <div className="group relative flex-1 overflow-hidden rounded-[2.5rem] bg-black shadow-xl">
                                         {comingSoonItems.length > 0 ? (
-                                            <>
-                                                <img src={comingSoonItems[currentHeroIndex].heroImage} className="absolute inset-0 w-full h-full object-cover opacity-80" />
-                                                <div className="absolute inset-0 bg-gradient-to-r from-black/90 to-transparent"></div>
-                                                <div className="absolute bottom-12 left-12 text-white">
-                                                    <p className="text-xs font-bold mb-2 opacity-80 uppercase tracking-widest">Releasing {comingSoonItems[currentHeroIndex].dateFormatted}</p>
-                                                    <h1 className="text-5xl font-black mb-4">{comingSoonItems[currentHeroIndex].title}</h1>
-                                                    <div className="flex items-center gap-4 text-xs font-bold">
-                                                        <span>★ {comingSoonItems[currentHeroIndex].rating}</span>
-                                                        <span>👥 {comingSoonItems[currentHeroIndex].viewers} Interested</span>
+                                            <div className="relative h-full w-full">
+                                                <img 
+                                                    key={comingSoonItems[currentHeroIndex].id}
+                                                    src={comingSoonItems[currentHeroIndex].heroImage} 
+                                                    className="absolute inset-0 w-full h-full object-cover opacity-80 animate-in fade-in zoom-in-95 duration-1000" 
+                                                />
+                                                <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/40 to-transparent"></div>
+                                                
+                                                <div className="absolute inset-x-6 top-1/2 flex -translate-y-1/2 justify-between z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); setCurrentHeroIndex(p => p === 0 ? comingSoonItems.length - 1 : p - 1); }}
+                                                        className="flex h-12 w-12 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-md border border-white/20 hover:bg-black/50 transition-all"
+                                                    >
+                                                        <Icon name="ChevronLeft" className="h-6 w-6" />
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); setCurrentHeroIndex(p => (p + 1) % comingSoonItems.length); }}
+                                                        className="flex h-12 w-12 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-md border border-white/20 hover:bg-black/50 transition-all"
+                                                    >
+                                                        <Icon name="ChevronRight" className="h-6 w-6" />
+                                                    </button>
+                                                </div>
+
+                                                <div className="absolute left-12 top-8 flex space-x-1.5 z-20">
+                                                    {comingSoonItems.map((_, idx) => (
+                                                        <div 
+                                                            key={idx} 
+                                                            className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentHeroIndex ? 'w-5 bg-white shadow-[0_0_8px_white]' : 'w-1.5 bg-white/40'}`} 
+                                                        />
+                                                    ))}
+                                                </div>
+
+                                                <div 
+                                                    className="absolute bottom-12 left-12 text-white z-20 cursor-pointer"
+                                                    onClick={() => openDetails(comingSoonItems[currentHeroIndex].id, comingSoonItems[currentHeroIndex].type)}
+                                                >
+                                                    <p className="text-xs font-bold mb-3 opacity-90 uppercase tracking-[0.2em] bg-white/10 w-max px-3 py-1 rounded-full border border-white/10 backdrop-blur-sm">
+                                                        Releasing {comingSoonItems[currentHeroIndex].dateFormatted}
+                                                    </p>
+                                                    <h1 className="text-5xl font-black mb-5 max-w-2xl leading-tight line-clamp-2 drop-shadow-md">{comingSoonItems[currentHeroIndex].title}</h1>
+                                                    <div className="flex items-center gap-6 text-xs font-bold">
+                                                        <span className="flex items-center gap-1.5"><Icon name="Star" className="h-3.5 w-3.5 fill-white" /> {comingSoonItems[currentHeroIndex].rating} TMDb</span>
+                                                        <span className="flex items-center gap-1.5"><Icon name="User" className="h-3.5 w-3.5" /> {comingSoonItems[currentHeroIndex].viewers} Anticipating</span>
                                                     </div>
                                                 </div>
-                                            </>
+                                            </div>
                                         ) : <div className="animate-pulse bg-gray-800 w-full h-full"></div>}
                                     </div>
+
                                     <div className="w-[340px] flex flex-col">
-                                        <h2 className="text-xl font-bold mb-5">Coming soon</h2>
+                                        <h2 className="text-xl font-bold mb-5 tracking-tight">Coming soon</h2>
                                         <div className="flex flex-col gap-3">
                                             {comingSoonItems.slice(0, 3).map(item => (
-                                                <div key={item.id} onClick={() => openDetails(item.id, 'movie')} className="flex items-center gap-4 p-2 bg-white/40 rounded-2xl hover:bg-white/70 cursor-pointer transition-colors">
-                                                    <img src={item.image} className="w-[110px] h-[72px] rounded-xl object-cover" />
+                                                <div key={item.id} onClick={() => openDetails(item.id, item.type)} className="flex items-center gap-4 p-2 bg-white/40 rounded-2xl hover:bg-white/70 cursor-pointer transition-colors border border-white/40 shadow-sm backdrop-blur-sm">
+                                                    <img src={item.image} className="w-[110px] h-[72px] rounded-xl object-cover shadow-sm" />
                                                     <div className="overflow-hidden">
-                                                        <h3 className="font-bold truncate">{item.title}</h3>
-                                                        <p className="text-[10px] text-gray-500 font-bold mt-1 uppercase">Soon • {item.rating} iMDB</p>
+                                                        <h3 className="font-bold truncate text-[15px]">{item.title}</h3>
+                                                        <p className="text-[10px] text-gray-500 font-bold mt-1 uppercase tracking-wider">{item.dateFormatted}</p>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <span className="text-[10px] font-bold text-black/60 flex items-center gap-1"><Icon name="Star" className="h-2.5 w-2.5 fill-black/40" /> {item.rating}</span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
                                     </div>
                                 </div>
+
                                 <div className="mb-10 flex gap-3 overflow-x-auto no-scrollbar py-2">
-                                    {GENRES.map(g => (
+                                    {GENRES_BOARD.map(g => (
                                         <button key={g.name} onClick={() => setBoardGenre(boardGenre === g.name ? '' : g.name)} className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-bold text-sm shadow-sm transition-all border ${boardGenre === g.name ? 'bg-black text-white' : 'bg-white/70 hover:bg-white'}`}>
                                             <Icon name={g.icon} /> {g.name}
                                         </button>
                                     ))}
                                 </div>
-                                <Section title={boardGenre ? `Trending ${boardGenre}` : "Trending"} items={trendingItems} onSelect={openDetails} />
+                                
+                                <Section title={boardGenre ? `Trending ${boardGenre}` : "Trending Now"} items={trendingItems} onSelect={openDetails} />
                                 <Section title={boardGenre ? `New ${boardGenre}` : "New Releases"} items={boardNewItems} onSelect={openDetails} />
                             </>
                         ) : (
                             <div className="animate-in fade-in duration-500">
-                                <h1 className="text-3xl font-black mb-8 capitalize">{activeTab.toLowerCase()} Collection</h1>
+                                <h1 className="text-3xl font-black mb-8 capitalize">
+                                    {activeTab === 'SEARCH' ? `Search Results for "${searchQuery}"` : `${activeTab.toLowerCase()} Collection`}
+                                </h1>
+
+                                {/* Updated Filter UI */}
+                                {['MOVIES', 'SERIES', 'NEW'].includes(activeTab) && (
+                                    <div className="flex flex-wrap gap-4 mb-8">
+                                        {activeTab === 'NEW' ? (
+                                            <select value={filterTimeframe} onChange={e => { setFilterTimeframe(e.target.value); setPage(1); setFetchedShows([]); }} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-sm font-semibold shadow-sm outline-none">
+                                                <option value="60">Last 2 Months</option>
+                                                <option value="30">Last Month</option>
+                                                <option value="14">Last 14 Days</option>
+                                            </select>
+                                        ) : (
+                                            <>
+                                                <select value={filterYear} onChange={e => { setFilterYear(e.target.value); setPage(1); setFetchedShows([]); }} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-sm font-semibold shadow-sm outline-none">
+                                                    <option value="">All Years</option>
+                                                    {[2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2010].map(y => <option key={y} value={y}>{y}</option>)}
+                                                </select>
+                                                <select value={filterGenre} onChange={e => { setFilterGenre(e.target.value); setPage(1); setFetchedShows([]); }} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-sm font-semibold shadow-sm outline-none">
+                                                    <option value="">All Genres</option>
+                                                    {Object.keys(activeTab === 'MOVIES' ? GENRE_MAP_MOVIE : GENRE_MAP_TV).map(g => <option key={g} value={g}>{g}</option>)}
+                                                </select>
+                                                <select value={filterCountry} onChange={e => { setFilterCountry(e.target.value); setPage(1); setFetchedShows([]); }} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-sm font-semibold shadow-sm outline-none">
+                                                    <option value="">All Countries</option>
+                                                    {Object.keys(COUNTRY_MAP).map(c => <option key={c} value={c}>{c}</option>)}
+                                                </select>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+
                                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-6">
                                     {fetchedShows.map(show => (
                                         <div key={show.id} onClick={() => openDetails(show.id, show.type)} className="cursor-pointer group">
@@ -453,7 +609,7 @@
                                         </div>
                                     ))}
                                 </div>
-                                {isLoading && <div className="py-10 text-center font-bold">Loading more...</div>}
+                                {isLoading && <div className="py-10 text-center flex justify-center"><div className="w-8 h-8 border-4 border-gray-300 border-t-black rounded-full animate-spin"></div></div>}
                             </div>
                         )}
                     </main>
