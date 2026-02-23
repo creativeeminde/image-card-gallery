@@ -110,7 +110,7 @@
         ];
 
         // --- SUB-COMPONENTS ---
-        function Section({ title, items, onSelect }) {
+        function Section({ title, items, onSelect, isLoading }) {
             const scrollContainerRef = useRef(null);
             const scroll = (direction) => {
                 if (scrollContainerRef.current) {
@@ -122,32 +122,43 @@
                 <div className="mb-10">
                     <div className="mb-5 flex items-center justify-between">
                         <h2 className="text-xl font-extrabold tracking-wide">{title}</h2>
-                        <div className="flex space-x-2">
-                            <button onClick={() => scroll('left')} className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 hover:bg-white shadow-sm transition-all">
-                                <Icon name="ChevronLeft" className="h-5 w-5 text-gray-600" />
-                            </button>
-                            <button onClick={() => scroll('right')} className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 hover:bg-white shadow-sm transition-all">
-                                <Icon name="ChevronRight" className="h-5 w-5 text-gray-600" />
-                            </button>
-                        </div>
-                    </div>
-                    <div ref={scrollContainerRef} className="flex space-x-5 overflow-x-auto no-scrollbar pb-4 scroll-smooth">
-                        {items.map((item, i) => (
-                            <div key={i} onClick={() => onSelect(item.id, item.type)} className="group flex w-[170px] shrink-0 cursor-pointer flex-col gap-3">
-                                <div className="relative h-[250px] w-full overflow-hidden rounded-[1.25rem] shadow-sm">
-                                    <img src={item.image} alt={item.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                                </div>
-                                <div>
-                                    <div className="mb-1.5 flex items-center space-x-3 text-[11px] font-bold text-gray-500">
-                                        <span className="flex items-center"><Icon name="Star" className="mr-1 h-3 w-3 text-gray-400 fill-white" /> {item.rating}</span>
-                                        <span className="flex items-center"><Icon name="MessageCircle" className="mr-1 h-3 w-3 text-gray-400" /> {Math.floor(Math.random() * 50)}</span>
-                                    </div>
-                                    <h3 className="text-[15px] font-extrabold text-gray-900 truncate">{item.title}</h3>
-                                </div>
+                        {!isLoading && (
+                            <div className="flex space-x-2">
+                                <button onClick={() => scroll('left')} className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 hover:bg-white shadow-sm transition-all">
+                                    <Icon name="ChevronLeft" className="h-5 w-5 text-gray-600" />
+                                </button>
+                                <button onClick={() => scroll('right')} className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 hover:bg-white shadow-sm transition-all">
+                                    <Icon name="ChevronRight" className="h-5 w-5 text-gray-600" />
+                                </button>
                             </div>
-                        ))}
+                        )}
                     </div>
+
+                    {isLoading ? (
+                        <div className="flex h-[300px] w-full items-center justify-center">
+                            <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-black"></div>
+                        </div>
+                    ) : (
+                        <div ref={scrollContainerRef} className="flex space-x-5 overflow-x-auto no-scrollbar pb-4 scroll-smooth">
+                            {items.length > 0 ? items.map((item, i) => (
+                                <div key={i} onClick={() => onSelect(item.id, item.type)} className="group flex w-[170px] shrink-0 cursor-pointer flex-col gap-3">
+                                    <div className="relative h-[250px] w-full overflow-hidden rounded-[1.25rem] shadow-sm">
+                                        <img src={item.image} alt={item.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                    </div>
+                                    <div>
+                                        <div className="mb-1.5 flex items-center space-x-3 text-[11px] font-bold text-gray-500">
+                                            <span className="flex items-center"><Icon name="Star" className="mr-1 h-3 w-3 text-gray-400 fill-white" /> {item.rating}</span>
+                                            <span className="flex items-center"><Icon name="MessageCircle" className="mr-1 h-3 w-3 text-gray-400" /> {item.comments || Math.floor(Math.random() * 50)}</span>
+                                        </div>
+                                        <h3 className="text-[15px] font-extrabold text-gray-900 truncate">{item.title}</h3>
+                                    </div>
+                                </div>
+                            )) : (
+                                <div className="py-10 text-gray-400 font-bold">No results found for this category.</div>
+                            )}
+                        </div>
+                    )}
                 </div>
             );
         }
@@ -159,10 +170,12 @@
             const [isLoading, setIsLoading] = useState(false);
             const [page, setPage] = useState(1);
             
+            const [randomPageOffset, setRandomPageOffset] = useState(() => Math.floor(Math.random() * 50));
+
             const [filterYear, setFilterYear] = useState('');
             const [filterGenre, setFilterGenre] = useState('');
             const [filterCountry, setFilterCountry] = useState('');
-            const [filterTimeframe, setFilterTimeframe] = useState('30');
+            const [filterTimeframe, setFilterTimeframe] = useState('60');
 
             const [boardGenre, setBoardGenre] = useState('');
             const [trendingItems, setTrendingItems] = useState([]);
@@ -173,22 +186,34 @@
             const [isComingSoonLoading, setIsComingSoonLoading] = useState(false);
             const [currentHeroIndex, setCurrentHeroIndex] = useState(0);
 
+            const [popularMovies, setPopularMovies] = useState([]);
+            const [popularTV, setPopularTV] = useState([]);
+            const [topRated, setTopRated] = useState([]);
+            const [isSectionsLoading, setIsSectionsLoading] = useState(false);
+
             const [searchInput, setSearchInput] = useState('');
             const [searchQuery, setSearchQuery] = useState('');
 
             const [selectedItem, setSelectedItem] = useState(null);
             const [detailsData, setDetailsData] = useState(null);
             const [isDetailsLoading, setIsDetailsLoading] = useState(false);
+
+            const [selectedPerson, setSelectedPerson] = useState(null);
+            const [personData, setPersonData] = useState(null);
+            const [isPersonLoading, setIsPersonLoading] = useState(false);
             
             const castScrollRef = useRef(null);
 
             const handleTabChange = (tab) => {
                 setActiveTab(tab);
                 setPage(1);
+                setRandomPageOffset(Math.floor(Math.random() * 50));
                 setFilterYear('');
                 setFilterGenre('');
                 setFilterCountry('');
+                setFilterTimeframe('60');
                 setSelectedItem(null);
+                setSelectedPerson(null);
                 if (tab !== 'SEARCH') {
                     setSearchInput('');
                     setSearchQuery('');
@@ -199,6 +224,13 @@
             const openDetails = (id, type) => {
                 const numericId = typeof id === 'string' ? id.split('-')[0] : id;
                 setSelectedItem({ id: numericId, type });
+                setSelectedPerson(null);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+
+            const openPersonDetails = (personId) => {
+                setSelectedPerson(personId);
+                setSelectedItem(null);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             };
 
@@ -209,23 +241,22 @@
                     setPage(1);
                     setFetchedShows([]);
                     setSelectedItem(null);
+                    setSelectedPerson(null);
                 }
             };
 
-            // Auto-play Hero Carousel
             useEffect(() => {
-                if (activeTab === 'BOARD' && comingSoonItems.length > 0 && !selectedItem) {
+                if (activeTab === 'BOARD' && comingSoonItems.length > 0 && !selectedItem && !selectedPerson) {
                     const timer = setInterval(() => {
                         setCurrentHeroIndex(prev => (prev + 1) % comingSoonItems.length);
                     }, 5000);
                     return () => clearInterval(timer);
                 }
-            }, [activeTab, comingSoonItems.length, selectedItem]);
+            }, [activeTab, comingSoonItems.length, selectedItem, selectedPerson]);
 
-            // Infinite Scroll
             useEffect(() => {
                 const handleScroll = () => {
-                    if (selectedItem) return; 
+                    if (selectedItem || selectedPerson) return; 
                     if (window.innerHeight + document.documentElement.scrollTop + 100 >= document.documentElement.offsetHeight) {
                         if (!isLoading && (['MOVIES', 'SERIES', 'NEW', 'SEARCH'].includes(activeTab))) {
                             setPage((prevPage) => prevPage + 1);
@@ -234,9 +265,8 @@
                 };
                 window.addEventListener('scroll', handleScroll);
                 return () => window.removeEventListener('scroll', handleScroll);
-            }, [isLoading, activeTab, selectedItem]);
+            }, [isLoading, activeTab, selectedItem, selectedPerson]);
 
-            // Fetch Details
             useEffect(() => {
                 if (!selectedItem) {
                     setDetailsData(null);
@@ -254,7 +284,23 @@
                 fetchDetails();
             }, [selectedItem]);
 
-            // Fetch Board Data
+            useEffect(() => {
+                if (!selectedPerson) {
+                    setPersonData(null);
+                    return;
+                }
+                const fetchPerson = async () => {
+                    setIsPersonLoading(true);
+                    try {
+                        const url = `${TMDB_BASE_URL}/person/${selectedPerson}?api_key=${TMDB_API_KEY}&append_to_response=combined_credits`;
+                        const res = await fetch(url);
+                        const data = await res.json();
+                        setPersonData(data);
+                    } catch (err) { console.error(err); } finally { setIsPersonLoading(false); }
+                };
+                fetchPerson();
+            }, [selectedPerson]);
+
             useEffect(() => {
                 if (activeTab !== 'BOARD') return;
 
@@ -269,82 +315,89 @@
                     'Documentary': { m: 99, t: 99 },
                 };
 
-                const fetchTrending = async () => {
+                const fetchBoardData = async () => {
                     setIsTrendingLoading(true);
+                    setIsBoardNewLoading(true);
+                    setIsSectionsLoading(true);
+                    
                     try {
-                        let url = boardGenre 
+                        let trendingUrl = boardGenre 
                             ? `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&with_genres=${genreMap[boardGenre].m}&sort_by=popularity.desc`
                             : `${TMDB_BASE_URL}/trending/all/week?api_key=${TMDB_API_KEY}`;
-                        const res = await fetch(url);
-                        const data = await res.json();
-                        setTrendingItems(data.results.filter(i => i.poster_path).slice(0, 15).map(i => ({
-                            id: i.id, type: i.media_type || (i.name ? 'tv' : 'movie'), title: i.title || i.name, rating: i.vote_average?.toFixed(1) || 'N/A', comments: Math.floor(Math.random()*100), image: `https://image.tmdb.org/t/p/w500${i.poster_path}`
-                        })));
-                    } catch (err) { console.error(err); } finally { setIsTrendingLoading(false); }
-                };
-
-                const fetchBoardNew = async () => {
-                    setIsBoardNewLoading(true);
-                    try {
+                        
                         const today = new Date().toISOString().split('T')[0];
-                        let url = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&sort_by=primary_release_date.desc&primary_release_date.lte=${today}&vote_count.gte=5&with_origin_country=US`;
-                        if (boardGenre && genreMap[boardGenre].m) url += `&with_genres=${genreMap[boardGenre].m}`;
-                        const res = await fetch(url);
-                        const data = await res.json();
-                        setBoardNewItems(data.results.filter(i => i.poster_path).slice(0, 15).map(i => ({
-                            id: i.id, type: 'movie', title: i.title, rating: i.vote_average?.toFixed(1) || 'N/A', comments: Math.floor(Math.random()*100), image: `https://image.tmdb.org/t/p/w500${i.poster_path}`
-                        })));
-                    } catch (err) { console.error(err); } finally { setIsBoardNewLoading(false); }
+                        let newUrl = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&sort_by=primary_release_date.desc&primary_release_date.lte=${today}&vote_count.gte=5&with_origin_country=US`;
+                        if (boardGenre && genreMap[boardGenre].m) newUrl += `&with_genres=${genreMap[boardGenre].m}`;
+
+                        let popMovieUrl = boardGenre
+                            ? `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&with_genres=${genreMap[boardGenre].m}&sort_by=popularity.desc`
+                            : `${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}&language=en-US&page=1`;
+
+                        let popTvUrl = boardGenre
+                            ? `${TMDB_BASE_URL}/discover/tv?api_key=${TMDB_API_KEY}&with_genres=${genreMap[boardGenre].t}&sort_by=popularity.desc`
+                            : `${TMDB_BASE_URL}/tv/popular?api_key=${TMDB_API_KEY}&language=en-US&page=1`;
+
+                        let topRatedUrl = boardGenre
+                            ? `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&with_genres=${genreMap[boardGenre].m}&sort_by=vote_average.desc&vote_count.gte=1000`
+                            : `${TMDB_BASE_URL}/movie/top_rated?api_key=${TMDB_API_KEY}&language=en-US&page=1`;
+
+                        const [trendRes, newRes, popMRes, popTRes, topRes] = await Promise.all([
+                            fetch(trendingUrl), fetch(newUrl), fetch(popMovieUrl), fetch(popTvUrl), fetch(topRatedUrl)
+                        ]);
+
+                        const mapper = (i, type) => ({
+                            id: i.id, 
+                            type: type || i.media_type || (i.name ? 'tv' : 'movie'), 
+                            title: i.title || i.name, 
+                            rating: i.vote_average?.toFixed(1) || 'N/A', 
+                            comments: Math.floor(Math.random()*100), 
+                            image: `https://image.tmdb.org/t/p/w500${i.poster_path}`
+                        });
+
+                        const [tD, nD, pMD, pTD, trD] = await Promise.all([trendRes.json(), newRes.json(), popMRes.json(), popTRes.json(), topRes.json()]);
+
+                        setTrendingItems(tD.results?.filter(i => i.poster_path).slice(0, 15).map(i => mapper(i)) || []);
+                        setBoardNewItems(nD.results?.filter(i => i.poster_path).slice(0, 15).map(i => mapper(i, 'movie')) || []);
+                        setPopularMovies(pMD.results?.filter(i => i.poster_path).slice(0, 15).map(i => mapper(i, 'movie')) || []);
+                        setPopularTV(pTD.results?.filter(i => i.poster_path).slice(0, 15).map(i => mapper(i, 'tv')) || []);
+                        setTopRated(trD.results?.filter(i => i.poster_path).slice(0, 15).map(i => mapper(i, 'movie')) || []);
+
+                    } catch (err) { console.error(err); } finally { 
+                        setIsTrendingLoading(false); setIsBoardNewLoading(false); setIsSectionsLoading(false);
+                    }
                 };
 
                 const fetchComingSoon = async () => {
                     setIsComingSoonLoading(true);
                     try {
                         const today = new Date().toISOString().split('T')[0];
-                        const movieUrl = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&sort_by=popularity.desc&primary_release_date.gte=${today}&with_origin_country=US&page=1`;
-                        const tvUrl = `${TMDB_BASE_URL}/discover/tv?api_key=${TMDB_API_KEY}&sort_by=popularity.desc&first_air_date.gte=${today}&with_origin_country=US&page=1`;
-                        
-                        const [mRes, tRes] = await Promise.all([fetch(movieUrl), fetch(tvUrl)]);
-                        const mData = await mRes.json();
-                        const tData = await tRes.json();
-                        
-                        const combined = [...(mData.results || []), ...(tData.results || [])]
-                            .sort((a, b) => new Date(a.release_date || a.first_air_date) - new Date(b.release_date || b.first_air_date));
-
-                        setComingSoonItems(combined.filter(i => i.poster_path || i.backdrop_path).slice(0, 15).map(i => ({
-                            id: i.id, 
-                            type: i.name ? 'tv' : 'movie', 
-                            title: i.title || i.name, 
-                            rating: i.vote_average?.toFixed(1) || 'N/A', 
-                            viewers: Math.floor(Math.random()*500 + 100), 
-                            comments: Math.floor(Math.random()*100),
+                        const res = await fetch(`${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&sort_by=popularity.desc&primary_release_date.gte=${today}&with_origin_country=US`);
+                        const data = await res.json();
+                        setComingSoonItems(data.results.filter(i => i.poster_path).slice(0, 15).map(i => ({
+                            id: i.id, type: 'movie', title: i.title, rating: i.vote_average?.toFixed(1) || 'N/A', viewers: Math.floor(Math.random()*500), comments: Math.floor(Math.random()*100),
                             image: `https://image.tmdb.org/t/p/w500${i.poster_path}`,
                             heroImage: `https://image.tmdb.org/t/p/original${i.backdrop_path || i.poster_path}`,
-                            dateFormatted: new Date(i.release_date || i.first_air_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                            dateFormatted: new Date(i.release_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                         })));
                     } catch (err) { console.error(err); } finally { setIsComingSoonLoading(false); }
                 };
 
-                fetchTrending(); fetchBoardNew(); fetchComingSoon();
+                fetchBoardData(); fetchComingSoon();
             }, [activeTab, boardGenre]);
 
-            // Fetch Dynamic Grid Data
             useEffect(() => {
-                if (activeTab === 'BOARD' || selectedItem) return;
+                if (activeTab === 'BOARD' || selectedItem || selectedPerson) return;
 
                 const fetchDynamicData = async () => {
                     setIsLoading(true);
                     try {
-                        let url = '';
                         let newItems = [];
+                        const effectivePage = page + randomPageOffset;
 
                         if (activeTab === 'NEW') {
-                            const today = new Date();
-                            const past = new Date(); 
-                            past.setMonth(today.getMonth() - 2); 
-                            
-                            const dateGte = past.toISOString().split('T')[0];
-                            const dateLte = today.toISOString().split('T')[0];
+                            const currentYear = new Date().getFullYear();
+                            const dateGte = `${currentYear}-01-01`;
+                            const dateLte = new Date().toISOString().split('T')[0];
 
                             const movieUrl = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&sort_by=primary_release_date.desc&page=${page}&primary_release_date.gte=${dateGte}&primary_release_date.lte=${dateLte}&with_origin_country=US`;
                             const tvUrl = `${TMDB_BASE_URL}/discover/tv?api_key=${TMDB_API_KEY}&sort_by=first_air_date.desc&page=${page}&first_air_date.gte=${dateGte}&first_air_date.lte=${dateLte}&with_origin_country=US`;
@@ -368,13 +421,14 @@
                                 image: { medium: `https://image.tmdb.org/t/p/w500${i.poster_path}` }
                             }));
                         } else {
+                            let url = '';
                             if (activeTab === 'MOVIES') {
-                                url = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&sort_by=popularity.desc&page=${page}`;
+                                url = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&sort_by=popularity.desc&page=${effectivePage}`;
                                 if (filterYear) url += `&primary_release_year=${filterYear}`;
                                 if (filterGenre) url += `&with_genres=${GENRE_MAP_MOVIE[filterGenre]}`;
                                 if (filterCountry) url += `&with_origin_country=${COUNTRY_MAP[filterCountry]}`;
                             } else if (activeTab === 'SERIES') {
-                                url = `${TMDB_BASE_URL}/discover/tv?api_key=${TMDB_API_KEY}&sort_by=popularity.desc&page=${page}`;
+                                url = `${TMDB_BASE_URL}/discover/tv?api_key=${TMDB_API_KEY}&sort_by=popularity.desc&page=${effectivePage}`;
                                 if (filterYear) url += `&first_air_date_year=${filterYear}`;
                                 if (filterGenre) url += `&with_genres=${GENRE_MAP_TV[filterGenre]}`;
                                 if (filterCountry) url += `&with_origin_country=${COUNTRY_MAP[filterCountry]}`;
@@ -387,13 +441,18 @@
                             newItems = (data.results || []).filter(i => i.poster_path && i.media_type !== 'person').map(i => ({
                                 id: `${i.id}-${page}`, type: i.media_type || (i.name ? 'tv' : 'movie'), name: i.title || i.name, rating: { average: i.vote_average?.toFixed(1) || 'N/A' }, image: { medium: `https://image.tmdb.org/t/p/w500${i.poster_path}` }
                             }));
+
+                            if (newItems.length === 0 && effectivePage > 1 && page === 1) {
+                                setRandomPageOffset(0);
+                                return;
+                            }
                         }
 
                         setFetchedShows(prev => page === 1 ? newItems : [...prev, ...newItems]);
                     } catch (err) { console.error(err); } finally { setIsLoading(false); }
                 };
                 fetchDynamicData();
-            }, [activeTab, page, filterYear, filterGenre, filterCountry, searchQuery, selectedItem]);
+            }, [activeTab, page, filterYear, filterGenre, filterCountry, searchQuery, selectedItem, selectedPerson, randomPageOffset, filterTimeframe]);
 
             const scrollCast = (direction) => {
                 if (castScrollRef.current) {
@@ -426,7 +485,55 @@
                     </header>
 
                     <main className="mx-auto max-w-[1500px] px-8 py-8">
-                        {selectedItem ? (
+                        {selectedPerson ? (
+                            <div className="animate-in fade-in duration-500">
+                                {isPersonLoading || !personData ? (
+                                    <div className="flex h-[60vh] items-center justify-center"><div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-300 border-t-black"></div></div>
+                                ) : (
+                                    <div className="flex flex-col gap-10">
+                                        <button onClick={() => setSelectedPerson(null)} className="flex w-max items-center space-x-2 rounded-full bg-white px-5 py-2.5 text-sm font-bold shadow-sm border border-gray-200 hover:bg-gray-50 transition-colors">
+                                            <Icon name="ArrowLeft" /> <span>Back</span>
+                                        </button>
+                                        <div className="flex flex-col md:flex-row gap-12">
+                                            <div className="w-full md:w-[350px] shrink-0 text-center md:text-left">
+                                                <img src={personData.profile_path ? `https://image.tmdb.org/t/p/h632${personData.profile_path}` : 'https://via.placeholder.com/350x525'} className="w-full rounded-[2rem] shadow-2xl mb-8" />
+                                                <h3 className="text-xl font-black mb-4">Bio Info</h3>
+                                                <div className="space-y-4">
+                                                    <div><p className="text-xs font-bold text-gray-500 uppercase">Known For</p><p className="font-semibold">{personData.known_for_department}</p></div>
+                                                    <div><p className="text-xs font-bold text-gray-500 uppercase">Birthday</p><p className="font-semibold">{personData.birthday || 'N/A'}</p></div>
+                                                    <div><p className="text-xs font-bold text-gray-500 uppercase">Place of Birth</p><p className="font-semibold">{personData.place_of_birth || 'N/A'}</p></div>
+                                                </div>
+                                            </div>
+                                            <div className="flex-1">
+                                                <h1 className="text-6xl font-black mb-6 tracking-tighter">{personData.name}</h1>
+                                                <h2 className="text-2xl font-black mb-4">Biography</h2>
+                                                <p className="text-lg text-gray-600 mb-12 leading-relaxed">{personData.biography || "No biography available."}</p>
+                                                <h2 className="text-2xl font-black mb-8">Acting Roles</h2>
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                                                    {personData.combined_credits?.cast
+                                                        ?.filter(i => {
+                                                            const excludedGenres = [10767, 10763, 10764];
+                                                            const characterName = (i.character || "").toLowerCase();
+                                                            return i.poster_path && !i.genre_ids?.some(id => excludedGenres.includes(id)) && 
+                                                                   !characterName.includes("self") && !characterName.includes("himself") && !characterName.includes("herself");
+                                                        })
+                                                        ?.sort((a,b) => (b.popularity || 0) - (a.popularity || 0))
+                                                        ?.slice(0, 50)
+                                                        ?.map((item, idx) => (
+                                                            <div key={idx} onClick={() => openDetails(item.id, item.media_type)} className="cursor-pointer group">
+                                                                <div className="aspect-[2/3] rounded-2xl overflow-hidden shadow-sm mb-3">
+                                                                    <img src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                                                </div>
+                                                                <h4 className="text-xs font-bold truncate">{item.title || item.name}</h4>
+                                                            </div>
+                                                        ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ) : selectedItem ? (
                             <div className="animate-in fade-in duration-500">
                                 {isDetailsLoading || !detailsData ? (
                                     <div className="flex h-[60vh] items-center justify-center"><div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-300 border-t-black"></div></div>
@@ -438,12 +545,30 @@
                                         <div className="relative h-[480px] w-full overflow-hidden rounded-[3rem] shadow-2xl">
                                             <img src={`https://image.tmdb.org/t/p/original${detailsData.backdrop_path || detailsData.poster_path}`} className="absolute inset-0 h-full w-full object-cover" />
                                             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent"></div>
-                                            <div className="absolute bottom-12 left-12 text-white">
-                                                <h1 className="text-6xl font-black mb-4">{detailsData.title || detailsData.name}</h1>
-                                                <div className="flex items-center gap-6 text-sm font-bold opacity-90">
-                                                    <span>{detailsData.release_date || detailsData.first_air_date}</span>
-                                                    <span>★ {detailsData.vote_average?.toFixed(1)}</span>
-                                                    <span>{detailsData.runtime ? `${detailsData.runtime}m` : `${detailsData.number_of_seasons} Seasons`}</span>
+                                            <div className="absolute bottom-12 left-12 right-12 flex items-end justify-between text-white">
+                                                <div className="max-w-4xl">
+                                                    <div className="flex flex-wrap items-center gap-3 mb-4">
+                                                        <span className="rounded-full bg-white/20 backdrop-blur-md px-3 py-1 text-[10px] font-black tracking-widest uppercase border border-white/20">
+                                                            {selectedItem.type === 'movie' ? 'Movie' : 'TV Series'}
+                                                        </span>
+                                                        {detailsData.genres?.map(g => (
+                                                            <span key={g.id} className="text-xs font-bold text-white/80">{g.name}</span>
+                                                        ))}
+                                                    </div>
+                                                    <h1 className="text-6xl font-black mb-4 drop-shadow-lg">{detailsData.title || detailsData.name}</h1>
+                                                    <div className="flex items-center gap-8 text-sm font-bold opacity-90">
+                                                        <span>{detailsData.release_date || detailsData.first_air_date}</span>
+                                                        <span>★ {detailsData.vote_average?.toFixed(1)} TMDb</span>
+                                                        {selectedItem.type === 'movie' ? (
+                                                            <span>{detailsData.runtime}m</span>
+                                                        ) : (
+                                                            <span className="flex gap-4">
+                                                                <span>{detailsData.number_of_seasons} Seasons</span>
+                                                                <span className="opacity-60">•</span>
+                                                                <span>{detailsData.number_of_episodes} Episodes</span>
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -453,25 +578,19 @@
                                             </div>
                                             <div className="col-span-12 lg:col-span-8 xl:col-span-9">
                                                 <h2 className="text-2xl font-black mb-4">Synopsis</h2>
-                                                <p className="text-lg text-gray-600 mb-10">{detailsData.overview}</p>
-                                                
+                                                <p className="text-lg text-gray-600 mb-10 leading-relaxed">{detailsData.overview}</p>
                                                 <div className="flex items-center justify-between mb-6">
                                                     <h2 className="text-2xl font-black">Top Cast</h2>
                                                     <div className="flex space-x-2">
-                                                        <button onClick={() => scrollCast('left')} className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 bg-white hover:bg-gray-50 shadow-sm transition-all">
-                                                            <Icon name="ChevronLeft" className="h-5 w-5 text-gray-600" />
-                                                        </button>
-                                                        <button onClick={() => scrollCast('right')} className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 bg-white hover:bg-gray-50 shadow-sm transition-all">
-                                                            <Icon name="ChevronRight" className="h-5 w-5 text-gray-600" />
-                                                        </button>
+                                                        <button onClick={() => scrollCast('left')} className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 bg-white hover:bg-gray-50 shadow-sm transition-all"><Icon name="ChevronLeft" /></button>
+                                                        <button onClick={() => scrollCast('right')} className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 bg-white hover:bg-gray-50 shadow-sm transition-all"><Icon name="ChevronRight" /></button>
                                                     </div>
                                                 </div>
                                                 <div ref={castScrollRef} className="flex gap-6 overflow-x-auto no-scrollbar pb-4 scroll-smooth">
                                                     {detailsData.credits?.cast?.map(person => (
-                                                        <div key={person.id} className="w-32 flex-shrink-0 text-center">
-                                                            <img src={person.profile_path ? `https://image.tmdb.org/t/p/w185${person.profile_path}` : 'https://via.placeholder.com/185'} className="h-32 w-32 rounded-full object-cover mb-3 mx-auto border-2 border-white shadow-sm" />
+                                                        <div key={person.id} onClick={() => openPersonDetails(person.id)} className="w-32 flex-shrink-0 text-center group cursor-pointer">
+                                                            <img src={person.profile_path ? `https://image.tmdb.org/t/p/w185${person.profile_path}` : 'https://via.placeholder.com/185'} className="h-32 w-32 rounded-full object-cover mb-3 mx-auto border-2 border-white shadow-sm group-hover:scale-110 transition-transform" />
                                                             <p className="text-xs font-black line-clamp-1">{person.name}</p>
-                                                            <p className="text-[10px] text-gray-500 line-clamp-1">{person.character}</p>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -481,6 +600,7 @@
                                 )}
                             </div>
                         ) : activeTab === 'BOARD' ? (
+                            /* --- BOARD TAB --- */
                             <>
                                 <div className="flex gap-8 mb-8 h-[400px]">
                                     <div className="group relative flex-1 overflow-hidden rounded-[2.5rem] bg-black shadow-xl">
@@ -489,63 +609,33 @@
                                                 <img 
                                                     key={comingSoonItems[currentHeroIndex].id}
                                                     src={comingSoonItems[currentHeroIndex].heroImage} 
-                                                    className="absolute inset-0 w-full h-full object-cover opacity-80 animate-in fade-in zoom-in-95 duration-1000" 
+                                                    className="absolute inset-0 w-full h-full object-cover opacity-80" 
                                                 />
-                                                <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/40 to-transparent"></div>
-                                                
+                                                <div className="absolute inset-0 bg-gradient-to-r from-black/90 to-transparent"></div>
                                                 <div className="absolute inset-x-6 top-1/2 flex -translate-y-1/2 justify-between z-20 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); setCurrentHeroIndex(p => p === 0 ? comingSoonItems.length - 1 : p - 1); }}
-                                                        className="flex h-12 w-12 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-md border border-white/20 hover:bg-black/50 transition-all"
-                                                    >
-                                                        <Icon name="ChevronLeft" className="h-6 w-6" />
-                                                    </button>
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); setCurrentHeroIndex(p => (p + 1) % comingSoonItems.length); }}
-                                                        className="flex h-12 w-12 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-md border border-white/20 hover:bg-black/50 transition-all"
-                                                    >
-                                                        <Icon name="ChevronRight" className="h-6 w-6" />
-                                                    </button>
+                                                    <button onClick={() => setCurrentHeroIndex(p => p === 0 ? comingSoonItems.length - 1 : p - 1)} className="flex h-12 w-12 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-md border border-white/20"><Icon name="ChevronLeft" /></button>
+                                                    <button onClick={() => setCurrentHeroIndex(p => (p + 1) % comingSoonItems.length)} className="flex h-12 w-12 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-md border border-white/20"><Icon name="ChevronRight" /></button>
                                                 </div>
-
-                                                <div className="absolute left-12 top-8 flex space-x-1.5 z-20">
-                                                    {comingSoonItems.map((_, idx) => (
-                                                        <div 
-                                                            key={idx} 
-                                                            className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentHeroIndex ? 'w-5 bg-white shadow-[0_0_8px_white]' : 'w-1.5 bg-white/40'}`} 
-                                                        />
-                                                    ))}
-                                                </div>
-
-                                                <div 
-                                                    className="absolute bottom-12 left-12 text-white z-20 cursor-pointer"
-                                                    onClick={() => openDetails(comingSoonItems[currentHeroIndex].id, comingSoonItems[currentHeroIndex].type)}
-                                                >
-                                                    <p className="text-xs font-bold mb-3 opacity-90 uppercase tracking-[0.2em] bg-white/10 w-max px-3 py-1 rounded-full border border-white/10 backdrop-blur-sm">
-                                                        Releasing {comingSoonItems[currentHeroIndex].dateFormatted}
-                                                    </p>
-                                                    <h1 className="text-5xl font-black mb-5 max-w-2xl leading-tight line-clamp-2 drop-shadow-md">{comingSoonItems[currentHeroIndex].title}</h1>
+                                                <div className="absolute bottom-12 left-12 text-white z-20 cursor-pointer" onClick={() => openDetails(comingSoonItems[currentHeroIndex].id, 'movie')}>
+                                                    <p className="text-xs font-bold mb-3 uppercase tracking-widest bg-white/10 w-max px-3 py-1 rounded-full">Releasing {comingSoonItems[currentHeroIndex].dateFormatted}</p>
+                                                    <h1 className="text-5xl font-black mb-5">{comingSoonItems[currentHeroIndex].title}</h1>
                                                     <div className="flex items-center gap-6 text-xs font-bold">
-                                                        <span className="flex items-center gap-1.5"><Icon name="Star" className="h-3.5 w-3.5 fill-white" /> {comingSoonItems[currentHeroIndex].rating} TMDb</span>
-                                                        <span className="flex items-center gap-1.5"><Icon name="User" className="h-3.5 w-3.5" /> {comingSoonItems[currentHeroIndex].viewers} Anticipating</span>
+                                                        <span>★ {comingSoonItems[currentHeroIndex].rating}</span>
+                                                        <span>👥 {comingSoonItems[currentHeroIndex].viewers} Anticipating</span>
                                                     </div>
                                                 </div>
                                             </div>
                                         ) : <div className="animate-pulse bg-gray-800 w-full h-full"></div>}
                                     </div>
-
                                     <div className="w-[340px] flex flex-col">
-                                        <h2 className="text-xl font-bold mb-5 tracking-tight">Coming soon</h2>
+                                        <h2 className="text-xl font-bold mb-5">Coming soon</h2>
                                         <div className="flex flex-col gap-3">
                                             {comingSoonItems.slice(0, 3).map(item => (
-                                                <div key={item.id} onClick={() => openDetails(item.id, item.type)} className="flex items-center gap-4 p-2 bg-white/40 rounded-2xl hover:bg-white/70 cursor-pointer transition-colors border border-white/40 shadow-sm backdrop-blur-sm">
-                                                    <img src={item.image} className="w-[110px] h-[72px] rounded-xl object-cover shadow-sm" />
+                                                <div key={item.id} onClick={() => openDetails(item.id, 'movie')} className="flex items-center gap-4 p-2 bg-white/40 rounded-2xl hover:bg-white/70 cursor-pointer transition-colors backdrop-blur-sm border border-white/20">
+                                                    <img src={item.image} className="w-[110px] h-[72px] rounded-xl object-cover" />
                                                     <div className="overflow-hidden">
-                                                        <h3 className="font-bold truncate text-[15px]">{item.title}</h3>
-                                                        <p className="text-[10px] text-gray-500 font-bold mt-1 uppercase tracking-wider">{item.dateFormatted}</p>
-                                                        <div className="flex items-center gap-2 mt-1">
-                                                            <span className="text-[10px] font-bold text-black/60 flex items-center gap-1"><Icon name="Star" className="h-2.5 w-2.5 fill-black/40" /> {item.rating}</span>
-                                                        </div>
+                                                        <h3 className="font-bold truncate">{item.title}</h3>
+                                                        <p className="text-[10px] text-gray-500 font-bold">{item.dateFormatted}</p>
                                                     </div>
                                                 </div>
                                             ))}
@@ -561,43 +651,34 @@
                                     ))}
                                 </div>
                                 
-                                <Section title={boardGenre ? `Trending ${boardGenre}` : "Trending Now"} items={trendingItems} onSelect={openDetails} />
-                                <Section title={boardGenre ? `New ${boardGenre}` : "New Releases"} items={boardNewItems} onSelect={openDetails} />
+                                <Section title={boardGenre ? `Trending ${boardGenre}` : "Trending Now"} items={trendingItems} onSelect={openDetails} isLoading={isTrendingLoading} />
+                                <Section title={boardGenre ? `New ${boardGenre}` : "New Releases"} items={boardNewItems} onSelect={openDetails} isLoading={isBoardNewLoading} />
+                                
+                                <Section title="Popular Movies" items={popularMovies} onSelect={openDetails} isLoading={isSectionsLoading} />
+                                <Section title="Popular TV Shows" items={popularTV} onSelect={openDetails} isLoading={isSectionsLoading} />
+                                <Section title="Top Rated" items={topRated} onSelect={openDetails} isLoading={isSectionsLoading} />
                             </>
                         ) : (
+                            /* --- GRID COLLECTIONS --- */
                             <div className="animate-in fade-in duration-500">
-                                <h1 className="text-3xl font-black mb-8 capitalize">
-                                    {activeTab === 'SEARCH' ? `Search Results for "${searchQuery}"` : `${activeTab.toLowerCase()} Collection`}
-                                </h1>
-
-                                {/* Updated Filter UI */}
-                                {['MOVIES', 'SERIES', 'NEW'].includes(activeTab) && (
+                                <h1 className="text-3xl font-black mb-8 capitalize">{activeTab.toLowerCase()} Collection</h1>
+                                {['MOVIES', 'SERIES'].includes(activeTab) && (
                                     <div className="flex flex-wrap gap-4 mb-8">
-                                        {activeTab === 'NEW' ? (
-                                            <select value={filterTimeframe} onChange={e => { setFilterTimeframe(e.target.value); setPage(1); setFetchedShows([]); }} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-sm font-semibold shadow-sm outline-none">
-                                                <option value="60">Last 2 Months</option>
-                                                <option value="30">Last Month</option>
-                                                <option value="14">Last 14 Days</option>
-                                            </select>
-                                        ) : (
-                                            <>
-                                                <select value={filterYear} onChange={e => { setFilterYear(e.target.value); setPage(1); setFetchedShows([]); }} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-sm font-semibold shadow-sm outline-none">
-                                                    <option value="">All Years</option>
-                                                    {[2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2010].map(y => <option key={y} value={y}>{y}</option>)}
-                                                </select>
-                                                <select value={filterGenre} onChange={e => { setFilterGenre(e.target.value); setPage(1); setFetchedShows([]); }} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-sm font-semibold shadow-sm outline-none">
-                                                    <option value="">All Genres</option>
-                                                    {Object.keys(activeTab === 'MOVIES' ? GENRE_MAP_MOVIE : GENRE_MAP_TV).map(g => <option key={g} value={g}>{g}</option>)}
-                                                </select>
-                                                <select value={filterCountry} onChange={e => { setFilterCountry(e.target.value); setPage(1); setFetchedShows([]); }} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-sm font-semibold shadow-sm outline-none">
-                                                    <option value="">All Countries</option>
-                                                    {Object.keys(COUNTRY_MAP).map(c => <option key={c} value={c}>{c}</option>)}
-                                                </select>
-                                            </>
-                                        )}
+                                        <select value={filterGenre} onChange={e => { setFilterGenre(e.target.value); setPage(1); setFetchedShows([]); }} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-sm font-semibold outline-none focus:bg-white">
+                                            <option value="">All Genres</option>
+                                            {Object.keys(activeTab === 'SERIES' ? GENRE_MAP_TV : GENRE_MAP_MOVIE).map(g => <option key={g} value={g}>{g}</option>)}
+                                        </select>
+                                        <select value={filterYear} onChange={e => { setFilterYear(e.target.value); setPage(1); setFetchedShows([]); }} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-sm font-semibold outline-none focus:bg-white">
+                                            <option value="">All Years</option>
+                                            {[2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013].map(y => <option key={y} value={y}>{y}</option>)}
+                                        </select>
+                                        <select value={filterCountry} onChange={e => { setFilterCountry(e.target.value); setPage(1); setFetchedShows([]); }} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-sm font-semibold outline-none focus:bg-white">
+                                            <option value="">All Countries</option>
+                                            {Object.keys(COUNTRY_MAP).map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
                                     </div>
                                 )}
-
+                                
                                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-6">
                                     {fetchedShows.map(show => (
                                         <div key={show.id} onClick={() => openDetails(show.id, show.type)} className="cursor-pointer group">
