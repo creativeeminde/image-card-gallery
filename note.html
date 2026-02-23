@@ -117,7 +117,7 @@
             height: 100%; display: flex; flex-direction: column; position: relative; z-index: 1;
         }
 
-        /* Card Actions (Delete & Pin) */
+        /* Card Actions (Delete, Pin, Copy) */
         .card-actions {
             position: absolute; top: 12px; right: 12px;
             display: flex; gap: 8px; z-index: 20;
@@ -132,6 +132,9 @@
         .action-btn:hover { transform: scale(1.1); }
         .action-btn.delete-btn { color: #ff3b30; }
         .action-btn.pin-btn { color: var(--text-muted); }
+        .action-btn.copy-btn { color: var(--text-muted); }
+        .action-btn.copy-btn:hover { color: var(--text-main); }
+        body.dark-mode .action-btn.copy-btn:hover { color: white; }
         .action-btn.pin-btn.is-pinned { opacity: 1; background: #1d1d1f; color: white; }
         body.dark-mode .action-btn.pin-btn.is-pinned { background: white; color: #1d1d1f; }
 
@@ -926,6 +929,11 @@
 
                 wrapper.innerHTML = `
                     <div class="card-actions">
+                        ${note.type === 'graph' ? `
+                        <button class="action-btn copy-btn" onclick="copyNoteContent('${note.id}', event)" title="Copy Graph Data">
+                            <i data-lucide="copy" size="14"></i>
+                        </button>
+                        ` : ''}
                         <button class="action-btn pin-btn ${note.is_pinned ? 'is-pinned' : ''}" onclick="togglePin('${note.id}', event)" title="${note.is_pinned ? 'Unpin' : 'Pin to top'}">
                             <i data-lucide="pin" size="14"></i>
                         </button>
@@ -1072,6 +1080,41 @@
             if (e.key === 'Escape') closeRename(false);
         });
         renameOverlay.addEventListener('mousedown', (e) => { if (e.target === renameOverlay) closeRename(true); });
+
+        // --- Copy Note Data ---
+        window.copyNoteContent = (id, event) => {
+            event.stopPropagation();
+            const note = allNotes.find(n => n.id === id);
+            
+            // Check if we are currently editing it and have unsaved changes
+            let contentToCopy = note ? note.content : '';
+            const editorBody = document.getElementById('editorGraphBody');
+            if (activeEditNoteId === id && editorBody) {
+                contentToCopy = editorBody.value;
+            }
+
+            if (!contentToCopy) return;
+
+            // Use a temporary textarea for the copy operation to avoid iframe restrictions
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = contentToCopy;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            try {
+                document.execCommand('copy');
+                const btn = event.currentTarget;
+                const originalHTML = btn.innerHTML;
+                btn.innerHTML = `<i data-lucide="check" size="14"></i>`;
+                lucide.createIcons({ root: btn });
+                setTimeout(() => {
+                    btn.innerHTML = originalHTML;
+                    lucide.createIcons({ root: btn });
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy', err);
+            }
+            document.body.removeChild(tempTextArea);
+        };
 
         // --- Master Flawless Reordering System ---
         let dragInfo = {
@@ -1432,6 +1475,7 @@
             editorToolbar.classList.remove('active');
 
             if (note.type === 'text') {
+                noteViewContent.style.paddingBottom = '80px';
                 editorToolbar.classList.add('active');
                 noteViewContent.innerHTML = `
                     <div class="editor-container">
@@ -1443,16 +1487,20 @@
                 setTimeout(() => document.getElementById('editorBody').focus(), 100);
 
             } else if (note.type === 'graph') {
+                noteViewContent.style.paddingBottom = '40px'; // Remove extra bottom padding to maximize canvas height
                 let currentPositions = {};
                 try { currentPositions = JSON.parse(note.subtitle || '{}'); } catch(e) {}
 
                 noteViewContent.innerHTML = `
-                    <div style="display: flex; gap: 40px; width: 100%; height: 100%; max-width: 1600px; margin: 0 auto; flex-direction: row;">
-                        <div style="flex: 0 0 300px; display: flex; flex-direction: column; gap: 16px;">
-                            <input type="text" id="editorTitle" value="${note.title || ''}" class="form-control" placeholder="Graph Title" style="font-size: 24px; font-weight: bold; border: none; background: transparent; padding: 0; color: var(--text-main);">
-                            <textarea id="editorGraphBody" class="form-control" style="flex: 1; resize: none; font-family: monospace; font-size: 13px; line-height: 1.6; color: var(--text-main);" placeholder="Note 1\n  Detail A\n\nNote 2\n  Detail B">${note.content || ''}</textarea>
+                    <div style="display: flex; gap: 40px; width: 100%; flex: 1; min-height: calc(100vh - 160px); max-width: 1600px; margin: 0 auto; flex-direction: row;">
+                        <div style="flex: 0 0 300px; display: flex; flex-direction: column; gap: 16px; height: 100%;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                                <input type="text" id="editorTitle" value="${note.title || ''}" class="form-control" placeholder="Graph Title" style="font-size: 24px; font-weight: bold; border: none; background: transparent; padding: 0; color: var(--text-main); flex: 1;">
+                                <button class="action-btn copy-btn" onclick="copyNoteContent('${note.id}', event)" title="Copy Graph Data" style="position: relative; top: auto; right: auto; opacity: 1; box-shadow: var(--shadow-soft); width: 32px; height: 32px; flex-shrink: 0;"><i data-lucide="copy" size="16"></i></button>
+                            </div>
+                            <textarea id="editorGraphBody" class="form-control" style="flex: 1; height: 100%; resize: none; font-family: monospace; font-size: 13px; line-height: 1.6; color: var(--text-main);" placeholder="Note 1\n  Detail A\n\nNote 2\n  Detail B">${note.content || ''}</textarea>
                         </div>
-                        <div class="graph-viewport" id="graphViewport">
+                        <div class="graph-viewport" id="graphViewport" style="height: 100%;">
                             <div class="graph-container full-graph" id="graphCanvas" style="transform: translate(60px, 60px);">
                                 <svg class="graph-lines"></svg>
                                 <div class="graph-render-area" id="graphRenderArea">
@@ -1477,7 +1525,7 @@
 
                 // Setup Canvas Panning AND Node Dragging
                 viewport.addEventListener('pointerdown', (e) => {
-                    if(e.target.closest('input') || e.target.closest('textarea')) return;
+                    if(e.target.closest('input') || e.target.closest('textarea') || e.target.closest('.action-btn')) return;
                     
                     const rootDraggable = e.target.closest('.graph-root-draggable');
                     
@@ -1574,6 +1622,7 @@
                 });
 
             } else if (note.type === 'sticky') {
+                noteViewContent.style.paddingBottom = '80px';
                 noteViewContent.innerHTML = `
                     <div class="non-text-wrapper sticky-wrapper" style="background-color: ${note.color || 'var(--sticky-yellow)'}">
                         <div class="editor-body" id="editorBody" contenteditable="true">${note.content || ''}</div>
@@ -1581,6 +1630,7 @@
                 document.getElementById('editorBody').addEventListener('input', handleAutoSave);
                 
             } else if (note.type === 'image') {
+                noteViewContent.style.paddingBottom = '80px';
                 noteViewContent.innerHTML = `<div class="non-text-wrapper"><img src="${note.image_url}" style="width: 100%; border-radius: 12px;"></div>`;
             }
 
