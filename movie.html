@@ -11,6 +11,8 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
@@ -58,6 +60,11 @@
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
+
+        // --- SUPABASE CLIENT SETUP ---
+        const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         // --- ICON WRAPPER COMPONENT ---
         const Icon = ({ name, className = "h-4 w-4", ...props }) => {
@@ -204,6 +211,11 @@
             
             const castScrollRef = useRef(null);
 
+            // --- FAVORITES STATES ---
+            const [favorites, setFavorites] = useState([]);
+            const [favFilter, setFavFilter] = useState('all'); // all, movie, tv
+            const [isFavLoading, setIsFavLoading] = useState(false);
+
             const handleTabChange = (tab) => {
                 setActiveTab(tab);
                 setPage(1);
@@ -245,6 +257,52 @@
                 }
             };
 
+            // --- SUPABASE LOGIC ---
+            const fetchFavorites = async () => {
+                setIsFavLoading(true);
+                const { data, error } = await supabase
+                    .from('favorites')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+                
+                if (error) console.error("Error fetching favorites:", error);
+                else setFavorites(data || []);
+                setIsFavLoading(false);
+            };
+
+            const toggleFavorite = async (item) => {
+                const isAlreadyFav = favorites.some(fav => fav.media_id == item.id && fav.media_type == item.type);
+                
+                if (isAlreadyFav) {
+                    const { error } = await supabase
+                        .from('favorites')
+                        .delete()
+                        .match({ media_id: item.id, media_type: item.type });
+                    if (error) console.error("Delete failed:", error);
+                } else {
+                    const { error } = await supabase
+                        .from('favorites')
+                        .insert([{
+                            media_id: item.id,
+                            media_type: item.type,
+                            title: item.title || item.name,
+                            poster_path: item.poster_path,
+                            rating: (item.vote_average || 0).toFixed(1)
+                        }]);
+                    if (error) console.error("Insert failed:", error);
+                }
+                fetchFavorites();
+            };
+
+            useEffect(() => {
+                fetchFavorites();
+            }, []);
+
+            useEffect(() => {
+                if (activeTab === 'FAVORITES') fetchFavorites();
+            }, [activeTab]);
+
+            // Auto-play Hero Carousel
             useEffect(() => {
                 if (activeTab === 'BOARD' && comingSoonItems.length > 0 && !selectedItem && !selectedPerson) {
                     const timer = setInterval(() => {
@@ -254,6 +312,7 @@
                 }
             }, [activeTab, comingSoonItems.length, selectedItem, selectedPerson]);
 
+            // Infinite Scroll
             useEffect(() => {
                 const handleScroll = () => {
                     if (selectedItem || selectedPerson) return; 
@@ -267,6 +326,7 @@
                 return () => window.removeEventListener('scroll', handleScroll);
             }, [isLoading, activeTab, selectedItem, selectedPerson]);
 
+            // Fetch Media Details
             useEffect(() => {
                 if (!selectedItem) {
                     setDetailsData(null);
@@ -284,6 +344,7 @@
                 fetchDetails();
             }, [selectedItem]);
 
+            // Fetch Person Details
             useEffect(() => {
                 if (!selectedPerson) {
                     setPersonData(null);
@@ -301,6 +362,7 @@
                 fetchPerson();
             }, [selectedPerson]);
 
+            // Fetch Board Data
             useEffect(() => {
                 if (activeTab !== 'BOARD') return;
 
@@ -341,7 +403,7 @@
                             ? `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&with_genres=${genreMap[boardGenre].m}&sort_by=vote_average.desc&vote_count.gte=1000`
                             : `${TMDB_BASE_URL}/movie/top_rated?api_key=${TMDB_API_KEY}&language=en-US&page=1`;
 
-                        const [trendRes, newRes, popMRes, popTRes, topRes] = await Promise.all([
+                        const [trendRes, newRes, popMRes, popTvRes, topRes] = await Promise.all([
                             fetch(trendingUrl), fetch(newUrl), fetch(popMovieUrl), fetch(popTvUrl), fetch(topRatedUrl)
                         ]);
 
@@ -354,7 +416,7 @@
                             image: `https://image.tmdb.org/t/p/w500${i.poster_path}`
                         });
 
-                        const [tD, nD, pMD, pTD, trD] = await Promise.all([trendRes.json(), newRes.json(), popMRes.json(), popTRes.json(), topRes.json()]);
+                        const [tD, nD, pMD, pTD, trD] = await Promise.all([trendRes.json(), newRes.json(), popMRes.json(), popTvRes.json(), topRes.json()]);
 
                         setTrendingItems(tD.results?.filter(i => i.poster_path).slice(0, 15).map(i => mapper(i)) || []);
                         setBoardNewItems(nD.results?.filter(i => i.poster_path).slice(0, 15).map(i => mapper(i, 'movie')) || []);
@@ -386,7 +448,7 @@
             }, [activeTab, boardGenre]);
 
             useEffect(() => {
-                if (activeTab === 'BOARD' || selectedItem || selectedPerson) return;
+                if (activeTab === 'BOARD' || selectedItem || selectedPerson || activeTab === 'FAVORITES') return;
 
                 const fetchDynamicData = async () => {
                     setIsLoading(true);
@@ -461,6 +523,8 @@
                 }
             };
 
+            const isFavorited = (id, type) => favorites.some(fav => fav.media_id == id && fav.media_type == type);
+
             return (
                 <div className="min-h-screen bg-gradient-to-br from-[#f2f6f9] to-[#e4eef4] pb-20 overflow-x-hidden">
                     <header className="sticky top-0 z-[100] flex h-20 items-center justify-between px-8 bg-white/40 backdrop-blur-md border-b border-white/20">
@@ -480,12 +544,59 @@
                                 <input type="text" placeholder="Search..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} onKeyDown={handleSearch} className="h-10 w-64 rounded-full border border-gray-300 bg-white/60 px-5 text-sm outline-none focus:bg-white" />
                                 <Icon name="Search" onClick={handleSearch} className="absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-black cursor-pointer" />
                             </div>
-                            <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100" className="h-10 w-10 rounded-full border-2 border-white shadow-sm" />
+                            <div onClick={() => handleTabChange('FAVORITES')} className="cursor-pointer group flex items-center gap-2">
+                                <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100" className="h-10 w-10 rounded-full border-2 border-white shadow-sm transition-transform group-hover:scale-110" />
+                            </div>
                         </div>
                     </header>
 
                     <main className="mx-auto max-w-[1500px] px-8 py-8">
-                        {selectedPerson ? (
+                        {activeTab === 'FAVORITES' ? (
+                            /* --- FAVORITES PAGE --- */
+                            <div className="animate-in fade-in duration-500">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+                                    <h1 className="text-3xl font-black">My Favorites</h1>
+                                    <div className="flex gap-2">
+                                        {['all', 'movie', 'tv'].map(type => (
+                                            <button 
+                                                key={type} 
+                                                onClick={() => setFavFilter(type)} 
+                                                className={`px-6 py-2 rounded-full font-bold text-sm transition-all border ${favFilter === type ? 'bg-black text-white' : 'bg-white text-black hover:bg-gray-50'}`}
+                                            >
+                                                {type.charAt(0).toUpperCase() + type.slice(1)}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {isFavLoading ? (
+                                    <div className="flex justify-center py-20"><div className="w-10 h-10 border-4 border-gray-300 border-t-black rounded-full animate-spin"></div></div>
+                                ) : favorites.length === 0 ? (
+                                    <div className="py-32 text-center">
+                                        <Icon name="Heart" className="h-16 w-16 mx-auto mb-6 text-gray-200" />
+                                        <p className="text-xl font-bold text-gray-400">You haven't added any favorites yet.</p>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-6">
+                                        {favorites
+                                            .filter(fav => favFilter === 'all' || fav.media_type === favFilter)
+                                            .map(fav => (
+                                                <div key={fav.id} onClick={() => openDetails(fav.media_id, fav.media_type)} className="cursor-pointer group">
+                                                    <div className="aspect-[2/3] rounded-2xl overflow-hidden shadow-sm mb-3 relative">
+                                                        <img src={`https://image.tmdb.org/t/p/w500${fav.poster_path}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                                        <div className="absolute top-2 right-2 p-2 rounded-full bg-black/40 backdrop-blur-md">
+                                                            <Icon name="Heart" className="h-4 w-4 fill-red-500 text-red-500" />
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-[11px] font-bold text-gray-500 mb-1">★ {fav.rating} TMDb</p>
+                                                    <h3 className="text-sm font-bold truncate">{fav.title}</h3>
+                                                </div>
+                                            ))}
+                                    </div>
+                                )}
+                            </div>
+                        ) : selectedPerson ? (
+                            /* --- PERSON DETAIL PAGE --- */
                             <div className="animate-in fade-in duration-500">
                                 {isPersonLoading || !personData ? (
                                     <div className="flex h-[60vh] items-center justify-center"><div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-300 border-t-black"></div></div>
@@ -534,14 +645,30 @@
                                 )}
                             </div>
                         ) : selectedItem ? (
+                            /* --- MEDIA DETAIL PAGE --- */
                             <div className="animate-in fade-in duration-500">
                                 {isDetailsLoading || !detailsData ? (
                                     <div className="flex h-[60vh] items-center justify-center"><div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-300 border-t-black"></div></div>
                                 ) : (
                                     <div className="flex flex-col gap-10">
-                                        <button onClick={() => setSelectedItem(null)} className="flex w-max items-center space-x-2 rounded-full bg-white px-5 py-2.5 text-sm font-bold shadow-sm border border-gray-200">
-                                            <Icon name="ArrowLeft" /> <span>Back</span>
-                                        </button>
+                                        <div className="flex justify-between items-center">
+                                            <button onClick={() => setSelectedItem(null)} className="flex w-max items-center space-x-2 rounded-full bg-white px-5 py-2.5 text-sm font-bold shadow-sm border border-gray-200">
+                                                <Icon name="ArrowLeft" /> <span>Back</span>
+                                            </button>
+                                            <button 
+                                                onClick={() => toggleFavorite({
+                                                    id: selectedItem.id,
+                                                    type: selectedItem.type,
+                                                    title: detailsData.title || detailsData.name,
+                                                    poster_path: detailsData.poster_path,
+                                                    vote_average: detailsData.vote_average
+                                                })}
+                                                className={`flex items-center gap-2 rounded-full px-6 py-2.5 font-bold transition-all shadow-sm ${isFavorited(selectedItem.id, selectedItem.type) ? 'bg-red-500 text-white' : 'bg-white text-gray-900 border border-gray-200 hover:bg-gray-50'}`}
+                                            >
+                                                <Icon name="Heart" className={`h-5 w-5 ${isFavorited(selectedItem.id, selectedItem.type) ? 'fill-current' : ''}`} />
+                                                <span>{isFavorited(selectedItem.id, selectedItem.type) ? 'Saved to Favorites' : 'Add to Favorites'}</span>
+                                            </button>
+                                        </div>
                                         <div className="relative h-[480px] w-full overflow-hidden rounded-[3rem] shadow-2xl">
                                             <img src={`https://image.tmdb.org/t/p/original${detailsData.backdrop_path || detailsData.poster_path}`} className="absolute inset-0 h-full w-full object-cover" />
                                             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent"></div>
@@ -631,7 +758,7 @@
                                         <h2 className="text-xl font-bold mb-5">Coming soon</h2>
                                         <div className="flex flex-col gap-3">
                                             {comingSoonItems.slice(0, 3).map(item => (
-                                                <div key={item.id} onClick={() => openDetails(item.id, 'movie')} className="flex items-center gap-4 p-2 bg-white/40 rounded-2xl hover:bg-white/70 cursor-pointer transition-colors backdrop-blur-sm border border-white/20">
+                                                <div key={item.id} onClick={() => openDetails(item.id, item.type)} className="flex items-center gap-4 p-2 bg-white/40 rounded-2xl hover:bg-white/70 cursor-pointer transition-colors backdrop-blur-sm border border-white/20">
                                                     <img src={item.image} className="w-[110px] h-[72px] rounded-xl object-cover" />
                                                     <div className="overflow-hidden">
                                                         <h3 className="font-bold truncate">{item.title}</h3>
@@ -678,7 +805,6 @@
                                         </select>
                                     </div>
                                 )}
-                                
                                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-6">
                                     {fetchedShows.map(show => (
                                         <div key={show.id} onClick={() => openDetails(show.id, show.type)} className="cursor-pointer group">
