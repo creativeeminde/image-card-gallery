@@ -4,23 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Modern Interactive Notes</title>
+    <!-- Custom SVG Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='25' y='15' width='60' height='75' rx='12' fill='%23cbf5d3' /><rect x='15' y='25' width='60' height='75' rx='12' fill='%231d1d1f' /><circle cx='35' cy='45' r='5' fill='%23ffffff' /><line x1='35' y1='60' x2='60' y2='60' stroke='%23ffffff' stroke-width='6' stroke-linecap='round'/><line x1='35' y1='75' x2='50' y2='75' stroke='%23ffffff' stroke-width='6' stroke-linecap='round'/></svg>">
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
         :root {
-            --bg-color: #f2f3f5;
+            --bg-color: #eef0f2;
             --card-bg: #ffffff;
             --text-main: #1d1d1f;
             --text-muted: #86868b;
-            --shadow-soft: 0 10px 40px -10px rgba(0,0,0,0.08);
-            --shadow-hover: 0 20px 50px -10px rgba(0,0,0,0.12);
-            --shadow-drag: 0 30px 60px -15px rgba(0,0,0,0.2);
-            --radius-lg: 24px;
+            --shadow-soft: 0 8px 24px rgba(0,0,0,0.05), 0 2px 8px rgba(0,0,0,0.02);
+            --shadow-hover: 0 16px 40px rgba(0,0,0,0.08);
+            --shadow-drag: 0 30px 60px -15px rgba(0,0,0,0.15);
+            --radius-lg: 20px;
             --radius-sm: 12px;
             --sticky-pink: #ffd6e4;
-            --sticky-orange: #ffc4a3;
+            --sticky-green: #cbf5d3;
             --sticky-yellow: #fdf2b3;
             --transition-smooth: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
             --transition-fast: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -43,7 +46,7 @@
         .nav-icon { cursor: pointer; color: var(--text-muted); transition: var(--transition-smooth); display: flex; align-items: center; }
         .nav-icon:hover { color: var(--text-main); transform: scale(1.1); }
 
-        .bottom-controls { position: fixed; bottom: 32px; right: 32px; display: flex; align-items: center; gap: 16px; z-index: 100; }
+        .bottom-controls { position: fixed; bottom: 32px; right: 32px; display: flex; align-items: center; gap: 16px; z-index: 550; }
         .control-btn {
             width: 56px; height: 56px; border-radius: 50%; background: rgba(255, 255, 255, 0.8);
             backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); display: flex; align-items: center; justify-content: center;
@@ -60,7 +63,7 @@
         }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* Cards */
+        /* Cards & Drag Placeholders */
         .card-wrapper {
             position: relative; cursor: grab; transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease; z-index: 1;
         }
@@ -68,97 +71,80 @@
         .card-wrapper:hover { transform: translateY(-6px); z-index: 10; }
         .card-wrapper:hover .card { box-shadow: var(--shadow-hover); }
 
+        .drag-placeholder {
+            background: rgba(0,0,0,0.03); border: 2px dashed rgba(0,0,0,0.08);
+            border-radius: var(--radius-lg); margin-bottom: 24px;
+            transition: transform 0.2s; pointer-events: none;
+        }
+
         .card {
-            background: var(--card-bg); border-radius: var(--radius-lg); box-shadow: var(--shadow-soft);
-            overflow: hidden; display: flex; flex-direction: column; width: 100%; margin-bottom: 24px;
-            border: 1px solid rgba(255,255,255,0.8); transition: var(--transition-smooth); pointer-events: none;
+            background: transparent; border-radius: var(--radius-lg); box-shadow: var(--shadow-soft);
+            display: flex; flex-direction: column; width: 100%; margin-bottom: 24px;
+            transition: var(--transition-smooth); pointer-events: none; border: none; position: relative;
+        }
+        
+        .card-inner {
+            background: var(--card-bg); border-radius: var(--radius-lg); overflow: hidden; 
+            height: 100%; display: flex; flex-direction: column; position: relative; z-index: 1;
         }
 
         .delete-btn {
-            position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.9); border-radius: 50%;
+            position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.95); border-radius: 50%;
             width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
             color: #ff3b30; opacity: 0; transition: var(--transition-fast); z-index: 20; border: none; cursor: pointer;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1); pointer-events: auto;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1); pointer-events: auto;
         }
         .card-wrapper:hover .delete-btn { opacity: 1; }
         .delete-btn:hover { transform: scale(1.1); }
 
         /* Card Types & Mini Document Preview */
-        .card-text { 
+        .card-text .card-inner { 
             padding: 32px 28px; 
-            position: relative;
-            min-height: 340px; /* Forces vertical document shape */
-            max-height: 440px;
-            background: #ffffff;
+            min-height: 240px; 
+            max-height: 480px;
         }
         
-        .card-text::after {
-            content: ''; position: absolute; bottom: 0; left: 0; width: 100%; height: 80px;
-            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,1));
-            pointer-events: none; border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-        }
-
         .card-breadcrumb {
             display: flex; align-items: center; gap: 6px;
             font-size: 11px; font-weight: 600; color: var(--text-muted);
             margin-bottom: 16px; 
         }
 
-        .card-text h3.preview-title { 
+        .preview-title { 
             font-size: 18px; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.02em; color: var(--text-main);
             line-height: 1.2;
         }
         
-        .preview-content {
-            font-size: 10px; line-height: 1.6; color: #666; overflow: hidden;
-        }
-        
-        /* Scale down rich text formatting for preview */
+        .preview-content { font-size: 11px; line-height: 1.6; color: #555; overflow: hidden; }
         .preview-content h1 { font-size: 14px; font-weight: 600; margin: 12px 0 6px; color: var(--text-main); letter-spacing: -0.02em; }
         .preview-content h2 { font-size: 12px; font-weight: 600; margin: 10px 0 4px; color: var(--text-main); }
         .preview-content h3 { font-size: 11px; font-weight: 600; margin: 8px 0 4px; color: var(--text-main); }
         .preview-content p { margin-bottom: 8px; }
         .preview-content ul, .preview-content ol { margin-bottom: 8px; padding-left: 16px; }
         .preview-content li { margin-bottom: 4px; }
-        .preview-content input[type="checkbox"] { 
-            width: 10px; height: 10px; margin-top: 2px; margin-right: 6px; 
-            accent-color: var(--text-muted); pointer-events: none;
-            vertical-align: middle;
-        }
+        .preview-content input[type="checkbox"] { width: 10px; height: 10px; margin-top: 2px; margin-right: 6px; accent-color: var(--text-muted); pointer-events: none; vertical-align: middle; }
         .preview-content img { max-width: 100%; border-radius: 6px; margin: 8px 0; opacity: 0.8; }
         .preview-content hr { border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 12px 0; }
         .preview-content blockquote { border-left: 2px solid #ccc; padding-left: 8px; margin: 8px 0; font-style: italic; }
         
-        .card-image img { width: 100%; height: auto; display: block; border-radius: var(--radius-lg); pointer-events: none; }
+        .card-image .card-inner img { width: 100%; height: auto; display: block; border-radius: var(--radius-lg); pointer-events: none; }
         
-        .card-sticky { padding: 24px; border-radius: 16px; max-width: 85%; }
-        .card-sticky p { font-size: 13px; font-weight: 500; line-height: 1.5; color: rgba(0,0,0,0.8); }
+        .card-sticky .card-inner { padding: 24px; max-width: 85%; }
+        .card-sticky .card-inner p { font-size: 13px; font-weight: 500; line-height: 1.5; color: rgba(0,0,0,0.85); }
 
         /* Project Card Stacked Design */
         .card.card-project { 
             padding: 0; background: transparent; cursor: pointer; pointer-events: auto;
             border: none; box-shadow: none; overflow: visible; min-height: 380px; position: relative;
-            width: calc(100% - 24px); /* Leave room for layers to poke out */
+            width: calc(100% - 24px); 
         }
 
         .project-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            border-radius: var(--radius-lg); transition: var(--transition-smooth);
-            pointer-events: none;
+            border-radius: var(--radius-lg); transition: var(--transition-smooth); pointer-events: none;
         }
-
-        .layer-back {
-            background: #ffffff; z-index: 1;
-            transform: translate(24px, 0) scaleY(0.82);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.04);
-        }
-
-        .layer-mid {
-            background: #cbf5d3; /* Pastel green from screenshot */
-            z-index: 2;
-            transform: translate(12px, 0) scaleY(0.91);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        }
+        .layer-back { background: #ffffff; z-index: 1; transform: translate(24px, 0) scaleY(0.82); box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.04); }
+        .layer-mid { background: var(--sticky-green); z-index: 2; transform: translate(12px, 0) scaleY(0.91); box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
 
         .project-front {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -175,64 +161,48 @@
         }
 
         .project-text { margin-top: auto; }
-        .project-text h2 { 
-            font-size: 22px; font-weight: 600; letter-spacing: -0.02em; 
-            color: var(--text-main); margin-bottom: 8px;
-        }
+        .project-text h2 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; color: var(--text-main); margin-bottom: 8px; }
         .project-text h3 { font-size: 12px; color: var(--text-muted); font-weight: 500; }
 
-        /* Project Hover & Drag Effects */
+        /* Hover Effects */
         .card-wrapper:hover .card-project .layer-back { transform: translate(32px, 0) scaleY(0.85); }
         .card-wrapper:hover .card-project .layer-mid { transform: translate(16px, 0) scaleY(0.94); }
         .card-wrapper:hover .card-project .project-front { transform: translateY(-4px); box-shadow: var(--shadow-hover); }
 
         /* Drag & Drop Visuals */
-        .card-wrapper.is-dragging { opacity: 0.2; transform: scale(0.95); transition: opacity 0.2s, transform 0.2s; }
+        .card-wrapper.is-dragging { opacity: 0; pointer-events: none; }
         
         .drag-clone {
-            position: fixed; pointer-events: none !important; z-index: 9999; margin: 0 !important;
-            left: 0; top: 0; /* Strict zeroing to prevent offsets */
+            position: fixed; pointer-events: none !important; z-index: 9999; margin: 0 !important; left: 0; top: 0;
         }
-        .drag-clone .card { 
-            box-shadow: var(--shadow-drag); 
-            border: 1px solid rgba(255,255,255,1); 
-        }
+        .drag-clone .card { box-shadow: var(--shadow-drag); }
         .drag-clone .delete-btn { display: none; }
 
-        /* Project Drop Target */
-        .card-project.drop-target .project-front {
-            transform: scale(1.04); box-shadow: 0 0 0 4px rgba(100, 150, 255, 0.3), var(--shadow-hover);
-            background: #eef2f7;
-        }
-        .card-project.drop-target .layer-mid {
-            transform: translate(24px, 0) scaleY(0.91);
-        }
-        .card-project.drop-target .layer-back {
-            transform: translate(40px, 0) scaleY(0.82);
-        }
+        /* Drop Targets */
+        .card-project.drop-target .project-front { transform: scale(1.04); box-shadow: 0 0 0 4px rgba(100, 150, 255, 0.3), var(--shadow-hover); background: #eef2f7; }
+        .card-project.drop-target .layer-mid { transform: translate(24px, 0) scaleY(0.91); }
+        .card-project.drop-target .layer-back { transform: translate(40px, 0) scaleY(0.82); }
 
-        /* Attached Sticky Note on Images */
-        .card-wrapper.drop-target[data-type="image"] .card-image-inner {
+        .card-wrapper.drop-target .card-inner {
             box-shadow: 0 0 0 4px rgba(100, 150, 255, 0.3), var(--shadow-hover);
             transform: scale(1.02); transition: var(--transition-smooth);
         }
         
+        /* Universal Attached Stickies */
         .attached-sticky {
             position: absolute;
-            padding: 16px 20px; border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05);
-            width: 150px; min-height: 150px;
-            font-size: 14px; font-weight: 500; color: rgba(0,0,0,0.8);
+            padding: 12px 16px; border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.02);
+            width: 130px; min-height: 130px;
+            font-size: 13px; font-weight: 500; color: rgba(0,0,0,0.85);
             cursor: grab; pointer-events: auto; z-index: 5;
             transition: box-shadow 0.2s, transform 0.2s;
             display: flex; flex-direction: column;
         }
         .attached-sticky:active { cursor: grabbing; }
-        .attached-sticky:hover { box-shadow: 0 16px 40px rgba(0,0,0,0.2); z-index: 20; transform: translate(-50%, -50%) scale(1.03) !important; }
+        .attached-sticky:hover { box-shadow: 0 16px 40px rgba(0,0,0,0.15); z-index: 20; transform: translate(-50%, -50%) scale(1.05) !important; }
         
-        .attached-sticky-content {
-            outline: none; min-height: 20px; flex-grow: 1; cursor: text;
-        }
+        .attached-sticky-content { outline: none; min-height: 20px; flex-grow: 1; cursor: text; line-height: 1.5; }
         .attached-sticky .delete-btn { display: none; }
         .attached-sticky:hover .delete-btn { display: flex; }
 
@@ -246,15 +216,20 @@
         
         .project-header {
             padding: 40px; display: flex; align-items: center; justify-content: space-between;
-            position: sticky; top: 0; background: rgba(242, 243, 245, 0.8); backdrop-filter: blur(20px); z-index: 10;
+            position: sticky; top: 0; background: rgba(238, 240, 242, 0.85); backdrop-filter: blur(20px); z-index: 10;
         }
         .project-header-left { display: flex; align-items: center; gap: 24px; }
-        .btn-back {
-            display: flex; align-items: center; gap: 8px; background: white; border: none; padding: 10px 20px;
-            border-radius: 100px; font-family: 'Inter'; font-weight: 600; font-size: 14px; cursor: pointer;
+        
+        .btn-back, .btn-action {
+            display: flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 100px;
+            font-family: 'Inter'; font-weight: 600; font-size: 14px; cursor: pointer; border: none;
             box-shadow: var(--shadow-soft); transition: var(--transition-smooth);
         }
+        .btn-back { background: white; color: var(--text-main); }
+        .btn-action { background: #1d1d1f; color: white; }
         .btn-back:hover { transform: translateX(-4px); box-shadow: var(--shadow-hover); }
+        .btn-action:hover { transform: translateY(-4px); box-shadow: var(--shadow-hover); }
+        
         .project-title-display { font-size: 32px; font-weight: 700; letter-spacing: -0.03em; }
         
         .drop-out-zone {
@@ -281,20 +256,16 @@
         }
 
         .save-status {
-            font-size: 12px; font-weight: 600; color: var(--text-muted);
-            opacity: 0; transition: opacity 0.3s ease;
+            font-size: 12px; font-weight: 600; color: var(--text-muted); opacity: 0; transition: opacity 0.3s ease;
             background: rgba(0,0,0,0.05); padding: 4px 12px; border-radius: 100px;
         }
 
         /* Floating Toolbar */
         .editor-toolbar {
-            position: sticky; top: 20px; z-index: 20;
-            display: flex; gap: 4px; padding: 8px; margin: 0 auto 20px;
-            background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-            border-radius: 16px; box-shadow: var(--shadow-soft); border: 1px solid rgba(255,255,255,0.4);
-            max-width: fit-content; flex-wrap: wrap; justify-content: center;
-            opacity: 0; transform: translateY(-10px); transition: var(--transition-smooth);
-            pointer-events: none;
+            position: sticky; top: 20px; z-index: 20; display: flex; gap: 4px; padding: 8px; margin: 0 auto 20px;
+            background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(20px); border-radius: 16px; box-shadow: var(--shadow-soft); 
+            border: 1px solid rgba(255,255,255,0.4); max-width: fit-content; flex-wrap: wrap; justify-content: center;
+            opacity: 0; transform: translateY(-10px); transition: var(--transition-smooth); pointer-events: none;
         }
         .editor-toolbar.active { opacity: 1; transform: translateY(0); pointer-events: auto; }
         
@@ -302,85 +273,55 @@
         .toolbar-divider { width: 1px; height: 20px; background: rgba(0,0,0,0.1); margin: 0 6px; }
         
         .toolbar-btn {
-            background: transparent; border: none; padding: 8px; border-radius: 8px;
-            cursor: pointer; color: var(--text-main); display: flex; align-items: center; justify-content: center;
-            transition: var(--transition-fast); position: relative; overflow: hidden;
+            background: transparent; border: none; padding: 8px; border-radius: 8px; cursor: pointer; color: var(--text-main); 
+            display: flex; align-items: center; justify-content: center; transition: var(--transition-fast); position: relative;
         }
         .toolbar-btn:hover { background: rgba(0,0,0,0.06); }
         .toolbar-btn:active { transform: scale(0.95); }
 
-        /* Color Picker Wrappers */
         .color-picker-wrapper { position: relative; display: flex; align-items: center; }
         .color-picker-input { position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 
         /* Editor Content Area */
-        .note-view-content {
-            flex: 1; display: flex; flex-direction: column; align-items: center;
-            padding: 0 40px 80px; width: 100%; overflow-y: auto;
-        }
-
-        .editor-container {
-            max-width: 760px; width: 100%; margin: 0 auto;
-            background: transparent; border: none; box-shadow: none; cursor: text;
-        }
+        .note-view-content { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 0 40px 80px; width: 100%; overflow-y: auto; }
+        .editor-container { max-width: 760px; width: 100%; margin: 0 auto; background: transparent; border: none; box-shadow: none; cursor: text; }
         
         .editor-title {
             font-size: 40px; font-weight: 700; margin-bottom: 24px; letter-spacing: -0.03em;
-            outline: none; border: none; color: var(--text-main);
-            border-bottom: 1px solid transparent; transition: border-color 0.2s;
+            outline: none; border: none; color: var(--text-main); border-bottom: 1px solid transparent; transition: border-color 0.2s;
         }
         .editor-title:empty:before { content: 'Note Title'; color: var(--text-muted); pointer-events: none; }
         
-        .editor-body {
-            font-size: 16px; line-height: 1.8; color: #333336; outline: none; min-height: 50vh; padding-bottom: 100px;
-        }
+        .editor-body { font-size: 16px; line-height: 1.8; color: #333336; outline: none; min-height: 50vh; padding-bottom: 100px; }
         .editor-body:empty:before { content: 'Start typing here...'; color: var(--text-muted); pointer-events: none; }
 
-        /* Rich Text Formatting Styles inside Editor */
         .editor-body h1 { font-size: 32px; font-weight: 700; margin: 32px 0 16px; letter-spacing: -0.02em; }
         .editor-body h2 { font-size: 24px; font-weight: 600; margin: 24px 0 12px; }
         .editor-body h3 { font-size: 20px; font-weight: 600; margin: 20px 0 10px; }
         .editor-body p { margin-bottom: 16px; }
         .editor-body ul, .editor-body ol { margin-bottom: 16px; padding-left: 24px; }
         .editor-body li { margin-bottom: 8px; }
-        .editor-body blockquote { 
-            border-left: 4px solid var(--text-muted); padding-left: 16px; 
-            margin: 16px 0; font-style: italic; color: #555; background: rgba(0,0,0,0.02); padding: 12px 16px; border-radius: 0 8px 8px 0;
-        }
+        .editor-body blockquote { border-left: 4px solid var(--text-muted); padding-left: 16px; margin: 16px 0; font-style: italic; color: #555; background: rgba(0,0,0,0.02); padding: 12px 16px; border-radius: 0 8px 8px 0; }
         .editor-body pre { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 12px; overflow-x: auto; margin-bottom: 16px; font-family: monospace; }
         .editor-body img { max-width: 100%; border-radius: 12px; margin: 16px 0; box-shadow: var(--shadow-soft); }
         .editor-body a { color: #0066cc; text-decoration: underline; text-underline-offset: 2px; }
         .editor-body hr { border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 32px 0; }
         .editor-body input[type="checkbox"] { width: 16px; height: 16px; margin-right: 8px; accent-color: var(--text-main); cursor: pointer; }
 
-        /* Sticky/Image custom view wrappers */
         .non-text-wrapper { background: white; padding: 40px; border-radius: 24px; box-shadow: var(--shadow-hover); max-width: 600px; width: 100%; margin: 40px auto; }
         .non-text-wrapper.sticky-wrapper { max-width: 500px; padding: 60px; font-size: 20px; font-weight: 500; line-height: 1.6; border: none; }
 
-        /* Rename Overlay (Right Click) */
-        .rename-overlay {
-            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            z-index: 3000; display: none; background: transparent;
-        }
+        /* Rename Overlay */
+        .rename-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 3000; display: none; background: transparent; }
         .rename-input-container {
-            position: absolute; background: #1c1c1e; border-radius: 100px;
-            box-shadow: 0 16px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.1);
-            padding: 14px 24px; display: flex; align-items: center;
-            transform: scale(0.9) translateY(10px); opacity: 0;
-            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-            width: 280px;
+            position: absolute; background: #1c1c1e; border-radius: 100px; box-shadow: 0 16px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.1);
+            padding: 14px 24px; display: flex; align-items: center; transform: scale(0.9) translateY(10px); opacity: 0; transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1); width: 280px;
         }
-        .rename-input-container.active {
-            transform: scale(1) translateY(0); opacity: 1;
-        }
-        .rename-input {
-            background: transparent; border: none; outline: none;
-            color: #ffffff; font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 500;
-            width: 100%; letter-spacing: -0.01em;
-        }
+        .rename-input-container.active { transform: scale(1) translateY(0); opacity: 1; }
+        .rename-input { background: transparent; border: none; outline: none; color: #ffffff; font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 500; width: 100%; letter-spacing: -0.01em; }
         .rename-input::placeholder { color: rgba(255,255,255,0.4); }
 
-        /* Modals & Forms */
+        /* Modals */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(242, 243, 245, 0.8); backdrop-filter: blur(10px); z-index: 1000; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
         .modal-overlay.active { opacity: 1; pointer-events: auto; }
         .modal-content { background: white; padding: 40px; border-radius: 30px; width: 100%; max-width: 480px; box-shadow: 0 40px 80px rgba(0,0,0,0.1); transform: scale(0.95) translateY(20px); transition: var(--transition-smooth); }
@@ -421,7 +362,10 @@
                 <button class="btn-back" id="btnBackToMain"><i data-lucide="arrow-left" size="18"></i> Back</button>
                 <h2 class="project-title-display" id="projectTitleDisplay">Project Name</h2>
             </div>
-            <div class="drop-out-zone" id="dropOutZone"><i data-lucide="log-out" size="14"></i> Drag here to remove from project</div>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <div class="drop-out-zone" id="dropOutZone"><i data-lucide="log-out" size="14"></i> Drag to remove</div>
+                <button class="btn-action" id="btnProjectAddNote"><i data-lucide="plus" size="16"></i> Add Note</button>
+            </div>
         </div>
         <div class="grid-container" id="projectGrid"></div>
     </div>
@@ -433,7 +377,6 @@
             <div class="save-status" id="saveStatus">Saved</div>
         </div>
 
-        <!-- Floating Formatting Toolbar -->
         <div class="editor-toolbar" id="editorToolbar">
             <div class="toolbar-group">
                 <button class="toolbar-btn" title="Bold" onmousedown="event.preventDefault(); formatDoc('bold')"><i data-lucide="bold" size="16"></i></button>
@@ -532,7 +475,7 @@
                     <label>Sticky Color</label>
                     <select class="form-control" id="inputColor">
                         <option value="var(--sticky-pink)">Pink</option>
-                        <option value="var(--sticky-orange)">Orange</option>
+                        <option value="var(--sticky-green)">Green</option>
                         <option value="var(--sticky-yellow)">Yellow</option>
                     </select>
                 </div>
@@ -549,11 +492,9 @@
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // State
         let allNotes = [];
         let currentOpenProjectId = null;
 
-        // Elements
         const mainGrid = document.getElementById('mainGrid');
         const projectView = document.getElementById('projectView');
         const projectGrid = document.getElementById('projectGrid');
@@ -563,12 +504,10 @@
         const addModal = document.getElementById('addModal');
         const dropOutZone = document.getElementById('dropOutZone');
         
-        // Rename Elements
         const renameOverlay = document.getElementById('renameOverlay');
         const renameContainer = document.getElementById('renameContainer');
         const renameInput = document.getElementById('renameInput');
 
-        // Form Logic
         const noteType = document.getElementById('noteType');
         const fields = {
             title: document.getElementById('fieldTitle'),
@@ -588,10 +527,11 @@
         });
 
         document.getElementById('btnAddNote').addEventListener('click', () => addModal.classList.add('active'));
+        document.getElementById('btnProjectAddNote').addEventListener('click', () => addModal.classList.add('active'));
         document.getElementById('btnCloseModal').addEventListener('click', () => { addModal.classList.remove('active'); document.getElementById('noteForm').reset(); noteType.dispatchEvent(new Event('change')); });
 
-        // Masonry Logic
         function resizeGridItem(item, gridEl) {
+            if (item.classList.contains('drag-placeholder')) return; // Ignore height measurement for placeholders
             const rowHeight = parseInt(window.getComputedStyle(gridEl).getPropertyValue('grid-auto-rows'));
             const rowGap = parseInt(window.getComputedStyle(gridEl).getPropertyValue('grid-row-gap'));
             const card = item.querySelector('.card');
@@ -613,27 +553,30 @@
         }
         window.addEventListener("resize", resizeAllGridItems);
 
-        // Fetch & Render
         async function fetchNotes() {
             loader.style.display = 'block';
             try {
-                const { data, error } = await supabaseClient.from('interactive_notes').select('*').order('created_at', { ascending: false });
+                const { data, error } = await supabaseClient
+                    .from('interactive_notes')
+                    .select('*')
+                    .order('sort_order', { ascending: true })
+                    .order('created_at', { ascending: false });
+                    
                 if (error) throw error;
                 allNotes = data;
                 renderViews();
-            } catch (error) {
-                console.error('Error:', error);
-            } finally {
-                loader.style.display = 'none';
-            }
+            } catch (error) { console.error('Error:', error); } 
+            finally { loader.style.display = 'none'; }
         }
 
         function renderViews() {
             const mainNotes = allNotes.filter(n => !n.project_id);
+            mainNotes.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
             renderGrid(mainNotes, mainGrid);
 
             if(currentOpenProjectId) {
                 const projNotes = allNotes.filter(n => n.project_id === currentOpenProjectId);
+                projNotes.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
                 renderGrid(projNotes, projectGrid);
             }
         }
@@ -649,11 +592,26 @@
                 
                 let cardHTML = ''; let extraStyles = '';
                 
-                // Safely render content, converting old plain text newlines if necessary, but preserving HTML.
                 let displayContent = note.content || '';
                 if (displayContent && !displayContent.includes('<') && !displayContent.includes('>')) {
                     displayContent = displayContent.replace(/\n/g, '<br>');
                 }
+
+                // Gather stickies attached specifically to this card
+                const attachedStickies = allNotes.filter(n => n.project_id === note.id && n.type === 'sticky');
+                let stickiesHTML = '';
+                attachedStickies.forEach(st => {
+                    const [pctX, pctY] = (st.subtitle || '50,50').split(',');
+                    const x = parseFloat(pctX) || 50;
+                    const y = parseFloat(pctY) || 50;
+                    stickiesHTML += `
+                        <div class="attached-sticky" data-id="${st.id}" data-type="attached-sticky" 
+                             style="background-color: ${st.color || 'var(--sticky-yellow)'}; left: ${x}%; top: ${y}%; transform: translate(-50%, -50%);">
+                            <div class="attached-sticky-content" contenteditable="true" onblur="updateStickyContent('${st.id}', this.innerHTML)" onpointerdown="event.stopPropagation()">${(st.content || '').replace(/\n/g, '<br>')}</div>
+                            <button class="delete-btn" style="top: -10px; right: -10px; width: 24px; height: 24px; z-index: 10;" title="Detach sticky" onclick="detachSticky('${st.id}', event)"><i data-lucide="x" size="12"></i></button>
+                        </div>
+                    `;
+                });
 
                 switch(note.type) {
                     case 'text': 
@@ -664,32 +622,20 @@
                         }
                         cardHTML = `
                             <div class="card card-text">
-                                <div class="card-breadcrumb"><i data-lucide="arrow-right" size="12"></i> ${breadcrumb}</div>
-                                ${note.title ? `<h3 class="preview-title">${note.title}</h3>` : ''}
-                                ${displayContent ? `<div class="preview-content">${displayContent}</div>` : ''}
+                                <div class="card-inner">
+                                    <div class="card-breadcrumb"><i data-lucide="arrow-right" size="12"></i> ${breadcrumb}</div>
+                                    ${note.title ? `<h3 class="preview-title">${note.title}</h3>` : ''}
+                                    ${displayContent ? `<div class="preview-content">${displayContent}</div>` : ''}
+                                </div>
+                                ${stickiesHTML}
                             </div>`; 
                         break;
                     case 'image': 
-                        const attachedStickies = allNotes.filter(n => n.project_id === note.id && n.type === 'sticky');
-                        let stickiesHTML = '';
-                        attachedStickies.forEach(st => {
-                            const [pctX, pctY] = (st.subtitle || '50,50').split(',');
-                            const x = parseFloat(pctX) || 50;
-                            const y = parseFloat(pctY) || 50;
-                            stickiesHTML += `
-                                <div class="attached-sticky" data-id="${st.id}" data-type="attached-sticky" 
-                                     style="background-color: ${st.color || 'var(--sticky-yellow)'}; left: ${x}%; top: ${y}%; transform: translate(-50%, -50%);">
-                                    <div class="attached-sticky-content" contenteditable="true" onblur="updateStickyContent('${st.id}', this.innerHTML)" onpointerdown="event.stopPropagation()">${(st.content || '').replace(/\n/g, '<br>')}</div>
-                                    <button class="delete-btn" style="top: -10px; right: -10px; width: 24px; height: 24px; z-index: 10;" title="Detach sticky" onclick="detachSticky('${st.id}', event)"><i data-lucide="x" size="12"></i></button>
-                                </div>
-                            `;
-                        });
-
                         cardHTML = `
-                            <div class="card card-image" style="overflow: visible; background: transparent; border: none; box-shadow: none;">
-                                <div class="card-image-inner" style="background: var(--card-bg); border-radius: var(--radius-lg); box-shadow: var(--shadow-soft); overflow: hidden; border: 1px solid rgba(255,255,255,0.8); position: relative;">
+                            <div class="card card-image">
+                                <div class="card-inner">
                                     ${note.title ? `<div style="padding: 20px 24px 8px;"><h3 style="font-size: 16px; font-weight: 600; letter-spacing: -0.01em;">${note.title}</h3></div>` : ''}
-                                    <img src="${note.image_url}" onerror="this.src='https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=500&q=80'" style="width: 100%; display: block;">
+                                    <img src="${note.image_url}" onerror="this.src='https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=500&q=80'">
                                 </div>
                                 ${stickiesHTML}
                             </div>`; 
@@ -698,8 +644,10 @@
                         extraStyles = `background-color: ${note.color || 'var(--sticky-yellow)'}; border: none;`; 
                         cardHTML = `
                             <div class="card card-sticky" style="${extraStyles}">
-                                ${note.title ? `<h3 style="font-size: 14px; font-weight: 600; margin-bottom: 8px; opacity: 0.8; letter-spacing: -0.01em;">${note.title}</h3>` : ''}
-                                <p>${displayContent}</p>
+                                <div class="card-inner" style="background: transparent;">
+                                    ${note.title ? `<h3 style="font-size: 14px; font-weight: 600; margin-bottom: 8px; opacity: 0.8; letter-spacing: -0.01em;">${note.title}</h3>` : ''}
+                                    <p>${displayContent}</p>
+                                </div>
                             </div>`; 
                         break;
                     case 'project': 
@@ -721,25 +669,18 @@
 
                 wrapper.innerHTML = `<button class="delete-btn" onclick="deleteNote('${note.id}', event)"><i data-lucide="trash-2" size="14"></i></button>${cardHTML}`;
                 
-                // Right Click Listener for Rename
                 wrapper.addEventListener('contextmenu', (e) => {
                     e.preventDefault();
                     openRenameInput(note.id, note.title, e.clientX, e.clientY);
                 });
 
-                if(note.type === 'project') {
-                    wrapper.addEventListener('click', (e) => {
-                        if(e.target.closest('.delete-btn')) return;
-                        openProjectView(note);
-                    });
-                } else {
-                    wrapper.addEventListener('pointerdown', handleDragStart);
-                }
+                // Attach drag to all cards (including projects)
+                wrapper.addEventListener('pointerdown', handleDragStart);
                 
                 container.appendChild(wrapper);
 
-                // Add drag listener to any attached stickies we just rendered
-                if (note.type === 'image') {
+                // Add drag listener to stickies attached to this card
+                if (note.type === 'image' || note.type === 'text') {
                     wrapper.querySelectorAll('.attached-sticky').forEach(st => {
                         st.addEventListener('pointerdown', handleDragStart);
                     });
@@ -749,7 +690,6 @@
             setTimeout(resizeAllGridItems, 50);
         }
 
-        // Add Note
         document.getElementById('noteForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const type = noteType.value;
@@ -768,38 +708,33 @@
             } catch (err) { console.error(err); }
         });
 
-        // Delete Note
         window.deleteNote = async (id, event) => {
             event.stopPropagation();
             if(!confirm('Delete this note?')) return;
             const card = event.target.closest('.card-wrapper');
-            card.style.opacity = '0'; card.style.transform = 'scale(0.8)';
-            setTimeout(() => card.remove(), 300);
+            if (card) {
+                card.style.opacity = '0'; card.style.transform = 'scale(0.8)';
+                setTimeout(() => card.remove(), 300);
+            }
             try {
                 await supabaseClient.from('interactive_notes').delete().eq('id', id);
                 setTimeout(resizeAllGridItems, 350);
             } catch (err) { fetchNotes(); }
         };
 
-        // --- Detach Sticky Logic ---
         window.detachSticky = async (id, event) => {
             event.stopPropagation();
-            
-            // Provide a quick shrink/fade animation before detaching
             const stickyEl = event.target.closest('.attached-sticky');
             if (stickyEl) {
                 stickyEl.style.transition = 'all 0.2s ease-out';
                 stickyEl.style.transform = 'translate(-50%, -50%) scale(0.5)';
                 stickyEl.style.opacity = '0';
             }
-            
             setTimeout(() => {
-                // Return sticky to the current view (main grid or open project folder)
                 updateNoteProject(id, currentOpenProjectId, { subtitle: null });
             }, 200);
         };
 
-        // --- Rename Logic ---
         let renamingNoteId = null;
 
         function openRenameInput(noteId, currentTitle, x, y) {
@@ -807,16 +742,13 @@
             renameInput.value = currentTitle || '';
             renameOverlay.style.display = 'block';
 
-            // Keep input within viewport bounds
-            let leftPos = x;
-            let topPos = y - 25;
+            let leftPos = x; let topPos = y - 25;
             if (leftPos + 300 > window.innerWidth) leftPos = window.innerWidth - 300;
             if (topPos < 10) topPos = 10;
 
             renameContainer.style.left = `${leftPos}px`;
             renameContainer.style.top = `${topPos}px`;
 
-            // Small delay to allow CSS transition to play
             setTimeout(() => {
                 renameContainer.classList.add('active');
                 renameInput.focus();
@@ -826,28 +758,20 @@
 
         function closeRename(save = true) {
             if (!renamingNoteId) return;
-
             renameContainer.classList.remove('active');
             
             setTimeout(async () => {
                 renameOverlay.style.display = 'none';
-                
                 if (save) {
                     const newTitle = renameInput.value.trim();
                     const note = allNotes.find(n => n.id === renamingNoteId);
                     
                     if (note && note.title !== newTitle) {
                         note.title = newTitle;
-                        renderViews(); // Optimistic UI update
-                        
+                        renderViews(); 
                         try {
-                            await supabaseClient.from('interactive_notes')
-                                .update({ title: newTitle })
-                                .eq('id', renamingNoteId);
-                        } catch (err) {
-                            console.error("Failed to rename note:", err);
-                            fetchNotes(); // Revert on fail
-                        }
+                            await supabaseClient.from('interactive_notes').update({ title: newTitle }).eq('id', renamingNoteId);
+                        } catch (err) { fetchNotes(); }
                     }
                 }
                 renamingNoteId = null;
@@ -858,32 +782,35 @@
             if (e.key === 'Enter') closeRename(true);
             if (e.key === 'Escape') closeRename(false);
         });
+        renameOverlay.addEventListener('mousedown', (e) => { if (e.target === renameOverlay) closeRename(true); });
 
-        renameOverlay.addEventListener('mousedown', (e) => {
-            if (e.target === renameOverlay) closeRename(true);
-        });
-
-        // --- Custom Pointer Drag System ---
+        // --- Master Flawless Reordering System ---
         let dragInfo = {
-            isActive: false, el: null, clone: null, id: null, startX: 0, startY: 0, 
-            offsetX: 0, offsetY: 0, targetProject: null, isOutZone: false
+            isActive: false, el: null, clone: null, placeholder: null, id: null, 
+            startX: 0, startY: 0, offsetX: 0, offsetY: 0, targetProject: null, isOutZone: false, isReordered: false
         };
 
         function handleDragStart(e) {
             if(e.button !== 0 || e.target.closest('button') || e.target.closest('input')) return; 
-            if(e.target.closest('[contenteditable="true"]')) return; // Allow text editing without dragging
+            if(e.target.closest('[contenteditable="true"]')) return; 
             
             const wrapper = e.currentTarget;
-            if(wrapper.dataset.type === 'project') return; 
-            
             dragInfo.id = wrapper.dataset.id;
             dragInfo.el = wrapper;
             dragInfo.startX = e.clientX;
             dragInfo.startY = e.clientY;
+            dragInfo.isReordered = false;
             
             const rect = wrapper.getBoundingClientRect();
             dragInfo.offsetX = e.clientX - rect.left;
             dragInfo.offsetY = e.clientY - rect.top;
+
+            // Prepare ghost placeholder exactly matching the element's height in masonry
+            dragInfo.placeholder = document.createElement('div');
+            dragInfo.placeholder.className = 'card-wrapper drag-placeholder';
+            dragInfo.placeholder.style.width = rect.width + 'px';
+            dragInfo.placeholder.style.height = rect.height + 'px';
+            dragInfo.placeholder.style.gridRowEnd = wrapper.style.gridRowEnd;
 
             document.addEventListener('pointermove', handleDragMove);
             document.addEventListener('pointerup', handleDragEnd);
@@ -896,23 +823,18 @@
             if (!dragInfo.isActive && (dx > 5 || dy > 5)) {
                 dragInfo.isActive = true;
                 
-                // Create clone
-                const rect = dragInfo.el.getBoundingClientRect();
+                // Swap original element with placeholder
+                dragInfo.el.parentNode.insertBefore(dragInfo.placeholder, dragInfo.el);
+                dragInfo.el.style.display = 'none';
+
+                // Create free-floating visual clone
+                const rect = dragInfo.placeholder.getBoundingClientRect();
                 dragInfo.clone = dragInfo.el.cloneNode(true);
                 dragInfo.clone.className = 'card-wrapper drag-clone';
-                
-                // Absolute structural alignment to prevent offsets
                 dragInfo.clone.style.width = rect.width + 'px';
                 dragInfo.clone.style.height = rect.height + 'px';
-                dragInfo.clone.style.left = '0px'; 
-                dragInfo.clone.style.top = '0px';
-                dragInfo.clone.style.margin = '0px';
+                dragInfo.clone.style.display = '';
                 
-                // Instantly position wrapper to mouse, kill CSS transitions for pure pointer tracking
-                dragInfo.clone.style.transition = 'none';
-                dragInfo.clone.style.transform = `translate(${rect.left}px, ${rect.top}px)`;
-                
-                // Setup the inner card for smooth scaling from the exact click origin
                 const innerCard = dragInfo.clone.querySelector('.card');
                 if (innerCard) {
                     innerCard.style.transformOrigin = `${dragInfo.offsetX}px ${dragInfo.offsetY}px`;
@@ -920,35 +842,24 @@
                 }
 
                 document.body.appendChild(dragInfo.clone);
-                
-                // Force a browser reflow before applying scale
-                dragInfo.clone.offsetHeight; 
-                
-                if (innerCard) {
-                    innerCard.style.transform = 'scale(1.04) rotate(1deg)';
-                }
-                
-                dragInfo.el.classList.add('is-dragging');
-                
+                dragInfo.clone.offsetHeight; // Reflow
+                if (innerCard) innerCard.style.transform = 'scale(1.04) rotate(1deg)';
                 if(currentOpenProjectId) dropOutZone.classList.add('visible');
             }
 
             if (dragInfo.isActive) {
-                // Wrapper instantly tracks mouse without lag
                 const left = e.clientX - dragInfo.offsetX;
                 const top = e.clientY - dragInfo.offsetY;
                 dragInfo.clone.style.transform = `translate(${left}px, ${top}px)`;
 
-                // Hit Detection
                 const els = document.elementsFromPoint(e.clientX, e.clientY);
                 
-                const hoveredProject = els.find(el => el.classList && el.classList.contains('card-wrapper') && el.dataset.type === 'project');
+                const hoveredProject = els.find(el => el.classList && el.classList.contains('card-wrapper') && el.dataset.type === 'project' && el !== dragInfo.el && el !== dragInfo.clone);
                 
-                // Allow dropping stickies onto images
                 const isSticky = dragInfo.el.dataset.type === 'sticky' || dragInfo.el.dataset.type === 'attached-sticky';
-                const hoveredImage = isSticky ? els.find(el => el.classList && el.classList.contains('card-wrapper') && el.dataset.type === 'image') : null;
+                const hoveredCardForSticky = isSticky ? els.find(el => el.classList && el.classList.contains('card-wrapper') && el.dataset.type !== 'project' && el.dataset.type !== 'sticky' && el.dataset.type !== 'attached-sticky' && el !== dragInfo.el && el !== dragInfo.clone) : null;
 
-                let targetDrop = hoveredProject || hoveredImage;
+                let targetDrop = hoveredProject || hoveredCardForSticky;
 
                 if (dragInfo.targetProject && dragInfo.targetProject !== targetDrop) {
                     dragInfo.targetProject.classList.remove('drop-target');
@@ -970,6 +881,39 @@
                         dragInfo.isOutZone = false;
                     }
                 }
+
+                // Grid Reordering Swap
+                const hoveredSibling = els.find(el => 
+                    el.classList && el.classList.contains('card-wrapper') && 
+                    el !== dragInfo.el && el !== dragInfo.clone && el !== dragInfo.placeholder &&
+                    el.dataset.type !== 'attached-sticky' &&
+                    dragInfo.placeholder.parentNode &&
+                    el.parentNode === dragInfo.placeholder.parentNode
+                );
+
+                if (hoveredSibling && !dragInfo.targetProject && !dragInfo.isOutZone && dragInfo.el.dataset.type !== 'attached-sticky') {
+                    const rect = hoveredSibling.getBoundingClientRect();
+                    const centerX = rect.left + rect.width / 2;
+                    const centerY = rect.top + rect.height / 2;
+                    
+                    if (Math.abs(e.clientX - centerX) < rect.width / 4 && Math.abs(e.clientY - centerY) < rect.height / 4) {
+                        const parent = dragInfo.placeholder.parentNode;
+                        const siblings = Array.from(parent.querySelectorAll('.card-wrapper:not(.drag-clone):not([style*="display: none"])'));
+                        
+                        const myIndex = siblings.indexOf(dragInfo.placeholder);
+                        const hoverIndex = siblings.indexOf(hoveredSibling);
+
+                        if (myIndex > -1 && hoverIndex > -1) {
+                            if (myIndex < hoverIndex) {
+                                parent.insertBefore(dragInfo.placeholder, hoveredSibling.nextSibling);
+                            } else {
+                                parent.insertBefore(dragInfo.placeholder, hoveredSibling);
+                            }
+                            resizeAllGridItems(); 
+                            dragInfo.isReordered = true;
+                        }
+                    }
+                }
             }
         }
 
@@ -982,14 +926,21 @@
                 const originalEl = dragInfo.el;
                 const innerCard = clone.querySelector('.card') || clone;
                 
+                // Cleanup DOM Placeholder structure immediately
+                if (dragInfo.placeholder && dragInfo.placeholder.parentNode) {
+                    dragInfo.placeholder.parentNode.insertBefore(originalEl, dragInfo.placeholder);
+                    dragInfo.placeholder.remove();
+                }
+                originalEl.style.display = '';
+
                 if (dragInfo.targetProject) {
                     const targetId = dragInfo.targetProject.dataset.id;
                     const targetType = dragInfo.targetProject.dataset.type;
                     
-                    if (targetType === 'image') {
-                        // Drop Sticky onto Image
-                        const innerImg = dragInfo.targetProject.querySelector('.card-image-inner');
-                        const targetRect = innerImg.getBoundingClientRect();
+                    if (targetType !== 'project') {
+                        // Attach sticky to a text or image card
+                        const innerCardRect = dragInfo.targetProject.querySelector('.card-inner') || dragInfo.targetProject.querySelector('.card');
+                        const targetRect = innerCardRect.getBoundingClientRect();
                         const pctX = ((e.clientX - targetRect.left) / targetRect.width) * 100;
                         const pctY = ((e.clientY - targetRect.top) / targetRect.height) * 100;
                         
@@ -998,9 +949,13 @@
                         clone.style.opacity = '0';
                         dragInfo.targetProject.classList.remove('drop-target');
                         
+                        // Keep sticky visible in current view by adopting parent's project_id if it exists
+                        const parentNote = allNotes.find(n => n.id === targetId);
+                        const newProjectId = parentNote ? parentNote.project_id : null;
+
                         updateNoteProject(dragInfo.id, targetId, { subtitle: `${pctX.toFixed(2)},${pctY.toFixed(2)}` });
                     } else {
-                        // Drop into Folder
+                        // Drop inside a project folder
                         const targetRect = dragInfo.targetProject.getBoundingClientRect();
                         clone.style.transition = 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)';
                         clone.style.transform = `translate(${targetRect.left + 20}px, ${targetRect.top + 20}px) scale(0.2)`;
@@ -1018,29 +973,36 @@
                     updateNoteProject(dragInfo.id, null, { subtitle: null });
                     
                 } else if (dragInfo.el.dataset.type === 'attached-sticky') {
-                    // Detach sticky if dropped outside an image
+                    // Detach sticky to grid
                     clone.style.transition = 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
                     clone.style.transform = `translate(${e.clientX - dragInfo.offsetX}px, ${e.clientY - dragInfo.offsetY}px)`;
-                    updateNoteProject(dragInfo.id, null, { subtitle: null });
+                    updateNoteProject(dragInfo.id, currentOpenProjectId, { subtitle: null });
                 } else {
-                    // Smoothly snap back
+                    // Smoothly snap back into place
                     const origRect = originalEl.getBoundingClientRect();
                     clone.style.transition = 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
                     clone.style.transform = `translate(${origRect.left}px, ${origRect.top}px)`;
                     if(innerCard && innerCard !== clone) innerCard.style.transform = 'scale(1) rotate(0deg)';
                     setTimeout(() => originalEl.classList.remove('is-dragging'), 250);
+                    
+                    // Save new order to database
+                    if (dragInfo.isReordered) saveGridOrder(originalEl.parentNode);
                 }
 
                 setTimeout(() => { if(clone && clone.parentNode) clone.remove(); }, 400);
             } else {
-                // If not active, it was a simple click without dragging!
-                if (dragInfo.el && dragInfo.el.dataset.type !== 'project' && dragInfo.el.dataset.type !== 'attached-sticky') {
-                    openNoteView(dragInfo.id);
+                // Was just a click! Open view
+                if (dragInfo.el && !e.target.closest('.delete-btn')) {
+                    if (dragInfo.el.dataset.type === 'project') {
+                        const note = allNotes.find(n => n.id === dragInfo.id);
+                        openProjectView(note);
+                    } else if (dragInfo.el.dataset.type !== 'attached-sticky') {
+                        openNoteView(dragInfo.id);
+                    }
                 }
             }
 
-            dragInfo.isActive = false;
-            dragInfo.el = null;
+            dragInfo.isActive = false; dragInfo.el = null; dragInfo.placeholder = null;
             if(dropOutZone) dropOutZone.classList.remove('visible');
         }
 
@@ -1051,13 +1013,26 @@
 
             try {
                 await supabaseClient.from('interactive_notes').update({ project_id: projectId, ...extraUpdates }).eq('id', noteId);
-            } catch (err) {
-                console.error("DB Update Failed", err);
-                fetchNotes();
-            }
+            } catch (err) { fetchNotes(); }
         }
 
-        // Inline edit update for attached stickies
+        async function saveGridOrder(container) {
+            const wrappers = Array.from(container.querySelectorAll('.card-wrapper:not(.drag-clone):not(.drag-placeholder)'));
+            
+            const updates = wrappers.map((el, index) => {
+                const id = el.dataset.id;
+                const note = allNotes.find(n => n.id === id);
+                if (note) note.sort_order = index;
+                return { id, sort_order: index };
+            });
+
+            try {
+                await Promise.all(updates.map(u => 
+                    supabaseClient.from('interactive_notes').update({ sort_order: u.sort_order }).eq('id', u.id)
+                ));
+            } catch (err) { console.error("Failed to save reordered layout", err); }
+        }
+
         window.updateStickyContent = async (id, html) => {
             const note = allNotes.find(n => n.id === id);
             if (note && note.content !== html) {
@@ -1068,12 +1043,12 @@
             }
         };
 
-        // --- Project View Handling ---
         function openProjectView(projectNode) {
             currentOpenProjectId = projectNode.id;
             document.getElementById('projectTitleDisplay').innerText = projectNode.title || 'Project View';
             
             const projNotes = allNotes.filter(n => n.project_id === currentOpenProjectId);
+            projNotes.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
             renderGrid(projNotes, projectGrid);
             
             projectView.classList.add('active');
@@ -1089,31 +1064,15 @@
         let autoSaveTimer = null;
         const editorToolbar = document.getElementById('editorToolbar');
 
-        // Helper commands for Rich Text formatting
-        function formatDoc(cmd, value=null) {
-            document.execCommand(cmd, false, value);
-        }
-
-        function insertLink() {
-            const url = prompt('Enter link URL:');
-            if (url) formatDoc('createLink', url);
-        }
-
-        function insertImagePrompt() {
-            const url = prompt('Enter image URL:');
-            if (url) formatDoc('insertImage', url);
-        }
-
-        function insertChecklist() {
-            const html = `<ul><li style="list-style-type: none; margin-left: -20px;"><input type="checkbox"> List item</li></ul>`;
-            formatDoc('insertHTML', html);
-        }
+        function formatDoc(cmd, value=null) { document.execCommand(cmd, false, value); }
+        function insertLink() { const url = prompt('Enter link URL:'); if (url) formatDoc('createLink', url); }
+        function insertImagePrompt() { const url = prompt('Enter image URL:'); if (url) formatDoc('insertImage', url); }
+        function insertChecklist() { const html = `<ul><li style="list-style-type: none; margin-left: -20px;"><input type="checkbox"> List item</li></ul>`; formatDoc('insertHTML', html); }
 
         function handleAutoSave() {
             clearTimeout(autoSaveTimer);
             const saveStatus = document.getElementById('saveStatus');
-            saveStatus.style.opacity = '1';
-            saveStatus.innerText = 'Saving...';
+            saveStatus.style.opacity = '1'; saveStatus.innerText = 'Saving...';
             
             autoSaveTimer = setTimeout(async () => {
                 const titleEl = document.getElementById('editorTitle');
@@ -1122,12 +1081,10 @@
 
                 const updates = {};
                 if (titleEl) updates.title = titleEl.innerText;
-                if (bodyEl) updates.content = bodyEl.innerHTML; // Save full rich HTML
+                if (bodyEl) updates.content = bodyEl.innerHTML;
 
                 try {
                     await supabaseClient.from('interactive_notes').update(updates).eq('id', activeEditNoteId);
-                    
-                    // Update local state and background grid silently
                     const note = allNotes.find(n => n.id === activeEditNoteId);
                     if(note) Object.assign(note, updates);
                     renderViews();
@@ -1136,52 +1093,36 @@
                     setTimeout(() => saveStatus.style.opacity = '0', 2000);
                 } catch (err) {
                     saveStatus.innerText = 'Error saving';
-                    console.error('Auto-save failed:', err);
                 }
-            }, 1000); // 1s Debounce
+            }, 1000);
         }
 
         function openNoteView(noteId) {
             const note = allNotes.find(n => n.id === noteId);
             if (!note) return;
             activeEditNoteId = note.id;
-
-            // Reset Toolbar
             editorToolbar.classList.remove('active');
 
             if (note.type === 'text') {
-                // Fully Editable Text Note
                 editorToolbar.classList.add('active');
                 noteViewContent.innerHTML = `
                     <div class="editor-container">
                         <h1 class="editor-title" id="editorTitle" contenteditable="true">${note.title || ''}</h1>
                         <div class="editor-body" id="editorBody" contenteditable="true">${note.content || ''}</div>
-                    </div>
-                `;
-
-                // Add Input Listeners for Auto-Save
+                    </div>`;
                 document.getElementById('editorTitle').addEventListener('input', handleAutoSave);
                 document.getElementById('editorBody').addEventListener('input', handleAutoSave);
-
-                // Ensure focus doesn't jump
                 setTimeout(() => document.getElementById('editorBody').focus(), 100);
 
             } else if (note.type === 'sticky') {
-                // Editable Sticky Note
-                editorToolbar.classList.remove('active'); // Minimal formatting for sticky
                 noteViewContent.innerHTML = `
                     <div class="non-text-wrapper sticky-wrapper" style="background-color: ${note.color || 'var(--sticky-yellow)'}">
                         <div class="editor-body" id="editorBody" contenteditable="true">${note.content || ''}</div>
-                    </div>
-                `;
+                    </div>`;
                 document.getElementById('editorBody').addEventListener('input', handleAutoSave);
+                
             } else if (note.type === 'image') {
-                // View Only Image (No editor)
-                noteViewContent.innerHTML = `
-                    <div class="non-text-wrapper">
-                        <img src="${note.image_url}" style="width: 100%; border-radius: 12px;">
-                    </div>
-                `;
+                noteViewContent.innerHTML = `<div class="non-text-wrapper"><img src="${note.image_url}" style="width: 100%; border-radius: 12px;"></div>`;
             }
 
             lucide.createIcons();
@@ -1191,10 +1132,7 @@
         document.getElementById('btnBackFromNote').addEventListener('click', () => {
             noteView.classList.remove('active');
             editorToolbar.classList.remove('active');
-            setTimeout(() => { 
-                noteViewContent.innerHTML = ''; 
-                activeEditNoteId = null;
-            }, 400);
+            setTimeout(() => { noteViewContent.innerHTML = ''; activeEditNoteId = null; }, 400);
         });
 
         fetchNotes();
