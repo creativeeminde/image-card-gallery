@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MovieGather - Premium Entertainment</title>
+    <title>MovieGather</title>
     
+    <!-- Dynamic SVG Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='25' fill='%23000'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='central' text-anchor='middle' font-family='Inter, sans-serif' font-weight='900' font-size='50' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
+
     <!-- Dependencies -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -19,6 +22,7 @@
         
         body {
             font-family: 'Inter', sans-serif;
+            background-color: #f2f6f9;
         }
 
         .no-scrollbar::-webkit-scrollbar {
@@ -53,13 +57,20 @@
             transform: scale(1);
             transition: opacity 700ms, transform 700ms;
         }
+
+        /* Glassmorphism utility */
+        .glass {
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useMemo } = React;
 
         // --- SUPABASE CLIENT SETUP ---
         const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
@@ -214,7 +225,9 @@
             // --- FAVORITES STATES ---
             const [favorites, setFavorites] = useState([]);
             const [favFilter, setFavFilter] = useState('all'); // all, movie, tv
+            const [favGenreFilter, setFavGenreFilter] = useState('All'); 
             const [isFavLoading, setIsFavLoading] = useState(false);
+            const [isActionInProgress, setIsActionInProgress] = useState(false);
 
             const handleTabChange = (tab) => {
                 setActiveTab(tab);
@@ -226,6 +239,7 @@
                 setFilterTimeframe('60');
                 setSelectedItem(null);
                 setSelectedPerson(null);
+                setFavGenreFilter('All');
                 if (tab !== 'SEARCH') {
                     setSearchInput('');
                     setSearchQuery('');
@@ -257,7 +271,29 @@
                 }
             };
 
-            // --- SUPABASE LOGIC ---
+            // --- SUPABASE & FAVORITES LOGIC ---
+            
+            const repairMissingGenres = async (favList) => {
+                const missing = favList.filter(f => !f.genres);
+                if (missing.length === 0) return;
+
+                for (const item of missing) {
+                    try {
+                        const url = `${TMDB_BASE_URL}/${item.media_type}/${item.media_id}?api_key=${TMDB_API_KEY}`;
+                        const res = await fetch(url);
+                        if (!res.ok) continue;
+                        const data = await res.json();
+                        const genresString = data.genres ? data.genres.map(g => g.name).join(', ') : 'Uncategorized';
+                        
+                        await supabase
+                            .from('favorites')
+                            .update({ genres: genresString })
+                            .match({ media_id: item.media_id, media_type: item.media_type });
+                    } catch (e) { console.error("Repair failed for item", item.media_id, e); }
+                }
+                fetchFavorites();
+            };
+
             const fetchFavorites = async () => {
                 setIsFavLoading(true);
                 const { data, error } = await supabase
@@ -265,33 +301,53 @@
                     .select('*')
                     .order('created_at', { ascending: false });
                 
-                if (error) console.error("Error fetching favorites:", error);
-                else setFavorites(data || []);
+                if (error) {
+                    console.error("Error fetching favorites:", error);
+                } else {
+                    setFavorites(data || []);
+                    const needsRepair = data?.some(f => !f.genres);
+                    if (needsRepair) repairMissingGenres(data);
+                }
                 setIsFavLoading(false);
             };
 
             const toggleFavorite = async (item) => {
-                const isAlreadyFav = favorites.some(fav => fav.media_id == item.id && fav.media_type == item.type);
-                
-                if (isAlreadyFav) {
-                    const { error } = await supabase
-                        .from('favorites')
-                        .delete()
-                        .match({ media_id: item.id, media_type: item.type });
-                    if (error) console.error("Delete failed:", error);
-                } else {
-                    const { error } = await supabase
-                        .from('favorites')
-                        .insert([{
-                            media_id: item.id,
-                            media_type: item.type,
-                            title: item.title || item.name,
-                            poster_path: item.poster_path,
-                            rating: (item.vote_average || 0).toFixed(1)
-                        }]);
-                    if (error) console.error("Insert failed:", error);
+                if (isActionInProgress) return;
+                setIsActionInProgress(true);
+
+                try {
+                    const itemId = Number(item.id);
+                    const itemType = item.type;
+                    
+                    const isAlreadyFav = favorites.some(fav => Number(fav.media_id) === itemId && fav.media_type === itemType);
+                    
+                    if (isAlreadyFav) {
+                        const { error } = await supabase
+                            .from('favorites')
+                            .delete()
+                            .match({ media_id: itemId, media_type: itemType });
+                        if (error) throw error;
+                    } else {
+                        const genresString = item.genres ? item.genres.map(g => g.name).join(', ') : 'Uncategorized';
+                        
+                        const { error } = await supabase
+                            .from('favorites')
+                            .insert([{
+                                media_id: itemId,
+                                media_type: itemType,
+                                title: item.title || item.name,
+                                poster_path: item.poster_path,
+                                rating: (item.vote_average || 0).toFixed(1),
+                                genres: genresString
+                            }]);
+                        if (error) throw error;
+                    }
+                    await fetchFavorites();
+                } catch (error) {
+                    console.error("Toggle favorite failed:", error.message);
+                } finally {
+                    setIsActionInProgress(false);
                 }
-                fetchFavorites();
             };
 
             useEffect(() => {
@@ -301,6 +357,24 @@
             useEffect(() => {
                 if (activeTab === 'FAVORITES') fetchFavorites();
             }, [activeTab]);
+
+            const availableFavGenres = useMemo(() => {
+                const genresSet = new Set(['All']);
+                favorites.forEach(fav => {
+                    if (fav.genres) {
+                        fav.genres.split(', ').forEach(g => genresSet.add(g));
+                    }
+                });
+                return Array.from(genresSet).sort((a, b) => a === 'All' ? -1 : a.localeCompare(b));
+            }, [favorites]);
+
+            const filteredFavorites = useMemo(() => {
+                return favorites.filter(fav => {
+                    const typeMatch = favFilter === 'all' || fav.media_type === favFilter;
+                    const genreMatch = favGenreFilter === 'All' || (fav.genres && fav.genres.includes(favGenreFilter));
+                    return typeMatch && genreMatch;
+                });
+            }, [favorites, favFilter, favGenreFilter]);
 
             // Auto-play Hero Carousel
             useEffect(() => {
@@ -315,7 +389,7 @@
             // Infinite Scroll
             useEffect(() => {
                 const handleScroll = () => {
-                    if (selectedItem || selectedPerson) return; 
+                    if (selectedItem || selectedPerson || activeTab === 'FAVORITES') return; 
                     if (window.innerHeight + document.documentElement.scrollTop + 100 >= document.documentElement.offsetHeight) {
                         if (!isLoading && (['MOVIES', 'SERIES', 'NEW', 'SEARCH'].includes(activeTab))) {
                             setPage((prevPage) => prevPage + 1);
@@ -523,10 +597,10 @@
                 }
             };
 
-            const isFavorited = (id, type) => favorites.some(fav => fav.media_id == id && fav.media_type == type);
+            const isFavorited = (id, type) => favorites.some(fav => Number(fav.media_id) === Number(id) && fav.media_type === type);
 
             return (
-                <div className="min-h-screen bg-gradient-to-br from-[#f2f6f9] to-[#e4eef4] pb-20 overflow-x-hidden">
+                <div className="min-h-screen pb-20 overflow-x-hidden">
                     <header className="sticky top-0 z-[100] flex h-20 items-center justify-between px-8 bg-white/40 backdrop-blur-md border-b border-white/20">
                         <div className="flex flex-col items-center justify-center pt-1 cursor-pointer" onClick={() => handleTabChange('BOARD')}>
                             <span className="text-sm font-black tracking-[0.3em] leading-none">M O V I E</span>
@@ -541,61 +615,24 @@
                         </nav>
                         <div className="flex items-center space-x-6">
                             <div className="relative">
-                                <input type="text" placeholder="Search..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} onKeyDown={handleSearch} className="h-10 w-64 rounded-full border border-gray-300 bg-white/60 px-5 text-sm outline-none focus:bg-white" />
+                                <input type="text" placeholder="Search..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} onKeyDown={handleSearch} className="h-10 w-64 rounded-full border border-gray-300 bg-white/60 px-5 text-sm outline-none focus:bg-white shadow-sm focus:shadow-md transition-all" />
                                 <Icon name="Search" onClick={handleSearch} className="absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-black cursor-pointer" />
                             </div>
-                            <div onClick={() => handleTabChange('FAVORITES')} className="cursor-pointer group flex items-center gap-2">
-                                <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100" className="h-10 w-10 rounded-full border-2 border-white shadow-sm transition-transform group-hover:scale-110" />
+                            <div onClick={() => handleTabChange('FAVORITES')} className="relative cursor-pointer group flex items-center gap-2">
+                                <div className="h-10 w-10 rounded-xl bg-black flex items-center justify-center border-2 border-white shadow-sm transition-transform group-hover:scale-110 overflow-hidden">
+                                    <span className="text-white font-black text-lg select-none">M</span>
+                                </div>
+                                {favorites.length > 0 && (
+                                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-white shadow-sm animate-in zoom-in duration-300">
+                                        {favorites.length}
+                                    </span>
+                                )}
                             </div>
                         </div>
                     </header>
 
                     <main className="mx-auto max-w-[1500px] px-8 py-8">
-                        {activeTab === 'FAVORITES' ? (
-                            /* --- FAVORITES PAGE --- */
-                            <div className="animate-in fade-in duration-500">
-                                <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-                                    <h1 className="text-3xl font-black">My Favorites</h1>
-                                    <div className="flex gap-2">
-                                        {['all', 'movie', 'tv'].map(type => (
-                                            <button 
-                                                key={type} 
-                                                onClick={() => setFavFilter(type)} 
-                                                className={`px-6 py-2 rounded-full font-bold text-sm transition-all border ${favFilter === type ? 'bg-black text-white' : 'bg-white text-black hover:bg-gray-50'}`}
-                                            >
-                                                {type.charAt(0).toUpperCase() + type.slice(1)}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {isFavLoading ? (
-                                    <div className="flex justify-center py-20"><div className="w-10 h-10 border-4 border-gray-300 border-t-black rounded-full animate-spin"></div></div>
-                                ) : favorites.length === 0 ? (
-                                    <div className="py-32 text-center">
-                                        <Icon name="Heart" className="h-16 w-16 mx-auto mb-6 text-gray-200" />
-                                        <p className="text-xl font-bold text-gray-400">You haven't added any favorites yet.</p>
-                                    </div>
-                                ) : (
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-6">
-                                        {favorites
-                                            .filter(fav => favFilter === 'all' || fav.media_type === favFilter)
-                                            .map(fav => (
-                                                <div key={fav.id} onClick={() => openDetails(fav.media_id, fav.media_type)} className="cursor-pointer group">
-                                                    <div className="aspect-[2/3] rounded-2xl overflow-hidden shadow-sm mb-3 relative">
-                                                        <img src={`https://image.tmdb.org/t/p/w500${fav.poster_path}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                                                        <div className="absolute top-2 right-2 p-2 rounded-full bg-black/40 backdrop-blur-md">
-                                                            <Icon name="Heart" className="h-4 w-4 fill-red-500 text-red-500" />
-                                                        </div>
-                                                    </div>
-                                                    <p className="text-[11px] font-bold text-gray-500 mb-1">★ {fav.rating} TMDb</p>
-                                                    <h3 className="text-sm font-bold truncate">{fav.title}</h3>
-                                                </div>
-                                            ))}
-                                    </div>
-                                )}
-                            </div>
-                        ) : selectedPerson ? (
+                        {selectedPerson ? (
                             /* --- PERSON DETAIL PAGE --- */
                             <div className="animate-in fade-in duration-500">
                                 {isPersonLoading || !personData ? (
@@ -652,18 +689,20 @@
                                 ) : (
                                     <div className="flex flex-col gap-10">
                                         <div className="flex justify-between items-center">
-                                            <button onClick={() => setSelectedItem(null)} className="flex w-max items-center space-x-2 rounded-full bg-white px-5 py-2.5 text-sm font-bold shadow-sm border border-gray-200">
+                                            <button onClick={() => setSelectedItem(null)} className="flex w-max items-center space-x-2 rounded-full bg-white px-5 py-2.5 text-sm font-bold shadow-sm border border-gray-200 hover:bg-gray-50 transition-colors">
                                                 <Icon name="ArrowLeft" /> <span>Back</span>
                                             </button>
                                             <button 
+                                                disabled={isActionInProgress}
                                                 onClick={() => toggleFavorite({
                                                     id: selectedItem.id,
                                                     type: selectedItem.type,
                                                     title: detailsData.title || detailsData.name,
                                                     poster_path: detailsData.poster_path,
-                                                    vote_average: detailsData.vote_average
+                                                    vote_average: detailsData.vote_average,
+                                                    genres: detailsData.genres 
                                                 })}
-                                                className={`flex items-center gap-2 rounded-full px-6 py-2.5 font-bold transition-all shadow-sm ${isFavorited(selectedItem.id, selectedItem.type) ? 'bg-red-500 text-white' : 'bg-white text-gray-900 border border-gray-200 hover:bg-gray-50'}`}
+                                                className={`flex items-center gap-2 rounded-full px-6 py-2.5 font-bold transition-all shadow-sm ${isActionInProgress ? 'opacity-50 cursor-not-allowed' : ''} ${isFavorited(selectedItem.id, selectedItem.type) ? 'bg-red-500 text-white' : 'bg-white text-gray-900 border border-gray-200 hover:bg-gray-50'}`}
                                             >
                                                 <Icon name="Heart" className={`h-5 w-5 ${isFavorited(selectedItem.id, selectedItem.type) ? 'fill-current' : ''}`} />
                                                 <span>{isFavorited(selectedItem.id, selectedItem.type) ? 'Saved to Favorites' : 'Add to Favorites'}</span>
@@ -682,7 +721,7 @@
                                                             <span key={g.id} className="text-xs font-bold text-white/80">{g.name}</span>
                                                         ))}
                                                     </div>
-                                                    <h1 className="text-6xl font-black mb-4 drop-shadow-lg">{detailsData.title || detailsData.name}</h1>
+                                                    <h1 className="text-6xl font-black mb-4 drop-shadow-lg leading-tight">{detailsData.title || detailsData.name}</h1>
                                                     <div className="flex items-center gap-8 text-sm font-bold opacity-90">
                                                         <span>{detailsData.release_date || detailsData.first_air_date}</span>
                                                         <span>★ {detailsData.vote_average?.toFixed(1)} TMDb</span>
@@ -726,6 +765,82 @@
                                     </div>
                                 )}
                             </div>
+                        ) : activeTab === 'FAVORITES' ? (
+                            /* --- FAVORITES PAGE --- */
+                            <div className="animate-in fade-in duration-500">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+                                    <div>
+                                        <h1 className="text-3xl font-black mb-2 tracking-tight flex items-center gap-3">
+                                            My Favorites
+                                            <span className="text-sm font-bold bg-white px-3 py-1 rounded-full shadow-sm text-gray-500 border border-gray-100">
+                                                {favorites.length} {favorites.length === 1 ? 'item' : 'items'}
+                                            </span>
+                                        </h1>
+                                        <p className="text-gray-500 text-sm font-medium">Your hand-picked cinematic treasures.</p>
+                                    </div>
+                                    <div className="flex gap-2 glass p-1.5 rounded-full border border-white shadow-sm">
+                                        {['all', 'movie', 'tv'].map(type => (
+                                            <button 
+                                                key={type} 
+                                                onClick={() => { setFavFilter(type); setFavGenreFilter('All'); }} 
+                                                className={`px-6 py-2 rounded-full font-bold text-xs transition-all uppercase tracking-wider ${favFilter === type ? 'bg-black text-white shadow-md' : 'text-gray-500 hover:text-black'}`}
+                                            >
+                                                {type === 'all' ? 'Everything' : type === 'movie' ? 'Movies' : 'Series'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* DYNAMIC GENRE PILL FILTER BAR */}
+                                {favorites.length > 0 && (
+                                    <div className="mb-10 animate-in slide-in-from-left duration-700">
+                                        <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-2 scroll-smooth">
+                                            {availableFavGenres.map(genre => (
+                                                <button 
+                                                    key={genre}
+                                                    onClick={() => setFavGenreFilter(genre)}
+                                                    className={`shrink-0 px-6 py-2.5 rounded-full text-xs font-black transition-all border shadow-sm ${favGenreFilter === genre ? 'bg-black text-white border-black scale-105 shadow-xl' : 'bg-white/70 text-gray-900 border-gray-100 hover:bg-white hover:-translate-y-0.5'}`}
+                                                >
+                                                    {genre}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {isFavLoading ? (
+                                    <div className="flex justify-center py-20"><div className="w-10 h-10 border-4 border-gray-300 border-t-black rounded-full animate-spin"></div></div>
+                                ) : favorites.length === 0 ? (
+                                    <div className="py-32 text-center glass rounded-[3rem] border-2 border-dashed border-gray-300">
+                                        <Icon name="Heart" className="h-16 w-16 mx-auto mb-6 text-gray-300" />
+                                        <p className="text-xl font-bold text-gray-400">Your collection is empty.</p>
+                                        <button onClick={() => handleTabChange('BOARD')} className="mt-6 px-8 py-3 bg-black text-white rounded-full font-bold hover:scale-105 transition-transform shadow-lg">Start Exploring</button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {filteredFavorites.length === 0 ? (
+                                            <div className="py-20 text-center font-bold text-gray-400">No matches found in your collection for these filters.</div>
+                                        ) : (
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-6">
+                                                {filteredFavorites.map(fav => (
+                                                    <div key={fav.id} onClick={() => openDetails(fav.media_id, fav.media_type)} className="cursor-pointer group animate-in zoom-in-95 duration-300">
+                                                        <div className="aspect-[2/3] rounded-2xl overflow-hidden shadow-sm mb-3 relative border-2 border-transparent group-hover:border-white transition-all">
+                                                            <img src={`https://image.tmdb.org/t/p/w500${fav.poster_path}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                                            <div className="absolute top-2 right-2 p-2 rounded-full bg-black/40 backdrop-blur-md opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                                                <Icon name="Heart" className="h-4 w-4 fill-red-500 text-red-500" />
+                                                            </div>
+                                                            <div className="absolute bottom-0 left-0 right-0 h-1/2 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                                        </div>
+                                                        <p className="text-[11px] font-bold text-gray-500 mb-1">★ {fav.rating} TMDb</p>
+                                                        <h3 className="text-sm font-bold truncate group-hover:text-black transition-colors">{fav.title}</h3>
+                                                        <p className="text-[10px] text-gray-400 font-medium truncate mt-0.5">{fav.genres}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
                         ) : activeTab === 'BOARD' ? (
                             /* --- BOARD TAB --- */
                             <>
@@ -745,7 +860,7 @@
                                                 </div>
                                                 <div className="absolute bottom-12 left-12 text-white z-20 cursor-pointer" onClick={() => openDetails(comingSoonItems[currentHeroIndex].id, 'movie')}>
                                                     <p className="text-xs font-bold mb-3 uppercase tracking-widest bg-white/10 w-max px-3 py-1 rounded-full">Releasing {comingSoonItems[currentHeroIndex].dateFormatted}</p>
-                                                    <h1 className="text-5xl font-black mb-5">{comingSoonItems[currentHeroIndex].title}</h1>
+                                                    <h1 className="text-5xl font-black mb-5 leading-tight">{comingSoonItems[currentHeroIndex].title}</h1>
                                                     <div className="flex items-center gap-6 text-xs font-bold">
                                                         <span>★ {comingSoonItems[currentHeroIndex].rating}</span>
                                                         <span>👥 {comingSoonItems[currentHeroIndex].viewers} Anticipating</span>
@@ -755,13 +870,13 @@
                                         ) : <div className="animate-pulse bg-gray-800 w-full h-full"></div>}
                                     </div>
                                     <div className="w-[340px] flex flex-col">
-                                        <h2 className="text-xl font-bold mb-5">Coming soon</h2>
+                                        <h2 className="text-xl font-bold mb-5 tracking-tight">Coming soon</h2>
                                         <div className="flex flex-col gap-3">
                                             {comingSoonItems.slice(0, 3).map(item => (
                                                 <div key={item.id} onClick={() => openDetails(item.id, item.type)} className="flex items-center gap-4 p-2 bg-white/40 rounded-2xl hover:bg-white/70 cursor-pointer transition-colors backdrop-blur-sm border border-white/20">
                                                     <img src={item.image} className="w-[110px] h-[72px] rounded-xl object-cover" />
                                                     <div className="overflow-hidden">
-                                                        <h3 className="font-bold truncate">{item.title}</h3>
+                                                        <h3 className="font-bold truncate text-[15px]">{item.title}</h3>
                                                         <p className="text-[10px] text-gray-500 font-bold">{item.dateFormatted}</p>
                                                     </div>
                                                 </div>
@@ -786,7 +901,7 @@
                                 <Section title="Top Rated" items={topRated} onSelect={openDetails} isLoading={isSectionsLoading} />
                             </>
                         ) : (
-                            /* --- GRID COLLECTIONS --- */
+                            /* --- GRID COLLECTIONS (MOVIES, SERIES, NEW, SEARCH) --- */
                             <div className="animate-in fade-in duration-500">
                                 <h1 className="text-3xl font-black mb-8 capitalize">{activeTab.toLowerCase()} Collection</h1>
                                 {['MOVIES', 'SERIES'].includes(activeTab) && (
@@ -812,7 +927,7 @@
                                                 <img src={show.image.medium} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                                             </div>
                                             <p className="text-[11px] font-bold text-gray-500 mb-1">★ {show.rating.average} TMDb</p>
-                                            <h3 className="text-sm font-bold truncate">{show.name}</h3>
+                                            <h3 className="text-sm font-bold truncate group-hover:text-black transition-colors">{show.name}</h3>
                                         </div>
                                     ))}
                                 </div>
