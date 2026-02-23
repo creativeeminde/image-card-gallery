@@ -88,14 +88,24 @@
             height: 100%; display: flex; flex-direction: column; position: relative; z-index: 1;
         }
 
-        .delete-btn {
-            position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.95); border-radius: 50%;
+        /* Card Actions (Delete & Pin) */
+        .card-actions {
+            position: absolute; top: 12px; right: 12px;
+            display: flex; gap: 8px; z-index: 20;
+        }
+        .action-btn {
+            background: rgba(255,255,255,0.95); border-radius: 50%;
             width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
-            color: #ff3b30; opacity: 0; transition: var(--transition-fast); z-index: 20; border: none; cursor: pointer;
+            opacity: 0; transition: var(--transition-fast); border: none; cursor: pointer;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1); pointer-events: auto;
         }
-        .card-wrapper:hover .delete-btn { opacity: 1; }
-        .delete-btn:hover { transform: scale(1.1); }
+        .card-wrapper:hover .action-btn { opacity: 1; }
+        .action-btn:hover { transform: scale(1.1); }
+        .action-btn.delete-btn { color: #ff3b30; }
+        .action-btn.pin-btn { color: var(--text-muted); }
+        .action-btn.pin-btn.is-pinned {
+            opacity: 1; background: var(--text-main); color: white;
+        }
 
         /* Card Types & Mini Document Preview */
         .card-text .card-inner { 
@@ -176,7 +186,7 @@
             position: fixed; pointer-events: none !important; z-index: 9999; margin: 0 !important; left: 0; top: 0;
         }
         .drag-clone .card { box-shadow: var(--shadow-drag); }
-        .drag-clone .delete-btn { display: none; }
+        .drag-clone .action-btn { display: none; }
 
         /* Drop Targets */
         .card-project.drop-target .project-front { transform: scale(1.04); box-shadow: 0 0 0 4px rgba(100, 150, 255, 0.3), var(--shadow-hover); background: #eef2f7; }
@@ -203,8 +213,8 @@
         .attached-sticky:hover { box-shadow: 0 16px 40px rgba(0,0,0,0.15); z-index: 20; transform: translate(-50%, -50%) scale(1.05) !important; }
         
         .attached-sticky-content { outline: none; min-height: 20px; flex-grow: 1; cursor: text; line-height: 1.5; }
-        .attached-sticky .delete-btn { display: none; }
-        .attached-sticky:hover .delete-btn { display: flex; }
+        .attached-sticky .action-btn.delete-btn { display: none; top: -10px; right: -10px; position: absolute; }
+        .attached-sticky:hover .action-btn.delete-btn { display: flex; opacity: 1; }
 
         /* Project View Fullscreen */
         .project-view-overlay {
@@ -556,10 +566,10 @@
         async function fetchNotes() {
             loader.style.display = 'block';
             try {
+                // Fetch including the is_pinned attribute
                 const { data, error } = await supabaseClient
                     .from('interactive_notes')
                     .select('*')
-                    .order('sort_order', { ascending: true })
                     .order('created_at', { ascending: false });
                     
                 if (error) throw error;
@@ -570,13 +580,23 @@
         }
 
         function renderViews() {
+            // Main Grid Filtering and Sorting (Pinned items first)
             const mainNotes = allNotes.filter(n => !n.project_id);
-            mainNotes.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+            mainNotes.sort((a, b) => {
+                if (a.is_pinned && !b.is_pinned) return -1;
+                if (!a.is_pinned && b.is_pinned) return 1;
+                return (a.sort_order || 0) - (b.sort_order || 0);
+            });
             renderGrid(mainNotes, mainGrid);
 
+            // Project Grid Filtering and Sorting (Pinned items first)
             if(currentOpenProjectId) {
                 const projNotes = allNotes.filter(n => n.project_id === currentOpenProjectId);
-                projNotes.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+                projNotes.sort((a, b) => {
+                    if (a.is_pinned && !b.is_pinned) return -1;
+                    if (!a.is_pinned && b.is_pinned) return 1;
+                    return (a.sort_order || 0) - (b.sort_order || 0);
+                });
                 renderGrid(projNotes, projectGrid);
             }
         }
@@ -608,7 +628,7 @@
                         <div class="attached-sticky" data-id="${st.id}" data-type="attached-sticky" 
                              style="background-color: ${st.color || 'var(--sticky-yellow)'}; left: ${x}%; top: ${y}%; transform: translate(-50%, -50%);">
                             <div class="attached-sticky-content" contenteditable="true" onblur="updateStickyContent('${st.id}', this.innerHTML)" onpointerdown="event.stopPropagation()">${(st.content || '').replace(/\n/g, '<br>')}</div>
-                            <button class="delete-btn" style="top: -10px; right: -10px; width: 24px; height: 24px; z-index: 10;" title="Detach sticky" onclick="detachSticky('${st.id}', event)"><i data-lucide="x" size="12"></i></button>
+                            <button class="action-btn delete-btn" title="Detach sticky" onclick="detachSticky('${st.id}', event)"><i data-lucide="x" size="12"></i></button>
                         </div>
                     `;
                 });
@@ -667,7 +687,17 @@
                         break;
                 }
 
-                wrapper.innerHTML = `<button class="delete-btn" onclick="deleteNote('${note.id}', event)"><i data-lucide="trash-2" size="14"></i></button>${cardHTML}`;
+                wrapper.innerHTML = `
+                    <div class="card-actions">
+                        <button class="action-btn pin-btn ${note.is_pinned ? 'is-pinned' : ''}" onclick="togglePin('${note.id}', event)" title="${note.is_pinned ? 'Unpin' : 'Pin to top'}">
+                            <i data-lucide="pin" size="14"></i>
+                        </button>
+                        <button class="action-btn delete-btn" onclick="deleteNote('${note.id}', event)" title="Delete Note">
+                            <i data-lucide="trash-2" size="14"></i>
+                        </button>
+                    </div>
+                    ${cardHTML}
+                `;
                 
                 wrapper.addEventListener('contextmenu', (e) => {
                     e.preventDefault();
@@ -707,6 +737,23 @@
                 fetchNotes();
             } catch (err) { console.error(err); }
         });
+
+        window.togglePin = async (id, event) => {
+            event.stopPropagation();
+            const note = allNotes.find(n => n.id === id);
+            if (!note) return;
+
+            note.is_pinned = !note.is_pinned;
+            renderViews(); // Optimistic UI update
+            
+            try {
+                await supabaseClient.from('interactive_notes').update({ is_pinned: note.is_pinned }).eq('id', id);
+            } catch (err) {
+                console.error("Failed to update pin state:", err);
+                note.is_pinned = !note.is_pinned; // Revert on fail
+                renderViews();
+            }
+        };
 
         window.deleteNote = async (id, event) => {
             event.stopPropagation();
@@ -992,7 +1039,7 @@
                 setTimeout(() => { if(clone && clone.parentNode) clone.remove(); }, 400);
             } else {
                 // Was just a click! Open view
-                if (dragInfo.el && !e.target.closest('.delete-btn')) {
+                if (dragInfo.el && !e.target.closest('.action-btn')) {
                     if (dragInfo.el.dataset.type === 'project') {
                         const note = allNotes.find(n => n.id === dragInfo.id);
                         openProjectView(note);
@@ -1048,7 +1095,11 @@
             document.getElementById('projectTitleDisplay').innerText = projectNode.title || 'Project View';
             
             const projNotes = allNotes.filter(n => n.project_id === currentOpenProjectId);
-            projNotes.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+            projNotes.sort((a, b) => {
+                if (a.is_pinned && !b.is_pinned) return -1;
+                if (!a.is_pinned && b.is_pinned) return 1;
+                return (a.sort_order || 0) - (b.sort_order || 0);
+            });
             renderGrid(projNotes, projectGrid);
             
             projectView.classList.add('active');
