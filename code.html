@@ -220,9 +220,22 @@
                 <!-- Main Schedule Card -->
                 <div class="bg-white dark:bg-slate-800 rounded-[36px] p-6 sm:p-8 shadow-[0_4px_20px_rgba(0,0,0,0.03)] relative flex-grow min-h-[450px]">
                     <!-- Header -->
-                    <div class="flex justify-between items-end mb-8">
-                        <h2 id="schedule-title" class="text-[28px] font-bold text-slate-900 dark:text-white leading-none tracking-tight">Today</h2>
-                        <span id="event-count" class="text-[14px] font-medium text-slate-400 pb-0.5"></span>
+                    <div class="flex justify-between items-start mb-8">
+                        <div class="flex flex-col">
+                            <h2 id="schedule-title" class="text-[28px] font-bold text-slate-900 dark:text-white leading-none tracking-tight">Today</h2>
+                            <span id="event-count" class="text-[14px] font-medium text-slate-400 mt-1 block"></span>
+                        </div>
+                        
+                        <!-- Template Actions -->
+                        <div class="flex bg-slate-100 dark:bg-slate-700/50 p-1.5 rounded-full border border-slate-200 dark:border-slate-700/50">
+                            <button id="save-template-btn" class="px-3 py-1 text-[12px] font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 transition-colors" title="Save Day as Template">
+                                <span class="material-symbols-outlined text-[14px]">save</span> <span class="hidden sm:inline">Save</span>
+                            </button>
+                            <div class="w-[1px] bg-slate-200 dark:bg-slate-600 my-1 mx-0.5"></div>
+                            <button id="load-template-btn" class="px-3 py-1 text-[12px] font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 transition-colors" title="Load Template">
+                                <span class="material-symbols-outlined text-[14px]">download</span> <span class="hidden sm:inline">Load</span>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Events List -->
@@ -240,8 +253,6 @@
                 <div class="hidden">
                     <p id="current-date"></p>
                     <button id="schedule-tomorrow-btn">Schedule for Tomorrow</button>
-                    <button id="save-template-btn">Save Template</button>
-                    <button id="load-template-btn">Load Template</button>
                     <button id="bulk-mode-btn">Plan Entire Day</button>
                 </div>
             </main>
@@ -382,9 +393,14 @@
             <main class="container mx-auto px-4 py-8 max-w-6xl">
                 <div class="bg-[#fffbf2] dark:bg-slate-900 rounded-[40px] p-6 md:p-10 shadow-[0_8px_30px_rgba(0,0,0,0.02)] border border-amber-900/5 dark:border-slate-800">
                     <!-- Header -->
-                    <div class="flex items-center justify-between mb-8 px-2">
+                    <div class="flex items-center justify-between mb-8 px-2 relative">
                         <button id="cal-prev-btn" class="size-10 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"><span class="material-symbols-outlined">chevron_left</span></button>
-                        <h2 id="cal-month-year" class="text-[26px] font-bold text-slate-800 dark:text-white tracking-tight"></h2>
+                        
+                        <div class="flex flex-col items-center">
+                            <h2 id="cal-month-year" class="text-[26px] font-bold text-slate-800 dark:text-white tracking-tight leading-none mb-1"></h2>
+                            <button onclick="showLoadTemplateModal()" class="text-[12px] font-semibold text-primary hover:underline flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">dynamic_feed</span> Manage Templates</button>
+                        </div>
+                        
                         <button id="cal-next-btn" class="size-10 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"><span class="material-symbols-outlined">chevron_right</span></button>
                     </div>
 
@@ -795,7 +811,7 @@
         let editingTodoId = null;
         
         // === NEW: Time Indicator State ===
-        let timeIndicatorInterval = null;
+        let progressInterval = null;
         
         // === NEW TEMPLATE EDITING STATE ===
         let editingTemplateId = null;
@@ -874,33 +890,6 @@
             }
         }
         
-        // NEW HELPER: Creates the HTML for the current time indicator
-        function createTimeIndicatorHTML(now) {
-            const timeString = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-            return `
-            <!-- Current Time Indicator -->
-            <div class="flex gap-4 relative -my-4 z-20" id="time-indicator">
-                <!-- 1. Time -->
-                <div class="w-16 text-right text-sm text-red-500 dark:text-red-400 font-bold pt-1 flex-shrink-0">
-                    ${timeString}
-                </div>
-                
-                <!-- 2. Timeline Connector -->
-                <div class="flex flex-col items-center flex-shrink-0">
-                    <!-- Icon (a simple dot) -->
-                    <div class="z-10 rounded-full size-8 flex-shrink-0 flex items-center justify-center">
-                        <div class="size-3 rounded-full bg-red-500 ring-4 ring-background-light dark:ring-background-dark"></div>
-                    </div>
-                </div>
-                
-                <!-- 3. Event Card (just a line) -->
-                <div class="flex-1 pb-8 flex items-center">
-                    <div class="w-full h-0.5 bg-red-500/50"></div>
-                </div>
-            </div>
-            `;
-        }
-        
         // NEW HELPER: Calculates duration for the event card
         function calculateDuration(startTime, endTime) {
             try {
@@ -967,9 +956,9 @@
         // === VIEW MANAGEMENT ===
         function showView(viewId) {
             // NEW: Clear interval when leaving schedule view
-            if (timeIndicatorInterval) {
-                clearInterval(timeIndicatorInterval);
-                timeIndicatorInterval = null;
+            if (progressInterval) {
+                clearInterval(progressInterval);
+                progressInterval = null;
             }
 
             document.querySelectorAll('#views-container > div').forEach(v => v.classList.add('hidden'));
@@ -1082,10 +1071,10 @@
             if (!events || events.length === 0) { 
                 eventsContainer.innerHTML = `<p class="text-slate-500 text-[15px] pt-2">No events scheduled.</p>`; 
                 
-                // NEW: Still show time indicator if it's today
+                // NEW: Still update the day progress interval if it's today
                 if (isToday) {
-                    updateTimeIndicatorPosition(); // This will add it
-                    timeIndicatorInterval = setInterval(updateTimeIndicatorPosition, 60000);
+                    if (progressInterval) clearInterval(progressInterval);
+                    progressInterval = setInterval(updateDayProgressWidget, 60000);
                 }
                 return;
             }
@@ -1120,18 +1109,12 @@
             });
 
             // NEW: Clear any existing interval and start a new one
-            if (timeIndicatorInterval) clearInterval(timeIndicatorInterval);
+            if (progressInterval) clearInterval(progressInterval);
             
             if (isToday) {
-                updateTimeIndicatorPosition(); // Run once immediately
-                timeIndicatorInterval = setInterval(() => {
-                    updateTimeIndicatorPosition();
+                progressInterval = setInterval(() => {
                     updateDayProgressWidget();
                 }, 60000); // Update every minute
-            } else {
-                // Ensure no indicator is shown if it's not today
-                const oldIndicator = document.getElementById('time-indicator');
-                if (oldIndicator) oldIndicator.remove();
             }
         }
         
@@ -1220,53 +1203,6 @@
                 alert('Error creating task: ' + response.error.message);
             } else {
                 showView('#todo-view');
-            }
-        }
-        
-        // NEW: Function to update the time indicator's position
-        function updateTimeIndicatorPosition() {
-            // Check if we are still on the schedule view and if it's today
-            const isToday = (toYMD(new Date()) === toYMD(selectedDate));
-            const scheduleView = document.getElementById('schedule-view');
-            
-            // If it's not today or not on the schedule view, remove indicator and stop timer
-            if (!isToday || (scheduleView && scheduleView.classList.contains('hidden'))) {
-                if (timeIndicatorInterval) clearInterval(timeIndicatorInterval);
-                timeIndicatorInterval = null;
-                const oldIndicator = document.getElementById('time-indicator');
-                if (oldIndicator) oldIndicator.remove();
-                return;
-            }
-
-            const now = new Date();
-            const currentTimeStr = now.toTimeString().split(' ')[0].substring(0, 8); // "HH:MM:SS"
-            const eventsContainer = document.getElementById('timeline-container');
-            if (!eventsContainer) return;
-
-            // Find all event elements
-            const eventElements = eventsContainer.querySelectorAll('[data-start-time]');
-            let indicatorHTML = createTimeIndicatorHTML(now);
-
-            // Remove old indicator if it exists
-            const oldIndicator = document.getElementById('time-indicator');
-            if (oldIndicator) oldIndicator.remove();
-
-            let inserted = false;
-            for (let i = 0; i < eventElements.length; i++) {
-                const eventEl = eventElements[i];
-                const eventStartTime = eventEl.dataset.startTime;
-
-                if (eventStartTime > currentTimeStr) {
-                    // Insert before this element
-                    eventEl.insertAdjacentHTML('beforebegin', indicatorHTML);
-                    inserted = true;
-                    break;
-                }
-            }
-
-            // If it was never inserted, append it to the end
-            if (!inserted) {
-                eventsContainer.insertAdjacentHTML('beforeend', indicatorHTML);
             }
         }
         
@@ -2064,6 +2000,23 @@
         }
 
         // === GOALS FUNCTIONS ===
+        function generateDotsHTML(interest, isLime) {
+            let activeDots = 3; // Default Medium
+            if (interest.includes('Low')) activeDots = 1;
+            else if (interest.includes('Medium')) activeDots = 3;
+            else if (interest.includes('Great') || interest.includes('High')) activeDots = 4;
+            else if (interest.includes('Hot')) activeDots = 5;
+
+            let dots = '';
+            for(let i=0; i<5; i++) {
+                let colorClass = isLime 
+                    ? (i < activeDots ? 'bg-black' : 'bg-black/20') 
+                    : (i < activeDots ? 'bg-orange-500' : 'bg-slate-200 dark:bg-slate-700');
+                dots += `<div class="size-2 rounded-full ${colorClass}"></div>`;
+            }
+            return `<div class="flex gap-1.5">${dots}</div>`;
+        }
+
         async function displayGoals() {
             document.getElementById('goals-list-view').classList.remove('hidden'); document.getElementById('goals-list-header').classList.remove('hidden'); document.getElementById('goal-details-view').classList.add('hidden');
             const listContainer = document.getElementById('goals-list-view');
@@ -2495,17 +2448,24 @@
 
             window.addEventListener('online', updateOnlineStatus);
             window.addEventListener('offline', updateOnlineStatus);
-            updateOnlineStatus();
+            updateOnlineStatus(); // Initial check
 
+            // === NEW: HEADER SCROLL LOGIC ===
             let lastScrollTop = 0;
             const header = document.querySelector('header');
             window.addEventListener("scroll", function() {
                 let scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-                if (scrollTop > lastScrollTop && scrollTop > 50) header.classList.add('-translate-y-full');
-                else if (scrollTop < lastScrollTop || scrollTop === 0) header.classList.remove('-translate-y-full');
-                lastScrollTop = scrollTop <= 0 ? 0 : scrollTop;
+                if (scrollTop > lastScrollTop && scrollTop > 50) {
+                    // Downscroll
+                    header.classList.add('-translate-y-full');
+                } else if (scrollTop < lastScrollTop || scrollTop === 0) {
+                    // Upscroll or at the top
+                    header.classList.remove('-translate-y-full');
+                }
+                lastScrollTop = scrollTop <= 0 ? 0 : scrollTop; // For Mobile or negative scrolling
             }, false);
             
+            // Initial view
             showView('#schedule-view');
         });
     </script>
@@ -2513,7 +2473,13 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/service-worker.js').catch(err => console.log('ServiceWorker registration failed: ', err));
+          navigator.serviceWorker.register('/service-worker.js')
+            .then(registration => {
+              console.log('ServiceWorker registration successful with scope: ', registration.scope);
+            })
+            .catch(err => {
+              console.log('ServiceWorker registration failed: ', err);
+            });
         });
       }
     </script>
