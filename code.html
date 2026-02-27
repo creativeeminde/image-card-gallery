@@ -34,7 +34,7 @@
                 extend: {
                     colors: {
                         "primary": "#137fec",
-                        "background-light": "#f3f4f6", // Slightly grayer to make cards pop
+                        "background-light": "#f3f4f6", 
                         "background-dark": "#101922",
                     },
                     fontFamily: { "display": ["Inter", "sans-serif"] },
@@ -456,11 +456,11 @@
                         <button class="size-10 flex-shrink-0 rounded-full border border-slate-200 dark:border-slate-700 flex items-center justify-center hover:bg-white dark:hover:bg-slate-800 transition-colors bg-transparent"><span class="material-symbols-outlined text-sm">search</span></button>
                         <button class="size-10 flex-shrink-0 rounded-full border border-slate-200 dark:border-slate-700 flex items-center justify-center hover:bg-white dark:hover:bg-slate-800 transition-colors bg-transparent"><span class="material-symbols-outlined text-[16px]">tune</span></button>
 
-                        <button class="px-5 py-2.5 rounded-full bg-white dark:bg-slate-800 shadow-sm border border-slate-100 dark:border-slate-700 text-sm font-semibold flex-shrink-0 text-slate-900 dark:text-white">All</button>
-                        <button class="px-5 py-2.5 rounded-full border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-500 hover:bg-white/50 dark:hover:bg-slate-800/50 flex items-center gap-1.5 transition-colors flex-shrink-0 bg-transparent"><span class="text-orange-500 text-base leading-none">🔥</span> Hot Goal</button>
-                        <button class="px-5 py-2.5 rounded-full border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-500 hover:bg-white/50 dark:hover:bg-slate-800/50 transition-colors flex-shrink-0 bg-transparent">Great interest</button>
-                        <button class="px-5 py-2.5 rounded-full border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-500 hover:bg-white/50 dark:hover:bg-slate-800/50 transition-colors flex-shrink-0 bg-transparent">Medium interest</button>
-                        <button class="px-5 py-2.5 rounded-full border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-500 hover:bg-white/50 dark:hover:bg-slate-800/50 transition-colors flex-shrink-0 bg-transparent">Low interest</button>
+                        <button class="goal-filter-btn px-5 py-2.5 rounded-full border text-sm flex-shrink-0 transition-colors flex items-center gap-1.5 bg-white dark:bg-slate-800 shadow-sm border-slate-100 dark:border-slate-700 text-slate-900 dark:text-white font-semibold" data-filter="All">All</button>
+                        <button class="goal-filter-btn px-5 py-2.5 rounded-full border text-sm flex-shrink-0 transition-colors flex items-center gap-1.5 bg-transparent border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-white/50 dark:hover:bg-slate-800/50 font-medium" data-filter="🔥 Hot Goal"><span class="text-orange-500 text-base leading-none">🔥</span> Hot Goal</button>
+                        <button class="goal-filter-btn px-5 py-2.5 rounded-full border text-sm flex-shrink-0 transition-colors flex items-center gap-1.5 bg-transparent border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-white/50 dark:hover:bg-slate-800/50 font-medium" data-filter="Great Interest">Great interest</button>
+                        <button class="goal-filter-btn px-5 py-2.5 rounded-full border text-sm flex-shrink-0 transition-colors flex items-center gap-1.5 bg-transparent border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-white/50 dark:hover:bg-slate-800/50 font-medium" data-filter="Medium Interest">Medium interest</button>
+                        <button class="goal-filter-btn px-5 py-2.5 rounded-full border text-sm flex-shrink-0 transition-colors flex items-center gap-1.5 bg-transparent border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-white/50 dark:hover:bg-slate-800/50 font-medium" data-filter="Low Interest">Low interest</button>
                     </div>
 
                     <!-- Grid for Sleek Cards -->
@@ -619,6 +619,7 @@
 
         let activeGoal = null;
         let editingGoalId = null;
+        let currentGoalFilter = 'All'; // Global filter state
         let expandedTodoDate = toYMD(new Date()); // Default to today for the new To-Do list
         
         // === HELPERS ===
@@ -1482,11 +1483,18 @@
         }
 
         // === GOALS FUNCTIONS (NEW STYLES INTEGRATED) ===
-        function generateDotsHTML(percent, isLime) {
-            const fullDots = Math.floor(percent / 20);
+        function generateDotsHTML(interest, isLime) {
+            let activeDots = 3; // Default Medium
+            if (interest.includes('Low')) activeDots = 1;
+            else if (interest.includes('Medium')) activeDots = 3;
+            else if (interest.includes('Great') || interest.includes('High')) activeDots = 4;
+            else if (interest.includes('Hot')) activeDots = 5;
+
             let dots = '';
             for(let i=0; i<5; i++) {
-                let colorClass = isLime ? (i < fullDots ? 'bg-black' : 'bg-black/20') : (i < fullDots ? 'bg-orange-500' : 'bg-slate-200 dark:bg-slate-700');
+                let colorClass = isLime 
+                    ? (i < activeDots ? 'bg-black' : 'bg-black/20') 
+                    : (i < activeDots ? 'bg-orange-500' : 'bg-slate-200 dark:bg-slate-700');
                 dots += `<div class="size-2 rounded-full ${colorClass}"></div>`;
             }
             return `<div class="flex gap-1.5">${dots}</div>`;
@@ -1504,6 +1512,18 @@
             if (error) {
                 listContainer.innerHTML = '<p class="col-span-full text-center text-red-500">Error loading goals.</p>'; return;
             }
+
+            // Update filter UI Buttons
+            document.querySelectorAll('.goal-filter-btn').forEach(btn => {
+                const isSelected = btn.dataset.filter === currentGoalFilter;
+                let baseClasses = "goal-filter-btn px-5 py-2.5 rounded-full border text-sm flex-shrink-0 transition-colors flex items-center gap-1.5 ";
+                if (isSelected) {
+                    btn.className = baseClasses + "bg-white dark:bg-slate-800 shadow-sm border-slate-100 dark:border-slate-700 text-slate-900 dark:text-white font-semibold";
+                } else {
+                    btn.className = baseClasses + "bg-transparent border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-white/50 dark:hover:bg-slate-800/50 font-medium";
+                }
+            });
+
             if (!goals || goals.length === 0) {
                 listContainer.innerHTML = `
                     <div class="col-span-full flex flex-col items-center justify-center py-16 text-center bg-white/50 dark:bg-slate-800/50 rounded-[32px] border border-dashed border-slate-300 dark:border-slate-700">
@@ -1519,16 +1539,37 @@
                 return;
             }
             
+            let filteredGoals = goals;
+            if (currentGoalFilter !== 'All') {
+                filteredGoals = goals.filter(g => g.interest === currentGoalFilter);
+            }
+
             const { data: logs } = await db.from('goal_logs').select('goal_id, count');
             
             let totalGoals = goals.length;
             let completedGoalsCount = 0;
 
-            listContainer.innerHTML = goals.map((goal, index) => {
+            // Calculate overall stats
+            goals.forEach(g => {
+                const gLogs = logs ? logs.filter(l => l.goal_id === g.id) : [];
+                const comp = gLogs.reduce((sum, l) => sum + l.count, 0);
+                if (comp >= g.target_number) completedGoalsCount++;
+            });
+
+            document.getElementById('stat-total').textContent = totalGoals;
+            document.getElementById('stat-completed').textContent = completedGoalsCount;
+            document.getElementById('stat-active').textContent = totalGoals - completedGoalsCount;
+            document.getElementById('goals-count-text').textContent = `${totalGoals} Goals`;
+
+            if (filteredGoals.length === 0) {
+                listContainer.innerHTML = '<p class="col-span-full text-center text-slate-500 py-10 font-medium">No goals match your current filter.</p>';
+                return;
+            }
+
+            listContainer.innerHTML = filteredGoals.map((goal, index) => {
                 const goalLogs = logs ? logs.filter(l => l.goal_id === goal.id) : [];
                 const completed = goalLogs.reduce((sum, l) => sum + l.count, 0);
                 const percent = Math.min(100, Math.round((completed / goal.target_number) * 100));
-                if (percent >= 100) completedGoalsCount++;
 
                 // First card acts as the 'Hot Client / Highlighted' card like in the image
                 const isLimeCard = index === 0;
@@ -1546,20 +1587,21 @@
                     ? 'border-black/10 text-black/60 hover:text-black hover:bg-black/5'
                     : 'border-slate-200 dark:border-slate-700 text-slate-400 hover:text-black dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800';
 
-                let bottomButtons = isLimeCard
-                    ? `<div class="flex gap-2">
-                         <button class="size-10 rounded-full border border-black/10 text-black flex items-center justify-center hover:bg-black/5 transition-colors"><span class="material-symbols-outlined text-[18px]">mail</span></button>
-                         <button class="size-10 rounded-full bg-black text-white flex items-center justify-center shadow-lg hover:scale-105 transition-transform"><span class="material-symbols-outlined text-[18px]">videocam</span></button>
-                       </div>`
-                    : ``;
-
                 let bottomSection = isLimeCard ? `
-                    <div class="flex items-center justify-between w-full">
-                        <div class="flex flex-col">
+                    <div class="flex items-center justify-between w-full gap-4">
+                        <div class="flex flex-col flex-shrink-0">
                             <p class="text-[11px] font-bold uppercase tracking-widest text-black/50 mb-1">Status</p>
-                            <div class="flex items-center gap-1 text-[13px] font-semibold">Goal Active <span class="material-symbols-outlined text-[16px]">expand_more</span></div>
+                            <div class="flex items-center gap-1 text-[13px] font-semibold">Goal Active</div>
                         </div>
-                        ${bottomButtons}
+                        <div class="flex flex-col w-full max-w-[130px]">
+                            <div class="flex justify-between items-end mb-1.5">
+                                <p class="text-[10px] font-bold uppercase tracking-widest text-black/50">Overall Progress</p>
+                                <span class="text-[12px] font-bold text-black leading-none">${percent}%</span>
+                            </div>
+                            <div class="w-full h-1.5 bg-black/10 rounded-full overflow-hidden">
+                                <div class="h-full bg-black rounded-full" style="width:${percent}%"></div>
+                            </div>
+                        </div>
                     </div>
                 ` : `
                     <div class="flex items-end justify-between w-full">
@@ -1569,7 +1611,7 @@
                          </div>
                          <div class="flex flex-col items-end">
                              <p class="text-[11px] font-medium ${interestText.includes('Hot') ? 'text-orange-500' : 'text-slate-400'} mb-1.5">${percent>=100 ? '🔥 Completed' : interestText}</p>
-                             ${generateDotsHTML(percent, false)}
+                             ${generateDotsHTML(interestText, false)}
                          </div>
                     </div>
                 `;
@@ -1595,11 +1637,6 @@
                 `;
             }).join('');
             
-            document.getElementById('stat-total').textContent = totalGoals;
-            document.getElementById('stat-completed').textContent = completedGoalsCount;
-            document.getElementById('stat-active').textContent = totalGoals - completedGoalsCount;
-            document.getElementById('goals-count-text').textContent = `${totalGoals} Goals`;
-
             document.querySelectorAll('.goal-card').forEach(card => {
                 card.addEventListener('click', () => {
                     const goal = goals.find(g => g.id == card.dataset.id);
@@ -1759,6 +1796,13 @@
             document.getElementById('bulk-form').addEventListener('submit', handleBulkFormSubmit);
             
             // Goal Listeners
+            document.querySelectorAll('.goal-filter-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    currentGoalFilter = e.currentTarget.dataset.filter;
+                    displayGoals();
+                });
+            });
+
             document.getElementById('add-goal-btn').addEventListener('click', () => { 
                 editingGoalId = null;
                 document.getElementById('create-goal-form').reset();
