@@ -477,8 +477,8 @@
                 </button>
             </div>
             
-            <!-- Dynamic Layout Grid for Assets (Auto-span based on orientation) -->
-            <div id="fullAssetsGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 w-full max-w-[1000px] mx-auto items-start"></div>
+            <!-- Dynamic Layout Grid for Assets (Masonry groupings injected via JS) -->
+            <div id="fullAssetsGrid" class="flex flex-col gap-8 w-full max-w-[1000px] mx-auto items-start"></div>
         </div>
 
         <div id="allClipsView" class="view-section hidden px-6 w-full max-w-[1200px] mx-auto">
@@ -493,8 +493,8 @@
                 </button>
             </div>
             
-            <!-- Dynamic Layout Grid for Clips matching Assets layout -->
-            <div id="fullClipsGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 w-full max-w-[1000px] mx-auto items-start"></div>
+            <!-- Dynamic Layout Grid for Clips (Masonry groupings injected via JS) -->
+            <div id="fullClipsGrid" class="flex flex-col gap-8 w-full max-w-[1000px] mx-auto items-start"></div>
         </div>
     </main>
 
@@ -878,10 +878,12 @@
                     else buildGlobalAssetsList();
                 } else {
                     await saveMediaTagsToSupabase();
+                    
+                    // Trigger a re-render of the organized groups so layout avoids gaps naturally
                     if (isClipViewer && !document.getElementById('allClipsView').classList.contains('hidden')) {
-                        document.getElementById('fullClipsGrid').innerHTML = lightboxMediaList.map((clip, idx) => generateClipCardHTML(clip, idx)).join('');
+                        renderOrganizedMedia(true);
                     } else if (!isClipViewer && !document.getElementById('allAssetsView').classList.contains('hidden')) {
-                         document.getElementById('fullAssetsGrid').innerHTML = lightboxMediaList.map((asset, idx) => generateFullAssetMasonryHTML(asset, idx)).join('');
+                        renderOrganizedMedia(false);
                     }
                 }
             } else {
@@ -947,10 +949,11 @@
             } else {
                 await saveMediaTagsToSupabase();
                 
+                // Trigger a re-render of the organized groups
                 if (isClipViewer && !document.getElementById('allClipsView').classList.contains('hidden')) {
-                    document.getElementById('fullClipsGrid').innerHTML = lightboxMediaList.map((clip, idx) => generateClipCardHTML(clip, idx)).join('');
+                    renderOrganizedMedia(true);
                 } else if (!isClipViewer && !document.getElementById('allAssetsView').classList.contains('hidden')) {
-                    document.getElementById('fullAssetsGrid').innerHTML = lightboxMediaList.map((asset, idx) => generateFullAssetMasonryHTML(asset, idx)).join('');
+                    renderOrganizedMedia(false);
                 }
             }
         }
@@ -963,7 +966,7 @@
             isClipViewer = false;
             isGlobalViewer = false;
             
-            document.getElementById('fullAssetsGrid').innerHTML = lightboxMediaList.map((asset, idx) => generateFullAssetMasonryHTML(asset, idx)).join('');
+            renderOrganizedMedia(false);
         }
 
         function openAllClipsView() {
@@ -974,7 +977,7 @@
             isClipViewer = true;
             isGlobalViewer = false;
             
-            document.getElementById('fullClipsGrid').innerHTML = lightboxMediaList.map((clip, idx) => generateClipCardHTML(clip, idx)).join('');
+            renderOrganizedMedia(true);
         }
 
         // Sets the main image and updates the styling of the mobile carousel thumbnails
@@ -1502,9 +1505,9 @@
                     showSuccessToast(isClipViewer ? "Clip deleted successfully!" : "Asset deleted successfully!");
                     
                     if (isClipViewer) {
-                        document.getElementById('fullClipsGrid').innerHTML = lightboxMediaList.map((clip, idx) => generateClipCardHTML(clip, idx)).join('');
+                        renderOrganizedMedia(true);
                     } else {
-                        document.getElementById('fullAssetsGrid').innerHTML = lightboxMediaList.map((asset, idx) => generateFullAssetMasonryHTML(asset, idx)).join('');
+                        renderOrganizedMedia(false);
                     }
                     
                     buildGlobalAssetsList();
@@ -1884,9 +1887,10 @@
             const tagStr = asset.tags || 'Asset';
             const firstTag = tagStr.split(',')[0].trim() || 'Asset';
             
+            // Added break-inside-avoid and bottom margins to prevent layout splitting in pure CSS masonry
             return `
-                <div onclick="openLightbox(${index}, false)" class="asset-grid-card relative group cursor-pointer transition-all duration-500 hover:-translate-y-1 overflow-hidden w-full self-start">
-                    <img src="${imgUrl}" onload="if(this.naturalWidth >= this.naturalHeight) { this.closest('.asset-grid-card').classList.add('sm:col-span-2'); }" class="w-full h-auto block transition-transform duration-700 group-hover:scale-105" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400'">
+                <div onclick="openLightbox(${index}, false)" class="asset-grid-card relative group cursor-pointer transition-all duration-500 hover:-translate-y-1 overflow-hidden w-full self-start break-inside-avoid mb-6 sm:mb-8">
+                    <img src="${imgUrl}" class="w-full h-auto block transition-transform duration-700 group-hover:scale-105" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400'">
                     
                     <!-- Overlays -->
                     <div class="absolute top-4 left-4 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md text-[#111] dark:text-white font-bold text-[11px] px-4 py-2 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all duration-300 z-10">${firstTag}</div>
@@ -1905,12 +1909,14 @@
             const isVideo = clipUrl.match(/\.(mp4|webm|ogg|mov)$/i) || (!isMock && !clipUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i));
             const vidSrc = clipUrl.includes('#') ? clipUrl : clipUrl + '#t=0.001';
             
+            // Removed automatic span assignments to use proper organized masonry layouts instead
             const mediaElement = isVideo
-                ? `<video src="${vidSrc}" preload="metadata" onloadedmetadata="if(this.videoWidth >= this.videoHeight) { this.closest('.asset-grid-card').classList.add('sm:col-span-2'); }" class="w-full h-auto block transition-transform duration-700 group-hover:scale-105" muted loop onmouseover="var p = this.play(); if(p !== undefined) p.catch(function(){});" onmouseout="this.pause()" playsinline></video>`
-                : `<img src="${clipUrl}" onload="if(this.naturalWidth >= this.naturalHeight) { this.closest('.asset-grid-card').classList.add('sm:col-span-2'); }" class="w-full h-auto block transition-transform duration-700 group-hover:scale-105" onerror="this.src='https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=500'">`;
+                ? `<video src="${vidSrc}" preload="metadata" class="w-full h-auto block transition-transform duration-700 group-hover:scale-105" muted loop onmouseover="var p = this.play(); if(p !== undefined) p.catch(function(){});" onmouseout="this.pause()" playsinline></video>`
+                : `<img src="${clipUrl}" class="w-full h-auto block transition-transform duration-700 group-hover:scale-105" onerror="this.src='https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=500'">`;
 
+            // Added break-inside-avoid and bottom margins to prevent layout splitting in pure CSS masonry
             return `
-                <div onclick="openLightbox(${index}, true)" class="asset-grid-card relative group cursor-pointer transition-all duration-500 hover:-translate-y-1 overflow-hidden w-full self-start">
+                <div onclick="openLightbox(${index}, true)" class="asset-grid-card relative group cursor-pointer transition-all duration-500 hover:-translate-y-1 overflow-hidden w-full self-start break-inside-avoid mb-6 sm:mb-8">
                     ${mediaElement}
                     
                     <!-- Overlays -->
@@ -1923,6 +1929,79 @@
             `;
         }
         
+        // Asynchronously checks dimensions of assets to organize them seamlessly into gapless CSS columns
+        async function renderOrganizedMedia(isClip) {
+            const gridId = isClip ? 'fullClipsGrid' : 'fullAssetsGrid';
+            const grid = document.getElementById(gridId);
+            
+            // Show loading state while measuring images to prevent flashing layouts
+            grid.innerHTML = '<div class="col-span-full w-full flex flex-col items-center justify-center py-16"><div class="animate-spin w-10 h-10 border-4 border-slate-200 dark:border-slate-700 border-t-[#7fe826] dark:border-t-[#7fe826] rounded-full mb-4"></div><p class="text-sm font-medium text-slate-500">Organizing layout...</p></div>';
+            grid.className = "flex flex-col gap-8 w-full max-w-[1000px] mx-auto items-start"; // Ensure flex wrapper
+
+            const portraits = [];
+            const landscapes = [];
+
+            if (!lightboxMediaList || lightboxMediaList.length === 0) {
+                grid.innerHTML = `<div class="w-full text-center py-10 text-slate-500">No media found.</div>`;
+                return;
+            }
+
+            // Build an array of promises to calculate dimensions for every piece of media
+            const mediaPromises = lightboxMediaList.map((media, idx) => {
+                return new Promise((resolve) => {
+                    const url = media.url || media.image_url || media.video_url || media.src || (typeof media === 'string' ? media : '');
+                    
+                    if (isClip) {
+                        const isMock = url.includes('unsplash.com');
+                        const isVideo = url.match(/\.(mp4|webm|ogg|mov)$/i) || (!isMock && !url.match(/\.(jpeg|jpg|gif|png|webp)$/i));
+                        
+                        if (isVideo) {
+                            const vid = document.createElement('video');
+                            vid.onloadedmetadata = () => resolve({ media, idx, isLandscape: vid.videoWidth >= vid.videoHeight });
+                            vid.onerror = () => resolve({ media, idx, isLandscape: true }); // Fallback
+                            vid.src = url;
+                        } else {
+                            const img = new Image();
+                            img.onload = () => resolve({ media, idx, isLandscape: img.naturalWidth >= img.naturalHeight });
+                            img.onerror = () => resolve({ media, idx, isLandscape: true });
+                            img.src = url;
+                        }
+                    } else {
+                        const img = new Image();
+                        img.onload = () => resolve({ media, idx, isLandscape: img.naturalWidth >= img.naturalHeight });
+                        img.onerror = () => resolve({ media, idx, isLandscape: true }); // Default horizontal on error
+                        img.src = url;
+                    }
+                });
+            });
+
+            // Wait for all dimension checks to complete
+            const results = await Promise.all(mediaPromises);
+
+            // Group strictly by orientation
+            results.forEach(res => {
+                if (res.isLandscape) landscapes.push(res);
+                else portraits.push(res);
+            });
+
+            let finalHtml = '';
+
+            // 1. Render Landscape Group (Full horizontal width grouping)
+            if (landscapes.length > 0) {
+                const itemsHtml = landscapes.map(item => isClip ? generateClipCardHTML(item.media, item.idx) : generateFullAssetMasonryHTML(item.media, item.idx)).join('');
+                // Uses purely CSS columns avoiding standard CSS Grid row stretching to completely eliminate gaps
+                finalHtml += `<div class="w-full"><h3 class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-4 px-2">Landscape</h3><div class="columns-1 sm:columns-2 gap-6 sm:gap-8 w-full">${itemsHtml}</div></div>`;
+            }
+
+            // 2. Render Portrait Group (Vertical masonry grouping)
+            if (portraits.length > 0) {
+                const itemsHtml = portraits.map(item => isClip ? generateClipCardHTML(item.media, item.idx) : generateFullAssetMasonryHTML(item.media, item.idx)).join('');
+                finalHtml += `<div class="w-full"><h3 class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-4 px-2 mt-4 sm:mt-0">Portrait</h3><div class="columns-1 sm:columns-2 gap-6 sm:gap-8 w-full">${itemsHtml}</div></div>`;
+            }
+
+            grid.innerHTML = finalHtml;
+        }
+
         function renderPickerTags() {
             const grid = document.getElementById('pickerTagsGrid');
             if (!grid) return;
