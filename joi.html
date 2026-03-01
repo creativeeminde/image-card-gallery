@@ -311,20 +311,25 @@
                     </div>
                 </div>
 
-                <!-- LEFT COLUMN -->
-                <div class="w-full lg:max-w-[360px] justify-self-end min-w-0 order-2 lg:order-1 px-6 lg:px-0 py-8 lg:py-0">
+                <!-- LEFT COLUMN (Contains Avatars + Details) -->
+                <div class="w-full lg:max-w-[440px] justify-self-end min-w-0 order-2 lg:order-1 px-6 lg:px-0 py-8 lg:py-0 flex gap-4 xl:gap-6">
                     
-                    <!-- Desktop Back Button -->
-                    <div class="hidden lg:flex items-center h-10 mb-4">
-                        <button onclick="document.querySelector('.nav-item[data-target=\'modelsView\']').click()" class="flex items-center gap-3 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors group">
-                            <div class="p-2 bg-white dark:bg-slate-800 rounded-full shadow-sm border border-slate-200 dark:border-slate-700 group-hover:bg-slate-50 dark:group-hover:bg-slate-700 transition-colors">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
-                            </div>
-                            <span class="font-bold text-[15px]">Back to Gallery</span>
-                        </button>
+                    <!-- AVATAR COLUMN (Only visible on Desktop when populated) -->
+                    <div id="closeUpAvatarColumn" class="hidden lg:flex flex-col gap-4 overflow-y-auto no-scrollbar h-[calc(100vh-120px)] w-14 xl:w-16 shrink-0 sticky top-4 pt-14 pb-10 items-center">
+                        <!-- JS will inject avatars here -->
                     </div>
 
-                    <div class="space-y-1 lg:space-y-1">
+                    <div class="flex-1 space-y-1 lg:space-y-1 min-w-0">
+                        <!-- Desktop Back Button -->
+                        <div class="hidden lg:flex items-center h-10 mb-4">
+                            <button onclick="document.querySelector('.nav-item[data-target=\'modelsView\']').click()" class="flex items-center gap-3 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors group">
+                                <div class="p-2 bg-white dark:bg-slate-800 rounded-full shadow-sm border border-slate-200 dark:border-slate-700 group-hover:bg-slate-50 dark:group-hover:bg-slate-700 transition-colors">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                                </div>
+                                <span class="font-bold text-[15px]">Back to Gallery</span>
+                            </button>
+                        </div>
+
                         <!-- Her Rating (Hotness calculated from sliders) -->
                         <div class="bg-white dark:bg-slate-800 rounded-[1.5rem] p-3 shadow-sm transition-colors duration-300">
                             <p class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Opinion</p>
@@ -996,25 +1001,28 @@
             renderOrganizedMedia(true);
         }
 
-        // Sets the main image and updates the styling of the mobile carousel thumbnails
-        function setMobileMainImage(url, idx) {
+        // Sets the main image and updates the active styling for mobile carousel
+        function setMainImage(url) {
             document.getElementById('closeUpMainImage').src = url;
             
-            // Update active state of thumbnails
-            document.querySelectorAll('#mobileCloseUpCarousel .mobile-thumb').forEach((el, i) => {
-                if (i === idx) {
+            // Update active state of Mobile Carousel thumbnails
+            document.querySelectorAll('#mobileCloseUpCarousel .mobile-thumb').forEach((el) => {
+                if (el.getAttribute('data-url') === url) {
                     el.classList.add('opacity-100', 'scale-110', 'border-white', 'z-10', 'shadow-xl');
                     el.classList.remove('opacity-60', 'scale-90', 'border-transparent');
+                    el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
                 } else {
                     el.classList.remove('opacity-100', 'scale-110', 'border-white', 'z-10', 'shadow-xl');
                     el.classList.add('opacity-60', 'scale-90', 'border-transparent');
                 }
             });
-            
-            // Scroll selected thumb to the center horizontally
-            const thumb = document.getElementById(`mobThumb-${idx}`);
-            if (thumb) {
-                thumb.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
+
+        function openModelById(cardId) {
+            const cardData = allLoadedCards.find(c => c.id === cardId);
+            if (cardData) {
+                openCloseUpPage(cardData);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             }
         }
 
@@ -1030,34 +1038,90 @@
 
             document.getElementById('closeUpMainImage').src = cardData.main_image_url;
             
+            const assets = cardData.related_images_with_tags || [];
+            let allMedia = [cardData.main_image_url];
+            
+            // Fetch all related images to display in the local mobile carousel
+            assets.forEach((a) => {
+                const url = a.url || a.image_url || a.src || (typeof a === 'string' ? a : null);
+                // Filter out video files for the static thumbnails
+                if (url && !url.match(/\.(mp4|webm|ogg|mov)$/i)) {
+                    allMedia.push(url);
+                }
+            });
+
+            // Globally fetch all related images with the tag "face" across ALL cards
+            let faceAssets = [];
+            allLoadedCards.forEach(card => {
+                const cardAssets = card.related_images_with_tags || [];
+                cardAssets.forEach(a => {
+                    const url = a.url || a.image_url || a.src || (typeof a === 'string' ? a : null);
+                    const tagsStr = a.tags ? a.tags.toLowerCase() : '';
+
+                    // If it's a valid image and includes the tag 'face'
+                    if (url && !url.match(/\.(mp4|webm|ogg|mov)$/i) && tagsStr.includes('face')) {
+                        // Avoid duplicates
+                        if (!faceAssets.some(fa => fa.url === url)) {
+                            faceAssets.push({ url, tags: tagsStr, cardId: card.id });
+                        }
+                    }
+                });
+            });
+            
             // Mobile Overlay Carousel Initialization
             const mobileCarousel = document.getElementById('mobileCloseUpCarousel');
             const mobileCarouselContainer = document.getElementById('mobileCarouselContainer');
-            
             if (mobileCarousel && mobileCarouselContainer) {
-                const assets = cardData.related_images_with_tags || [];
-                let allMedia = [cardData.main_image_url];
-                
-                // Fetch all related images to display in the coverflow selector
-                assets.forEach(a => {
-                    const url = a.url || a.image_url || a.src || (typeof a === 'string' ? a : null);
-                    // Filter out video files for the static thumbnails
-                    if (url && !url.match(/\.(mp4|webm|ogg|mov)$/i)) {
-                        allMedia.push(url);
-                    }
-                });
-                
                 if (allMedia.length > 1) {
                     mobileCarouselContainer.classList.remove('hidden');
                     mobileCarousel.innerHTML = allMedia.map((url, idx) => `
-                        <img src="${url}" onclick="setMobileMainImage('${url}', ${idx})" id="mobThumb-${idx}" class="mobile-thumb ${idx === 0 ? 'opacity-100 scale-110 border-white z-10 shadow-xl' : 'opacity-60 scale-90 border-transparent'} w-14 h-14 rounded-full object-cover transition-all duration-300 border-[2.5px] snap-center cursor-pointer shrink-0">
+                        <img src="${url}" data-url="${url}" onclick="setMainImage('${url}')" class="mobile-thumb ${idx === 0 ? 'opacity-100 scale-110 border-white z-10 shadow-xl' : 'opacity-60 scale-90 border-transparent'} w-14 h-14 rounded-full object-cover transition-all duration-300 border-[2.5px] snap-center cursor-pointer shrink-0">
                     `).join('');
                     
-                    // Reset scroll to start
-                    mobileCarousel.scrollLeft = 0;
+                    mobileCarousel.scrollLeft = 0; // Reset scroll to start
                 } else {
-                    // Hide the carousel entirely if there are no variants to show
-                    mobileCarouselContainer.classList.add('hidden');
+                    mobileCarouselContainer.classList.add('hidden'); // Hide the carousel entirely if there are no variants to show
+                }
+            }
+
+            // Desktop Face Avatars Column Initialization
+            const avatarCol = document.getElementById('closeUpAvatarColumn');
+            if (avatarCol) {
+                if (faceAssets.length > 0) {
+                    avatarCol.style.display = ''; // Reverts to hidden lg:flex behavior
+                    
+                    let avatarHTML = '';
+                    // Generate color badges similar to references
+                    const badgeColors = ['bg-[#7fe826] text-[#111]', 'bg-[#60a5fa] text-white', 'bg-[#f87171] text-white', 'bg-slate-200 text-slate-800'];
+                    
+                    faceAssets.forEach((asset, i) => {
+                        const badgeClass = badgeColors[i % badgeColors.length];
+                        const isActive = asset.cardId === currentActiveModelData.id;
+                        const activeClasses = isActive ? 'scale-110 border-[#7fe826] z-10 shadow-md' : 'border-transparent opacity-70 hover:opacity-100 group-hover:scale-105';
+                        
+                        avatarHTML += `
+                            <div class="relative flex flex-col items-center group cursor-pointer pt-2" onclick="openModelById(${asset.cardId})">
+                                <div data-url="${asset.url}" class="avatar-thumb w-12 h-12 xl:w-14 xl:h-14 rounded-full p-[3px] bg-white dark:bg-slate-800 shadow-sm transition-all duration-300 border-[2.5px] ${activeClasses}">
+                                    <img src="${asset.url}" class="w-full h-full rounded-full object-cover">
+                                </div>
+                                <div class="absolute bottom-0 w-[22px] h-[22px] ${badgeClass} text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-[#f1f5f0] dark:border-slate-900 shadow-sm z-20 transition-transform ${isActive ? 'scale-110' : ''}">
+                                    ${i + 1}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    avatarCol.innerHTML = avatarHTML;
+                    
+                    // Auto-scroll the active avatar into view gracefully
+                    setTimeout(() => {
+                        const activeAvatar = avatarCol.querySelector('.scale-110');
+                        if (activeAvatar) {
+                            activeAvatar.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }, 50);
+                } else {
+                    avatarCol.style.display = 'none'; // Force hide if empty
+                    avatarCol.innerHTML = '';
                 }
             }
             
@@ -1078,7 +1142,6 @@
             renderClassSection(); renderAmazingAtSection();
             
             const assetsGrid = document.getElementById('closeUpAssetsGrid');
-            const assets = cardData.related_images_with_tags || [];
             assetsGrid.innerHTML = assets.slice(0, 2).map(asset => generatePreviewCardHTML(asset, 'Asset')).join('') + 
                 `<div onclick="openAllAssetsView()" class="aspect-[4/5] rounded-[1rem] border-2 border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/60 flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:bg-white dark:hover:bg-slate-700 transition shadow-sm group"><div class="w-8 h-8 bg-[#111] dark:bg-slate-600 group-hover:bg-[#7fe826] dark:group-hover:bg-[#7fe826] rounded-full flex items-center justify-center text-white text-sm font-bold transition-colors">${assets.length > 2 ? 'All' : '+'}</div><span class="text-[10px] font-bold text-slate-600 dark:text-slate-300">See more</span></div>`;
             
