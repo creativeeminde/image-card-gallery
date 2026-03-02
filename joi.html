@@ -320,6 +320,16 @@
                     <button onclick="nextRunway()" class="absolute right-4 lg:right-10 z-50 p-4 bg-white/80 dark:bg-black/80 hover:bg-white dark:hover:bg-black backdrop-blur-md rounded-full text-slate-800 dark:text-white transition-all shadow-lg group">
                         <svg class="w-6 h-6 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                     </button>
+
+                    <!-- Runway Audio Control -->
+                    <div class="absolute bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center justify-center transition-opacity duration-300">
+                        <button id="runwayAudioBtn" onclick="toggleRunwayAudio()" class="hidden bg-white/80 dark:bg-black/80 backdrop-blur-md p-4 rounded-full text-slate-800 dark:text-white shadow-xl border border-slate-200/50 dark:border-slate-700/50 transition-all hover:scale-105 hover:bg-white dark:hover:bg-black" title="Play/Pause Model Audio">
+                            <!-- Play Icon -->
+                            <svg id="runwayPlayIcon" class="w-6 h-6 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
+                            <!-- Pause Icon -->
+                            <svg id="runwayPauseIcon" class="w-6 h-6 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z"></path></svg>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Right Detail Panel -->
@@ -882,6 +892,10 @@
         let runwayCurrentIndex = 0;
         let runwayMode = 'main'; // 'main' or 'nude'
         let currentRunwayItems = [];
+        
+        let runwayAudioPlayer = new Audio();
+        runwayAudioPlayer.loop = true;
+        let isRunwayAudioPlaying = false;
 
         // Add Media state variable
         let isAddingClip = false;
@@ -2042,6 +2056,73 @@
 
             const panelContainer = document.getElementById('runwaySidePanel');
             if(panelContainer) panelContainer.innerHTML = panelHTML;
+
+            handleRunwayAudioChange(card);
+        }
+
+        function handleRunwayAudioChange(card) {
+            const audioBtn = document.getElementById('runwayAudioBtn');
+            const playIcon = document.getElementById('runwayPlayIcon');
+            const pauseIcon = document.getElementById('runwayPauseIcon');
+
+            const hasAudio = card.audio_clips && card.audio_clips.length > 0;
+
+            if (!hasAudio) {
+                if (audioBtn) audioBtn.classList.add('hidden');
+                runwayAudioPlayer.pause();
+                
+                // Clear source so it doesn't leak or replay old audio
+                if (runwayAudioPlayer.src) runwayAudioPlayer.src = ''; 
+            } else {
+                if (audioBtn) audioBtn.classList.remove('hidden');
+                
+                // Get the first audio clip
+                const newSrc = card.audio_clips[0].url;
+
+                // Only update and play if the source is different
+                if (runwayAudioPlayer.src !== newSrc) {
+                    runwayAudioPlayer.src = newSrc;
+                    if (isRunwayAudioPlaying) {
+                        runwayAudioPlayer.play().catch(e => console.warn("Runway audio blocked", e));
+                    }
+                } else if (isRunwayAudioPlaying && runwayAudioPlayer.paused) {
+                    // Just in case it was paused
+                    runwayAudioPlayer.play().catch(e => console.warn("Runway audio blocked", e));
+                }
+            }
+
+            // Sync visual UI with state
+            if (isRunwayAudioPlaying && hasAudio) {
+                if(playIcon) playIcon.classList.add('hidden');
+                if(pauseIcon) pauseIcon.classList.remove('hidden');
+            } else {
+                if(playIcon) playIcon.classList.remove('hidden');
+                if(pauseIcon) pauseIcon.classList.add('hidden');
+            }
+        }
+
+        function toggleRunwayAudio() {
+            const item = currentRunwayItems[runwayCurrentIndex];
+            if (!item) return;
+            const card = item.card;
+            const hasAudio = card.audio_clips && card.audio_clips.length > 0;
+
+            if (!hasAudio) return;
+
+            const playIcon = document.getElementById('runwayPlayIcon');
+            const pauseIcon = document.getElementById('runwayPauseIcon');
+
+            if (isRunwayAudioPlaying) {
+                isRunwayAudioPlaying = false;
+                runwayAudioPlayer.pause();
+                if(playIcon) playIcon.classList.remove('hidden');
+                if(pauseIcon) pauseIcon.classList.add('hidden');
+            } else {
+                isRunwayAudioPlaying = true;
+                runwayAudioPlayer.play().catch(e => console.warn("Runway audio blocked", e));
+                if(playIcon) playIcon.classList.add('hidden');
+                if(pauseIcon) pauseIcon.classList.remove('hidden');
+            }
         }
 
         // ==========================================
@@ -2681,6 +2762,16 @@
 
                     if (target === 'runwayView') {
                         updateRunwayPanel();
+                    } else {
+                        // Pause runway audio if leaving runway tab
+                        if (isRunwayAudioPlaying) {
+                            runwayAudioPlayer.pause();
+                            isRunwayAudioPlaying = false;
+                            const pIcon = document.getElementById('runwayPlayIcon');
+                            const psIcon = document.getElementById('runwayPauseIcon');
+                            if(pIcon) pIcon.classList.remove('hidden');
+                            if(psIcon) psIcon.classList.add('hidden');
+                        }
                     }
 
                     if (target === 'modelsView') {
