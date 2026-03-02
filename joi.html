@@ -897,6 +897,7 @@
         let runwayCurrentIndex = 0;
         let runwayMode = 'main'; // 'main' or 'nude'
         let currentRunwayItems = [];
+        let runwayActiveLetter = 'All';
         
         let runwayAudioPlayer = new Audio();
         runwayAudioPlayer.loop = true;
@@ -1929,6 +1930,19 @@
                     }
                 });
             }
+
+            // Apply specific sorting behavior
+            if (runwayActiveLetter === 'All') {
+                // Display based on latest added (descending ID)
+                currentRunwayItems.sort((a, b) => b.card.id - a.card.id);
+            } else {
+                // Display alphabetically 
+                currentRunwayItems.sort((a, b) => {
+                    const titleA = a.card.title ? a.card.title.trim().toLowerCase() : '';
+                    const titleB = b.card.title ? b.card.title.trim().toLowerCase() : '';
+                    return titleA.localeCompare(titleB);
+                });
+            }
         }
 
         function renderRunwayAlphabet() {
@@ -1953,12 +1967,13 @@
             });
 
             container.innerHTML = alphabet.map(char => {
+                const isActive = char === runwayActiveLetter;
                 if (char === 'All') {
-                    return `<button onclick="goToRunway(0)" class="text-[#111] dark:text-white hover:text-[#7fe826] dark:hover:text-[#7fe826] transition-colors flex-shrink-0 text-[11px] font-extrabold uppercase tracking-wider">All</button>`;
+                    return `<button onclick="jumpToRunwayLetter('All')" class="${isActive ? 'text-[#7fe826] scale-110' : 'text-[#111] dark:text-white hover:text-[#7fe826] dark:hover:text-[#7fe826]'} transition-all duration-300 flex-shrink-0 text-[11px] font-extrabold uppercase tracking-wider">All</button>`;
                 }
                 const isAvailable = availableLetters.has(char);
                 if (isAvailable) {
-                    return `<button onclick="jumpToRunwayLetter('${char}')" class="text-slate-600 dark:text-slate-400 hover:text-[#111] dark:hover:text-[#7fe826] transition-colors flex-shrink-0 text-sm font-bold cursor-pointer">${char}</button>`;
+                    return `<button onclick="jumpToRunwayLetter('${char}')" class="${isActive ? 'text-[#7fe826] scale-125' : 'text-slate-600 dark:text-slate-400 hover:text-[#111] dark:hover:text-[#7fe826]'} transition-all duration-300 flex-shrink-0 text-sm font-bold cursor-pointer">${char}</button>`;
                 } else {
                     return `<span class="text-slate-300 dark:text-slate-600 opacity-40 flex-shrink-0 text-sm font-bold cursor-not-allowed pointer-events-none">${char}</span>`;
                 }
@@ -1966,11 +1981,29 @@
         }
 
         function jumpToRunwayLetter(char) {
-            const index = currentRunwayItems.findIndex(item => {
-                return item.card && item.card.title && item.card.title.trim().toUpperCase().startsWith(char);
-            });
-            if (index !== -1) {
-                goToRunway(index);
+            if (runwayActiveLetter === char) return;
+            
+            const wasAlphabetical = runwayActiveLetter !== 'All';
+            const isAlphabetical = char !== 'All';
+            runwayActiveLetter = char;
+            
+            renderRunwayAlphabet();
+            
+            if (wasAlphabetical && isAlphabetical) {
+                // If we are just jumping between letters, array is already alphabetical. Smooth scroll to index!
+                const index = currentRunwayItems.findIndex(item => item.card && item.card.title && item.card.title.trim().toUpperCase().startsWith(char));
+                if (index !== -1) {
+                    runwayCurrentIndex = index;
+                    updateRunway();
+                }
+            } else {
+                // Switching between Latest (All) and Alphabetical requires DOM rebuilding. Use fade transition.
+                const container = document.getElementById('runwayCarouselContainer');
+                if (container) container.style.opacity = '0';
+                setTimeout(() => {
+                    initRunway();
+                    if (container) container.style.opacity = '1';
+                }, 300);
             }
         }
 
@@ -1986,6 +2019,10 @@
                 if(panelContainer) panelContainer.innerHTML = '';
                 const titleDesktop = document.getElementById('runwayModelTitle');
                 if (titleDesktop) titleDesktop.textContent = 'No Models Available';
+                
+                // Ensure audio stops if no items exist
+                runwayAudioPlayer.pause();
+                if (runwayAudioPlayer.src) runwayAudioPlayer.src = '';
                 return;
             }
             
@@ -1995,7 +2032,13 @@
                 </div>
             `).join('');
             
-            runwayCurrentIndex = 0; 
+            if (runwayActiveLetter !== 'All') {
+                const index = currentRunwayItems.findIndex(item => item.card && item.card.title && item.card.title.trim().toUpperCase().startsWith(runwayActiveLetter));
+                runwayCurrentIndex = index !== -1 ? index : 0;
+            } else {
+                runwayCurrentIndex = 0; 
+            }
+            
             updateRunway();
         }
 
