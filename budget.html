@@ -137,19 +137,19 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                     <div class="bg-white dark:bg-gray-800 p-6 rounded-[24px] border dark:border-gray-800 shadow-sm flex flex-col justify-between transition-all">
                         <div class="flex justify-between items-start mb-4"><span class="font-semibold text-base text-gray-800 dark:text-gray-200">Total balance</span><button onclick="switchView('wallet')" class="w-8 h-8 rounded-full border dark:border-gray-700 flex items-center justify-center hover:text-brand-500"><i class="ph ph-arrow-up-right"></i></button></div>
-                        <div><div id="kpi-balance" class="text-[32px] font-bold tracking-tight mb-4 text-gray-900 dark:text-white">MAD 0<span class="text-gray-300 font-medium text-2xl">.00</span></div><div id="kpi-balance-change"></div></div>
+                        <div><div id="kpi-balance" class="text-[32px] font-bold tracking-tight mb-1 text-gray-900 dark:text-white">MAD 0<span class="text-gray-300 font-medium text-2xl">.00</span></div><div id="kpi-balance-change" class="min-h-[24px]"></div></div>
                     </div>
                     <div class="bg-white dark:bg-gray-800 p-6 rounded-[24px] border dark:border-gray-800 shadow-sm flex flex-col justify-between">
                         <div class="flex justify-between items-start mb-4"><span class="font-semibold text-base">Income</span><button onclick="switchView('analytics')" class="w-8 h-8 rounded-full border dark:border-gray-700 flex items-center justify-center hover:text-brand-500"><i class="ph ph-arrow-up-right"></i></button></div>
-                        <div><div id="kpi-income" class="text-[32px] font-bold tracking-tight mb-4">MAD 0<span class="text-gray-300 font-medium text-2xl">.00</span></div><div id="kpi-income-change"></div></div>
+                        <div><div id="kpi-income" class="text-[32px] font-bold tracking-tight mb-1">MAD 0<span class="text-gray-300 font-medium text-2xl">.00</span></div><div id="kpi-income-change" class="min-h-[24px]"></div></div>
                     </div>
                     <div class="bg-white dark:bg-gray-800 p-6 rounded-[24px] border dark:border-gray-800 shadow-sm flex flex-col justify-between">
                         <div class="flex justify-between items-start mb-4"><span class="font-semibold text-base">Expense</span><button onclick="switchView('analytics')" class="w-8 h-8 rounded-full border dark:border-gray-700 flex items-center justify-center hover:text-brand-500"><i class="ph ph-arrow-up-right"></i></button></div>
-                        <div><div id="kpi-expense" class="text-[32px] font-bold tracking-tight mb-4">MAD 0<span class="text-gray-300 font-medium text-2xl">.00</span></div><div id="kpi-expense-change"></div></div>
+                        <div><div id="kpi-expense" class="text-[32px] font-bold tracking-tight mb-1">MAD 0<span class="text-gray-300 font-medium text-2xl">.00</span></div><div id="kpi-expense-change" class="min-h-[24px]"></div></div>
                     </div>
                     <div class="bg-white dark:bg-gray-800 p-6 rounded-[24px] border dark:border-gray-800 shadow-sm flex flex-col justify-between">
                         <div class="flex justify-between items-start mb-4"><span class="font-semibold text-base">Savings</span><button onclick="switchView('goals')" class="w-8 h-8 rounded-full border dark:border-gray-700 flex items-center justify-center hover:text-brand-500"><i class="ph ph-arrow-up-right"></i></button></div>
-                        <div><div id="kpi-savings" class="text-[32px] font-bold tracking-tight mb-4">MAD 0<span class="text-gray-300 font-medium text-2xl">.00</span></div><div id="kpi-savings-change"></div></div>
+                        <div><div id="kpi-savings" class="text-[32px] font-bold tracking-tight mb-1">MAD 0<span class="text-gray-300 font-medium text-2xl">.00</span></div><div id="kpi-savings-change" class="min-h-[24px]"></div></div>
                     </div>
                 </div>
 
@@ -571,6 +571,12 @@
                 // Current month dates
                 const start = new Date(selectedYear, selectedMonth, 1).toISOString();
                 const end = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59, 999).toISOString();
+                
+                // Previous month dates
+                const prevMonth = selectedMonth === 0 ? 11 : selectedMonth - 1;
+                const prevYear = selectedMonth === 0 ? selectedYear - 1 : selectedYear;
+                const prevStart = new Date(prevYear, prevMonth, 1).toISOString();
+                const prevEnd = new Date(prevYear, prevMonth + 1, 0, 23, 59, 59, 999).toISOString();
 
                 // Fetch KPI user_stats data
                 const kpiRes = await supabaseClient.from('user_stats').select('*').maybeSingle();
@@ -578,23 +584,38 @@
 
                 // Load transactions conditionally (Supabase vs Local cache)
                 let txs = [];
+                let prevTxs = [];
+                
                 if (!useLocalTx) {
-                    const txsRes = await supabaseClient.from('transactions').select('*').gte('created_at', start).lte('created_at', end);
+                    const [txsRes, prevTxsRes] = await Promise.all([
+                        supabaseClient.from('transactions').select('*').gte('created_at', start).lte('created_at', end),
+                        supabaseClient.from('transactions').select('*').gte('created_at', prevStart).lte('created_at', prevEnd)
+                    ]);
+                    
                     if (!txsRes.error && txsRes.data) {
                         txs = txsRes.data;
                         cacheTransactions(txs);
                     } else {
                         useLocalTx = true;
                     }
+                    
+                    if (!prevTxsRes.error && prevTxsRes.data) {
+                        prevTxs = prevTxsRes.data;
+                    }
                 }
                 
                 if (useLocalTx) {
                     txs = loadedTransactions.filter(t => new Date(t.created_at) >= new Date(start) && new Date(t.created_at) <= new Date(end));
+                    prevTxs = loadedTransactions.filter(t => new Date(t.created_at) >= new Date(prevStart) && new Date(t.created_at) <= new Date(prevEnd));
                 }
 
                 // Calculate Current Cash Flow
                 let inc = 0, exp = 0; 
                 if(txs) txs.forEach(t => t.type === 'income' ? inc += Number(t.amount) : exp += Number(t.amount));
+
+                // Calculate Previous Cash Flow
+                let prevInc = 0, prevExp = 0;
+                if(prevTxs) prevTxs.forEach(t => t.type === 'income' ? prevInc += Number(t.amount) : prevExp += Number(t.amount));
 
                 const currentBalance = kpiData?.total_balance || 0;
                 const currentSavings = kpiData?.total_savings || 0;
@@ -643,7 +664,17 @@
                 const prevSavings = currentSavings * 0.92; // Safe fallback
 
                 // Apply Badges
-                /* Note: Percentage badges were removed from HTML as per request */
+                const balChangeEl = document.getElementById('kpi-balance-change');
+                if(balChangeEl) balChangeEl.innerHTML = getBadgeHTML(currentBalance, prevBalance, false);
+
+                const incChangeEl = document.getElementById('kpi-income-change');
+                if(incChangeEl) incChangeEl.innerHTML = getBadgeHTML(inc, prevInc, false);
+
+                const expChangeEl = document.getElementById('kpi-expense-change');
+                if(expChangeEl) expChangeEl.innerHTML = getBadgeHTML(exp, prevExp, true);
+
+                const savChangeEl = document.getElementById('kpi-savings-change');
+                if(savChangeEl) savChangeEl.innerHTML = getBadgeHTML(currentSavings, prevSavings, false);
 
                 // Render Table
                 const tbody = document.getElementById('transactions-tbody');
