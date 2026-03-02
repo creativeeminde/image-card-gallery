@@ -352,6 +352,11 @@
 
                         <img id="closeUpMainImage" src="https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=800&q=80" alt="Main Model" class="w-full h-full object-cover object-center transition-all duration-500">
                         
+                        <!-- Edit Main Image Button -->
+                        <button onclick="openEditMainImageModal()" class="absolute bottom-4 right-4 lg:bottom-6 lg:right-6 z-50 p-3 bg-black/50 hover:bg-black/80 backdrop-blur-md rounded-full text-white transition-all border border-white/10 shadow-lg group" title="Edit Main Image">
+                            <svg class="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                        </button>
+
                         <!-- Mobile Overlay & Carousel Container (Hidden on Desktop) -->
                         <div id="mobileCarouselContainer" class="absolute bottom-0 left-0 w-full lg:hidden z-20 hidden">
                             <!-- Gradient Overlay to make thumbnails pop -->
@@ -572,6 +577,26 @@
             <div id="fullClipsGrid" class="flex flex-col gap-8 w-full max-w-[1000px] mx-auto items-start"></div>
         </div>
     </main>
+
+    <!-- Edit Main Image Modal -->
+    <div id="editMainImageModal" class="modal fixed inset-0 z-[140] bg-slate-900/50 backdrop-blur-sm items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all flex flex-col">
+            <div class="px-6 py-5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/80">
+                <h3 class="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Edit Main Image</h3>
+                <button onclick="closeEditMainImageModal()" class="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-white transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <form id="editMainImageForm" class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">New Image URL</label>
+                    <input type="url" id="editMainImageUrlInput" required class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#7fe826] outline-none transition-all shadow-sm" placeholder="https://example.com/new-image.jpg">
+                </div>
+                <div class="pt-4 flex gap-3">
+                    <button type="button" onclick="closeEditMainImageModal()" class="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 py-3 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">Cancel</button>
+                    <button type="submit" class="flex-1 bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] py-3 rounded-xl font-bold hover:bg-black dark:hover:bg-[#6ed11f] transition-colors shadow-sm">Update Image</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <!-- Add Media Modal (For URLs) -->
     <div id="addMediaModal" class="modal fixed inset-0 z-[110] bg-slate-900/50 backdrop-blur-sm items-center justify-center p-4">
@@ -885,6 +910,17 @@
                 const el = document.getElementById('newModel' + id + 'Val');
                 if (el) el.innerText = '50%';
             });
+        }
+
+        function openEditMainImageModal() {
+            if (!currentActiveModelData) return;
+            const inputEl = document.getElementById('editMainImageUrlInput');
+            if (inputEl) inputEl.value = currentActiveModelData.main_image_url || '';
+            document.getElementById('editMainImageModal').classList.add('active');
+        }
+
+        function closeEditMainImageModal() {
+            document.getElementById('editMainImageModal').classList.remove('active');
         }
         
         function showSuccessToast(msg) { 
@@ -1690,7 +1726,7 @@
             const lightbox = document.getElementById('lightboxModal');
             if (lightbox && lightbox.classList.contains('active')) {
                 // Ignore key events if typing in search input
-                if (document.activeElement && (document.activeElement.id === 'tagSearchInput' || document.activeElement.id === 'mediaUrlInput')) return;
+                if (document.activeElement && (document.activeElement.id === 'tagSearchInput' || document.activeElement.id === 'mediaUrlInput' || document.activeElement.id === 'editMainImageUrlInput')) return;
                 
                 if (e.key === 'Escape') closeLightbox();
                 if (e.key === 'ArrowLeft') { e.preventDefault(); navigateLightbox(-1); }
@@ -2576,6 +2612,50 @@
                             closeModelModal();
                             showSuccessToast("Model added successfully!");
                         }
+                    }
+                });
+            }
+
+            // Bind Edit Main Image Form Submit
+            const editMainImageForm = document.getElementById('editMainImageForm');
+            if (editMainImageForm) {
+                editMainImageForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const newUrl = document.getElementById('editMainImageUrlInput').value.trim();
+                    if (!newUrl || !currentActiveModelData) return;
+
+                    // Update UI immediately for responsiveness
+                    currentActiveModelData.main_image_url = newUrl;
+                    document.getElementById('closeUpMainImage').src = newUrl;
+                    
+                    // Update in-memory cache
+                    const idx = allLoadedCards.findIndex(c => c.id === currentActiveModelData.id);
+                    if (idx > -1) {
+                        allLoadedCards[idx].main_image_url = newUrl;
+                    }
+
+                    if (supabaseClient) {
+                        try {
+                            const { error } = await supabaseClient.from('cards').update({ main_image_url: newUrl }).eq('id', currentActiveModelData.id);
+                            if (error) throw error;
+                            
+                            closeEditMainImageModal();
+                            showSuccessToast("Main image updated successfully!");
+                            
+                            // Re-render layouts to reflect changes globally
+                            applyFilters();
+                            updateRunwayPanel();
+                            initRunway();
+                        } catch (err) {
+                            console.error("Failed to update main image", err);
+                        }
+                    } else {
+                        // Fallback local update if Supabase isn't connected
+                        closeEditMainImageModal();
+                        showSuccessToast("Main image updated locally.");
+                        applyFilters();
+                        updateRunwayPanel();
+                        initRunway();
                     }
                 });
             }
