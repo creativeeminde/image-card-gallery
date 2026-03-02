@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FinSet Budget Tracker</title>
+    <title>CoinTrack Budget Tracker</title>
     
-    <!-- Google Fonts: Plus Jakarta Sans (closely matches the design) -->
+    <!-- Google Fonts: Plus Jakarta Sans -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -15,28 +15,19 @@
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
             theme: {
                 extend: {
-                    fontFamily: {
-                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
-                    },
+                    fontFamily: { sans: ['"Plus Jakarta Sans"', 'sans-serif'] },
                     colors: {
                         brand: {
-                            50: '#F5F3FF',
-                            100: '#EBE5FF',
-                            200: '#D6CCFF',
-                            300: '#B8A6FF',
-                            400: '#957CFF',
-                            500: '#7C5CFF', // Main Purple
-                            600: '#6246E5',
-                            700: '#4F35C2',
-                        },
-                        background: '#F8F8FC',
-                        surface: '#FFFFFF',
-                        sidebar: '#FAFAFD',
+                            50: '#F5F3FF', 100: '#EBE5FF', 200: '#D6CCFF',
+                            300: '#B8A6FF', 400: '#957CFF', 500: '#7C5CFF', 
+                            600: '#6246E5', 700: '#4F35C2',
+                        }
                     }
                 }
             }
@@ -44,647 +35,524 @@
     </script>
 
     <style>
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #E2E8F0;
-            border-radius: 10px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #CBD5E1;
-        }
-
-        /* Chart Animations */
-        .bar-fill {
-            transform-origin: bottom;
-            animation: growUp 1s ease-out forwards;
-        }
-        @keyframes growUp {
-            from { transform: scaleY(0); }
-            to { transform: scaleY(1); }
-        }
-
-        /* SVG Donut Chart exact spacing fix */
-        .donut-segment {
-            transition: stroke-width 0.2s ease;
-        }
-        .donut-segment:hover {
-            stroke-width: 14;
-        }
-        
-        .glass-tooltip {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(4px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 10px; }
+        .dark ::-webkit-scrollbar-thumb { background: #4B5563; }
+        .bar-fill { transform-origin: bottom; animation: growUp 1s ease-out forwards; }
+        @keyframes growUp { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+        #sidebar { transition: width 0.3s ease-in-out, transform 0.3s ease-in-out; }
+        #sidebar.collapsed { width: 88px; }
+        #sidebar.collapsed .sidebar-text { display: none; }
+        .page-view { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .toast-enter { animation: toastIn 0.3s ease-out forwards; }
+        .toast-leave { animation: toastOut 0.3s ease-in forwards; }
+        @keyframes toastIn { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes toastOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(100%); } }
+        .chart-path { stroke-dasharray: 1000; stroke-dashoffset: 1000; animation: dash 3s ease-out forwards; }
+        @keyframes dash { to { stroke-dashoffset: 0; } }
+        .dropdown-animate { transform-origin: top; animation: dropIn 0.2s ease-out forwards; }
+        @keyframes dropIn { from { opacity: 0; transform: scale(0.95) translateY(-10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
     </style>
 </head>
-<body class="bg-background text-gray-800 antialiased h-screen flex overflow-hidden relative">
+<body class="bg-[#F8F8FC] dark:bg-gray-900 text-gray-800 dark:text-gray-200 antialiased h-screen flex overflow-hidden relative transition-colors duration-300">
 
-    <!-- Mobile Overlay -->
     <div id="mobile-overlay" class="fixed inset-0 bg-gray-900/50 z-40 hidden lg:hidden transition-opacity" onclick="toggleSidebar()"></div>
 
     <!-- Sidebar -->
-    <aside id="sidebar" class="w-[260px] bg-sidebar border-r border-gray-100 flex flex-col justify-between h-full flex-shrink-0 absolute lg:relative left-0 top-0 z-50 transform -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-in-out">
-        <!-- Logo -->
-        <div class="px-8 pt-8 pb-6 flex items-center justify-between lg:justify-start gap-3">
+    <aside id="sidebar" class="w-[260px] bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 flex flex-col justify-between h-full flex-shrink-0 absolute lg:relative left-0 top-0 z-50 transform -translate-x-full lg:translate-x-0 transition-all duration-300 ease-in-out">
+        <div class="px-8 pt-8 pb-6 flex items-center justify-between lg:justify-start gap-3 relative">
             <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-white relative overflow-hidden shadow-sm">
+                <div class="w-10 h-10 flex-shrink-0 rounded-full bg-gray-900 dark:bg-gray-800 flex items-center justify-center text-white relative overflow-hidden shadow-sm">
                     <div class="absolute inset-0 bg-gradient-to-tr from-brand-600 to-purple-400 opacity-20"></div>
-                    <span class="font-bold text-xl relative z-10">F</span>
+                    <span class="font-bold text-xl relative z-10">C</span>
                 </div>
-                <span class="font-bold text-xl tracking-tight">FinSet</span>
+                <span class="font-bold text-xl tracking-tight sidebar-text whitespace-nowrap text-gray-900 dark:text-white">CoinTrack</span>
             </div>
-            
-            <button class="w-6 h-6 rounded-full border border-gray-200 hidden lg:flex items-center justify-center text-gray-400 hover:text-gray-600">
-                <i class="ph ph-caret-left text-xs"></i>
-            </button>
-            <button class="w-8 h-8 rounded-full border border-gray-200 flex lg:hidden items-center justify-center text-gray-400 hover:text-gray-600" onclick="toggleSidebar()">
-                <i class="ph ph-x text-sm"></i>
+            <button onclick="toggleDesktopSidebar()" class="w-6 h-6 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hidden lg:flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
+                <i id="sidebar-toggle-icon" class="ph ph-caret-left text-xs"></i>
             </button>
         </div>
 
-        <!-- Navigation -->
         <nav class="flex-1 px-4 overflow-y-auto mt-2">
             <ul class="space-y-1">
-                <li>
-                    <a href="#" class="flex items-center gap-3 px-4 py-3 bg-brand-500 text-white rounded-2xl font-medium shadow-[0_4px_12px_rgba(124,92,255,0.3)] transition-all">
-                        <i class="ph ph-squares-four text-xl"></i>
-                        Dashboard
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-gray-800 hover:bg-gray-50 rounded-2xl font-medium transition-all">
-                        <i class="ph ph-arrows-left-right text-xl"></i>
-                        Transactions
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-gray-800 hover:bg-gray-50 rounded-2xl font-medium transition-all">
-                        <i class="ph ph-wallet text-xl"></i>
-                        Wallet
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-gray-800 hover:bg-gray-50 rounded-2xl font-medium transition-all">
-                        <i class="ph ph-target text-xl"></i>
-                        Goals
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-gray-800 hover:bg-gray-50 rounded-2xl font-medium transition-all">
-                        <i class="ph ph-coin text-xl"></i>
-                        Budget
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-gray-800 hover:bg-gray-50 rounded-2xl font-medium transition-all">
-                        <i class="ph ph-chart-line-up text-xl"></i>
-                        Analytics
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-gray-800 hover:bg-gray-50 rounded-2xl font-medium transition-all">
-                        <i class="ph ph-gear text-xl"></i>
-                        Settings
-                    </a>
-                </li>
+                <li><a href="#" onclick="switchView('dashboard', this); return false;" class="nav-item flex items-center gap-3 px-4 py-3 bg-brand-500 text-white rounded-2xl font-medium shadow-[0_4px_12px_rgba(124,92,255,0.3)] transition-all"><i class="ph ph-squares-four text-xl"></i><span class="sidebar-text">Dashboard</span></a></li>
+                <li><a href="#" onclick="switchView('transactions', this); return false;" class="nav-item flex items-center gap-3 px-4 py-3 text-gray-500 dark:text-gray-400 rounded-2xl font-medium hover:bg-gray-50 dark:hover:bg-gray-800"><i class="ph ph-arrows-left-right text-xl"></i><span class="sidebar-text">Transactions</span></a></li>
+                <li><a href="#" onclick="switchView('wallet', this); return false;" class="nav-item flex items-center gap-3 px-4 py-3 text-gray-500 dark:text-gray-400 rounded-2xl font-medium hover:bg-gray-50 dark:hover:bg-gray-800"><i class="ph ph-wallet text-xl"></i><span class="sidebar-text">Wallet</span></a></li>
+                <li><a href="#" onclick="switchView('goals', this); return false;" class="nav-item flex items-center gap-3 px-4 py-3 text-gray-500 dark:text-gray-400 rounded-2xl font-medium hover:bg-gray-50 dark:hover:bg-gray-800"><i class="ph ph-target text-xl"></i><span class="sidebar-text">Goals</span></a></li>
+                <li><a href="#" onclick="switchView('budget', this); return false;" class="nav-item flex items-center gap-3 px-4 py-3 text-gray-500 dark:text-gray-400 rounded-2xl font-medium hover:bg-gray-50 dark:hover:bg-gray-800"><i class="ph ph-coin text-xl"></i><span class="sidebar-text">Budget</span></a></li>
+                <li><a href="#" onclick="switchView('analytics', this); return false;" class="nav-item flex items-center gap-3 px-4 py-3 text-gray-500 dark:text-gray-400 rounded-2xl font-medium hover:bg-gray-50 dark:hover:bg-gray-800"><i class="ph ph-chart-line-up text-xl"></i><span class="sidebar-text">Analytics</span></a></li>
+                <li><a href="#" onclick="switchView('settings', this); return false;" class="nav-item flex items-center gap-3 px-4 py-3 text-gray-500 dark:text-gray-400 rounded-2xl font-medium hover:bg-gray-50 dark:hover:bg-gray-800"><i class="ph ph-gear text-xl"></i><span class="sidebar-text">Settings</span></a></li>
             </ul>
         </nav>
 
-        <!-- Bottom Actions -->
-        <div class="px-4 pb-8 space-y-1">
-            <a href="#" class="flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-gray-800 hover:bg-gray-50 rounded-2xl font-medium transition-all">
-                <i class="ph ph-question text-xl"></i>
-                Help
-            </a>
-            <a href="#" class="flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-gray-800 hover:bg-gray-50 rounded-2xl font-medium transition-all">
-                <i class="ph ph-sign-out text-xl"></i>
-                Log out
-            </a>
-            
-            <!-- Theme Toggle -->
-            <div class="mt-4 px-4">
-                <div class="bg-gray-100 p-1 rounded-full inline-flex items-center relative w-[72px]">
-                    <!-- Active background indicator -->
-                    <div class="absolute left-1 top-1 w-8 h-8 bg-white rounded-full shadow-sm transition-transform duration-300" id="theme-slider"></div>
-                    
-                    <button class="w-8 h-8 rounded-full flex items-center justify-center text-brand-500 relative z-10" onclick="toggleTheme('light')">
-                        <i class="ph ph-sun text-lg"></i>
-                    </button>
-                    <button class="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 relative z-10" onclick="toggleTheme('dark')">
-                        <i class="ph ph-moon text-lg"></i>
-                    </button>
-                </div>
+        <div class="px-4 pb-8">
+            <div class="bg-gray-100 dark:bg-gray-800 p-1 rounded-full flex items-center relative w-[72px]">
+                <div class="absolute left-1 top-1 w-8 h-8 bg-white dark:bg-gray-700 rounded-full shadow-sm transition-transform duration-300" id="theme-slider"></div>
+                <button class="w-8 h-8 rounded-full flex items-center justify-center text-brand-500 relative z-10" onclick="toggleTheme('light')"><i class="ph ph-sun text-lg"></i></button>
+                <button class="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 relative z-10" onclick="toggleTheme('dark')"><i class="ph ph-moon text-lg"></i></button>
             </div>
         </div>
     </aside>
 
-    <!-- Main Content -->
     <main class="flex-1 flex flex-col h-full overflow-hidden w-full">
         <!-- Header -->
         <header class="px-4 md:px-8 py-4 md:py-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-4 flex-shrink-0">
             <div class="flex items-center gap-3 md:gap-0 w-full md:w-auto">
-                <button class="lg:hidden w-10 h-10 flex-shrink-0 rounded-full border border-gray-200 flex items-center justify-center text-gray-600 bg-white shadow-sm" onclick="toggleSidebar()">
-                    <i class="ph ph-list text-xl"></i>
-                </button>
+                <button class="lg:hidden w-10 h-10 rounded-full border border-gray-200 dark:border-gray-700 flex items-center justify-center bg-white dark:bg-gray-800" onclick="toggleSidebar()"><i class="ph ph-list text-xl"></i></button>
                 <div>
-                    <h1 class="text-[22px] md:text-[28px] font-bold text-gray-900 leading-tight">Welcome back, Adaline!</h1>
-                    <p class="text-xs md:text-sm text-gray-400 mt-1 font-medium">It is the best time to manage your finances</p>
+                    <h1 id="header-title" class="text-[22px] md:text-[28px] font-bold text-gray-900 dark:text-white leading-tight">Welcome back!</h1>
+                    <p id="header-subtitle" class="text-xs md:text-sm text-gray-400 dark:text-gray-500 font-medium">It is the best time to manage your finances</p>
                 </div>
             </div>
-            <div class="flex items-center gap-2 md:gap-4 self-end md:self-auto">
-                <button class="w-10 h-10 md:w-11 md:h-11 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-white hover:shadow-sm transition-all bg-transparent">
-                    <i class="ph ph-magnifying-glass text-lg md:text-xl"></i>
-                </button>
-                <button class="w-10 h-10 md:w-11 md:h-11 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-white hover:shadow-sm transition-all bg-transparent relative">
-                    <i class="ph ph-bell text-lg md:text-xl"></i>
-                    <span class="absolute top-2.5 right-2 md:right-3 w-2 h-2 bg-red-500 rounded-full border-2 border-background"></span>
-                </button>
-                <div class="flex items-center gap-3 pl-1 md:pl-2 cursor-pointer group">
-                    <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="Profile" class="w-10 h-10 md:w-11 md:h-11 rounded-full object-cover border-2 border-white shadow-sm">
-                    <div class="hidden md:block">
-                        <p class="font-semibold text-gray-900 text-sm group-hover:text-brand-500 transition-colors">Adaline Lively</p>
-                        <p class="text-xs text-gray-400">adalinea@gmail.com</p>
-                    </div>
+            <div class="flex items-center gap-3 hidden md:flex">
+                <button class="w-10 h-10 rounded-full border dark:border-gray-700 flex items-center justify-center text-gray-500"><i class="ph ph-magnifying-glass"></i></button>
+                <button class="w-10 h-10 rounded-full border dark:border-gray-700 flex items-center justify-center text-gray-500 relative"><i class="ph ph-bell"></i><span class="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span></button>
+                <div class="flex items-center gap-2 ml-2">
+                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Adaline" class="w-8 h-8 rounded-full bg-gray-200" alt="User">
+                    <div class="text-left"><p class="text-xs font-bold leading-none">Adaline Lively</p><p class="text-[10px] text-gray-400">adaline@gmail.com</p></div>
                 </div>
             </div>
         </header>
 
-        <!-- Scrollable Content Area -->
         <div class="flex-1 overflow-y-auto px-4 md:px-8 pb-8">
             
-            <!-- Actions Bar -->
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                <div class="flex items-center gap-3 w-full sm:w-auto">
-                    <button class="w-10 h-10 flex-shrink-0 rounded-full border border-gray-200 flex items-center justify-center bg-white shadow-sm text-gray-600 hover:bg-gray-50">
-                        <i class="ph ph-calendar-blank text-lg"></i>
-                    </button>
-                    <button class="px-5 py-2 w-full sm:w-auto rounded-full border border-gray-200 bg-white shadow-sm text-sm font-semibold text-gray-700 hover:bg-gray-50 text-center">
-                        This month
-                    </button>
-                </div>
-                <div class="flex gap-2 sm:gap-3 w-full sm:w-auto">
-                    <button class="flex-1 sm:flex-none justify-center px-4 py-2 rounded-full border border-gray-200 bg-white shadow-sm text-xs sm:text-sm font-semibold text-gray-700 flex items-center gap-1 sm:gap-2 hover:bg-gray-50 whitespace-nowrap">
-                        <i class="ph ph-squares-four text-base sm:text-lg"></i> <span class="hidden sm:inline">Manage widgets</span><span class="sm:hidden">Widgets</span>
-                    </button>
-                    <button class="flex-1 sm:flex-none justify-center px-4 py-2 rounded-full bg-brand-500 shadow-[0_4px_12px_rgba(124,92,255,0.25)] text-xs sm:text-sm font-semibold text-white flex items-center gap-1 sm:gap-2 hover:bg-brand-600 transition-colors whitespace-nowrap">
-                        <i class="ph ph-plus text-base sm:text-lg"></i> <span class="hidden sm:inline">Add new widget</span><span class="sm:hidden">Add</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Top KPI Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                <!-- Card 1 -->
-                <div class="bg-white p-6 rounded-[24px] border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
-                    <div class="flex justify-between items-start mb-4">
-                        <span class="font-semibold text-gray-800 text-base">Total balance</span>
-                        <button class="w-8 h-8 rounded-full border border-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-brand-500 transition-colors">
-                            <i class="ph ph-arrow-up-right"></i>
-                        </button>
+            <!-- DASHBOARD VIEW -->
+            <div id="view-dashboard" class="page-view block">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+                    <div class="flex items-center gap-3 w-full sm:w-auto relative">
+                        <button onclick="toggleMonthPicker()" class="w-10 h-10 rounded-full border dark:border-gray-700 flex items-center justify-center bg-white dark:bg-gray-800 shadow-sm transition-colors"><i class="ph ph-calendar-blank text-lg"></i></button>
+                        <button onclick="toggleMonthPicker()" class="px-5 py-2 w-full sm:w-auto rounded-full border dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm text-sm font-semibold transition-colors"><span id="current-month-text">This month</span></button>
+                        <div id="month-picker-dropdown" class="hidden absolute top-full mt-2 left-0 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border dark:border-gray-700 p-4 w-64 z-50 origin-top">
+                            <div class="flex justify-between items-center mb-4">
+                                <button onclick="changePickerYear(-1)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><i class="ph ph-caret-left"></i></button>
+                                <span id="picker-year-display" class="font-bold text-sm">2026</span>
+                                <button onclick="changePickerYear(1)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><i class="ph ph-caret-right"></i></button>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2" id="picker-months-grid"></div>
+                        </div>
                     </div>
-                    <div>
-                        <div class="text-[32px] font-bold text-gray-900 tracking-tight leading-none mb-4">
-                            $15,700<span class="text-gray-300 font-medium text-2xl">.00</span>
-                        </div>
-                        <div class="flex items-center">
-                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#E8F8F0] text-[#1FA666] text-xs font-bold">
-                                <i class="ph ph-arrow-up text-[10px]"></i> 12.1%
-                            </span>
-                            <span class="text-xs text-gray-400 ml-2 font-medium">vs last month</span>
-                        </div>
+                    <div class="flex gap-2">
+                        <button onclick="showToast('Manage widgets')" class="px-4 py-2 border dark:border-gray-700 bg-white dark:bg-gray-800 rounded-full text-xs font-bold">Manage widgets</button>
+                        <button onclick="openAddGoalModal()" class="px-4 py-2 bg-brand-500 text-white rounded-full text-xs font-bold shadow-md">Add new goal</button>
                     </div>
                 </div>
 
-                <!-- Card 2 -->
-                <div class="bg-white p-6 rounded-[24px] border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
-                    <div class="flex justify-between items-start mb-4">
-                        <span class="font-semibold text-gray-800 text-base">Income</span>
-                        <button class="w-8 h-8 rounded-full border border-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-brand-500 transition-colors">
-                            <i class="ph ph-arrow-up-right"></i>
-                        </button>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-white dark:bg-gray-800 p-6 rounded-[24px] border dark:border-gray-800 shadow-sm flex flex-col justify-between transition-all">
+                        <div class="flex justify-between items-start mb-4"><span class="font-semibold text-base text-gray-800 dark:text-gray-200">Total balance</span><button onclick="switchView('wallet')" class="w-8 h-8 rounded-full border dark:border-gray-700 flex items-center justify-center hover:text-brand-500"><i class="ph ph-arrow-up-right"></i></button></div>
+                        <div><div id="kpi-balance" class="text-[32px] font-bold tracking-tight mb-4 text-gray-900 dark:text-white">$0<span class="text-gray-300 font-medium text-2xl">.00</span></div><div id="kpi-balance-change"></div></div>
                     </div>
-                    <div>
-                        <div class="text-[32px] font-bold text-gray-900 tracking-tight leading-none mb-4">
-                            $8,500<span class="text-gray-300 font-medium text-2xl">.00</span>
-                        </div>
-                        <div class="flex items-center">
-                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#E8F8F0] text-[#1FA666] text-xs font-bold">
-                                <i class="ph ph-arrow-up text-[10px]"></i> 6.3%
-                            </span>
-                            <span class="text-xs text-gray-400 ml-2 font-medium">vs last month</span>
-                        </div>
+                    <!-- Other KPIs (Restored in full below) -->
+                    <div class="bg-white dark:bg-gray-800 p-6 rounded-[24px] border dark:border-gray-800 shadow-sm flex flex-col justify-between">
+                        <div class="flex justify-between items-start mb-4"><span class="font-semibold text-base">Income</span><button onclick="switchView('analytics')" class="w-8 h-8 rounded-full border dark:border-gray-700 flex items-center justify-center hover:text-brand-500"><i class="ph ph-arrow-up-right"></i></button></div>
+                        <div><div id="kpi-income" class="text-[32px] font-bold tracking-tight mb-4">$0<span class="text-gray-300 font-medium text-2xl">.00</span></div><div id="kpi-income-change"></div></div>
                     </div>
-                </div>
-
-                <!-- Card 3 -->
-                <div class="bg-white p-6 rounded-[24px] border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
-                    <div class="flex justify-between items-start mb-4">
-                        <span class="font-semibold text-gray-800 text-base">Expense</span>
-                        <button class="w-8 h-8 rounded-full border border-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-brand-500 transition-colors">
-                            <i class="ph ph-arrow-up-right"></i>
-                        </button>
+                    <div class="bg-white dark:bg-gray-800 p-6 rounded-[24px] border dark:border-gray-800 shadow-sm flex flex-col justify-between">
+                        <div class="flex justify-between items-start mb-4"><span class="font-semibold text-base">Expense</span><button onclick="switchView('analytics')" class="w-8 h-8 rounded-full border dark:border-gray-700 flex items-center justify-center hover:text-brand-500"><i class="ph ph-arrow-up-right"></i></button></div>
+                        <div><div id="kpi-expense" class="text-[32px] font-bold tracking-tight mb-4">$0<span class="text-gray-300 font-medium text-2xl">.00</span></div><div id="kpi-expense-change"></div></div>
                     </div>
-                    <div>
-                        <div class="text-[32px] font-bold text-gray-900 tracking-tight leading-none mb-4">
-                            $6,222<span class="text-gray-300 font-medium text-2xl">.00</span>
-                        </div>
-                        <div class="flex items-center">
-                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#FFF0F0] text-[#E03434] text-xs font-bold">
-                                <i class="ph ph-arrow-up text-[10px]"></i> 2.4%
-                            </span>
-                            <span class="text-xs text-gray-400 ml-2 font-medium">vs last month</span>
-                        </div>
+                    <div class="bg-white dark:bg-gray-800 p-6 rounded-[24px] border dark:border-gray-800 shadow-sm flex flex-col justify-between">
+                        <div class="flex justify-between items-start mb-4"><span class="font-semibold text-base">Savings</span><button onclick="switchView('goals')" class="w-8 h-8 rounded-full border dark:border-gray-700 flex items-center justify-center hover:text-brand-500"><i class="ph ph-arrow-up-right"></i></button></div>
+                        <div><div id="kpi-savings" class="text-[32px] font-bold tracking-tight mb-4">$0<span class="text-gray-300 font-medium text-2xl">.00</span></div><div id="kpi-savings-change"></div></div>
                     </div>
                 </div>
 
-                <!-- Card 4 -->
-                <div class="bg-white p-6 rounded-[24px] border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
-                    <div class="flex justify-between items-start mb-4">
-                        <span class="font-semibold text-gray-800 text-base">Total savings</span>
-                        <button class="w-8 h-8 rounded-full border border-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-brand-500 transition-colors">
-                            <i class="ph ph-arrow-up-right"></i>
-                        </button>
+                <div class="flex flex-col gap-8 w-full">
+                    <div class="bg-white dark:bg-gray-800 p-6 rounded-[24px] border dark:border-gray-800 shadow-sm flex flex-col w-full">
+                        <div class="flex justify-between items-center mb-6"><h2 class="font-bold text-lg">Recent transactions</h2><button onclick="switchView('transactions')" class="px-4 py-1.5 border dark:border-gray-700 rounded-full text-xs font-bold">See all <i class="ph ph-caret-right ml-1"></i></button></div>
+                        <div class="w-full overflow-x-auto"><table class="w-full text-left"><tbody id="transactions-tbody"></tbody></table></div>
                     </div>
-                    <div>
-                        <div class="text-[32px] font-bold text-gray-900 tracking-tight leading-none mb-4">
-                            $32,913<span class="text-gray-300 font-medium text-2xl">.00</span>
-                        </div>
-                        <div class="flex items-center">
-                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#E8F8F0] text-[#1FA666] text-xs font-bold">
-                                <i class="ph ph-arrow-up text-[10px]"></i> 12.1%
-                            </span>
-                            <span class="text-xs text-gray-400 ml-2 font-medium">vs last month</span>
-                        </div>
+                    <div class="bg-white dark:bg-gray-800 p-6 rounded-[24px] border dark:border-gray-800 shadow-sm flex flex-col w-full">
+                        <div class="flex justify-between items-start mb-6"><h2 class="font-bold text-lg text-gray-900 dark:text-white">Saving goals</h2><button onclick="switchView('goals')" class="w-8 h-8 rounded-full border dark:border-gray-700 flex items-center justify-center text-gray-500 hover:text-brand-500 transition-colors"><i class="ph ph-arrow-up-right"></i></button></div>
+                        <div class="space-y-5" id="dashboard-goals-container"></div>
                     </div>
                 </div>
             </div>
 
-            <!-- Middle Section: Charts -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-                <!-- Money Flow Bar Chart -->
-                <div class="lg:col-span-2 bg-white p-6 rounded-[24px] border border-gray-100 shadow-sm">
-                    <div class="flex justify-between items-center mb-8">
-                        <h2 class="font-bold text-lg text-gray-900">Money flow</h2>
-                        
-                        <!-- Legend -->
-                        <div class="flex items-center gap-6 hidden md:flex">
-                            <div class="flex items-center gap-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-brand-500"></span>
-                                <span class="text-xs font-semibold text-gray-600">Income</span>
+            <!-- GOALS VIEW -->
+            <div id="view-goals" class="page-view hidden">
+                <div class="flex flex-col gap-6">
+                    <!-- Toolbar -->
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div class="flex flex-wrap items-center gap-3">
+                            <button onclick="toggleGoalsYearPicker()" class="w-10 h-10 rounded-full border dark:border-gray-700 flex items-center justify-center bg-white dark:bg-gray-800 shadow-sm transition-colors hover:bg-gray-50"><i class="ph ph-calendar-blank text-lg"></i></button>
+                            <button class="px-4 py-2 rounded-full border dark:border-gray-700 text-xs font-bold bg-white dark:bg-gray-800"><span id="goals-year-text">This year</span></button>
+                            <button onclick="toggleGoalsSortMenu()" class="w-10 h-10 rounded-full border dark:border-gray-700 flex items-center justify-center bg-white dark:bg-gray-800 shadow-sm hover:bg-gray-50 transition-colors"><i class="ph ph-arrows-down-up text-lg"></i></button>
+                            <div class="relative group">
+                                <button onclick="toggleGoalsSortMenu()" class="px-4 py-2 rounded-full border dark:border-gray-700 text-xs font-bold bg-white dark:bg-gray-800 flex items-center gap-2">Sort by: <span id="goals-sort-text">Name A-Z</span> <i class="ph ph-caret-down"></i></button>
+                                <div id="goals-sort-dropdown" class="hidden absolute top-full left-0 mt-2 w-48 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-2xl shadow-xl z-50 p-2 dropdown-animate">
+                                    <button onclick="setGoalsSort('name')" class="w-full text-left px-4 py-2 text-xs font-bold hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl">Name A-Z</button>
+                                    <button onclick="setGoalsSort('target')" class="w-full text-left px-4 py-2 text-xs font-bold hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl">Highest Target</button>
+                                    <button onclick="setGoalsSort('progress')" class="w-full text-left px-4 py-2 text-xs font-bold hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl">Highest Progress</button>
+                                </div>
                             </div>
-                            <div class="flex items-center gap-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-brand-300"></span>
-                                <span class="text-xs font-semibold text-gray-600">Expense</span>
-                            </div>
+                            <button onclick="showToast('Advanced filters coming soon')" class="w-10 h-10 rounded-full border dark:border-gray-700 flex items-center justify-center bg-white dark:bg-gray-800 shadow-sm"><i class="ph ph-sliders-horizontal text-lg"></i></button>
                         </div>
-
-                        <!-- Filters -->
-                        <div class="flex gap-2">
-                            <button class="px-3 md:px-4 py-1.5 rounded-full border border-gray-200 text-[10px] md:text-xs font-semibold text-gray-600 flex items-center gap-1 md:gap-2 hover:bg-gray-50 whitespace-nowrap">
-                                All accounts <i class="ph ph-caret-down"></i>
-                            </button>
-                            <button class="px-3 md:px-4 py-1.5 rounded-full border border-gray-200 text-[10px] md:text-xs font-semibold text-gray-600 flex items-center gap-1 md:gap-2 hover:bg-gray-50 whitespace-nowrap">
-                                This year <i class="ph ph-caret-down"></i>
-                            </button>
-                        </div>
+                        <button onclick="openAddGoalModal()" class="px-6 py-3 rounded-full bg-brand-500 text-white font-bold text-sm shadow-[0_4px_12px_rgba(124,92,255,0.3)] flex items-center gap-2 hover:bg-brand-600 transition-all"><i class="ph ph-plus text-lg"></i> Add new goal</button>
                     </div>
 
-                    <!-- Chart Area -->
-                    <div class="w-full overflow-x-auto pb-4 -mx-2 px-2 md:mx-0 md:px-0">
-                        <div class="relative h-[220px] min-w-[500px] w-full flex flex-col justify-end mt-4">
-                            <!-- Y Axis Lines -->
-                            <div class="absolute inset-0 flex flex-col justify-between pointer-events-none">
-                            <div class="border-b border-gray-100/80 w-full flex items-end pb-1 h-0 mt-[44px]"><span class="text-[10px] text-gray-400 font-medium w-12">$10,000</span></div>
-                            <div class="border-b border-gray-100/80 w-full flex items-end pb-1 h-0 mt-[44px]"><span class="text-[10px] text-gray-400 font-medium w-12">$5,000</span></div>
-                            <div class="border-b border-gray-100/80 w-full flex items-end pb-1 h-0 mt-[44px]"><span class="text-[10px] text-gray-400 font-medium w-12">$1,000</span></div>
-                            <div class="w-full h-0 mt-[44px]"></div> <!-- Baseline padding -->
-                        </div>
-
-                        <!-- Bars Container -->
-                        <div class="flex justify-between items-end h-[176px] pl-16 pr-4 relative z-10 w-full pb-2">
-                            
-                            <!-- Jan -->
-                            <div class="flex flex-col items-center gap-3 w-12 group cursor-pointer relative">
-                                <div class="flex items-end gap-1.5 h-full">
-                                    <div class="w-[14px] bg-brand-500 rounded-t-[4px] h-[65%] bar-fill hover:opacity-80 transition-opacity"></div>
-                                    <div class="w-[14px] bg-brand-300 rounded-t-[4px] h-[55%] bar-fill hover:opacity-80 transition-opacity"></div>
-                                </div>
-                                <span class="text-xs text-gray-400 font-medium">Jan</span>
-                            </div>
-
-                            <!-- Feb -->
-                            <div class="flex flex-col items-center gap-3 w-12 group cursor-pointer relative">
-                                <div class="flex items-end gap-1.5 h-full">
-                                    <div class="w-[14px] bg-brand-500 rounded-t-[4px] h-[70%] bar-fill hover:opacity-80 transition-opacity"></div>
-                                    <div class="w-[14px] bg-brand-300 rounded-t-[4px] h-[85%] bar-fill hover:opacity-80 transition-opacity"></div>
-                                </div>
-                                <span class="text-xs text-gray-400 font-medium">Feb</span>
-                            </div>
-
-                            <!-- Mar (With Tooltip) -->
-                            <div class="flex flex-col items-center gap-3 w-12 group cursor-pointer relative">
-                                <!-- Tooltip -->
-                                <div class="absolute -top-14 left-1/2 -translate-x-1/2 glass-tooltip border border-gray-200 px-3 py-1.5 rounded-full z-20 flex items-center justify-center">
-                                    <span class="text-xs font-bold text-gray-800">$10,000</span>
-                                </div>
-                                <!-- Tooltip Line/Dot -->
-                                <div class="absolute top-[3px] left-[13px] w-2 h-2 bg-white border-2 border-brand-500 rounded-full z-20"></div>
-
-                                <div class="flex items-end gap-1.5 h-full">
-                                    <div class="w-[14px] bg-brand-500 rounded-t-[4px] h-[95%] bar-fill hover:opacity-80 transition-opacity"></div>
-                                    <div class="w-[14px] bg-brand-300 rounded-t-[4px] h-[65%] bar-fill hover:opacity-80 transition-opacity"></div>
-                                </div>
-                                <span class="text-xs text-gray-400 font-medium">Mar</span>
-                            </div>
-
-                            <!-- Apr -->
-                            <div class="flex flex-col items-center gap-3 w-12 group cursor-pointer relative">
-                                <div class="flex items-end gap-1.5 h-full">
-                                    <div class="w-[14px] bg-brand-500 rounded-t-[4px] h-[95%] bar-fill hover:opacity-80 transition-opacity"></div>
-                                    <div class="w-[14px] bg-brand-300 rounded-t-[4px] h-[90%] bar-fill hover:opacity-80 transition-opacity"></div>
-                                </div>
-                                <span class="text-xs text-gray-400 font-medium">Apr</span>
-                            </div>
-
-                            <!-- May -->
-                            <div class="flex flex-col items-center gap-3 w-12 group cursor-pointer relative">
-                                <div class="flex items-end gap-1.5 h-full">
-                                    <div class="w-[14px] bg-brand-500 rounded-t-[4px] h-[80%] bar-fill hover:opacity-80 transition-opacity"></div>
-                                    <div class="w-[14px] bg-brand-300 rounded-t-[4px] h-[78%] bar-fill hover:opacity-80 transition-opacity"></div>
-                                </div>
-                                <span class="text-xs text-gray-400 font-medium">May</span>
-                            </div>
-
-                            <!-- Jun -->
-                            <div class="flex flex-col items-center gap-3 w-12 group cursor-pointer relative">
-                                <div class="flex items-end gap-1.5 h-full">
-                                    <div class="w-[14px] bg-brand-500 rounded-t-[4px] h-[50%] bar-fill hover:opacity-80 transition-opacity"></div>
-                                    <div class="w-[14px] bg-brand-300 rounded-t-[4px] h-[40%] bar-fill hover:opacity-80 transition-opacity"></div>
-                                </div>
-                                <span class="text-xs text-gray-400 font-medium">Jun</span>
-                            </div>
-
-                            <!-- Jul -->
-                            <div class="flex flex-col items-center gap-3 w-12 group cursor-pointer relative">
-                                <div class="flex items-end gap-1.5 h-full">
-                                    <div class="w-[14px] bg-brand-500 rounded-t-[4px] h-[60%] bar-fill hover:opacity-80 transition-opacity"></div>
-                                    <div class="w-[14px] bg-brand-300 rounded-t-[4px] h-[45%] bar-fill hover:opacity-80 transition-opacity"></div>
-                                </div>
-                                <span class="text-xs text-gray-400 font-medium">Jul</span>
-                            </div>
-                            
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Budget Donut Chart -->
-                <div class="bg-white p-6 rounded-[24px] border border-gray-100 shadow-sm relative">
-                    <div class="flex justify-between items-start mb-6">
-                        <h2 class="font-bold text-lg text-gray-900">Budget</h2>
-                        <button class="w-8 h-8 rounded-full border border-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-brand-500 transition-colors">
-                            <i class="ph ph-arrow-up-right"></i>
-                        </button>
+                    <!-- Filter Chips -->
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button onclick="toggleGoalFilter('in-progress')" id="filter-in-progress" class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-xs font-bold transition-all text-gray-500 hover:bg-gray-50">In progress</button>
+                        <button onclick="showToast('Date filtering soon')" class="px-4 py-1.5 rounded-full border dark:border-gray-700 text-xs font-bold text-gray-500 flex items-center gap-1">Due date <i class="ph ph-caret-down"></i></button>
+                        <button onclick="showToast('Amount filtering soon')" class="px-4 py-1.5 rounded-full border dark:border-gray-700 text-xs font-bold text-gray-500 flex items-center gap-1">Amount <i class="ph ph-caret-down"></i></button>
+                        <button onclick="resetGoalsFilters()" class="text-xs font-bold text-brand-500 flex items-center gap-1 ml-2"><i class="ph ph-arrows-clockwise"></i> Reset all</button>
                     </div>
 
-                    <div class="flex items-center justify-between mt-2">
-                        <!-- Legend -->
-                        <div class="flex flex-col gap-3">
-                            <div class="flex items-center gap-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-[#7C5CFF]"></span>
-                                <span class="text-[11px] font-semibold text-gray-700">Cafe & Restaurants</span>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-[#A38CFF]"></span>
-                                <span class="text-[11px] font-semibold text-gray-700">Entertainment</span>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-[#D6CCFF]"></span>
-                                <span class="text-[11px] font-semibold text-gray-700">Investments</span>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-[#3F3F46]"></span>
-                                <span class="text-[11px] font-semibold text-gray-700">Food & Groceries</span>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-[#71717A]"></span>
-                                <span class="text-[11px] font-semibold text-gray-700">Health & Beauty</span>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-[#A1A1AA]"></span>
-                                <span class="text-[11px] font-semibold text-gray-700">Traveling</span>
+                    <p class="text-xs font-bold text-gray-400" id="goal-count-label">0 items</p>
+
+                    <!-- Grid -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6" id="full-goals-grid"></div>
+
+                    <!-- Summary Area -->
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="bg-white dark:bg-gray-800 p-6 rounded-[24px] border dark:border-gray-800 shadow-sm">
+                            <div class="flex justify-between items-center mb-6"><h3 class="font-bold text-lg">Total goals</h3><span class="text-[10px] font-bold text-gray-400">All Time</span></div>
+                            <div id="goals-summary-total" class="text-[42px] font-bold mb-8">0</div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="bg-[#F5F4FF] dark:bg-brand-900/10 p-3 rounded-2xl flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-brand-100 dark:bg-brand-800 flex items-center justify-center text-brand-500"><i class="ph ph-activity"></i></div><div><p class="text-[10px] font-bold text-gray-400">In progress</p><p id="goals-summary-progress" class="text-sm font-bold">0</p></div></div>
+                                <div class="bg-[#F2FAF6] dark:bg-green-900/10 p-3 rounded-2xl flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center text-green-500"><i class="ph ph-check-circle"></i></div><div><p class="text-[10px] font-bold text-gray-400">Finished</p><p id="goals-summary-finished" class="text-sm font-bold">0</p></div></div>
                             </div>
                         </div>
 
-                        <!-- Donut Chart Container -->
-                        <div class="relative w-[140px] h-[140px] flex-shrink-0">
-                            <!-- SVG Donut -->
-                            <svg viewBox="0 0 100 100" class="w-full h-full transform -rotate-90">
-                                <!-- Base Circle -->
-                                <circle cx="50" cy="50" r="40" fill="transparent" stroke="#f4f4f5" stroke-width="12" />
-                                
-                                <!-- Segments (Approximated stroke-dasharray based on circumference 251.2) -->
-                                <!-- Traveling (Gray light) -->
-                                <circle cx="50" cy="50" r="40" fill="transparent" stroke="#A1A1AA" stroke-width="12" stroke-dasharray="25 226.2" stroke-dashoffset="0" class="donut-segment cursor-pointer" stroke-linecap="round"/>
-                                
-                                <!-- Health & Beauty -->
-                                <circle cx="50" cy="50" r="40" fill="transparent" stroke="#71717A" stroke-width="12" stroke-dasharray="30 221.2" stroke-dashoffset="-30" class="donut-segment cursor-pointer" stroke-linecap="round"/>
-                                
-                                <!-- Food & Groceries -->
-                                <circle cx="50" cy="50" r="40" fill="transparent" stroke="#3F3F46" stroke-width="12" stroke-dasharray="40 211.2" stroke-dashoffset="-65" class="donut-segment cursor-pointer" stroke-linecap="round"/>
-                                
-                                <!-- Investments -->
-                                <circle cx="50" cy="50" r="40" fill="transparent" stroke="#D6CCFF" stroke-width="12" stroke-dasharray="35 216.2" stroke-dashoffset="-110" class="donut-segment cursor-pointer" stroke-linecap="round"/>
-                                
-                                <!-- Entertainment -->
-                                <circle cx="50" cy="50" r="40" fill="transparent" stroke="#A38CFF" stroke-width="12" stroke-dasharray="25 226.2" stroke-dashoffset="-150" class="donut-segment cursor-pointer" stroke-linecap="round"/>
-                                
-                                <!-- Cafe & Restaurants (Main Purple) -->
-                                <circle cx="50" cy="50" r="40" fill="transparent" stroke="#7C5CFF" stroke-width="12" stroke-dasharray="65 186.2" stroke-dashoffset="-180" class="donut-segment cursor-pointer" stroke-linecap="round"/>
-                            </svg>
-
-                            <!-- Tooltip floating over Donut -->
-                            <div class="absolute -top-4 right-0 bg-white shadow-sm border border-gray-100 rounded-full px-2 py-1 flex flex-col items-center justify-center z-10 w-12 h-12">
-                                <span class="text-[10px] text-gray-400 font-medium leading-none">7%</span>
-                                <span class="text-xs font-bold text-gray-800 leading-none mt-0.5">$400</span>
-                            </div>
-
-                            <!-- Center Text -->
-                            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-1">
-                                <span class="text-[10px] font-medium text-gray-400 mb-0.5">Total for month</span>
-                                <span class="text-base font-bold text-gray-900 leading-none">$5,950<span class="text-[10px] text-gray-400">.00</span></span>
+                        <div class="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-[24px] border dark:border-gray-800 shadow-sm overflow-hidden">
+                            <div class="flex justify-between items-center mb-8"><h3 class="font-bold text-lg">Savings overview</h3><div class="flex items-center gap-2 text-[10px] font-bold text-gray-400"><span class="w-2.5 h-2.5 rounded-full bg-brand-500"></span> Live Balance Flow</div></div>
+                            <div class="h-[200px] w-full relative">
+                                <svg viewBox="0 0 800 200" class="w-full h-full overflow-visible">
+                                    <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7C5CFF" stop-opacity="0.3" /><stop offset="100%" stop-color="#7C5CFF" stop-opacity="0" /></linearGradient></defs>
+                                    <path d="M0,180 C100,160 200,80 300,120 C400,160 500,60 600,140 C700,200 750,60 800,40" fill="none" stroke="#7C5CFF" stroke-width="4" stroke-linecap="round" class="chart-path" />
+                                    <path d="M0,180 C100,160 200,80 300,120 C400,160 500,60 600,140 C700,200 750,60 800,40 V200 H0 Z" fill="url(#g1)" />
+                                </svg>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Bottom Section -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                
-                <!-- Recent Transactions -->
-                <div class="lg:col-span-2 bg-white p-6 rounded-[24px] border border-gray-100 shadow-sm flex flex-col">
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="font-bold text-lg text-gray-900">Recent transactions</h2>
-                        <div class="flex gap-2">
-                            <button class="px-4 py-1.5 rounded-full border border-gray-200 text-xs font-semibold text-gray-600 flex items-center gap-2 hover:bg-gray-50">
-                                All accounts <i class="ph ph-caret-down"></i>
-                            </button>
-                            <button class="px-4 py-1.5 rounded-full border border-gray-200 text-xs font-semibold text-gray-600 flex items-center gap-1 hover:bg-gray-50">
-                                See all <i class="ph ph-caret-right text-[10px]"></i>
-                            </button>
-                        </div>
+            <!-- TRANSACTIONS VIEW -->
+            <div id="view-transactions" class="page-view hidden">
+                <div class="bg-white dark:bg-gray-800 p-8 rounded-[24px] border dark:border-gray-800 shadow-sm min-h-[600px] flex flex-col">
+                    <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+                        <div><h2 class="font-bold text-2xl">Transactions</h2><p class="text-sm text-gray-400">Manage your history</p></div>
+                        <div class="flex gap-3"><button class="px-5 py-2.5 rounded-full border dark:border-gray-700 text-xs font-bold">Export CSV</button><button onclick="openAddTxModal()" class="px-5 py-2.5 rounded-full bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-bold">Add new</button></div>
                     </div>
-
-                    <!-- Table -->
-                    <div class="w-full overflow-x-auto">
-                        <table class="w-full text-left min-w-[600px]">
-                            <thead>
-                                <tr class="bg-brand-50 rounded-full">
-                                    <th class="py-3 px-4 text-[10px] font-bold text-brand-500 uppercase tracking-wider rounded-l-full w-1/5">Date</th>
-                                    <th class="py-3 px-4 text-[10px] font-bold text-brand-500 uppercase tracking-wider text-right w-[15%]">Amount</th>
-                                    <th class="py-3 px-4 text-[10px] font-bold text-brand-500 uppercase tracking-wider w-[25%] pl-8">Payment Name</th>
-                                    <th class="py-3 px-4 text-[10px] font-bold text-brand-500 uppercase tracking-wider w-1/5">Method</th>
-                                    <th class="py-3 px-4 text-[10px] font-bold text-brand-500 uppercase tracking-wider rounded-r-full w-1/5">Category</th>
-                                </tr>
-                            </thead>
-                            <tbody class="text-sm">
-                                <!-- Row 1 -->
-                                <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                                    <td class="py-4 px-4 font-semibold text-gray-800 text-[13px]">25 Jul 12:30</td>
-                                    <td class="py-4 px-4 font-bold text-gray-900 text-right text-[13px]">- $10</td>
-                                    <td class="py-4 px-4 pl-8">
-                                        <div class="flex items-center gap-3">
-                                            <div class="w-7 h-7 bg-red-50 rounded flex items-center justify-center text-red-500">
-                                                <i class="ph-fill ph-youtube-logo text-lg"></i>
-                                            </div>
-                                            <span class="font-bold text-gray-900 text-[13px]">YouTube</span>
-                                        </div>
-                                    </td>
-                                    <td class="py-4 px-4 font-medium text-gray-600 text-[13px]">VISA **3254</td>
-                                    <td class="py-4 px-4 font-medium text-gray-600 text-[13px]">Subscription</td>
-                                </tr>
-                                <!-- Row 2 -->
-                                <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                                    <td class="py-4 px-4 font-semibold text-gray-800 text-[13px]">26 Jul 15:00</td>
-                                    <td class="py-4 px-4 font-bold text-gray-900 text-right text-[13px]">- $150</td>
-                                    <td class="py-4 px-4 pl-8">
-                                        <div class="flex items-center gap-3">
-                                            <div class="w-7 h-7 bg-gray-50 border border-gray-200 border-dashed rounded flex items-center justify-center text-gray-400">
-                                                <i class="ph ph-dots-three text-lg"></i>
-                                            </div>
-                                            <span class="font-bold text-gray-900 text-[13px]">Reserved</span>
-                                        </div>
-                                    </td>
-                                    <td class="py-4 px-4 font-medium text-gray-600 text-[13px]">Mastercard **2154</td>
-                                    <td class="py-4 px-4 font-medium text-gray-600 text-[13px]">Shopping</td>
-                                </tr>
-                                <!-- Row 3 -->
-                                <tr class="hover:bg-gray-50/50 transition-colors">
-                                    <td class="py-4 px-4 font-semibold text-gray-800 text-[13px]">27 Jul 9:00</td>
-                                    <td class="py-4 px-4 font-bold text-gray-900 text-right text-[13px]">- $80</td>
-                                    <td class="py-4 px-4 pl-8">
-                                        <div class="flex items-center gap-3">
-                                            <div class="w-7 h-7 bg-pink-50 rounded flex items-center justify-center text-pink-500">
-                                                <i class="ph-fill ph-ghost text-lg"></i>
-                                            </div>
-                                            <span class="font-bold text-gray-900 text-[13px]">Yaposhka</span>
-                                        </div>
-                                    </td>
-                                    <td class="py-4 px-4 font-medium text-gray-600 text-[13px]">Mastercard **2154</td>
-                                    <td class="py-4 px-4 font-medium text-gray-600 text-[13px]">Cafe & Restaurants</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
+                    <div class="overflow-x-auto"><table class="w-full text-left min-w-[800px]"><thead class="text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b dark:border-gray-700"><tr><th class="pb-4 px-4">Date</th><th class="pb-4 px-4 text-right">Amount</th><th class="pb-4 px-4 pl-8">Name</th><th class="pb-4 px-4">Method</th><th class="pb-4 px-4">Category</th><th class="pb-4 px-4">Status</th></tr></thead><tbody id="full-transactions-tbody"></tbody></table></div>
                 </div>
-
-                <!-- Saving Goals -->
-                <div class="bg-white p-6 rounded-[24px] border border-gray-100 shadow-sm flex flex-col">
-                    <div class="flex justify-between items-start mb-6">
-                        <h2 class="font-bold text-lg text-gray-900">Saving goals</h2>
-                        <button class="w-8 h-8 rounded-full border border-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-brand-500 transition-colors">
-                            <i class="ph ph-arrow-up-right"></i>
-                        </button>
-                    </div>
-
-                    <div class="space-y-5">
-                        <!-- Goal 1 -->
-                        <div>
-                            <div class="flex justify-between items-end mb-2">
-                                <span class="font-bold text-sm text-gray-900">MacBook Pro</span>
-                                <span class="text-xs font-bold text-brand-500">$1,650</span>
-                            </div>
-                            <div class="w-full bg-brand-50 rounded-full h-4 relative overflow-hidden">
-                                <div class="bg-brand-500 h-full rounded-full transition-all duration-1000 w-[25%] flex items-center px-2">
-                                    <span class="text-[10px] text-white font-bold leading-none">25%</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Goal 2 -->
-                        <div>
-                            <div class="flex justify-between items-end mb-2">
-                                <span class="font-bold text-sm text-gray-900">New car</span>
-                                <span class="text-xs font-bold text-brand-500">$60,000</span>
-                            </div>
-                            <div class="w-full bg-brand-50 rounded-full h-4 relative overflow-hidden">
-                                <div class="bg-brand-500 h-full rounded-full transition-all duration-1000 w-[42%] flex items-center px-2">
-                                    <span class="text-[10px] text-white font-bold leading-none">42%</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Goal 3 -->
-                        <div>
-                            <div class="flex justify-between items-end mb-2">
-                                <span class="font-bold text-sm text-gray-900">New house</span>
-                                <span class="text-xs font-bold text-brand-500">$150,000</span>
-                            </div>
-                            <div class="w-full bg-brand-50 rounded-full h-4 relative overflow-hidden">
-                                <div class="bg-brand-500 h-full rounded-full transition-all duration-1000 w-[8%] flex items-center px-2">
-                                    <span class="text-[10px] text-white font-bold leading-none">3%</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
             </div>
+
+            <!-- Empty Placeholders -->
+            <div id="view-wallet" class="page-view hidden"><div class="p-20 text-center font-bold text-gray-400">Wallet logic enabled (see Dashboard totals)</div></div>
+            <div id="view-budget" class="page-view hidden"><div class="p-20 text-center font-bold text-gray-400">Budgeting tools coming soon</div></div>
+            <div id="view-analytics" class="page-view hidden"><div class="p-20 text-center font-bold text-gray-400">Advanced charts coming soon</div></div>
+            <div id="view-settings" class="page-view hidden"><div class="p-20 text-center font-bold text-gray-400">Manage your profile</div></div>
+
         </div>
     </main>
 
-    <script>
-        // Sidebar Toggle for Mobile
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('mobile-overlay');
-            sidebar.classList.toggle('-translate-x-full');
-            overlay.classList.toggle('hidden');
-        }
+    <!-- Modals -->
+    <div id="add-tx-modal" class="fixed inset-0 bg-gray-900/40 dark:bg-black/60 z-[100] hidden flex items-center justify-center backdrop-blur-sm transition-opacity opacity-0">
+        <div class="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-md p-6 transform scale-95 transition-all duration-300" id="add-tx-modal-content">
+            <div class="flex justify-between items-center mb-6"><h3 class="text-xl font-bold">New Transaction</h3><button onclick="closeAddTxModal()" class="w-8 h-8 flex items-center justify-center"><i class="ph ph-x"></i></button></div>
+            <form onsubmit="submitNewTransaction(event)" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Type</label><select id="tx-type" class="w-full bg-gray-50 dark:bg-gray-900 border dark:border-gray-700 rounded-xl px-4 py-3 text-sm" required><option value="expense">Expense</option><option value="income">Income</option></select></div>
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Amount</label><input type="number" step="0.01" id="tx-amount" class="w-full bg-gray-50 dark:bg-gray-900 border dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-bold" required></div>
+                </div>
+                <div><label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Name</label><input type="text" id="tx-name" class="w-full bg-gray-50 dark:bg-gray-900 border dark:border-gray-700 rounded-xl px-4 py-3 text-sm" required></div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Method</label><input type="text" id="tx-method" class="w-full bg-gray-50 dark:bg-gray-900 border dark:border-gray-700 rounded-xl px-4 py-3 text-sm" placeholder="VISA **1234"></div>
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Category</label><input type="text" id="tx-category" class="w-full bg-gray-50 dark:bg-gray-900 border dark:border-gray-700 rounded-xl px-4 py-3 text-sm" placeholder="Shopping"></div>
+                </div>
+                <div class="pt-4"><button type="submit" class="w-full bg-brand-500 text-white font-bold py-3 rounded-xl">Save Entry</button></div>
+            </form>
+        </div>
+    </div>
 
-        // Simple script for the theme toggle animation
+    <div id="add-goal-modal" class="fixed inset-0 bg-gray-900/40 dark:bg-black/60 z-[100] hidden flex items-center justify-center backdrop-blur-sm transition-opacity opacity-0">
+        <div class="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-md p-6 transform scale-95 transition-all duration-300" id="add-goal-modal-content">
+            <div class="flex justify-between items-center mb-6"><h3 class="text-xl font-bold">Set New Goal</h3><button onclick="closeAddGoalModal()" class="w-8 h-8 flex items-center justify-center"><i class="ph ph-x"></i></button></div>
+            <form onsubmit="submitNewGoal(event)" class="space-y-4">
+                <div><label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Goal Name</label><input type="text" id="goal-name" class="w-full bg-gray-50 dark:bg-gray-900 border dark:border-gray-700 rounded-xl px-4 py-3 text-sm" required></div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Target Amount</label><input type="number" id="goal-target" class="w-full bg-gray-50 dark:bg-gray-900 border dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-bold" required></div>
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Starting Save</label><input type="number" id="goal-current" class="w-full bg-gray-50 dark:bg-gray-900 border dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-bold"></div>
+                </div>
+                <div class="pt-4"><button type="submit" class="w-full bg-brand-500 text-white font-bold py-3 rounded-xl shadow-lg">Launch Goal</button></div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const monthNamesShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const monthNamesFull = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        
+        // State
+        let selectedMonth = new Date().getMonth();
+        let selectedYear = new Date().getFullYear();
+        let pickerYear = selectedYear;
         let isDarkMode = false;
         
-        function toggleTheme(mode) {
-            const slider = document.getElementById('theme-slider');
-            if (mode === 'dark' && !isDarkMode) {
-                slider.style.transform = 'translateX(32px)';
-                isDarkMode = true;
-                // Add dark mode logic here if needed
-            } else if (mode === 'light' && isDarkMode) {
-                slider.style.transform = 'translateX(0)';
-                isDarkMode = false;
-                // Add light mode logic here if needed
-            }
+        let goalsSort = 'name'; // 'name', 'target', 'progress'
+        let goalsFilter = 'all'; // 'all', 'in-progress'
+
+        // --- DASHBOARD ---
+        async function fetchDashboardData() {
+            try {
+                const start = new Date(selectedYear, selectedMonth, 1).toISOString();
+                const end = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59, 999).toISOString();
+                
+                const { data: kpiData } = await supabaseClient.from('user_stats').select('*').maybeSingle();
+                const { data: txs } = await supabaseClient.from('transactions').select('*').gte('created_at', start).lte('created_at', end);
+
+                let inc = 0, exp = 0; 
+                if(txs) txs.forEach(t => t.type==='income' ? inc+=Number(t.amount) : exp+=Number(t.amount));
+
+                const balEl = document.getElementById('kpi-balance');
+                if(balEl) balEl.innerHTML = formatCurrencyHTML(kpiData?.total_balance || 0);
+                
+                const incEl = document.getElementById('kpi-income');
+                if(incEl) incEl.innerHTML = formatCurrencyHTML(inc);
+                
+                const expEl = document.getElementById('kpi-expense');
+                if(expEl) expEl.innerHTML = formatCurrencyHTML(exp);
+                
+                const savEl = document.getElementById('kpi-savings');
+                if(savEl) savEl.innerHTML = formatCurrencyHTML(kpiData?.total_savings || 0);
+
+                const tbody = document.getElementById('transactions-tbody');
+                if (tbody) {
+                    if (txs && txs.length > 0) {
+                        tbody.innerHTML = '';
+                        txs.slice(0, 5).forEach(tx => {
+                            const tr = document.createElement('tr');
+                            tr.className = "border-b dark:border-gray-800 hover:bg-gray-50/50 dark:hover:bg-gray-700/50";
+                            tr.innerHTML = `<td class="py-4 px-4 font-semibold text-xs">${tx.date_text}</td><td class="py-4 px-4 font-bold text-right text-xs">${tx.type==='expense'?'-':'+'} $${tx.amount}</td><td class="py-4 px-4 pl-8 font-bold text-xs">${tx.payment_name}</td><td class="py-4 px-4 text-xs font-bold text-gray-400">${tx.method}</td><td class="py-4 px-4 text-xs font-bold text-gray-400">${tx.category}</td>`;
+                            tbody.appendChild(tr);
+                        });
+                    } else { tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-gray-400 text-xs">No entries for this month</td></tr>`; }
+                }
+
+                // Goals sync
+                const { data: goals } = await supabaseClient.from('cointrack_goals').select('*').order('created_at', { ascending: true });
+                const dGoals = document.getElementById('dashboard-goals-container');
+                if (dGoals) {
+                    if (goals && goals.length > 0) {
+                        dGoals.innerHTML = '';
+                        goals.slice(0, 3).forEach(g => {
+                            const div = document.createElement('div');
+                            div.innerHTML = `<div class="flex justify-between items-end mb-2 font-bold text-xs"><span>${g.name}</span><span class="text-brand-500">$${Number(g.target_amount).toLocaleString()}</span></div><div class="w-full bg-brand-50 dark:bg-gray-700 h-3 rounded-full overflow-hidden relative"><div class="bg-brand-500 h-full flex items-center px-2 text-[7px] text-white" style="width:${g.percentage}%">${g.percentage}%</div></div>`;
+                            dGoals.appendChild(div);
+                        });
+                    } else { dGoals.innerHTML = '<div class="text-center text-gray-400 py-4 text-xs">No goals yet</div>'; }
+                }
+            } catch (e) { console.error(e); }
         }
+
+        // --- GOALS PAGE ---
+        async function fetchGoalsPageData() {
+            const grid = document.getElementById('full-goals-grid');
+            const countLabel = document.getElementById('goal-count-label');
+            if(!grid) return;
+
+            try {
+                let query = supabaseClient.from('cointrack_goals').select('*');
+                const { data: allGoals } = await query;
+                if (!allGoals) return;
+
+                // Client-side filtering & sorting for performance
+                let filtered = allGoals;
+                if (goalsFilter === 'in-progress') {
+                    filtered = allGoals.filter(g => g.percentage > 0 && g.percentage < 100);
+                }
+
+                if (goalsSort === 'name') filtered.sort((a,b) => a.name.localeCompare(b.name));
+                else if (goalsSort === 'target') filtered.sort((a,b) => b.target_amount - a.target_amount);
+                else if (goalsSort === 'progress') filtered.sort((a,b) => b.percentage - a.percentage);
+
+                grid.innerHTML = '';
+                countLabel.innerText = `${filtered.length} items`;
+                
+                // Summary updates
+                document.getElementById('goals-summary-total').innerText = allGoals.length;
+                document.getElementById('goals-summary-progress').innerText = allGoals.filter(g => g.percentage > 0 && g.percentage < 100).length;
+                document.getElementById('goals-summary-finished').innerText = allGoals.filter(g => g.percentage >= 100).length;
+
+                filtered.forEach(goal => {
+                    const left = Math.max(0, Number(goal.target_amount) - Number(goal.current_amount));
+                    const card = document.createElement('div');
+                    card.className = "bg-white dark:bg-gray-800 p-6 rounded-[32px] border border-gray-100 dark:border-gray-800 shadow-sm transition-all hover:scale-[1.02] relative";
+                    card.innerHTML = `
+                        <div class="flex justify-between items-start mb-4"><h4 class="font-bold text-sm text-gray-900 dark:text-white">${goal.name}</h4><button class="w-8 h-8 rounded-full border dark:border-gray-700 flex items-center justify-center text-gray-400"><i class="ph ph-pencil-simple"></i></button></div>
+                        <p class="text-[10px] font-bold text-gray-400 mb-6">Due date - Oct 2026</p>
+                        <div class="flex items-baseline gap-1 mb-6 font-bold text-gray-900 dark:text-white"><span class="text-2xl">$${Number(goal.current_amount).toLocaleString()}</span><span class="text-sm text-brand-300">/$${Number(goal.target_amount).toLocaleString()}</span></div>
+                        <div class="w-full bg-brand-50 dark:bg-gray-700 h-4 rounded-full overflow-hidden relative mb-2"><div class="bg-brand-500 h-full flex items-center px-2 text-[8px] text-white" style="width:${goal.percentage}%">${goal.percentage}%</div></div>
+                        <div class="flex justify-between text-[9px] font-bold text-gray-400 uppercase"><span>Left to complete</span><span class="text-gray-900 dark:text-white">$${left.toLocaleString()}</span></div>
+                    `;
+                    grid.appendChild(card);
+                });
+
+            } catch (e) { console.error(e); }
+        }
+
+        // --- TRANSACTIONS PAGE ---
+        async function fetchFullTransactions() {
+            try {
+                const { data: txs } = await supabaseClient.from('transactions').select('*').order('created_at', { ascending: false });
+                const tbody = document.getElementById('full-transactions-tbody');
+                if (tbody) {
+                    tbody.innerHTML = '';
+                    txs?.forEach(t => {
+                        const tr = document.createElement('tr');
+                        tr.className = "border-b dark:border-gray-700 hover:bg-gray-50/50 dark:hover:bg-gray-800";
+                        tr.innerHTML = `<td class="py-5 px-4 font-bold text-xs">${t.date_text}</td><td class="py-5 px-4 font-bold text-right text-xs">${t.type==='expense'?'-':'+'} $${t.amount}</td><td class="py-5 px-4 pl-8 font-bold text-xs">${t.payment_name}</td><td class="py-5 px-4 text-xs font-bold text-gray-400">${t.method}</td><td class="py-5 px-4 text-xs font-bold text-gray-400">${t.category}</td><td class="py-5 px-4"><span class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-[10px] font-bold rounded-lg uppercase">Successful</span></td>`;
+                        tbody.appendChild(tr);
+                    });
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        // --- BUTTON HANDLERS (GOALS) ---
+        function toggleGoalsSortMenu() { document.getElementById('goals-sort-dropdown').classList.toggle('hidden'); }
+        function setGoalsSort(mode) {
+            goalsSort = mode;
+            const labels = { 'name': 'Name A-Z', 'target': 'Highest Target', 'progress': 'Highest Progress' };
+            document.getElementById('goals-sort-text').innerText = labels[mode];
+            document.getElementById('goals-sort-dropdown').classList.add('hidden');
+            fetchGoalsPageData();
+        }
+
+        function toggleGoalFilter(id) {
+            goalsFilter = (goalsFilter === id) ? 'all' : id;
+            const btn = document.getElementById('filter-in-progress');
+            if (goalsFilter === 'in-progress') {
+                btn.classList.replace('text-gray-500', 'text-brand-600');
+                btn.classList.add('bg-brand-100', 'border-brand-200');
+            } else {
+                btn.classList.replace('text-brand-600', 'text-gray-500');
+                btn.classList.remove('bg-brand-100', 'border-brand-200');
+            }
+            fetchGoalsPageData();
+        }
+
+        function resetGoalsFilters() {
+            goalsSort = 'name';
+            goalsFilter = 'all';
+            document.getElementById('goals-sort-text').innerText = 'Name A-Z';
+            const btn = document.getElementById('filter-in-progress');
+            btn.className = "inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-xs font-bold transition-all text-gray-500 hover:bg-gray-50";
+            fetchGoalsPageData();
+            showToast('Filters reset');
+        }
+
+        // --- MODAL SUBMISSIONS ---
+        async function submitNewGoal(event) {
+            event.preventDefault();
+            const payload = {
+                name: document.getElementById('goal-name').value,
+                target_amount: parseFloat(document.getElementById('goal-target').value),
+                current_amount: parseFloat(document.getElementById('goal-current').value || 0),
+            };
+            payload.percentage = Math.min(100, Math.round((payload.current_amount / payload.target_amount) * 100));
+
+            try {
+                const { error } = await supabaseClient.from('cointrack_goals').insert([payload]);
+                if (error) throw error;
+                showToast('Goal launched!');
+                closeAddGoalModal();
+                fetchGoalsPageData();
+                fetchDashboardData();
+            } catch (e) { showToast('Permission error: Run SQL at top of file'); }
+        }
+
+        async function submitNewTransaction(event) {
+            event.preventDefault();
+            const d = new Date();
+            const payload = {
+                amount: parseFloat(document.getElementById('tx-amount').value),
+                payment_name: document.getElementById('tx-name').value,
+                method: document.getElementById('tx-method').value || 'Unknown',
+                category: document.getElementById('tx-category').value || 'Uncategorized',
+                type: document.getElementById('tx-type').value,
+                date_text: `${String(d.getDate()).padStart(2,'0')} ${monthNamesShort[d.getMonth()]} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,
+                icon: 'ph-fill ph-receipt',
+                icon_color: 'text-gray-500 bg-gray-100 dark:bg-gray-700'
+            };
+            try {
+                const { error } = await supabaseClient.from('transactions').insert([payload]);
+                if (error) throw error;
+                showToast('Transaction saved');
+                closeAddTxModal();
+                fetchDashboardData();
+                fetchFullTransactions();
+            } catch (e) { showToast('Permission error: Run SQL at top of file'); }
+        }
+
+        // --- NAVIGATION & UI HELPERS ---
+        function switchView(viewId, clickedElement) {
+            document.querySelectorAll('.page-view').forEach(v => { v.classList.remove('block'); v.classList.add('hidden'); });
+            const target = document.getElementById('view-' + viewId);
+            if(target) { target.classList.remove('hidden'); target.classList.add('block'); }
+            
+            document.querySelectorAll('.nav-item').forEach(i => { 
+                i.classList.remove('bg-brand-500', 'text-white', 'shadow-[0_4px_12px_rgba(124,92,255,0.3)]'); 
+                i.classList.add('text-gray-500', 'dark:text-gray-400'); 
+            });
+            const active = clickedElement || document.querySelector(`.nav-item[onclick*="'${viewId}'"]`);
+            if(active) { active.classList.remove('text-gray-500', 'dark:text-gray-400'); active.classList.add('bg-brand-500', 'text-white', 'shadow-[0_4px_12px_rgba(124,92,255,0.3)]'); }
+            
+            document.getElementById('header-title').innerText = viewId === 'dashboard' ? 'Welcome back!' : viewId.charAt(0).toUpperCase() + viewId.slice(1);
+            if (viewId === 'goals') fetchGoalsPageData();
+            if (viewId === 'dashboard') fetchDashboardData();
+            if (viewId === 'transactions') fetchFullTransactions();
+            
+            if(window.innerWidth < 1024) toggleSidebar();
+        }
+
+        function toggleTheme(m) {
+            const s = document.getElementById('theme-slider');
+            if (m === 'dark' && !isDarkMode) { s.style.transform = 'translateX(32px)'; isDarkMode = true; document.documentElement.classList.add('dark'); }
+            else if (m === 'light' && isDarkMode) { s.style.transform = 'translateX(0)'; isDarkMode = false; document.documentElement.classList.remove('dark'); }
+        }
+
+        function showToast(m) {
+            let c = document.getElementById('toast-container'); if (!c) { c = document.createElement('div'); c.id = 'toast-container'; c.className = 'fixed bottom-4 right-4 z-[200] flex flex-col gap-2 pointer-events-none'; document.body.appendChild(c); }
+            const t = document.createElement('div'); t.className = 'bg-gray-900 text-white px-6 py-3 rounded-xl shadow-lg toast-enter flex items-center gap-3 pointer-events-auto';
+            t.innerHTML = `<i class="ph-fill ph-check-circle text-brand-500"></i><span class="text-xs font-bold">${m}</span>`; c.appendChild(t);
+            setTimeout(() => { t.classList.replace('toast-enter', 'toast-leave'); t.addEventListener('animationend', () => t.remove()); }, 3000);
+        }
+
+        function formatCurrencyHTML(a) { const n = Number(a) || 0, p = n.toFixed(2).split('.'); return `$${parseInt(p[0]).toLocaleString()}<span class="text-gray-300 dark:text-gray-500 font-medium text-2xl">.${p[1]}</span>`; }
+        function openAddGoalModal() { const m = document.getElementById('add-goal-modal'); m.classList.remove('hidden'); void m.offsetWidth; m.classList.remove('opacity-0'); document.getElementById('add-goal-modal-content').classList.remove('scale-95'); }
+        function closeAddGoalModal() { const m = document.getElementById('add-goal-modal'); m.classList.add('opacity-0'); document.getElementById('add-goal-modal-content').classList.add('scale-95'); setTimeout(() => { m.classList.add('hidden'); document.getElementById('add-goal-form').reset(); }, 300); }
+        function openAddTxModal() { const m = document.getElementById('add-tx-modal'); m.classList.remove('hidden'); void m.offsetWidth; m.classList.remove('opacity-0'); document.getElementById('add-tx-modal-content').classList.remove('scale-95'); }
+        function closeAddTxModal() { const m = document.getElementById('add-tx-modal'); m.classList.add('opacity-0'); document.getElementById('add-tx-modal-content').classList.add('scale-95'); setTimeout(() => { m.classList.add('hidden'); }, 300); }
+        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('-translate-x-full'); document.getElementById('mobile-overlay').classList.toggle('hidden'); }
+        function toggleDesktopSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+        
+        function toggleMonthPicker() { const d = document.getElementById('month-picker-dropdown'); d.classList.toggle('hidden'); if(!d.classList.contains('hidden')) renderMonthPicker(); }
+        function renderMonthPicker() {
+            document.getElementById('picker-year-display').innerText = pickerYear;
+            const grid = document.getElementById('picker-months-grid'); grid.innerHTML = '';
+            monthNamesShort.forEach((m, i) => {
+                const b = document.createElement('button'); b.className = `py-2 rounded-xl text-xs font-bold ${(i === selectedMonth && pickerYear === selectedYear) ? 'bg-brand-500 text-white' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`;
+                b.innerText = m; b.onclick = () => { selectedMonth = i; selectedYear = pickerYear; document.getElementById('current-month-text').innerText = `${monthNamesFull[i]} ${selectedYear}`; document.getElementById('month-picker-dropdown').classList.add('hidden'); fetchDashboardData(); };
+                grid.appendChild(b);
+            });
+        }
+        function changePickerYear(o) { pickerYear += o; renderMonthPicker(); }
+        function toggleGoalsYearPicker() { showToast('Yearly range selector coming soon'); }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const mText = document.getElementById('current-month-text');
+            if(mText) mText.innerText = `${monthNamesFull[selectedMonth]} ${selectedYear}`;
+            fetchDashboardData();
+        });
     </script>
 </body>
 </html>
