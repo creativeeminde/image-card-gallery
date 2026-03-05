@@ -785,6 +785,7 @@
             calculateHotness();
             renderClassSection(); 
             renderAmazingAtSection();
+            renderCloseUpAvatars();
             
             document.getElementById('closeUpAssetsGrid').innerHTML = assets.slice(0, 2).map(asset => generatePreviewCardHTML(asset, 'Asset')).join('') + 
                 `<div onclick="openAllAssetsView()" class="aspect-[4/5] rounded-[1rem] border-2 bg-white/60 dark:bg-slate-800/60 flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:bg-white dark:hover:bg-slate-700 transition group"><span class="text-[10px] font-bold">See more</span></div>`;
@@ -804,6 +805,42 @@
         function openModelById(cardId) {
             const cardData = allLoadedCards.find(c => c.id === cardId);
             if (cardData) { openCloseUpPage(cardData); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+        }
+
+        function renderCloseUpAvatars() {
+            const container = document.getElementById('closeUpAvatarColumn');
+            if (!container) return;
+
+            let avatarHTML = '';
+            allLoadedCards.forEach(card => {
+                let avatarImgUrl = null;
+                const assets = card.related_images_with_tags || [];
+                const avatarAsset = assets.find(a => {
+                    const t = typeof a === 'string' ? '' : (a.tags || '');
+                    return t.toLowerCase().includes('avatar');
+                });
+
+                if (avatarAsset) {
+                    avatarImgUrl = optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset);
+                }
+
+                if (avatarImgUrl) {
+                    const isActive = currentActiveModelData && currentActiveModelData.id === card.id;
+                    const rating = card.rating_hotness ?? 50;
+                    
+                    avatarHTML += `
+                        <div class="relative w-[60px] h-[60px] xl:w-[70px] xl:h-[70px] cursor-pointer group transition-transform duration-300 hover:scale-110 flex-shrink-0 ${isActive ? 'scale-110' : 'opacity-70 hover:opacity-100'}" onclick="openModelById(${card.id})" title="${card.title || 'Model'}">
+                            <div class="absolute inset-0 rounded-full shadow-md" style="background: conic-gradient(#7fe826 0% ${rating}%, #334155 ${rating}% 100%);"></div>
+                            <div class="absolute inset-[3px] rounded-full overflow-hidden border-[3px] border-[#f1f5f0] dark:border-slate-900 bg-slate-900">
+                                <img data-src="${avatarImgUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover">
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            container.innerHTML = avatarHTML;
+            container.querySelectorAll('.lazy-media').forEach(el => globalIntersectionObserver.observe(el));
         }
 
         function updateSliderVisual(metric, value) {
