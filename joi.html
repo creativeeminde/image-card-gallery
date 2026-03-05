@@ -518,8 +518,10 @@
                     <p id="mediaUrlError" class="text-red-500 text-xs font-medium mt-2 hidden">Please enter a valid URL.</p>
                 </div>
                 <div>
-                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Tags (comma separated)</label>
-                    <input type="text" id="mediaTagsInput" placeholder="e.g. face, ass, full nude" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none transition-all shadow-sm">
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Select Tags</label>
+                    <div id="newMediaTagsGrid" class="flex flex-wrap gap-2 max-h-40 overflow-y-auto custom-scrollbar p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
+                        <!-- Tags will be rendered here dynamically -->
+                    </div>
                 </div>
                 <div class="pt-4 flex gap-3 flex-shrink-0">
                     <button type="button" onclick="closeAddMediaModal()" class="flex-1 bg-white dark:bg-slate-800 border py-3 rounded-xl font-bold">Cancel</button>
@@ -747,6 +749,7 @@
         let supabaseClient;
         let masterTagsList = []; 
         let selectedModalTags = new Set();
+        let newMediaSelectedTags = new Set();
         let currentActiveModelData = null;
         let pickerTargetType = null;
         let allLoadedCards = [];
@@ -792,13 +795,49 @@
         function openAddMediaModal(isClip) { 
             isAddingClip = isClip; 
             document.getElementById('mediaUrlInput').value = '';
-            document.getElementById('mediaTagsInput').value = '';
+            newMediaSelectedTags.clear();
+            renderNewMediaTags();
             document.getElementById('addMediaModal').classList.add('active'); 
         }
         function closeAddMediaModal() { document.getElementById('addMediaModal').classList.remove('active'); }
         function openAddAudioModal() { document.getElementById('addAudioModal').classList.add('active'); }
         function closeAddAudioModal() { document.getElementById('addAudioModal').classList.remove('active'); }
         function closeTagPicker() { document.getElementById('tagPickerModal').classList.remove('active'); }
+
+        function renderNewMediaTags() {
+            const grid = document.getElementById('newMediaTagsGrid');
+            if (!grid) return;
+            
+            let tempSet = new Set();
+            allLoadedCards.forEach(c => {
+                const addTags = (str) => { if(str) str.split(',').forEach(t => tempSet.add(t.trim())); };
+                addTags(c.tags); addTags(c.class_tags); addTags(c.amazing_at_tags);
+                (c.related_images_with_tags || []).forEach(a => { if(a.tags) a.tags.split(',').forEach(t => tempSet.add(t.trim())); });
+                (c.related_videos_with_tags || []).forEach(v => { if(v.tags) v.tags.split(',').forEach(t => tempSet.add(t.trim())); });
+            });
+            
+            let displayTags = Array.from(tempSet).filter(t => t).sort();
+
+            if (displayTags.length === 0) {
+                grid.innerHTML = '<span class="text-xs text-slate-500">No tags available. Add some globally first!</span>';
+                return;
+            }
+
+            grid.innerHTML = displayTags.map(tag => {
+                const isSelected = newMediaSelectedTags.has(tag);
+                return `
+                    <button type="button" onclick="toggleNewMediaTag('${tag.replace(/'/g, "\\'")}')" class="px-3 py-1.5 rounded-full text-[11px] font-bold transition-colors border ${isSelected ? 'bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] border-transparent shadow-md' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'}">
+                        ${tag}
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function toggleNewMediaTag(tag) {
+            if (newMediaSelectedTags.has(tag)) newMediaSelectedTags.delete(tag);
+            else newMediaSelectedTags.add(tag);
+            renderNewMediaTags();
+        }
 
         function openCloseUpPage(cardData) {
             currentActiveModelData = cardData;
@@ -2003,7 +2042,7 @@
                 addMediaForm.addEventListener('submit', async (e) => {
                     e.preventDefault(); // <-- Prevents the form from refreshing the page!
                     const url = document.getElementById('mediaUrlInput').value;
-                    const tagsVal = document.getElementById('mediaTagsInput').value.trim();
+                    const tagsVal = Array.from(newMediaSelectedTags).join(', ').trim();
                     if (!url || !currentActiveModelData) return;
                     
                     let targetArray;
@@ -2029,7 +2068,6 @@
                             closeAddMediaModal();
                             showSuccessToast(isAddingClip ? "Clip added successfully!" : "Asset added successfully!");
                             document.getElementById('mediaUrlInput').value = '';
-                            document.getElementById('mediaTagsInput').value = '';
                             
                             if (isAddingClip) {
                                 openAllClipsView();
