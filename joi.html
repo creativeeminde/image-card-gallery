@@ -1895,6 +1895,47 @@
                     }
                 });
             }
+            
+            // --- ADDED MISSING MEDIA FORM LISTENER ---
+            const addMediaForm = document.getElementById('addMediaForm');
+            if (addMediaForm) {
+                addMediaForm.addEventListener('submit', async (e) => {
+                    e.preventDefault(); // <-- Prevents the form from refreshing the page!
+                    const url = document.getElementById('mediaUrlInput').value;
+                    if (!url || !currentActiveModelData) return;
+                    
+                    let targetArray;
+                    let dbField = isAddingClip ? 'related_videos_with_tags' : 'related_images_with_tags';
+                    
+                    if (isAddingClip) {
+                        targetArray = currentActiveModelData.related_videos_with_tags || [];
+                    } else {
+                        targetArray = currentActiveModelData.related_images_with_tags || [];
+                    }
+                    
+                    targetArray.push({ url: url, tags: isAddingClip ? 'Clip' : 'Asset' });
+                    currentActiveModelData[dbField] = targetArray;
+
+                    if (supabaseClient && currentActiveModelData.id) {
+                        try {
+                            const { error } = await supabaseClient.from('cards').update({ [dbField]: targetArray }).eq('id', currentActiveModelData.id);
+                            if (error) throw error;
+                            
+                            closeAddMediaModal();
+                            showSuccessToast(isAddingClip ? "Clip added successfully!" : "Asset added successfully!");
+                            document.getElementById('mediaUrlInput').value = '';
+                            
+                            if (isAddingClip) {
+                                openAllClipsView();
+                            } else {
+                                openAllAssetsView();
+                            }
+                        } catch (err) {
+                            console.error("Failed to add new media to Supabase", err);
+                        }
+                    }
+                });
+            }
         });
     </script>
 </body>
