@@ -4,8 +4,27 @@
     <meta name="robots" content="noindex, nofollow">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- Caching Headers (Meta fallbacks for client side, ensure your server also sends Cache-Control) -->
+    
+    <!-- 
+      ========================================================================
+      IMAGE CACHING & BANDWIDTH OPTIMIZATION (IMAGEKIT)
+      ========================================================================
+      Since you are using ImageKit.io, you DO NOT need to configure server-side
+      Cache-Control manually in Supabase. ImageKit automatically applies 
+      aggressive caching (max-age=31536000) and handles format optimization 
+      out of the box!
+      ========================================================================
+    -->
     <meta http-equiv="Cache-Control" content="public, max-age=31536000, immutable">
+    
+    <!-- Preconnect to Database (Supabase) -->
+    <link rel="preconnect" href="https://fwzffqwjprjuwidkrckb.supabase.co" crossorigin>
+    <link rel="dns-prefetch" href="https://fwzffqwjprjuwidkrckb.supabase.co">
+
+    <!-- Preconnect to Image CDN (ImageKit) -->
+    <link rel="preconnect" href="https://ik.imagekit.io" crossorigin>
+    <link rel="dns-prefetch" href="https://ik.imagekit.io">
+
     <title>StudioHub</title>
     <!-- Favicon -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2212%22 fill=%22%237fe826%22/><path d=%22M13 2L3 14h7v8l11-12h-7L13 2z%22 fill=%22%23fff%22/></svg>">
@@ -268,7 +287,7 @@
                         <button onclick="document.querySelector('.nav-item[data-target=\'modelsView\']').click()" class="lg:hidden absolute top-4 left-4 z-50 p-2.5 bg-black/40 hover:bg-black/60 backdrop-blur-md rounded-full text-white transition-all border border-white/20 shadow-lg">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                         </button>
-                        <img id="closeUpMainImage" src="" loading="eager" decoding="async" class="w-full h-full object-cover object-center transition-all duration-500">
+                        <img id="closeUpMainImage" src="" fetchpriority="high" decoding="async" class="w-full h-full object-cover object-center transition-all duration-500">
                         <button onclick="openEditMainImageModal()" class="absolute bottom-4 right-4 lg:bottom-6 lg:right-6 z-50 p-3 bg-black/50 hover:bg-black/80 backdrop-blur-md rounded-full text-white transition-all border border-white/10 shadow-lg group">
                             <svg class="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                         </button>
@@ -636,6 +655,10 @@
                         const el = entry.target;
                         const src = el.getAttribute('data-src');
                         if (src) {
+                            // Ensure native lazy loading helps the browser orchestrate bandwidth natively
+                            if (!el.hasAttribute('loading') && el.tagName === 'IMG') {
+                                el.setAttribute('loading', 'lazy');
+                            }
                             el.src = src;
                             el.removeAttribute('data-src');
                             el.onload = () => el.classList.add('loaded');
@@ -655,8 +678,13 @@
             if (url.startsWith('data:')) return url;
             try {
                 const u = new URL(url);
-                u.searchParams.delete('t'); 
-                if (!isVideo && !url.includes('.avif')) u.searchParams.set('format', 'avif');
+                // Aggressively strip cache-busting parameters. 
+                // This ensures the browser doesn't interpret identical images as unique downloads.
+                ['t', 'cb', 'v', 'timestamp', 'nocache'].forEach(param => u.searchParams.delete(param));
+                
+                if (!isVideo && !url.includes('.avif') && !url.includes('.webp')) {
+                    u.searchParams.set('format', 'avif');
+                }
                 return u.toString();
             } catch(e) { return url; }
         }
