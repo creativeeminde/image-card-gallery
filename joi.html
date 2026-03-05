@@ -673,7 +673,7 @@
             });
         }, { rootMargin: '350px' });
 
-        function optimizeMediaUrl(url, isVideo = false) {
+        function optimizeMediaUrl(url, isVideo = false, width = null) {
             if (!url) return '';
             if (url.startsWith('data:')) return url;
             try {
@@ -682,8 +682,16 @@
                 // This ensures the browser doesn't interpret identical images as unique downloads.
                 ['t', 'cb', 'v', 'timestamp', 'nocache'].forEach(param => u.searchParams.delete(param));
                 
-                if (!isVideo && !url.includes('.avif') && !url.includes('.webp')) {
-                    u.searchParams.set('format', 'avif');
+                if (!isVideo) {
+                    if (!url.includes('.avif') && !url.includes('.webp')) {
+                        u.searchParams.set('format', 'avif');
+                    }
+                    if (width) {
+                        // Apply ImageKit specific transform for width
+                        u.searchParams.set('tr', `w-${width}`);
+                        // Fallback generic width param for other CDNs
+                        u.searchParams.set('w', width);
+                    }
                 }
                 return u.toString();
             } catch(e) { return url; }
@@ -788,7 +796,7 @@
             document.querySelector('.nav-item[data-target="closeUpView"]').click();
             
             document.getElementById('closeUpModelName').textContent = cardData.title || 'Unknown Model';
-            document.getElementById('closeUpMainImage').src = optimizeMediaUrl(cardData.main_image_url);
+            document.getElementById('closeUpMainImage').src = optimizeMediaUrl(cardData.main_image_url, false, 800);
             
             const assets = cardData.related_images_with_tags || [];
             let allMedia = [cardData.main_image_url];
@@ -800,7 +808,7 @@
             const mobileCarousel = document.getElementById('mobileCloseUpCarousel');
             if (mobileCarousel) {
                 mobileCarousel.innerHTML = allMedia.map((url, idx) => `
-                    <img data-src="${optimizeMediaUrl(url)}" loading="lazy" decoding="async" onclick="setMainImage('${url}')" class="lazy-media opacity-0 mobile-thumb ${idx === 0 ? 'scale-110 border-white z-10 shadow-xl' : 'scale-90 border-transparent'} w-14 h-14 rounded-full object-cover transition-all duration-300 border-[2.5px] snap-center cursor-pointer shrink-0">
+                    <img data-src="${optimizeMediaUrl(url, false, 150)}" loading="lazy" decoding="async" onclick="setMainImage('${url}')" class="lazy-media opacity-0 mobile-thumb ${idx === 0 ? 'scale-110 border-white z-10 shadow-xl' : 'scale-90 border-transparent'} w-14 h-14 rounded-full object-cover transition-all duration-300 border-[2.5px] snap-center cursor-pointer shrink-0">
                 `).join('');
                 mobileCarousel.querySelectorAll('.lazy-media').forEach(el => globalIntersectionObserver.observe(el));
             }
@@ -828,7 +836,7 @@
             renderAudioClips();
         }
 
-        function setMainImage(url) { document.getElementById('closeUpMainImage').src = optimizeMediaUrl(url); }
+        function setMainImage(url) { document.getElementById('closeUpMainImage').src = optimizeMediaUrl(url, false, 800); }
 
         function openModelById(cardId) {
             const cardData = allLoadedCards.find(c => c.id === cardId);
@@ -849,7 +857,7 @@
                 });
 
                 if (avatarAsset) {
-                    avatarImgUrl = optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset);
+                    avatarImgUrl = optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset, false, 100);
                 }
 
                 if (avatarImgUrl) {
@@ -913,7 +921,7 @@
         function generateGalleryCardHTML(cardData) {
             const ratingNum = cardData.rating_hotness ?? 50;
             const ratingBadgeHTML = `<span class="absolute bottom-3 left-3 z-10 bg-[#111]/90 dark:bg-slate-900/90 backdrop-blur-md text-white text-[10px] font-bold px-2.5 py-1 rounded-lg shadow-sm">${ratingNum}%</span>`;
-            const optUrl = optimizeMediaUrl(cardData.main_image_url);
+            const optUrl = optimizeMediaUrl(cardData.main_image_url, false, 400);
 
             return `
                 <div class="gallery-model-card relative w-full cursor-pointer group overflow-hidden bg-slate-100 dark:bg-slate-900 rounded-[1.5rem]" onclick="openModelById(${cardData.id})" title="${cardData.title}">
@@ -927,7 +935,7 @@
 
         function generateGlobalAssetCardHTML(asset, idx) {
             const primaryTag = asset.tags ? asset.tags.split(',')[0].trim() : 'Asset';
-            const optUrl = optimizeMediaUrl(asset.url || asset.image_url || asset.src || asset);
+            const optUrl = optimizeMediaUrl(asset.url || asset.image_url || asset.src || asset, false, 400);
             return `
                 <div class="gallery-model-card flex flex-col bg-white dark:bg-slate-800 rounded-3xl p-3 shadow-sm border border-slate-100/50 cursor-pointer" onclick="openGlobalLightbox(${idx}, globalAssetsList, false)">
                     <div class="relative aspect-[4/5] bg-slate-100 dark:bg-slate-900 overflow-hidden rounded-[1.5rem]">
@@ -943,10 +951,11 @@
             const primaryTag = clip.tags ? clip.tags.split(',')[0].trim() : 'Clip';
             const clipUrl = optimizeMediaUrl(clip.url || clip.video_url || clip.src || clip, true);
             const isVideo = clipUrl.match(/\.(mp4|webm|ogg|mov)$/i) || !clipUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i);
+            const optImgUrl = optimizeMediaUrl(clip.url || clip.video_url || clip.src || clip, false, 400);
             
             const mediaElement = isVideo
                 ? `<video data-src="${clipUrl}" preload="none" class="lazy-media opacity-0 w-full h-full object-cover object-center transition-transform duration-700 hover:scale-105" muted loop onmouseover="if(this.src) { var p = this.play(); if(p) p.catch(()=>{}); }" onmouseout="this.pause()" playsinline></video>`
-                : `<img data-src="${clipUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover object-center transition-transform duration-700 hover:scale-105">`;
+                : `<img data-src="${optImgUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover object-center transition-transform duration-700 hover:scale-105">`;
 
             return `
                 <div class="gallery-model-card flex flex-col bg-white dark:bg-slate-800 rounded-3xl p-3 shadow-sm border border-slate-100/50 cursor-pointer" onclick="openGlobalLightbox(${idx}, globalClipsList, true)">
@@ -961,13 +970,14 @@
 
         function generatePreviewCardHTML(media, defaultTag, isClip = false) {
             const url = optimizeMediaUrl(media.url || media.image_url || media.video_url || media.src || (typeof media === 'string' ? media : ''), isClip);
+            const optImgUrl = optimizeMediaUrl(media.url || media.image_url || media.video_url || media.src || (typeof media === 'string' ? media : ''), false, 300);
             const tagStr = media.tags || defaultTag;
             const firstTag = tagStr.split(',')[0].trim() || defaultTag;
             const isVideo = url.match(/\.(mp4|webm|ogg|mov)$/i) || (!url.match(/\.(jpeg|jpg|gif|png|webp)$/i) && isClip);
             
             const mediaElement = isVideo
                 ? `<video data-src="${url}" preload="none" class="lazy-media opacity-0 w-full h-full object-cover object-center" muted loop onmouseover="if(this.src) this.play()" onmouseout="this.pause()" playsinline></video>`
-                : `<img data-src="${url}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover object-center">`;
+                : `<img data-src="${optImgUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover object-center">`;
 
             return `
                 <div class="relative aspect-[4/5] rounded-[1rem] overflow-hidden bg-white dark:bg-slate-800 shadow-sm group cursor-pointer transition-colors duration-300">
@@ -978,7 +988,7 @@
         }
 
         function generateFullAssetMasonryHTML(asset, index) {
-            const imgUrl = optimizeMediaUrl(asset.url || asset.image_url || asset.src || (typeof asset === 'string' ? asset : ''));
+            const imgUrl = optimizeMediaUrl(asset.url || asset.image_url || asset.src || (typeof asset === 'string' ? asset : ''), false, 500);
             const firstTag = (asset.tags || 'Asset').split(',')[0].trim() || 'Asset';
             return `
                 <div onclick="openLightbox(${index}, false)" class="relative group cursor-pointer transition-all duration-500 hover:-translate-y-1 overflow-hidden w-full self-start break-inside-avoid mb-6 sm:mb-8 rounded-2xl bg-slate-100">
@@ -990,12 +1000,13 @@
 
         function generateClipCardHTML(clip, index) {
             const clipUrl = optimizeMediaUrl(clip.url || clip.video_url || clip.src || (typeof clip === 'string' ? clip : ''), true);
+            const optImgUrl = optimizeMediaUrl(clip.url || clip.video_url || clip.src || (typeof clip === 'string' ? clip : ''), false, 500);
             const firstTag = (clip.tags || 'Clip').split(',')[0].trim() || 'Clip';
             const isVideo = clipUrl.match(/\.(mp4|webm|ogg|mov)$/i) || !clipUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i);
             
             const mediaElement = isVideo
                 ? `<video data-src="${clipUrl}" preload="none" class="lazy-media opacity-0 w-full h-auto block transition-transform duration-700 group-hover:scale-105" muted loop onmouseover="if(this.src) this.play()" onmouseout="this.pause()" playsinline></video>`
-                : `<img data-src="${clipUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-auto block transition-transform duration-700 group-hover:scale-105">`;
+                : `<img data-src="${optImgUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-auto block transition-transform duration-700 group-hover:scale-105">`;
 
             return `
                 <div onclick="openLightbox(${index}, true)" class="relative group cursor-pointer transition-all duration-500 hover:-translate-y-1 overflow-hidden w-full self-start break-inside-avoid mb-6 sm:mb-8 rounded-2xl bg-slate-100">
@@ -1233,12 +1244,12 @@
                 }
 
                 if (runwayMode === 'main') {
-                    currentRunwayItems.push({ card: card, imgUrl: optimizeMediaUrl(card.main_image_url) });
+                    currentRunwayItems.push({ card: card, imgUrl: optimizeMediaUrl(card.main_image_url, false, 800) });
                 } else {
                     (card.related_images_with_tags || []).forEach(asset => {
                         const url = optimizeMediaUrl(asset.url || asset.image_url || asset.src || asset);
                         if (url && !url.match(/\.(mp4|webm|ogg|mov)$/i) && (asset.tags || '').toLowerCase().includes('full nude')) {
-                            currentRunwayItems.push({ card: card, imgUrl: url });
+                            currentRunwayItems.push({ card: card, imgUrl: optimizeMediaUrl(url, false, 800) });
                         }
                     });
                 }
@@ -1358,14 +1369,15 @@
                 
                 if (match) {
                     const matchUrl = optimizeMediaUrl(match.url || match.image_url || match.video_url || match.src || match, runwayPanelMode === 'videos');
+                    const optImgUrl = optimizeMediaUrl(match.url || match.image_url || match.video_url || match.src || match, false, 300);
                     usedUrls.add(matchUrl);
                     if (runwayPanelMode === 'videos' && !matchUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
                         mediaHTML = `<video data-src="${matchUrl}" preload="none" class="lazy-media opacity-0 w-full h-full object-cover transition-transform group-hover:scale-105" muted loop onmouseover="if(this.src) this.play()" onmouseout="this.pause()" playsinline></video>`;
                     } else {
-                        mediaHTML = `<img data-src="${matchUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover transition-transform group-hover:scale-105">`;
+                        mediaHTML = `<img data-src="${optImgUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover transition-transform group-hover:scale-105">`;
                     }
                 } else {
-                    mediaHTML = `<img data-src="${optimizeMediaUrl(card.main_image_url)}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover transition-transform group-hover:scale-105 grayscale opacity-50">`;
+                    mediaHTML = `<img data-src="${optimizeMediaUrl(card.main_image_url, false, 300)}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover transition-transform group-hover:scale-105 grayscale opacity-50">`;
                 }
 
                 return `<div class="relative w-full aspect-[4/5] rounded-2xl overflow-hidden shadow-sm group bg-slate-100" onclick="openModelById(${card.id})">${mediaHTML}</div>`;
@@ -1432,11 +1444,13 @@
 
         // Lightbox Core Functions
         function openLightbox(idx, isClip) { currentLightboxIndex = idx; isClipViewer = isClip; isGlobalViewer = false; updateLightboxContent(); document.getElementById('lightboxModal').classList.add('active'); }
-        function openGlobalLightbox(idx, filteredMedia, isClip) { lightboxMediaList = filteredMedia; currentLightboxIndex = idx; isClipViewer = isClip; isGlobalViewer = true; updateLightboxContent(); document.getElementById('lightboxModal').classList.add('active'); }
+        function openGlobalLightbox(idx, filteredMedia, isClip) { lightboxMediaList = filteredMedia; currentLightboxIndex = idx; isClipViewer = isClip; isGlobalViewer = true; updateLightboxContent(); documentgetElementById('lightboxModal').classList.add('active'); }
         function closeLightbox() { document.getElementById('lightboxModal').classList.remove('active'); document.getElementById('lightboxVideo').pause(); document.getElementById('lightboxVideo').removeAttribute('src'); }
         function navigateLightbox(dir) { if (lightboxMediaList.length === 0) return; currentLightboxIndex = (currentLightboxIndex + dir + lightboxMediaList.length) % lightboxMediaList.length; updateLightboxContent(); }
         function updateLightboxContent() {
             const media = lightboxMediaList[currentLightboxIndex];
+            
+            // Deliberately passing NO width here. This ensures the lightbox downloads the original high-quality image.
             const url = optimizeMediaUrl(media.url || media.image_url || media.video_url || media.src || media, isClipViewer);
             const isVideo = url.match(/\.(mp4|webm|ogg|mov)$/i) || (!url.match(/\.(jpeg|jpg|gif|png|webp)$/i) && isClipViewer);
             
