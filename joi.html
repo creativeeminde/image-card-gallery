@@ -1605,8 +1605,46 @@
 
         async function executeMediaDeletion() {
             if (!lightboxMediaList || lightboxMediaList.length === 0) return;
+            
+            const mediaToDelete = lightboxMediaList[currentLightboxIndex];
+            let targetCardId = isGlobalViewer ? mediaToDelete.cardId : (currentActiveModelData ? currentActiveModelData.id : null);
+            let targetCard = allLoadedCards.find(c => c.id === targetCardId);
+
+            if (targetCard) {
+                const dbField = isClipViewer ? 'related_videos_with_tags' : 'related_images_with_tags';
+                let targetMediaArray = targetCard[dbField] || [];
+                const originalAssetIdx = targetMediaArray.findIndex(a => (a.url || a) === (mediaToDelete.url || mediaToDelete));
+                
+                if (originalAssetIdx !== -1) {
+                    targetMediaArray.splice(originalAssetIdx, 1);
+                    try {
+                        await supabaseClient.from('cards').update({ [dbField]: targetMediaArray }).eq('id', targetCard.id);
+                    } catch(e) {
+                        console.error("Failed to delete media from Supabase", e);
+                    }
+                }
+            }
+
             lightboxMediaList.splice(currentLightboxIndex, 1);
             showSuccessToast(isClipViewer ? "Clip deleted!" : "Asset deleted!");
+            
+            buildGlobalAssetsList();
+            buildGlobalClipsList();
+            
+            if (!isGlobalViewer && currentActiveModelData) {
+                if (isClipViewer) {
+                    document.getElementById('fullClipsGrid').innerHTML = `<div id="fullClipsGridInner" class="columns-1 sm:columns-2 gap-6 w-full space-y-6"></div>`;
+                    renderState.fullClips.items = lightboxMediaList;
+                    renderState.fullClips.index = 0;
+                    renderMore('fullClips');
+                } else {
+                    document.getElementById('fullAssetsGrid').innerHTML = `<div id="fullAssetsGridInner" class="columns-1 sm:columns-2 lg:columns-3 gap-6 w-full space-y-6"></div>`;
+                    renderState.fullAssets.items = lightboxMediaList;
+                    renderState.fullAssets.index = 0;
+                    renderMore('fullAssets');
+                }
+            }
+
             if (lightboxMediaList.length === 0) closeLightbox();
             else {
                 if (currentLightboxIndex >= lightboxMediaList.length) currentLightboxIndex = lightboxMediaList.length - 1;
