@@ -1616,6 +1616,13 @@
             document.getElementById('tagPickerSubtitle').textContent = type.replace('_', ' ');
             document.getElementById('tagSearchInput').value = '';
             if (modal) modal.classList.add('active');
+            
+            // Fix: Initialize selectedModalTags here so it doesn't reset on every render
+            const currentTags = currentActiveModelData && currentActiveModelData[pickerTargetType] 
+                ? currentActiveModelData[pickerTargetType].split(',').map(t => t.trim()).filter(t => t) 
+                : [];
+            selectedModalTags = new Set(currentTags);
+            
             renderPickerTags();
         }
 
@@ -1634,11 +1641,6 @@
             masterTagsList = Array.from(tempSet).filter(t => t);
             masterTagsList.sort();
 
-            const currentTags = currentActiveModelData && currentActiveModelData[pickerTargetType] 
-                ? currentActiveModelData[pickerTargetType].split(',').map(t => t.trim()).filter(t => t) 
-                : [];
-            selectedModalTags = new Set(currentTags);
-
             let displayTags = masterTagsList.filter(t => t.toLowerCase().includes(search));
             
             if (search && !displayTags.find(t => t.toLowerCase() === search)) {
@@ -1648,7 +1650,7 @@
             grid.innerHTML = displayTags.map(tag => {
                 const isSelected = selectedModalTags.has(tag);
                 return `
-                    <button onclick="toggleModalTag('${tag}')" class="px-4 py-2 rounded-full text-sm font-bold transition-colors border ${isSelected ? 'bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] border-transparent shadow-md' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'}">
+                    <button onclick="toggleModalTag('${tag.replace(/'/g, "\\'")}')" class="px-4 py-2 rounded-full text-sm font-bold transition-colors border ${isSelected ? 'bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] border-transparent shadow-md' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'}">
                         ${tag}
                     </button>
                 `;
@@ -1658,8 +1660,10 @@
         function toggleModalTag(tag) {
             if (selectedModalTags.has(tag)) selectedModalTags.delete(tag);
             else selectedModalTags.add(tag);
-            renderPickerTags();
+            
+            // Fix: Save to model first before re-rendering visual buttons
             saveTagsToModel();
+            renderPickerTags();
         }
 
         async function saveTagsToModel() {
