@@ -517,6 +517,10 @@
                     <input type="url" id="mediaUrlInput" required class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none transition-all shadow-sm">
                     <p id="mediaUrlError" class="text-red-500 text-xs font-medium mt-2 hidden">Please enter a valid URL.</p>
                 </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Tags (comma separated)</label>
+                    <input type="text" id="mediaTagsInput" placeholder="e.g. face, ass, full nude" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none transition-all shadow-sm">
+                </div>
                 <div class="pt-4 flex gap-3 flex-shrink-0">
                     <button type="button" onclick="closeAddMediaModal()" class="flex-1 bg-white dark:bg-slate-800 border py-3 rounded-xl font-bold">Cancel</button>
                     <button type="submit" class="flex-1 bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] py-3 rounded-xl font-bold">Save Media</button>
@@ -626,9 +630,9 @@
                     <button onclick="skipVideo(10, event)" class="flex flex-col items-center text-slate-500"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.933 12.8a1 1 0 000-1.6l-5.333-4A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.334-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.334-4z"></path></svg></button>
                 </div>
             </div>
-            <div class="absolute bottom-6 left-6 z-20 flex flex-col items-start gap-2 max-w-[50%]">
+            <div class="absolute bottom-6 left-6 z-20 flex flex-col items-start gap-2 max-w-[50%] pointer-events-auto">
                  <div id="lightboxCounter" class="text-slate-500 dark:text-slate-400 text-[10px] font-bold tracking-widest uppercase bg-white/60 dark:bg-black/60 px-2 py-1 rounded backdrop-blur-sm shadow-sm border border-slate-200/50 dark:border-slate-700/50"></div>
-                 <div id="lightboxTagsContainer" class="flex flex-wrap items-center justify-start gap-2"></div>
+                 <div id="lightboxTagsContainer" class="flex flex-wrap items-center justify-start gap-2 mt-1"></div>
             </div>
         </div>
     </div>
@@ -785,7 +789,12 @@
             document.getElementById('successToast').classList.add('show'); 
             setTimeout(() => document.getElementById('successToast').classList.remove('show'), 3000); 
         }
-        function openAddMediaModal(isClip) { isAddingClip = isClip; document.getElementById('addMediaModal').classList.add('active'); }
+        function openAddMediaModal(isClip) { 
+            isAddingClip = isClip; 
+            document.getElementById('mediaUrlInput').value = '';
+            document.getElementById('mediaTagsInput').value = '';
+            document.getElementById('addMediaModal').classList.add('active'); 
+        }
         function closeAddMediaModal() { document.getElementById('addMediaModal').classList.remove('active'); }
         function openAddAudioModal() { document.getElementById('addAudioModal').classList.add('active'); }
         function closeAddAudioModal() { document.getElementById('addAudioModal').classList.remove('active'); }
@@ -1481,18 +1490,35 @@
                     tagsStr = media.tags;
                 }
                 
+                let tagsHtml = '';
                 if (tagsStr) {
                     const tagsArray = tagsStr.split(',').map(t => t.trim()).filter(t => t);
-                    tagsContainer.innerHTML = tagsArray.map(t => `<span class="bg-white/60 dark:bg-black/60 text-slate-800 dark:text-slate-200 text-[11px] font-bold px-3 py-1 rounded-full backdrop-blur-sm shadow-sm border border-slate-200/50 dark:border-slate-700/50">${t}</span>`).join('');
+                    tagsHtml = tagsArray.map(t => `<span class="bg-white/60 dark:bg-black/60 text-slate-800 dark:text-slate-200 text-[11px] font-bold px-3 py-1 rounded-full backdrop-blur-sm shadow-sm border border-slate-200/50 dark:border-slate-700/50">${t}</span>`).join('');
+                    tagsHtml += `<button onclick="openMediaTagPicker()" class="ml-1 bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-[11px] font-bold px-3 py-1 rounded-full backdrop-blur-sm shadow-sm border border-slate-200/50 dark:border-slate-700/50 transition-colors cursor-pointer">+ Edit</button>`;
                 } else {
-                    tagsContainer.innerHTML = '';
+                    tagsHtml = `<button onclick="openMediaTagPicker()" class="bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-[11px] font-bold px-3 py-1 rounded-full backdrop-blur-sm shadow-sm border border-slate-200/50 dark:border-slate-700/50 transition-colors cursor-pointer">+ Add Tags</button>`;
                 }
+                tagsContainer.innerHTML = tagsHtml;
             }
             
             const counter = document.getElementById('lightboxCounter');
             if (counter) {
                 counter.textContent = `${currentLightboxIndex + 1} / ${lightboxMediaList.length}`;
             }
+        }
+
+        function openMediaTagPicker() {
+            pickerTargetType = 'media_tags';
+            const media = lightboxMediaList[currentLightboxIndex];
+            const currentTags = (media && typeof media === 'object' && media.tags) ? media.tags.split(',').map(t => t.trim()).filter(t => t) : [];
+            selectedModalTags = new Set(currentTags);
+            
+            const modal = document.getElementById('tagPickerModal');
+            document.getElementById('tagPickerSubtitle').textContent = isClipViewer ? 'Clip Tags' : 'Asset Tags';
+            document.getElementById('tagSearchInput').value = '';
+            if (modal) modal.classList.add('active');
+            
+            renderPickerTags();
         }
         
         function scrollThumbnails(direction) {
@@ -1679,6 +1705,9 @@
             allLoadedCards.forEach(c => {
                 const addTags = (str) => { if(str) str.split(',').forEach(t => tempSet.add(t.trim())); };
                 addTags(c.tags); addTags(c.class_tags); addTags(c.amazing_at_tags);
+                
+                (c.related_images_with_tags || []).forEach(a => { if(a.tags) a.tags.split(',').forEach(t => tempSet.add(t.trim())); });
+                (c.related_videos_with_tags || []).forEach(v => { if(v.tags) v.tags.split(',').forEach(t => tempSet.add(t.trim())); });
             });
             masterTagsList = Array.from(tempSet).filter(t => t);
             masterTagsList.sort();
@@ -1709,8 +1738,42 @@
         }
 
         async function saveTagsToModel() {
-            if (!currentActiveModelData) return;
             const newTagsStr = Array.from(selectedModalTags).join(', ');
+            
+            // Handling Media Tags dynamically directly from the Viewer
+            if (pickerTargetType === 'media_tags') {
+                const media = lightboxMediaList[currentLightboxIndex];
+                if (typeof media === 'object') {
+                    media.tags = newTagsStr; 
+                }
+                
+                let targetCardId = isGlobalViewer ? media.cardId : currentActiveModelData.id;
+                let targetCard = allLoadedCards.find(c => c.id === targetCardId);
+                
+                if (targetCard) {
+                    const dbField = isClipViewer ? 'related_videos_with_tags' : 'related_images_with_tags';
+                    const targetMediaArray = targetCard[dbField] || [];
+                    const originalAssetIdx = targetMediaArray.findIndex(a => (a.url || a) === (media.url || media));
+                    
+                    if (originalAssetIdx !== -1) {
+                        let originalAsset = targetMediaArray[originalAssetIdx];
+                        if (typeof originalAsset === 'string') {
+                            targetMediaArray[originalAssetIdx] = { url: originalAsset, tags: newTagsStr };
+                        } else {
+                            targetMediaArray[originalAssetIdx].tags = newTagsStr;
+                        }
+                        
+                        try {
+                            await supabaseClient.from('cards').update({ [dbField]: targetMediaArray }).eq('id', targetCard.id);
+                            updateLightboxContent(); // Refresh tags inside the viewer!
+                        } catch(e) { console.error("Failed to save media tags", e); }
+                    }
+                }
+                buildFilters();
+                return;
+            }
+
+            if (!currentActiveModelData) return;
             currentActiveModelData[pickerTargetType] = newTagsStr;
             
             if (pickerTargetType === 'class_tags') renderClassSection();
@@ -1902,6 +1965,7 @@
                 addMediaForm.addEventListener('submit', async (e) => {
                     e.preventDefault(); // <-- Prevents the form from refreshing the page!
                     const url = document.getElementById('mediaUrlInput').value;
+                    const tagsVal = document.getElementById('mediaTagsInput').value.trim();
                     if (!url || !currentActiveModelData) return;
                     
                     let targetArray;
@@ -1913,7 +1977,10 @@
                         targetArray = currentActiveModelData.related_images_with_tags || [];
                     }
                     
-                    targetArray.push({ url: url, tags: isAddingClip ? 'Clip' : 'Asset' });
+                    const defaultTag = isAddingClip ? 'Clip' : 'Asset';
+                    const finalTags = tagsVal ? tagsVal : defaultTag;
+                    
+                    targetArray.push({ url: url, tags: finalTags });
                     currentActiveModelData[dbField] = targetArray;
 
                     if (supabaseClient && currentActiveModelData.id) {
@@ -1924,6 +1991,7 @@
                             closeAddMediaModal();
                             showSuccessToast(isAddingClip ? "Clip added successfully!" : "Asset added successfully!");
                             document.getElementById('mediaUrlInput').value = '';
+                            document.getElementById('mediaTagsInput').value = '';
                             
                             if (isAddingClip) {
                                 openAllClipsView();
