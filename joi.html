@@ -641,6 +641,30 @@
 
     <script>
         // ==========================================
+        // VIDEO HOVER UTILITIES
+        // ==========================================
+        window.safePlayVideo = function(vid) {
+            if (!vid) return;
+            vid._playPromise = vid.play();
+            if (vid._playPromise !== undefined) {
+                vid._playPromise.catch(error => { /* Suppress AbortError */ });
+            }
+        };
+
+        window.safePauseVideo = function(vid) {
+            if (!vid) return;
+            if (vid._playPromise !== undefined) {
+                vid._playPromise.then(() => {
+                    vid.pause();
+                }).catch(() => {
+                    vid.pause();
+                });
+            } else {
+                vid.pause();
+            }
+        };
+
+        // ==========================================
         // LAZY LOADING & RENDER STATE ENGINE
         // ==========================================
         const renderState = {
@@ -1002,7 +1026,7 @@
             const optImgUrl = optimizeMediaUrl(clip.url || clip.video_url || clip.src || clip, false, 400);
             
             const mediaElement = isVideo
-                ? `<video data-src="${clipUrl}" preload="none" class="lazy-media opacity-0 w-full h-full object-cover object-center transition-transform duration-700 hover:scale-105" muted loop onmouseover="if(this.src) { var p = this.play(); if(p) p.catch(()=>{}); }" onmouseout="this.pause()" playsinline></video>`
+                ? `<video data-src="${clipUrl}" preload="none" class="lazy-media opacity-0 w-full h-full object-cover object-center transition-transform duration-700 hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline></video>`
                 : `<img data-src="${optImgUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover object-center transition-transform duration-700 hover:scale-105">`;
 
             return `
@@ -1024,7 +1048,7 @@
             const isVideo = url.match(/\.(mp4|webm|ogg|mov)$/i) || (!url.match(/\.(jpeg|jpg|gif|png|webp)$/i) && isClip);
             
             const mediaElement = isVideo
-                ? `<video data-src="${url}" preload="none" class="lazy-media opacity-0 w-full h-full object-cover object-center" muted loop onmouseover="if(this.src) this.play()" onmouseout="this.pause()" playsinline></video>`
+                ? `<video data-src="${url}" preload="none" class="lazy-media opacity-0 w-full h-full object-cover object-center" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline></video>`
                 : `<img data-src="${optImgUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover object-center">`;
 
             return `
@@ -1053,7 +1077,7 @@
             const isVideo = clipUrl.match(/\.(mp4|webm|ogg|mov)$/i) || !clipUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i);
             
             const mediaElement = isVideo
-                ? `<video data-src="${clipUrl}" preload="none" class="lazy-media opacity-0 w-full h-auto block transition-transform duration-700 group-hover:scale-105" muted loop onmouseover="if(this.src) this.play()" onmouseout="this.pause()" playsinline></video>`
+                ? `<video data-src="${clipUrl}" preload="none" class="lazy-media opacity-0 w-full h-auto block transition-transform duration-700 group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline></video>`
                 : `<img data-src="${optImgUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-auto block transition-transform duration-700 group-hover:scale-105">`;
 
             return `
@@ -1400,36 +1424,73 @@
 
             let tagsConfig = runwayPanelMode === 'images' ? 
                 [{ label: "Face", search: ["face"] }, { label: "Tits", search: ["tits", "chest", "boob"] }, { label: "Ass", search: ["ass", "glute"] }, { label: "Pussy", search: ["pussy", "puss"] }] :
-                [{ label: "Face", search: ["face"] }, { label: "BJ", search: ["bj", "blowjob"] }, { label: "Ride", search: ["ride", "cowgirl"] }, { label: "Doggy", search: ["doggy"] }];
+                [{ label: "BJ", search: ["bj", "blowjob"] }, { label: "Cowgirl", search: ["cowgirl", "ride"] }, { label: "Doggy", search: ["doggy"] }, { label: "Facial", search: ["facial"] }];
             
             let assets = runwayPanelMode === 'images' ? (card.related_images_with_tags || []) : (card.related_videos_with_tags || []);
             let usedUrls = new Set();
+            let panelHTML = '';
 
-            const panelHTML = tagsConfig.map(tagConfig => {
-                const isMatch = (a) => {
-                    const url = optimizeMediaUrl(a.url || a.image_url || a.video_url || a.src || a, runwayPanelMode === 'videos');
-                    if (!url) return false;
-                    const individualTags = (a.tags || '').toLowerCase().split(',').map(t => t.trim());
-                    return tagConfig.search.some(sw => individualTags.some(t => t.includes(sw)));
-                };
-                let match = assets.find(a => isMatch(a) && !usedUrls.has(a.url || a)) || assets.find(a => isMatch(a));
-                let mediaHTML = '';
-                
-                if (match) {
-                    const matchUrl = optimizeMediaUrl(match.url || match.image_url || match.video_url || match.src || match, runwayPanelMode === 'videos');
-                    const optImgUrl = optimizeMediaUrl(match.url || match.image_url || match.video_url || match.src || match, false, 300);
-                    usedUrls.add(matchUrl);
-                    if (runwayPanelMode === 'videos' && !matchUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
-                        mediaHTML = `<video data-src="${matchUrl}" preload="none" class="lazy-media opacity-0 w-full h-full object-cover transition-transform group-hover:scale-105" muted loop onmouseover="if(this.src) this.play()" onmouseout="this.pause()" playsinline></video>`;
-                    } else {
-                        mediaHTML = `<img data-src="${optImgUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover transition-transform group-hover:scale-105">`;
-                    }
+            if (runwayPanelMode === 'videos') {
+                let videoMatches = [];
+                tagsConfig.forEach(tagConfig => {
+                    const matches = assets.filter(a => {
+                        const url = optimizeMediaUrl(a.url || a.image_url || a.video_url || a.src || a, true);
+                        if (!url) return false;
+                        const individualTags = (a.tags || '').toLowerCase().split(',').map(t => t.trim());
+                        return tagConfig.search.some(sw => individualTags.some(t => t.includes(sw)));
+                    });
+
+                    matches.forEach(match => {
+                        const matchUrl = optimizeMediaUrl(match.url || match.image_url || match.video_url || match.src || match, true);
+                        if (!usedUrls.has(matchUrl)) {
+                            usedUrls.add(matchUrl);
+                            videoMatches.push({ match, label: tagConfig.label });
+                        }
+                    });
+                });
+
+                if (videoMatches.length > 0) {
+                    panelHTML = videoMatches.map(item => {
+                        const matchUrl = optimizeMediaUrl(item.match.url || item.match.image_url || item.match.video_url || item.match.src || item.match, true);
+                        const isVideo = matchUrl.match(/\.(mp4|webm|ogg|mov)$/i) || !matchUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i);
+                        let mediaHTML = isVideo 
+                            ? `<video data-src="${matchUrl}" preload="none" class="lazy-media opacity-0 w-full h-full object-cover transition-transform group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline></video>` 
+                            : `<img data-src="${optimizeMediaUrl(matchUrl, false, 300)}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover transition-transform group-hover:scale-105">`;
+
+                        return `<div class="relative w-full aspect-[4/5] rounded-2xl overflow-hidden shadow-sm group bg-slate-100" onclick="openModelById(${card.id})">
+                            <span class="absolute top-2 right-2 z-10 bg-black/60 text-white text-[10px] font-bold px-2 py-1 rounded-md backdrop-blur-sm pointer-events-none">${item.label}</span>
+                            ${mediaHTML}
+                        </div>`;
+                    }).join('');
                 } else {
-                    mediaHTML = `<img data-src="${optimizeMediaUrl(card.main_image_url, false, 300)}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover transition-transform group-hover:scale-105 grayscale opacity-50">`;
+                    panelHTML = `<div class="col-span-2 lg:col-span-1 flex flex-col items-center justify-center py-10 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500"><svg class="w-8 h-8 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg><span class="text-xs font-bold uppercase tracking-wider text-center mt-1">No Tagged<br>Videos</span></div>`;
                 }
+            } else {
+                panelHTML = tagsConfig.map(tagConfig => {
+                    const isMatch = (a) => {
+                        const url = optimizeMediaUrl(a.url || a.image_url || a.video_url || a.src || a, false);
+                        if (!url) return false;
+                        const individualTags = (a.tags || '').toLowerCase().split(',').map(t => t.trim());
+                        return tagConfig.search.some(sw => individualTags.some(t => t.includes(sw)));
+                    };
+                    let match = assets.find(a => isMatch(a) && !usedUrls.has(a.url || a)) || assets.find(a => isMatch(a));
+                    let mediaHTML = '';
+                    
+                    if (match) {
+                        const matchUrl = optimizeMediaUrl(match.url || match.image_url || match.video_url || match.src || match, false);
+                        const optImgUrl = optimizeMediaUrl(matchUrl, false, 300);
+                        usedUrls.add(matchUrl);
+                        mediaHTML = `<img data-src="${optImgUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover transition-transform group-hover:scale-105">`;
+                    } else {
+                        mediaHTML = `<img data-src="${optimizeMediaUrl(card.main_image_url, false, 300)}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover transition-transform group-hover:scale-105 grayscale opacity-50">`;
+                    }
 
-                return `<div class="relative w-full aspect-[4/5] rounded-2xl overflow-hidden shadow-sm group bg-slate-100" onclick="openModelById(${card.id})">${mediaHTML}</div>`;
-            }).join('');
+                    return `<div class="relative w-full aspect-[4/5] rounded-2xl overflow-hidden shadow-sm group bg-slate-100" onclick="openModelById(${card.id})">
+                        <span class="absolute top-2 right-2 z-10 bg-black/60 text-white text-[10px] font-bold px-2 py-1 rounded-md backdrop-blur-sm pointer-events-none">${tagConfig.label}</span>
+                        ${mediaHTML}
+                    </div>`;
+                }).join('');
+            }
 
             if(panelContainer) {
                 panelContainer.innerHTML = panelHTML;
