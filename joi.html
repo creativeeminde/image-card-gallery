@@ -2384,11 +2384,22 @@
                             }
                         };
                         
-                        const optimizedUrl = optimizeMediaUrl(item.url, false, 400); 
+                        const isVideo = item.url.match(/\.(mp4|webm|ogg|mov)$/i) || (!item.url.match(/\.(jpeg|jpg|gif|png|webp|avif)$/i) && (item.tags || '').toLowerCase().includes('clip'));
                         const firstTag = (item.tags || 'Asset').split(',')[0].trim();
                         
+                        let mediaContent = '';
+                        if (isVideo) {
+                            const videoUrl = optimizeMediaUrl(item.url, true);
+                            mediaContent = `<video src="${videoUrl}" preload="none" class="w-full h-full object-cover select-none pointer-events-none" draggable="false" muted loop playsinline></video>`;
+                            el.onmouseenter = () => { const vid = el.querySelector('video'); if (vid) safePlayVideo(vid); };
+                            el.onmouseleave = () => { const vid = el.querySelector('video'); if (vid) safePauseVideo(vid); };
+                        } else {
+                            const optimizedUrl = optimizeMediaUrl(item.url, false, 800); // Higher quality texture rendering
+                            mediaContent = `<img src="${optimizedUrl}" class="w-full h-full object-cover select-none pointer-events-none" draggable="false">`;
+                        }
+                        
                         el.innerHTML = `
-                            <img src="${optimizedUrl}" class="w-full h-full object-cover select-none pointer-events-none" draggable="false">
+                            ${mediaContent}
                             <div class="absolute top-3 left-3 bg-black/70 text-white text-[10px] font-bold px-3 py-1.5 rounded-full backdrop-blur-md pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity transform group-hover:translate-y-0 translate-y-1">${firstTag}</div>
                         `;
                         
@@ -2400,6 +2411,14 @@
             
             for (let [id, el] of activeVisibleItems.entries()) {
                 if (!newlyVisible.has(id)) {
+                    // Aggressive Garbage Collection to prevent Chrome decoder exhaustion
+                    const vid = el.querySelector('video');
+                    if (vid) {
+                        vid.pause();
+                        vid.removeAttribute('src');
+                        vid.load();
+                    }
+                    
                     workspace.removeChild(el);
                     activeVisibleItems.delete(id);
                 }
