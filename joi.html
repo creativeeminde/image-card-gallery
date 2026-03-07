@@ -149,16 +149,26 @@
         <!-- MODELS VIEW -->
         <div id="modelsView" class="view-section block px-6 sm:px-8 max-w-[1400px] mx-auto w-full -mt-[85px] pt-[85px]">
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 mt-4">
-                               <div>
+                <div>
                     <h2 class="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Models Gallery</h2>
                     <p class="text-slate-500 dark:text-slate-400 mt-1 text-sm">Manage and view your 3D models and character assets.</p>
                 </div>
                 <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto flex-wrap">
+                    
                     <div class="relative w-full sm:w-auto flex-shrink-0">
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                         </div>
                         <input type="text" id="modelSearchInput" placeholder="Search models..." class="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-sm text-slate-700 dark:text-slate-200 text-sm rounded-full focus:ring-2 focus:ring-[#7fe826] block w-full pl-9 pr-4 py-2.5 outline-none font-medium transition-colors h-full min-h-[38px]">
+                    </div>
+
+                    <!-- NEW: Video Mode Toggle -->
+                    <div class="flex items-center bg-white dark:bg-slate-800 rounded-full shadow-sm border border-slate-100 dark:border-slate-700 px-4 py-2 gap-3 z-10 w-full sm:w-auto flex-shrink-0 transition-colors duration-300 cursor-pointer" onclick="toggleGalleryVideoMode()">
+                        <span class="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider hidden sm:block">Media</span>
+                        <div id="galleryVideoModeToggle" class="w-8 h-4 bg-slate-300 dark:bg-slate-600 rounded-full relative transition-colors duration-300">
+                            <div id="galleryVideoModeThumb" class="w-3 h-3 bg-white rounded-full absolute top-0.5 left-0.5 transition-transform duration-300 shadow-sm"></div>
+                        </div>
+                        <span id="galleryVideoModeLabel" class="text-xs font-bold text-slate-700 dark:text-slate-200 w-10">Images</span>
                     </div>
 
                     <div class="flex items-center bg-white dark:bg-slate-800 rounded-full shadow-sm border border-slate-100 dark:border-slate-700 px-4 py-2 gap-3 z-10 w-full sm:w-auto flex-shrink-0 transition-colors duration-300">
@@ -709,6 +719,17 @@
             fullClips: { items: [], index: 0, chunkSize: 12, containerId: 'fullClipsGridInner' }
         };
 
+        // NEW: Dedicated Observer just for auto-playing/pausing Gallery Videos based on visibility
+        const videoPlaybackObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    safePlayVideo(entry.target);
+                } else {
+                    safePauseVideo(entry.target);
+                }
+            });
+        }, { rootMargin: '0px', threshold: 0.1 });
+
         const globalIntersectionObserver = new IntersectionObserver((entries, observer) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
@@ -729,8 +750,13 @@
                             if (el.tagName === 'VIDEO') {
                                 el.load(); 
                                 el.classList.add('loaded');
+                                // If it's a gallery video, hand it over to the playback observer!
+                                if (el.classList.contains('gallery-video')) {
+                                    videoPlaybackObserver.observe(el);
+                                }
                             }
                         }
+                        // Unobserve from the lazy loader once it's processed
                         observer.unobserve(el);
                     }
                 }
@@ -824,6 +850,7 @@
         let currentZoom = 1, isPanning = false, panStartX = 0, panStartY = 0, panTranslateX = 0, panTranslateY = 0;
         let runwayCurrentIndex = 0, runwayMode = 'main', runwayPanelMode = 'images', currentRunwayItems = [], runwayActiveLetter = 'All';
         let galleryActiveLetter = 'All'; // Global variable for Gallery Alphabet
+        let isGalleryVideoMode = false; // Toggle variable for rendering videos on Gallery cards
         
         let audioPlayer = new Audio();
         let runwayAudioPlayer = new Audio();
@@ -859,6 +886,33 @@
             } else {
                 document.documentElement.classList.add('dark'); localStorage.setItem('theme', 'dark');
             }
+        }
+
+        // NEW: Toggle Function for Gallery Video Mode
+        function toggleGalleryVideoMode() {
+            isGalleryVideoMode = !isGalleryVideoMode;
+            
+            const toggleBg = document.getElementById('galleryVideoModeToggle');
+            const toggleThumb = document.getElementById('galleryVideoModeThumb');
+            const modeLabel = document.getElementById('galleryVideoModeLabel');
+            
+            if (isGalleryVideoMode) {
+                toggleBg.classList.replace('bg-slate-300', 'bg-[#7fe826]');
+                toggleBg.classList.replace('dark:bg-slate-600', 'dark:bg-[#7fe826]');
+                toggleThumb.style.transform = 'translateX(16px)';
+                modeLabel.textContent = 'Videos';
+            } else {
+                toggleBg.classList.replace('bg-[#7fe826]', 'bg-slate-300');
+                toggleBg.classList.replace('dark:bg-[#7fe826]', 'dark:bg-slate-600');
+                toggleThumb.style.transform = 'translateX(0)';
+                modeLabel.textContent = 'Images';
+            }
+
+            // Immediately re-render the gallery grid based on the current filter configuration
+            const grid = document.getElementById('modelsGrid');
+            if (grid) grid.innerHTML = '';
+            renderState.gallery.index = 0;
+            renderMore('gallery');
         }
 
         function openModelModal() { 
@@ -1089,12 +1143,35 @@
         function generateGalleryCardHTML(cardData) {
             const ratingNum = cardData.rating_hotness ?? 50;
             const ratingBadgeHTML = `<span class="absolute bottom-3 left-3 z-10 bg-[#111]/90 dark:bg-slate-900/90 backdrop-blur-md text-white text-[10px] font-bold px-2.5 py-1 rounded-lg shadow-sm">${ratingNum}%</span>`;
-            const optUrl = optimizeMediaUrl(cardData.main_image_url, false, 400);
+            
+            let mediaHTML = '';
+            
+            if (isGalleryVideoMode) {
+                // Find a video with 'clip' tag
+                let clipVideo = null;
+                if (cardData.related_videos_with_tags) {
+                    clipVideo = cardData.related_videos_with_tags.find(v => {
+                        const tags = (v.tags || '').toLowerCase();
+                        return tags.includes('clip');
+                    });
+                }
+                
+                if (clipVideo) {
+                    const vidUrl = optimizeMediaUrl(clipVideo.url || clipVideo.video_url || clipVideo.src || clipVideo, true);
+                    mediaHTML = `<video data-src="${vidUrl}" preload="none" class="lazy-media gallery-video opacity-0 w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105" muted loop playsinline></video>`;
+                }
+            }
+            
+            // Fallback to main image if not in video mode, or if no clip was found
+            if (!mediaHTML) {
+                const optUrl = optimizeMediaUrl(cardData.main_image_url, false, 400);
+                mediaHTML = `<img data-src="${optUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105">`;
+            }
 
             return `
                 <div class="gallery-model-card relative w-full cursor-pointer group overflow-hidden bg-slate-100 dark:bg-slate-900 rounded-[1.5rem]" onclick="openModelById(${cardData.id})" title="${cardData.title}">
                     <div class="relative aspect-[10/16] w-full h-full">
-                        <img data-src="${optUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105">
+                        ${mediaHTML}
                         ${ratingBadgeHTML}
                     </div>
                 </div>
