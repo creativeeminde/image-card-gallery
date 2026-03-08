@@ -249,10 +249,10 @@
             <div class="w-full h-full flex flex-col lg:flex-row overflow-hidden bg-[#f1f5f0] dark:bg-slate-900 pt-[85px]">
                 <div class="flex-1 relative flex items-center justify-center h-[50vh] lg:h-full overflow-hidden shrink-0">
                     <div id="runwayAlphabetBar" class="absolute top-2 sm:top-4 left-1/2 -translate-x-1/2 z-50 flex items-center justify-center gap-1 sm:gap-1.5 px-4 py-3 dark:border-slate-700/50 overflow-x-auto no-scrollbar transition-colors duration-300 w-max max-w-[95vw]"></div>
-                    <div class="absolute top-20 left-4 lg:top-20 lg:left-8 z-50 flex items-center bg-white/80 dark:bg-slate-800/80 backdrop-blur-md p-1.5 rounded-full shadow-md border border-slate-200/50 dark:border-slate-700/50 transition-colors duration-300">
-                        <button id="runwayModeToggle" class="w-10 h-5 bg-slate-300 dark:bg-slate-600 rounded-full relative transition-colors duration-300 focus:outline-none" onclick="toggleRunwayMode()">
-                            <div id="runwayModeThumb" class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 transition-transform duration-300 shadow-sm"></div>
-                        </button>
+                    <div class="absolute top-20 left-4 lg:top-20 lg:left-8 z-50 flex items-center bg-white/80 dark:bg-slate-800/80 backdrop-blur-md p-1 rounded-full shadow-md border border-slate-200/50 dark:border-slate-700/50 transition-colors duration-300 gap-1">
+                        <button id="runwayModeMain" onclick="setRunwayMode('main')" class="px-3 py-1.5 text-[10px] font-bold rounded-full bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm transition-all uppercase tracking-wider">Main</button>
+                        <button id="runwayModeNude" onclick="setRunwayMode('nude')" class="px-3 py-1.5 text-[10px] font-bold rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-all uppercase tracking-wider">Nude</button>
+                        <button id="runwayModeVideo" onclick="setRunwayMode('video')" class="px-3 py-1.5 text-[10px] font-bold rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-all uppercase tracking-wider">Clips</button>
                     </div>
 
                     <div id="runwayCarouselContainer" class="relative w-full h-full flex items-center mt-12 justify-center perspective-[1200px] transition-opacity duration-300"></div>
@@ -1675,12 +1675,19 @@
                 }
 
                 if (runwayMode === 'main') {
-                    currentRunwayItems.push({ card: card, imgUrl: optimizeMediaUrl(card.main_image_url, false, 800) });
-                } else {
+                    currentRunwayItems.push({ card: card, imgUrl: optimizeMediaUrl(card.main_image_url, false, 800), isVideo: false });
+                } else if (runwayMode === 'nude') {
                     (card.related_images_with_tags || []).forEach(asset => {
                         const url = optimizeMediaUrl(asset.url || asset.image_url || asset.src || asset);
                         if (url && !url.match(/\.(mp4|webm|ogg|mov)$/i) && (asset.tags || '').toLowerCase().includes('full nude')) {
-                            currentRunwayItems.push({ card: card, imgUrl: optimizeMediaUrl(url, false, 800) });
+                            currentRunwayItems.push({ card: card, imgUrl: optimizeMediaUrl(url, false, 800), isVideo: false });
+                        }
+                    });
+                } else if (runwayMode === 'video') {
+                    (card.related_videos_with_tags || []).forEach(clip => {
+                        const url = optimizeMediaUrl(clip.url || clip.video_url || clip.src || clip, true);
+                        if (url && (clip.tags || '').toLowerCase().includes('clip')) {
+                            currentRunwayItems.push({ card: card, imgUrl: url, isVideo: true });
                         }
                     });
                 }
@@ -1689,16 +1696,21 @@
 
             const container = document.getElementById('runwayCarouselContainer');
             if (currentRunwayItems.length === 0) {
-                container.innerHTML = `<div class="text-slate-500 font-medium bg-white/50 px-6 py-3 rounded-2xl">No images found for this mode.</div>`;
+                container.innerHTML = `<div class="text-slate-500 font-medium bg-white/50 px-6 py-3 rounded-2xl">No media found for this mode.</div>`;
                 updateRunwayPanel(true);
                 return;
             }
             
-            container.innerHTML = currentRunwayItems.map((item, i) => `
+            container.innerHTML = currentRunwayItems.map((item, i) => {
+                const mediaElement = item.isVideo
+                    ? `<video data-src="${item.imgUrl}" class="lazy-runway w-full h-full object-contain opacity-0 transition-opacity duration-300 rounded-2xl shadow-xl" muted loop playsinline></video>`
+                    : `<img data-src="${item.imgUrl}" class="lazy-runway w-full h-full object-contain opacity-0 transition-opacity duration-300">`;
+
+                return `
                 <div class="runway-item" id="runway-item-${i}" onclick="goToRunway(${i})">
-                    <img data-src="${item.imgUrl}" class="lazy-runway w-full h-full object-contain opacity-0 transition-opacity duration-300">
+                    ${mediaElement}
                 </div>
-            `).join('');
+            `}).join('');
             runwayCurrentIndex = 0; updateRunway();
         }
 
@@ -1728,12 +1740,29 @@
                 el.style.zIndex = zIndex;
                 el.style.pointerEvents = Math.abs(diff) <= 2 ? 'auto' : 'none';
 
+                const media = el.querySelector('.lazy-runway');
                 if (Math.abs(diff) <= 3) {
-                    const img = el.querySelector('.lazy-runway');
-                    if (img && img.hasAttribute('data-src')) {
-                        img.src = img.getAttribute('data-src');
-                        img.removeAttribute('data-src');
-                        img.onload = () => img.classList.remove('opacity-0');
+                    if (media && media.hasAttribute('data-src')) {
+                        media.src = media.getAttribute('data-src');
+                        media.removeAttribute('data-src');
+                        if (media.tagName === 'VIDEO') {
+                            media.onloadeddata = () => media.classList.remove('opacity-0');
+                            media.load();
+                        } else {
+                            media.onload = () => media.classList.remove('opacity-0');
+                        }
+                    }
+                    
+                    if (media && media.tagName === 'VIDEO') {
+                        if (diff === 0) {
+                            safePlayVideo(media);
+                        } else {
+                            safePauseVideo(media);
+                        }
+                    }
+                } else {
+                    if (media && media.tagName === 'VIDEO') {
+                        safePauseVideo(media);
                     }
                 }
             });
@@ -1864,21 +1893,21 @@
             }
         }
 
-        function toggleRunwayMode() { 
-            runwayMode = runwayMode === 'main' ? 'nude' : 'main'; 
+        function setRunwayMode(mode) { 
+            runwayMode = mode; 
             
-            const toggleBtn = document.getElementById('runwayModeToggle');
-            const toggleThumb = document.getElementById('runwayModeThumb');
+            const btnMain = document.getElementById('runwayModeMain');
+            const btnNude = document.getElementById('runwayModeNude');
+            const btnVideo = document.getElementById('runwayModeVideo');
             
-            if (runwayMode === 'nude') {
-                toggleBtn.classList.remove('bg-slate-300', 'dark:bg-slate-600');
-                toggleBtn.classList.add('bg-[#7fe826]', 'dark:bg-[#7fe826]');
-                toggleThumb.style.transform = 'translateX(20px)';
-            } else {
-                toggleBtn.classList.add('bg-slate-300', 'dark:bg-slate-600');
-                toggleBtn.classList.remove('bg-[#7fe826]', 'dark:bg-[#7fe826]');
-                toggleThumb.style.transform = 'translateX(0)';
-            }
+            // Reset all
+            [btnMain, btnNude, btnVideo].forEach(btn => {
+                if(btn) btn.className = "px-3 py-1.5 text-[10px] font-bold rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-all uppercase tracking-wider";
+            });
+            
+            // Set active
+            const activeBtn = mode === 'main' ? btnMain : (mode === 'nude' ? btnNude : btnVideo);
+            if(activeBtn) activeBtn.className = "px-3 py-1.5 text-[10px] font-bold rounded-full bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm transition-all uppercase tracking-wider";
 
             initRunway(); 
         }
