@@ -1603,15 +1603,25 @@
                 query = query.range(ytClipsPage * YT_CLIPS_PER_PAGE, (ytClipsPage + 1) * YT_CLIPS_PER_PAGE - 1);
 
                 const { data, error } = await query;
-                if (error) throw error;
+                if (error) {
+                    console.error("Supabase Query Error:", error);
+                    throw error;
+                }
                 
                 if (data) {
+                    if (data.length === 0 && reset) {
+                        document.getElementById('ytClipsGrid').innerHTML = '<div class="col-span-full py-20 text-center text-slate-500 font-bold">No clips found. Upload one!</div>';
+                    }
+
                     if (data.length < YT_CLIPS_PER_PAGE) hasMoreClips = false;
                     ytGlobalClips = reset ? data : [...ytGlobalClips, ...data];
                     renderYTClipsGrid(reset);
                     ytClipsPage++;
                 }
-            } catch(e) { console.error("Error fetching global clips", e); }
+            } catch(e) { 
+                console.error("Error fetching global clips", e); 
+                document.getElementById('ytClipsGrid').innerHTML = '<div class="col-span-full py-20 text-center text-red-500 font-bold">Error loading clips. Check console.</div>';
+            }
             
             isFetchingClips = false;
             if(sentinel) sentinel.classList.add('hidden');
@@ -1632,8 +1642,8 @@
 
                 return `
                     <div class="flex flex-col gap-3 group cursor-pointer" onclick="openYTPlayer(${clip.id})">
-                        <div class="relative w-full aspect-video bg-slate-200 dark:bg-slate-800 rounded-xl overflow-hidden">
-                            <video data-src="${clipUrl}" class="lazy-media opacity-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline preload="none"></video>
+                        <div class="relative w-full aspect-video bg-slate-200 dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm">
+                            <video src="${clipUrl}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline preload="metadata"></video>
                             <div class="absolute bottom-2 right-2 bg-black/80 text-white text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm">${clip.duration || '0:00'}</div>
                         </div>
                         <div class="flex gap-3 px-1">
@@ -1652,10 +1662,6 @@
 
             if(grid) {
                 grid.insertAdjacentHTML('beforeend', html);
-                grid.querySelectorAll('.lazy-media:not(.observed)').forEach(el => {
-                    el.classList.add('observed');
-                    globalIntersectionObserver.observe(el);
-                });
             }
         }
 
@@ -2637,14 +2643,23 @@
                         savedGalleryScrollPosition = window.scrollY || document.documentElement.scrollTop;
                     }
                     
+                    // Hide all views and remove inline display styles
                     document.querySelectorAll('.view-section').forEach(s => {
-                        if (s.id === 'clipsView') s.classList.add('hidden'); // Specifically hide it since it uses flex
-                        else s.classList.add('hidden');
+                        s.classList.add('hidden');
+                        s.style.display = 'none';
                     });
 
-                    // Reactivate view
+                    // Reactivate target view
                     const viewEl = document.getElementById(target);
                     viewEl.classList.remove('hidden');
+                    
+                    // Force proper display types
+                    if (target === 'clipsView') {
+                        viewEl.style.display = 'flex'; // Critical for the sidebar layout
+                        fetchYTClips(true); // Force fetch now that container is visible
+                    } else {
+                        viewEl.style.display = 'block';
+                    }
                     
                     if (target === 'modelsView') window.scrollTo({ top: savedGalleryScrollPosition, behavior: 'instant' });
                     else if (target === 'infiniteView') renderInfiniteCanvas();
@@ -2803,55 +2818,70 @@ const addAudioForm = document.getElementById('addAudioForm');
                     } catch(err) { console.error("Error saving category", err); }
                 });
             }
-// YouTube-Style Clip Upload Form Submit
+
             const ytUploadForm = document.getElementById('ytUploadForm');
             if (ytUploadForm) {
                 ytUploadForm.addEventListener('submit', async (e) => {
-                    e.preventDefault(); // This stops the page from refreshing!
-
+                    e.preventDefault();
                     const title = document.getElementById('ytClipTitle').value;
                     const url = document.getElementById('ytClipUrl').value;
-                    const duration = document.getElementById('ytClipDuration').value;
-                    const catId = document.getElementById('ytClipCategory').value;
-                    const cardId = document.getElementById('selectedModelId').value;
+                    const card_id = document.getElementById('selectedModelId').value;
+                    const duration = document.getElementById('ytClipDuration').value || '0:00';
+                    const category_id = document.getElementById('ytClipCategory').value || null;
 
-                    const insertData = {
-                        title: title,
-                        url: url,
-                        duration: duration || '0:00',
-                        views: 0
-                    };
-
-                    // Only add category and card IDs if they were selected
-                    if (catId) insertData.category_id = parseInt(catId);
-                    if (cardId) insertData.card_id = parseInt(cardId);
+                    if (!card_id) {
+                        alert("Please select a valid model from the search dropdown.");
+                        return;
+                    }
 
                     try {
-                        const { data, error } = await supabaseClient.from('global_clips').insert([insertData]);
+                        const newClip = { 
+                            title: title, 
+                            url: url, 
+                            duration: duration, 
+                            category_id: category_id ? parseInt(category_id) : null, 
+                            card_id: parseInt(card_id) 
+                        };
+                        
+                        const { data, error } = await supabaseClient
+                            .from('global_clips')
+                            .insert([newClip])
+                            .select('*, cards(id, title, main_image_url)');
+                            
                         if (error) throw error;
                         
-                        closeYTUploadModal();
-                        showSuccessToast("Clip uploaded successfully!");
-                        
-                        // Reset the form and clear the selected model preview
-                        ytUploadForm.reset();
-                        clearSelectedModel();
-
-                        // Refresh the clips grid to show the newly added clip
-                        fetchYTClips(true); 
-                        
-                        // Also, if you are looking at the model's close up view, refresh her clips
-                        if (currentActiveModelData && parseInt(cardId) === currentActiveModelData.id) {
-                            // Re-fetch the model data locally to update the grid
-                            openCloseUpPage(currentActiveModelData);
+                        if (data && data.length > 0) {
+                            // Prepend to memory arrays
+                            ytGlobalClips.unshift(data[0]);
+                            
+                            // If we are actively viewing this model, update her personal array
+                            if (currentActiveModelData && currentActiveModelData.id == card_id) {
+                                 if (!currentActiveModelData.combined_clips) currentActiveModelData.combined_clips = [];
+                                 currentActiveModelData.combined_clips.unshift({url: data[0].url, tags: 'YT Clip', ...data[0]});
+                                 
+                                 // If we are currently in the all clips view for that model, rerender it
+                                 if (isClipViewer && !isGlobalViewer) {
+                                     lightboxMediaList = currentActiveModelData.combined_clips;
+                                     renderState.fullClips.items = lightboxMediaList;
+                                     renderState.fullClips.index = 0;
+                                     document.getElementById('fullClipsGrid').innerHTML = `<div id="fullClipsGridInner" class="columns-1 sm:columns-2 gap-6 w-full space-y-6"></div>`;
+                                     renderMore('fullClips');
+                                 }
+                            }
+                            
+                            closeYTUploadModal();
+                            showSuccessToast("Clip uploaded successfully!");
+                            ytUploadForm.reset();
+                            clearSelectedModel();
+                            fetchYTClips(true); // Refresh main global grid
                         }
-                        
-                    } catch (err) {
-                        console.error("Error saving clip:", err);
-                        alert("There was an error saving the clip. Check the console.");
+                    } catch(err) {
+                        console.error(err);
+                        showSuccessToast("Error uploading clip.");
                     }
                 });
             }
+
             const addWaveForm = document.getElementById('addWaveForm');
             if (addWaveForm) {
                 addWaveForm.addEventListener('submit', async (e) => {
@@ -3035,4 +3065,3 @@ const addAudioForm = document.getElementById('addAudioForm');
     </script>
 </body>
 </html>
-           
