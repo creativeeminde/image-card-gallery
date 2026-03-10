@@ -1990,48 +1990,59 @@ let editingClipId = null; // Track if we are editing
         }
         // --- YT Player Modal ---
        function openYTPlayer(id) {
-            const clip = ytGlobalClips.find(c => c.id === id);
-            if (!clip) return;
-            
-            const vidEl = document.getElementById('ytPlayerVideo');
-            vidEl.src = clip.url;
-            vidEl.play().catch(e => console.log("Autoplay prevented", e));
+    const clip = ytGlobalClips.find(c => c.id === id);
+    if (!clip) return;
+    
+    const vidEl = document.getElementById('ytPlayerVideo');
+    vidEl.src = clip.url;
+    vidEl.play().catch(e => console.log("Autoplay prevented", e));
 
-            // --- FIXED IDs HERE ---
-            document.getElementById('ytPlayerVideoTitle').textContent = clip.title;
-            document.getElementById('ytPlayerModelName').textContent = clip.cards ? clip.cards.title : 'Unknown Model';
-            // ----------------------
+    document.getElementById('ytPlayerVideoTitle').textContent = clip.title;
+    document.getElementById('ytPlayerModelName').textContent = clip.cards ? clip.cards.title : 'Unknown Model';
 
-            const dateStr = new Date(clip.created_at).toLocaleDateString();
-            document.getElementById('ytPlayerStats').textContent = `${clip.views || 0} views • ${dateStr}`;
-            
-            // --- AVATAR LOOKUP LOGIC ---
-            let avatarUrl = clip.cards ? optimizeMediaUrl(clip.cards.main_image_url, false, 100) : '';
-            const fullCard = allLoadedCards.find(c => c.id === clip.card_id);
-            if (fullCard && fullCard.related_images_with_tags) {
-                const avatarAsset = fullCard.related_images_with_tags.find(a => {
-                    const t = typeof a === 'string' ? '' : (a.tags || '');
-                    return t.toLowerCase().includes('avatar');
-                });
-                if (avatarAsset) {
-                    avatarUrl = optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset, false, 100);
-                }
-            }
-            document.getElementById('ytPlayerAvatar').src = avatarUrl;
-            // ---------------------------
-
-            document.getElementById('ytPlayerModal').classList.add('active');
-            
-            // Attach the clip ID to the edit button (this will now successfully fire!)
-            document.getElementById('ytPlayerEditBtn').onclick = () => openYTEditModal(id);
-            
-            // Increment views slightly delayed to ensure valid open
-            setTimeout(() => {
-                supabaseClient.from('global_clips').update({ views: (clip.views || 0) + 1 }).eq('id', id).then(() => {
-                    clip.views = (clip.views || 0) + 1;
-                });
-            }, 5000);
+    const dateStr = new Date(clip.created_at).toLocaleDateString();
+    document.getElementById('ytPlayerStats').textContent = `${clip.views || 0} views • ${dateStr}`;
+    
+    // --- AVATAR LOOKUP LOGIC ---
+    let avatarUrl = clip.cards ? optimizeMediaUrl(clip.cards.main_image_url, false, 100) : '';
+    const fullCard = allLoadedCards.find(c => c.id === clip.card_id);
+    if (fullCard && fullCard.related_images_with_tags) {
+        const avatarAsset = fullCard.related_images_with_tags.find(a => {
+            const t = typeof a === 'string' ? '' : (a.tags || '');
+            return t.toLowerCase().includes('avatar');
+        });
+        if (avatarAsset) {
+            avatarUrl = optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset, false, 100);
         }
+    }
+    document.getElementById('ytPlayerAvatar').src = avatarUrl;
+    // ---------------------------
+
+    document.getElementById('ytPlayerModal').classList.add('active');
+    document.getElementById('ytPlayerEditBtn').onclick = () => openYTEditModal(id);
+
+    // ==========================================
+    // ADD THIS NEW BLOCK:
+    // Attach the click event to navigate to the Close Up view
+    // ==========================================
+    const modelLinkBtn = document.getElementById('ytPlayerModelLink');
+    if (modelLinkBtn) {
+        modelLinkBtn.onclick = () => {
+            if (clip.card_id) {
+                closeYTPlayer(); // Close the video player modal first
+                openModelById(clip.card_id); // Navigate to the Close Up page
+            }
+        };
+    }
+    // ==========================================
+
+    // Increment views slightly delayed to ensure valid open
+    setTimeout(() => {
+        supabaseClient.from('global_clips').update({ views: (clip.views || 0) + 1 }).eq('id', id).then(() => {
+            clip.views = (clip.views || 0) + 1;
+        });
+    }, 5000);
+}
 
         function renderYTSidebar(currentClip) {
             const sidebar = document.getElementById('ytPlayerSidebarGrid');
