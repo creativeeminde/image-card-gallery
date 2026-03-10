@@ -1658,30 +1658,44 @@
             const itemsToRender = ytGlobalClips.slice(Math.max(0, startIndex));
 
             const html = itemsToRender.map(clip => {
-                const modelName = clip.cards ? clip.cards.title : 'Unknown Model';
-                const avatarUrl = clip.cards ? optimizeMediaUrl(clip.cards.main_image_url, false, 100) : '';
-                const clipUrl = optimizeMediaUrl(clip.url, true);
-                const dateStr = new Date(clip.created_at).toLocaleDateString();
+            const modelName = clip.cards ? clip.cards.title : 'Unknown Model';
+            
+            // --- AVATAR LOOKUP LOGIC ---
+            let avatarUrl = clip.cards ? optimizeMediaUrl(clip.cards.main_image_url, false, 100) : '';
+            const fullCard = allLoadedCards.find(c => c.id === clip.card_id);
+            if (fullCard && fullCard.related_images_with_tags) {
+                const avatarAsset = fullCard.related_images_with_tags.find(a => {
+                    const t = typeof a === 'string' ? '' : (a.tags || '');
+                    return t.toLowerCase().includes('avatar');
+                });
+                if (avatarAsset) {
+                    avatarUrl = optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset, false, 100);
+                }
+            }
+            // ---------------------------
 
-                return `
-                    <div class="flex flex-col gap-3 group cursor-pointer" onclick="openYTPlayer(${clip.id})">
-                        <div class="relative w-full aspect-video bg-slate-200 dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm">
-                            <video src="${clipUrl}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline preload="metadata"></video>
-                            <div class="absolute bottom-2 right-2 bg-black/80 text-white text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm">${clip.duration || '0:00'}</div>
-                        </div>
-                        <div class="flex gap-3 px-1">
-                            <img src="${avatarUrl}" class="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700 mt-0.5" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2212%22 fill=%22%23cbd5e1%22/></svg>'">
-                            <div class="flex flex-col min-w-0">
-                                <h4 class="font-bold text-slate-900 dark:text-white text-sm line-clamp-2 leading-tight">${clip.title}</h4>
-                                <span class="text-xs text-slate-500 dark:text-slate-400 mt-1">${modelName}</span>
-                                <div class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                                    <span>${clip.views || 0} views</span><span>•</span><span>${dateStr}</span>
-                                </div>
+            const clipUrl = optimizeMediaUrl(clip.url, true);
+            const dateStr = new Date(clip.created_at).toLocaleDateString();
+
+            return `
+                <div class="flex flex-col gap-3 group cursor-pointer" onclick="openYTPlayer(${clip.id})">
+                    <div class="relative w-full aspect-video bg-slate-200 dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm">
+                        <video src="${clipUrl}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline preload="metadata"></video>
+                        <div class="absolute bottom-2 right-2 bg-black/80 text-white text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm">${clip.duration || '0:00'}</div>
+                    </div>
+                    <div class="flex gap-3 px-1">
+                        <img src="${avatarUrl}" class="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700 mt-0.5" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2212%22 fill=%22%23cbd5e1%22/></svg>'">
+                        <div class="flex flex-col min-w-0">
+                            <h4 class="font-bold text-slate-900 dark:text-white text-sm line-clamp-2 leading-tight">${clip.title}</h4>
+                            <span class="text-xs text-slate-500 dark:text-slate-400 mt-1">${modelName}</span>
+                            <div class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                                <span>${clip.views || 0} views</span><span>•</span><span>${dateStr}</span>
                             </div>
                         </div>
                     </div>
-                `;
-            }).join('');
+                </div>
+            `;
+        }).join('');
 
             if(grid) {
                 grid.insertAdjacentHTML('beforeend', html);
@@ -1701,12 +1715,27 @@
             if (input.length < 1) { resultsContainer.classList.add('hidden'); return; }
             const matches = allLoadedCards.filter(c => c.title && c.title.toLowerCase().includes(input));
             if (matches.length > 0) {
-                resultsContainer.innerHTML = matches.map(m => `
-                    <button type="button" onclick="selectModelForClip(${m.id}, '${m.title.replace(/'/g, "\\'")}', '${m.main_image_url}')" class="flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-left w-full border-b border-slate-100 dark:border-slate-700 last:border-0">
-                        <img src="${optimizeMediaUrl(m.main_image_url, false, 100)}" class="w-8 h-8 rounded-full object-cover">
-                        <span class="font-bold text-sm text-slate-800 dark:text-white">${m.title}</span>
-                    </button>
-                `).join('');
+                resultsContainer.innerHTML = matches.map(m => {
+                    // --- AVATAR LOOKUP LOGIC ---
+                    let avatarUrl = m.main_image_url; // Fallback to main image
+                    if (m.related_images_with_tags) {
+                        const avatarAsset = m.related_images_with_tags.find(a => {
+                            const t = typeof a === 'string' ? '' : (a.tags || '');
+                            return t.toLowerCase().includes('avatar');
+                        });
+                        if (avatarAsset) {
+                            avatarUrl = avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset;
+                        }
+                    }
+                    // ---------------------------
+
+                    return `
+                        <button type="button" onclick="selectModelForClip(${m.id}, '${m.title.replace(/'/g, "\\'")}', '${avatarUrl}')" class="flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-left w-full border-b border-slate-100 dark:border-slate-700 last:border-0">
+                            <img src="${optimizeMediaUrl(avatarUrl, false, 100)}" class="w-8 h-8 rounded-full object-cover">
+                            <span class="font-bold text-sm text-slate-800 dark:text-white">${m.title}</span>
+                        </button>
+                    `;
+                }).join('');
                 resultsContainer.classList.remove('hidden');
             } else {
                 resultsContainer.innerHTML = `<div class="p-4 text-sm text-slate-500 text-center">No models found.</div>`;
