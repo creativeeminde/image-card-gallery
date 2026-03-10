@@ -632,18 +632,40 @@
         </div>
     </div>
 
-    <div id="ytPlayerModal" class="modal fixed inset-0 z-[170] bg-black/95 backdrop-blur-md items-center justify-center p-4 sm:p-10 flex-col">
-        <button onclick="closeYTPlayer()" class="absolute top-6 right-6 text-white hover:text-slate-300 z-50 p-2"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
-        <div class="w-full max-w-6xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl relative flex items-center justify-center">
-            <video id="ytPlayerVideo" controls autoplay class="w-full h-full object-contain outline-none"></video>
-        </div>
-        <div class="w-full max-w-6xl mt-6 flex gap-4 text-white px-2">
-            <img id="ytPlayerAvatar" src="" class="w-12 h-12 rounded-full object-cover border border-slate-700">
-            <div>
-                <h2 id="ytPlayerTitle" class="text-2xl font-bold leading-tight"></h2>
-                <p id="ytPlayerModel" class="text-slate-300 font-medium text-sm mt-1"></p>
-                <p id="ytPlayerStats" class="text-slate-500 text-xs mt-1"></p>
+    <div id="ytPlayerModal" class="modal fixed inset-0 z-[170] bg-[#09090b] items-center justify-center p-4 sm:p-8 flex-col">
+        <button onclick="closeYTPlayer()" class="absolute top-4 right-4 text-slate-500 hover:text-white z-50 p-3 bg-white/5 hover:bg-white/10 rounded-full transition-colors backdrop-blur-sm">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+        
+        <div class="w-full max-w-[1600px] h-full flex flex-col lg:flex-row gap-6 lg:gap-10 overflow-hidden pt-12 lg:pt-4">
+            
+            <div class="flex-1 flex flex-col min-w-0 overflow-y-auto no-scrollbar pb-10">
+                <div class="w-full aspect-video bg-black rounded-[1.5rem] overflow-hidden shadow-2xl border border-white/5 relative flex items-center justify-center">
+                    <video id="ytPlayerVideo" controls autoplay class="w-full h-full object-contain outline-none"></video>
+                </div>
+                
+                <h1 id="ytPlayerVideoTitle" class="text-xl sm:text-2xl font-bold text-white mt-6 mb-4 px-1"></h1>
+                
+                <div class="flex items-center justify-between w-full mt-2 px-1">
+                    <div class="flex items-center gap-4 cursor-pointer group" id="ytPlayerModelLink">
+                        <img id="ytPlayerAvatar" src="" class="w-14 h-14 sm:w-[60px] sm:h-[60px] rounded-[1.2rem] object-cover border border-white/10 shadow-md bg-slate-900 group-hover:scale-105 transition-transform">
+                        <div class="flex flex-col">
+                            <h2 class="text-lg sm:text-xl font-bold text-white flex items-center gap-1.5 leading-none group-hover:text-[#7fe826] transition-colors">
+                                <span id="ytPlayerModelName"></span>
+                                <svg class="w-4 h-4 text-purple-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+                            </h2>
+                            <p id="ytPlayerStats" class="text-slate-400 text-sm mt-1.5 font-medium"></p>
+                        </div>
+                    </div>
+                </div>
             </div>
+
+            <div class="w-full lg:w-[420px] xl:w-[480px] flex-shrink-0 flex flex-col h-full pb-10">
+                <h3 class="text-lg font-bold text-white mb-6 px-1 tracking-wide">You May Like</h3>
+                <div id="ytPlayerSidebarGrid" class="flex flex-col gap-5 overflow-y-auto custom-scrollbar pr-2 pb-10">
+                    </div>
+            </div>
+            
         </div>
     </div>
 
@@ -954,6 +976,7 @@
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
         let supabaseClient;
         let masterTagsList = []; 
+        let currentPlayingYTClipId = null;
         let selectedModalTags = new Set();
         let newMediaSelectedTags = new Set();
         let newModelSelectedTags = new Set();
@@ -1717,28 +1740,124 @@
         function closeCategoryModal() { document.getElementById('categoryModal').classList.remove('active'); }
 
         // --- YT Player Modal ---
-        function openYTPlayer(id) {
+       function openYTPlayer(id) {
             const clip = ytGlobalClips.find(c => c.id === id);
             if (!clip) return;
             
+            currentPlayingYTClipId = id; // Store ID for routing
+
             const vidEl = document.getElementById('ytPlayerVideo');
             vidEl.src = clip.url;
             vidEl.play().catch(e => console.log("Autoplay prevented", e));
 
-            document.getElementById('ytPlayerTitle').textContent = clip.title;
-            document.getElementById('ytPlayerModel').textContent = clip.cards ? clip.cards.title : 'Unknown Model';
-            const dateStr = new Date(clip.created_at).toLocaleDateString();
-            document.getElementById('ytPlayerStats').textContent = `${clip.views || 0} views • ${dateStr}`;
-            document.getElementById('ytPlayerAvatar').src = clip.cards ? optimizeMediaUrl(clip.cards.main_image_url, false, 100) : '';
+            // Set Video Title
+            document.getElementById('ytPlayerVideoTitle').textContent = clip.title;
+
+            // Setup Default Model Info
+            let modelName = 'Unknown Model';
+            let avatarUrl = '';
+            document.getElementById('ytPlayerStats').textContent = 'Calculating clips...';
+
+            if (clip.card_id) {
+                const model = allLoadedCards.find(c => c.id === clip.card_id);
+                if (model) {
+                    modelName = model.title;
+                    
+                    // Search for an image tagged with 'avatar', fallback to main_image_url
+                    const avatarAsset = (model.related_images_with_tags || []).find(a => (a.tags || '').toLowerCase().includes('avatar'));
+                    if (avatarAsset) {
+                        avatarUrl = optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset, false, 200);
+                    } else {
+                        avatarUrl = optimizeMediaUrl(model.main_image_url, false, 200);
+                    }
+
+                    // Async fetch to get the EXACT number of global clips this model has, plus JSON clips
+                    supabaseClient.from('global_clips').select('*', { count: 'exact', head: true }).eq('card_id', clip.card_id).then(({count}) => {
+                        const relationalCount = count || 0;
+                        const jsonCount = (model.related_videos_with_tags || []).filter(v => (v.tags||'').toLowerCase().includes('clip')).length;
+                        const totalClips = relationalCount + jsonCount;
+                        document.getElementById('ytPlayerStats').textContent = `${totalClips} Clips`;
+                    });
+                }
+            } else if (clip.cards) {
+                modelName = clip.cards.title;
+                avatarUrl = optimizeMediaUrl(clip.cards.main_image_url, false, 200);
+                document.getElementById('ytPlayerStats').textContent = '0 Clips';
+            }
+
+            document.getElementById('ytPlayerModelName').textContent = modelName;
+            document.getElementById('ytPlayerAvatar').src = avatarUrl || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="%23cbd5e1"/></svg>';
+
+            // Handle clicking the creator block to jump to their Close Up view
+            document.getElementById('ytPlayerModelLink').onclick = () => {
+                if (clip.card_id) {
+                    closeYTPlayer();
+                    openModelById(clip.card_id);
+                }
+            };
+
+            // Render "You May Like" Sidebar
+            renderYTSidebar(clip);
 
             document.getElementById('ytPlayerModal').classList.add('active');
             
-            // Increment views slightly delayed to ensure valid open
+            // Increment views slightly delayed
             setTimeout(() => {
                 supabaseClient.from('global_clips').update({ views: (clip.views || 0) + 1 }).eq('id', id).then(() => {
                     clip.views = (clip.views || 0) + 1;
                 });
             }, 5000);
+        }
+
+        function renderYTSidebar(currentClip) {
+            const sidebar = document.getElementById('ytPlayerSidebarGrid');
+            
+            // 1. Filter by identical category ID, excluding the currently playing video
+            let related = ytGlobalClips.filter(c => c.id !== currentClip.id && c.category_id === currentClip.category_id);
+            
+            // 2. If the category is empty, just grab the most recent videos as fallback
+            if (related.length === 0) {
+                related = ytGlobalClips.filter(c => c.id !== currentClip.id).slice(0, 12);
+            } else {
+                related = related.slice(0, 12);
+            }
+
+            sidebar.innerHTML = related.map(clip => {
+                let mName = clip.cards ? clip.cards.title : 'Unknown';
+                let mAvatar = clip.cards ? optimizeMediaUrl(clip.cards.main_image_url, false, 100) : '';
+                
+                // Find specific avatar tag for sidebar items
+                if (clip.card_id) {
+                     const mData = allLoadedCards.find(c => c.id === clip.card_id);
+                     if (mData) {
+                         const av = (mData.related_images_with_tags || []).find(a => (a.tags||'').toLowerCase().includes('avatar'));
+                         if (av) mAvatar = optimizeMediaUrl(av.url || av.image_url || av.src || av, false, 100);
+                     }
+                }
+                
+                const cUrl = optimizeMediaUrl(clip.url, true);
+                const vCount = clip.views > 1000 ? (clip.views / 1000).toFixed(1) + 'K' : (clip.views || 0);
+
+                return `
+                    <div class="flex gap-4 cursor-pointer group mb-1" onclick="openYTPlayer(${clip.id})">
+                        <div class="relative w-40 sm:w-44 aspect-video rounded-xl overflow-hidden bg-slate-900 flex-shrink-0 border border-white/5">
+                            <video src="${cUrl}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline preload="metadata"></video>
+                            <div class="absolute bottom-1.5 right-1.5 bg-black/80 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm">${clip.duration || '0:00'}</div>
+                        </div>
+                        <div class="flex-1 min-w-0 flex flex-col py-0.5">
+                            <h4 class="font-bold text-slate-100 text-sm line-clamp-2 leading-snug group-hover:text-white transition-colors">${clip.title}</h4>
+                            <div class="flex items-center gap-2 mt-2">
+                                <img src="${mAvatar}" class="w-5 h-5 rounded-full object-cover border border-slate-700" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2212%22 fill=%22%23cbd5e1%22/></svg>'">
+                                <span class="text-xs text-slate-400 truncate font-medium">${mName}</span>
+                            </div>
+                            <div class="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5 font-medium">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                <span>${vCount}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
         }
 
         function closeYTPlayer() {
@@ -1748,8 +1867,8 @@
             vidEl.pause();
             vidEl.removeAttribute('src');
             vidEl.load();
+            currentPlayingYTClipId = null;
         }
-
         function openAllAssetsView() {
             document.querySelectorAll('.view-section').forEach(s => s.classList.add('hidden'));
             document.getElementById('allAssetsView').classList.remove('hidden');
