@@ -405,8 +405,21 @@
             <div id="assetsSentinel" data-type="assets" class="sentinel w-full h-10 my-4"></div>
         </div>
         
-        <div id="clipsView" class="view-section hidden flex-col md:flex-row w-full h-[calc(100dvh)] -mt-[85px] pt-[85px] bg-[#f8f9fa] dark:bg-slate-900 overflow-hidden">
+       <div id="clipsView" class="view-section hidden flex-col md:flex-row w-full h-[calc(100dvh)] -mt-[85px] pt-[85px] bg-[#f8f9fa] dark:bg-slate-900 overflow-hidden">
             <aside class="w-full md:w-64 flex-shrink-0 md:h-full bg-white dark:bg-slate-800 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-700 overflow-y-auto custom-scrollbar flex flex-col z-20">
+                
+                <div class="p-4 border-b border-slate-200 dark:border-slate-700">
+                    <h3 class="font-bold text-slate-800 dark:text-white mb-3">Clip Tags</h3>
+                    <div class="relative">
+                        <select id="clipTagFilterSelect" onchange="filterByClipTag(this.value)" class="w-full appearance-none bg-slate-100 dark:bg-slate-800 border border-transparent text-slate-900 dark:text-white text-sm rounded-xl px-4 py-2.5 pr-10 focus:outline-none focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-600 transition-shadow cursor-pointer font-medium">
+                            <option value="">All Tags</option>
+                        </select>
+                        <div class="absolute inset-y-0 right-4 flex items-center pointer-events-none text-slate-500">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center sticky top-0 bg-white dark:bg-slate-800 z-10">
                     <h3 class="font-bold text-slate-800 dark:text-white">Categories</h3>
                     <button onclick="openCategoryModal()" class="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-slate-600 dark:text-slate-300" title="Manage Categories">
@@ -1626,7 +1639,50 @@ function toggleCategoryExpand(id, event) {
             const ytClipCat = document.getElementById('ytClipCategory');
             if (ytClipCat) ytClipCat.innerHTML = catHtml;
         }
+let currentClipTagFilter = '';
 
+function filterByClipTag(tag) {
+    currentClipTagFilter = tag;
+    // Re-run the main fetch/render function to apply the filter
+    fetchYTClips(true); 
+}
+
+function renderClipTagsDropdown() {
+            const select = document.getElementById('clipTagFilterSelect');
+            if (!select) return;
+
+            const allTags = new Set();
+            
+            // 1. Extract from all models globally so the dropdown never shrinks!
+            allLoadedCards.forEach(card => {
+                if (card.tags && typeof card.tags === 'string') {
+                    card.tags.split(',').forEach(t => {
+                        const cleanTag = t.trim();
+                        if (cleanTag) allTags.add(cleanTag);
+                    });
+                }
+            });
+
+            // 2. Extract from specifically uploaded clip tags
+            ytGlobalClips.forEach(clip => {
+                if (clip.tags && typeof clip.tags === 'string') {
+                    clip.tags.split(',').forEach(t => {
+                        const cleanTag = t.trim();
+                        if (cleanTag) allTags.add(cleanTag);
+                    });
+                }
+            });
+
+            const sortedTags = Array.from(allTags).sort();
+            
+            let html = `<option value="">All Tags</option>`;
+            sortedTags.forEach(tag => {
+                const isSelected = currentClipTagFilter === tag ? 'selected' : '';
+                html += `<option value="${tag}" ${isSelected}>${tag}</option>`;
+            });
+            
+            select.innerHTML = html;
+        }
        function filterByCategory(catId) {
     currentCategoryFilter = catId;
     
@@ -1667,7 +1723,8 @@ function toggleCategoryExpand(id, event) {
             if(sentinel) sentinel.classList.remove('hidden');
             
             try {
-                let query = supabaseClient.from('global_clips').select('*, cards(title, main_image_url)').order('created_at', { ascending: false });
+                // FIXED QUERY HERE: Added 'tags' to the cards select so the filter can see them
+                let query = supabaseClient.from('global_clips').select('*, cards(id, title, main_image_url, tags)').order('created_at', { ascending: false });
                 
                 if (currentCategoryFilter) query = query.eq('category_id', currentCategoryFilter);
                 if (searchVal) query = query.ilike('title', `%${searchVal}%`);
@@ -1687,6 +1744,7 @@ function toggleCategoryExpand(id, event) {
 
                     if (data.length < YT_CLIPS_PER_PAGE) hasMoreClips = false;
                     ytGlobalClips = reset ? data : [...ytGlobalClips, ...data];
+                    renderClipTagsDropdown();
                     renderYTClipsGrid(reset);
                     ytClipsPage++;
                 }
@@ -1699,52 +1757,83 @@ function toggleCategoryExpand(id, event) {
             if(sentinel) sentinel.classList.add('hidden');
         }
 
-        function renderYTClipsGrid(clearFirst = false) {
+function renderYTClipsGrid(clearFirst = false) {
             const grid = document.getElementById('ytClipsGrid');
             if (clearFirst && grid) grid.innerHTML = '';
 
             const startIndex = clearFirst ? 0 : ytGlobalClips.length - YT_CLIPS_PER_PAGE;
-            const itemsToRender = ytGlobalClips.slice(Math.max(0, startIndex));
+            let itemsToRender = ytGlobalClips.slice(Math.max(0, startIndex));
+
+            // --- TAG FILTERING LOGIC ---
+            if (currentClipTagFilter) {
+                itemsToRender = itemsToRender.filter(clip => {
+                    let tagString = clip.tags || (clip.cards ? clip.cards.tags : '');
+                    if (typeof tagString === 'string') {
+                        const tagsArray = tagString.split(',').map(t => t.trim().toLowerCase());
+                        return tagsArray.includes(currentClipTagFilter.toLowerCase());
+                    } else if (Array.isArray(tagString)) {
+                        return tagString.some(t => t.toLowerCase() === currentClipTagFilter.toLowerCase());
+                    }
+                    return false;
+                });
+            }
+
+            if (!itemsToRender || itemsToRender.length === 0) {
+                if (clearFirst && grid) {
+                    grid.innerHTML = `<div class="col-span-full py-20 text-center text-slate-500 font-medium">No clips found matching this filter.</div>`;
+                }
+                return;
+            }
 
             const html = itemsToRender.map(clip => {
-            const modelName = clip.cards ? clip.cards.title : 'Unknown Model';
-            
-            // --- AVATAR LOOKUP LOGIC ---
-            let avatarUrl = clip.cards ? optimizeMediaUrl(clip.cards.main_image_url, false, 100) : '';
-            const fullCard = allLoadedCards.find(c => c.id === clip.card_id);
-            if (fullCard && fullCard.related_images_with_tags) {
-                const avatarAsset = fullCard.related_images_with_tags.find(a => {
-                    const t = typeof a === 'string' ? '' : (a.tags || '');
-                    return t.toLowerCase().includes('avatar');
-                });
-                if (avatarAsset) {
-                    avatarUrl = optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset, false, 100);
+                const modelName = clip.cards ? clip.cards.title : 'Unknown Model';
+                
+                // --- AVATAR LOOKUP LOGIC ---
+                let avatarUrl = clip.cards ? optimizeMediaUrl(clip.cards.main_image_url, false, 100) : '';
+                const fullCard = allLoadedCards.find(c => c.id === clip.card_id);
+                if (fullCard && fullCard.related_images_with_tags) {
+                    const avatarAsset = fullCard.related_images_with_tags.find(a => {
+                        const t = typeof a === 'string' ? '' : (a.tags || '');
+                        return t.toLowerCase().includes('avatar');
+                    });
+                    if (avatarAsset) {
+                        avatarUrl = optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset, false, 100);
+                    }
                 }
-            }
-            // ---------------------------
 
-            const clipUrl = optimizeMediaUrl(clip.url, true);
-            const dateStr = new Date(clip.created_at).toLocaleDateString();
+                const clipUrl = optimizeMediaUrl(clip.url, true);
+                const dateStr = new Date(clip.created_at).toLocaleDateString();
 
-            return `
-                <div class="flex flex-col gap-3 group cursor-pointer" onclick="openYTPlayer(${clip.id})">
-                    <div class="relative w-full aspect-video bg-slate-200 dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm">
-                        <video src="${clipUrl}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline preload="metadata"></video>
-                        <div class="absolute bottom-2 right-2 bg-black/80 text-white text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm">${clip.duration || '0:00'}</div>
-                    </div>
-                    <div class="flex gap-3 px-1">
-                        <img src="${avatarUrl}" class="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700 mt-0.5" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2212%22 fill=%22%23cbd5e1%22/></svg>'">
-                        <div class="flex flex-col min-w-0">
-                            <h4 class="font-bold text-slate-900 dark:text-white text-sm line-clamp-2 leading-tight">${clip.title}</h4>
-                            <span class="text-xs text-slate-500 dark:text-slate-400 mt-1">${modelName}</span>
-                            <div class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                                <span>${clip.views || 0} views</span><span>•</span><span>${dateStr}</span>
+                return `
+                    <div class="flex flex-col gap-3 group">
+                        <div class="relative w-full aspect-video bg-slate-200 dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm cursor-pointer" onclick="openYTPlayer(${clip.id})">
+                            <video src="${clipUrl}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline preload="metadata"></video>
+                            <div class="absolute bottom-2 right-2 bg-black/80 text-white text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm">${clip.duration || '0:00'}</div>
+                        </div>
+                        
+                        <div class="flex gap-3 px-1">
+                            <img src="${avatarUrl}" 
+                                 onclick="${clip.card_id ? `openModelById(${clip.card_id})` : ''}" 
+                                 class="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700 mt-0.5 cursor-pointer hover:scale-110 transition-transform shadow-sm" 
+                                 onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2212%22 fill=%22%23cbd5e1%22/></svg>'" 
+                                 title="View ${modelName}">
+                            
+                            <div class="flex flex-col min-w-0">
+                                <h4 class="font-bold text-slate-900 dark:text-white text-sm line-clamp-2 leading-tight cursor-pointer hover:text-[#7fe826] transition-colors" 
+                                    onclick="openYTPlayer(${clip.id})">${clip.title}</h4>
+                                
+                                <span class="text-xs text-slate-500 dark:text-slate-400 mt-1 cursor-pointer hover:text-slate-900 dark:hover:text-white transition-colors font-medium w-max" 
+                                      onclick="${clip.card_id ? `openModelById(${clip.card_id})` : ''}" 
+                                      title="View ${modelName}">${modelName}</span>
+                                
+                                <div class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5">
+                                    <span>${clip.views || 0} views</span><span>•</span><span>${dateStr}</span>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            `;
-        }).join('');
+                `;
+            }).join('');
 
             if(grid) {
                 grid.insertAdjacentHTML('beforeend', html);
@@ -3332,7 +3421,44 @@ const addAudioForm = document.getElementById('addAudioForm');
             if (!audioEl.duration) return;
             audioEl.currentTime = (e.offsetX / e.currentTarget.clientWidth) * audioEl.duration;
         }
+function openModelById(id) {
+    // 1. Find the full model data from our loaded list
+    const modelData = allLoadedCards.find(m => m.id === id);
+    
+    if (modelData) {
+        // 2. Load the data into the CloseUp page
+        openCloseUpPage(modelData);
+        
+        // 3. Switch the view visibility (Logic from your showView function)
+        document.querySelectorAll('.view-section').forEach(s => {
+            s.classList.add('hidden');
+            s.style.display = 'none';
+        });
+        
+        const closeUpView = document.getElementById('closeUpView');
+        closeUpView.classList.remove('hidden');
+        closeUpView.style.display = 'flex'; // Use flex to maintain layout
+        
+        // 4. Update the active state of the top navigation buttons
+        document.querySelectorAll('nav button').forEach(btn => {
+            btn.classList.remove('text-[#7fe826]', 'border-[#7fe826]');
+            btn.classList.add('text-slate-500', 'border-transparent');
+        });
+        
+        // Find the "CloseUp" nav button (usually the first or second one) and highlight it
+        // Note: Adjust the index if your CloseUp button is in a different position
+        const closeUpBtn = document.querySelector('nav button[onclick*="closeUpView"]');
+        if(closeUpBtn) {
+            closeUpBtn.classList.replace('text-slate-500', 'text-[#7fe826]');
+            closeUpBtn.classList.replace('border-transparent', 'border-[#7fe826]');
+        }
 
+        // 5. Scroll to top of the new page
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+        console.error("Model not found in allLoadedCards for ID:", id);
+    }
+}
     </script>
 </body>
 </html>
