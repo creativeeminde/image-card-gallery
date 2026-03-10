@@ -260,6 +260,7 @@
                     </div>
 
                     <div class="relative w-full h-[calc(100dvh-85px)] lg:h-auto lg:w-full lg:aspect-[3/4] overflow-hidden lg:overflow-visible bg-transparent">
+                        <div id="quickTagThumbnails" class="flex items-center justify-center gap-3 mt-4 overflow-x-auto no-scrollbar w-full px-2 py-2"></div>
                         <button onclick="document.querySelector('.nav-item[data-target=\'modelsView\']').click()" class="lg:hidden absolute top-4 left-4 z-50 p-2.5 bg-black/40 hover:bg-black/60 backdrop-blur-md rounded-full text-white transition-all border border-white/20 shadow-lg">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                         </button>
@@ -1294,6 +1295,55 @@ function closeCategoryModal() {
             renderClassSection(); 
             renderAmazingAtSection();
             renderCloseUpAvatars();
+
+            // --- NEW: QUICK TAG THUMBNAILS ---
+            const quickTags = [
+                { label: 'Main Image', search: [] }, // Special case for main image
+                { label: 'Face', search: ['face'] },
+                { label: 'Tits', search: ['tits', 'chest', 'boob'] },
+                { label: 'Ass', search: ['ass', 'glute'] },
+                { label: 'Pussy Close Up', search: ['pussy', 'puss', 'pussy close up'] }
+            ];
+
+            let quickThumbnailsHTML = '';
+            
+            quickTags.forEach((qt, idx) => {
+                let matchUrl = null;
+                
+                if (qt.label === 'Main Image') {
+                    matchUrl = cardData.main_image_url;
+                } else {
+                    const match = assets.find(a => {
+                        const url = optimizeMediaUrl(a.url || a.image_url || a.video_url || a.src || a, false);
+                        if (!url || url.match(/\.(mp4|webm|ogg|mov)$/i)) return false; // Skip videos
+                        const individualTags = (a.tags || '').toLowerCase().split(',').map(t => t.trim());
+                        return qt.search.some(sw => individualTags.some(t => t.includes(sw)));
+                    });
+                    if (match) {
+                        matchUrl = match.url || match.image_url || match.video_url || match.src || match;
+                    }
+                }
+
+                if (matchUrl) {
+                    const optThumb = optimizeMediaUrl(matchUrl, false, 150);
+                    // First item is active by default
+                    const isActive = idx === 0 
+                        ? 'border-[#7fe826] shadow-[0_0_12px_rgba(127,232,38,0.6)] scale-110' 
+                        : 'border-slate-300 dark:border-slate-600 opacity-60 hover:opacity-100 hover:scale-105';
+                    
+                    quickThumbnailsHTML += `
+                        <div class="relative w-12 h-12 sm:w-14 sm:h-14 shrink-0 rounded-full cursor-pointer transition-all duration-300 border-[3px] ${isActive} quick-tag-thumb" 
+                             onclick="setActiveQuickTag(this, '${matchUrl.replace(/'/g, "\\'")}')" 
+                             title="${qt.label}">
+                            <img src="${optThumb}" class="w-full h-full object-cover rounded-full pointer-events-none bg-slate-200 dark:bg-slate-800">
+                        </div>
+                    `;
+                }
+            });
+
+            const qtContainer = document.getElementById('quickTagThumbnails');
+            if (qtContainer) qtContainer.innerHTML = quickThumbnailsHTML;
+            // ----------------------------------
             
             document.getElementById('closeUpAssetsGrid').innerHTML = assets.slice(0, 2).map(asset => generatePreviewCardHTML(asset, 'Asset')).join('') + 
                 `<div onclick="openAllAssetsView()" class="aspect-[4/5] rounded-[1rem] border-2 bg-white/60 dark:bg-slate-800/60 flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:bg-white dark:hover:bg-slate-700 transition group"><span class="text-[10px] font-bold">See more</span></div>`;
@@ -1326,7 +1376,21 @@ function closeCategoryModal() {
         }
 
         function setMainImage(url) { document.getElementById('closeUpMainImage').src = optimizeMediaUrl(url, false, 800); }
+function setActiveQuickTag(element, url) {
+    // 1. Reset all thumbnails to inactive state
+    document.querySelectorAll('.quick-tag-thumb').forEach(thumb => {
+        thumb.classList.remove('border-[#7fe826]', 'shadow-[0_0_12px_rgba(127,232,38,0.6)]', 'scale-110');
+        thumb.classList.add('border-slate-300', 'dark:border-slate-600', 'opacity-60');
+        thumb.classList.remove('opacity-100');
+    });
 
+    // 2. Apply active state to the clicked thumbnail
+    element.classList.remove('border-slate-300', 'dark:border-slate-600', 'opacity-60', 'hover:scale-105');
+    element.classList.add('border-[#7fe826]', 'shadow-[0_0_12px_rgba(127,232,38,0.6)]', 'scale-110', 'opacity-100');
+
+    // 3. Update the main image viewer smoothly
+    setMainImage(url);
+}
         
 function openModelById(id) {
     // 1. Find the full model data from our loaded list
