@@ -1872,64 +1872,39 @@ let editingClipId = null; // Track if we are editing
             const clip = ytGlobalClips.find(c => c.id === id);
             if (!clip) return;
             
-            currentPlayingYTClipId = id; // Store ID for routing
-
             const vidEl = document.getElementById('ytPlayerVideo');
             vidEl.src = clip.url;
             vidEl.play().catch(e => console.log("Autoplay prevented", e));
 
-            // Set Video Title
+            // --- FIXED IDs HERE ---
             document.getElementById('ytPlayerVideoTitle').textContent = clip.title;
+            document.getElementById('ytPlayerModelName').textContent = clip.cards ? clip.cards.title : 'Unknown Model';
+            // ----------------------
 
-            // Setup Default Model Info
-            let modelName = 'Unknown Model';
-            let avatarUrl = '';
-            document.getElementById('ytPlayerStats').textContent = 'Calculating clips...';
-
-            if (clip.card_id) {
-                const model = allLoadedCards.find(c => c.id === clip.card_id);
-                if (model) {
-                    modelName = model.title;
-                    
-                    // Search for an image tagged with 'avatar', fallback to main_image_url
-                    const avatarAsset = (model.related_images_with_tags || []).find(a => (a.tags || '').toLowerCase().includes('avatar'));
-                    if (avatarAsset) {
-                        avatarUrl = optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset, false, 200);
-                    } else {
-                        avatarUrl = optimizeMediaUrl(model.main_image_url, false, 200);
-                    }
-
-                    // Async fetch to get the EXACT number of global clips this model has, plus JSON clips
-                    supabaseClient.from('global_clips').select('*', { count: 'exact', head: true }).eq('card_id', clip.card_id).then(({count}) => {
-                        const relationalCount = count || 0;
-                        const jsonCount = (model.related_videos_with_tags || []).filter(v => (v.tags||'').toLowerCase().includes('clip')).length;
-                        const totalClips = relationalCount + jsonCount;
-                        document.getElementById('ytPlayerStats').textContent = `${totalClips} Clips`;
-                    });
+            const dateStr = new Date(clip.created_at).toLocaleDateString();
+            document.getElementById('ytPlayerStats').textContent = `${clip.views || 0} views • ${dateStr}`;
+            
+            // --- AVATAR LOOKUP LOGIC ---
+            let avatarUrl = clip.cards ? optimizeMediaUrl(clip.cards.main_image_url, false, 100) : '';
+            const fullCard = allLoadedCards.find(c => c.id === clip.card_id);
+            if (fullCard && fullCard.related_images_with_tags) {
+                const avatarAsset = fullCard.related_images_with_tags.find(a => {
+                    const t = typeof a === 'string' ? '' : (a.tags || '');
+                    return t.toLowerCase().includes('avatar');
+                });
+                if (avatarAsset) {
+                    avatarUrl = optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset, false, 100);
                 }
-            } else if (clip.cards) {
-                modelName = clip.cards.title;
-                avatarUrl = optimizeMediaUrl(clip.cards.main_image_url, false, 200);
-                document.getElementById('ytPlayerStats').textContent = '0 Clips';
             }
-
-            document.getElementById('ytPlayerModelName').textContent = modelName;
-            document.getElementById('ytPlayerAvatar').src = avatarUrl || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="%23cbd5e1"/></svg>';
-
-            // Handle clicking the creator block to jump to their Close Up view
-            document.getElementById('ytPlayerModelLink').onclick = () => {
-                if (clip.card_id) {
-                    closeYTPlayer();
-                    openModelById(clip.card_id);
-                }
-            };
-
-            // Render "You May Like" Sidebar
-            renderYTSidebar(clip);
+            document.getElementById('ytPlayerAvatar').src = avatarUrl;
+            // ---------------------------
 
             document.getElementById('ytPlayerModal').classList.add('active');
             
-            // Increment views slightly delayed
+            // Attach the clip ID to the edit button (this will now successfully fire!)
+            document.getElementById('ytPlayerEditBtn').onclick = () => openYTEditModal(id);
+            
+            // Increment views slightly delayed to ensure valid open
             setTimeout(() => {
                 supabaseClient.from('global_clips').update({ views: (clip.views || 0) + 1 }).eq('id', id).then(() => {
                     clip.views = (clip.views || 0) + 1;
