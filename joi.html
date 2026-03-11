@@ -83,22 +83,41 @@
         #ytPlayerModal { transition: opacity 0.3s ease, backdrop-filter 0.3s ease; }
 
         /* ===== HERO SECTION ===== */
-        .hero-card {
+
+        /* Outer shell — this is the ONLY element that sets size.
+           It fills its grid/flex cell and never responds to media intrinsics. */
+        .hero-shell {
             position: relative;
-            border-radius: 1.25rem;
+            width: 100%;
+            height: 100%;
+            min-height: 0;          /* let flexbox compress it */
             overflow: hidden;
-            cursor: pointer;
+            border-radius: 1.25rem;
             background: #0f172a;
-            flex-shrink: 0;
+            cursor: pointer;
         }
+
+        /* Inner card sits absolutely so it can never push the shell outward */
+        .hero-card {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            border-radius: 1.25rem;
+        }
+
+        /* Video / image: fills the card, cropped to landscape regardless of source */
         .hero-card video, .hero-card img.hero-thumb {
+            position: absolute;
+            inset: 0;
             width: 100%;
             height: 100%;
             object-fit: cover;
+            object-position: center center;
             transition: transform 0.55s cubic-bezier(0.25, 1, 0.5, 1);
             display: block;
         }
-        .hero-card:hover video, .hero-card:hover img.hero-thumb {
+        .hero-shell:hover .hero-card video,
+        .hero-shell:hover .hero-card img.hero-thumb {
             transform: scale(1.045);
         }
         /* Cinematic gradient overlay */
@@ -133,20 +152,20 @@
             opacity: 0;
             transition: opacity 0.25s ease, transform 0.25s ease, background 0.2s ease;
         }
-        .hero-card-large .hero-play-btn {
+        .hero-shell-large .hero-play-btn {
             width: 68px;
             height: 68px;
             opacity: 1;
             transform: translate(-50%, -50%) scale(1);
         }
-        .hero-card:hover .hero-play-btn {
+        .hero-shell:hover .hero-play-btn {
             opacity: 1;
             transform: translate(-50%, -50%) scale(1.08);
             background: rgba(127,232,38,0.85);
             border-color: #7fe826;
             color: #111;
         }
-        .hero-card-large .hero-play-btn:hover {
+        .hero-shell-large:hover .hero-play-btn {
             transform: translate(-50%, -50%) scale(1.12);
         }
         /* Meta row */
@@ -229,24 +248,24 @@
             0% { background-position: 200% 0; }
             100% { background-position: -200% 0; }
         }
-        /* Mobile carousel items */
+        /* Mobile carousel items — fixed landscape size */
         .hero-mobile-item {
             flex-shrink: 0;
             width: 72vw;
             max-width: 280px;
-            height: 200px;
+            height: 180px;      /* fixed height, never driven by video */
             snap-align: start;
         }
-        /* Fade-in animation */
+        /* Fade-in animation on the shell (outer element) */
         @keyframes heroFadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to   { opacity: 1; transform: translateY(0); }
         }
-        .hero-card { animation: heroFadeIn 0.4s ease both; }
-        .hero-card:nth-child(1) { animation-delay: 0ms; }
-        .hero-card:nth-child(2) { animation-delay: 60ms; }
-        .hero-card:nth-child(3) { animation-delay: 120ms; }
-        .hero-card:nth-child(4) { animation-delay: 180ms; }
+        .hero-shell { animation: heroFadeIn 0.4s ease both; }
+        .hero-shell:nth-child(1) { animation-delay: 0ms; }
+        .hero-shell:nth-child(2) { animation-delay: 60ms; }
+        .hero-shell:nth-child(3) { animation-delay: 120ms; }
+        .hero-shell:nth-child(4) { animation-delay: 180ms; }
         /* ===== /HERO SECTION ===== */
     </style>
 </head>
@@ -4023,15 +4042,15 @@ const addAudioForm = document.getElementById('addAudioForm');
             // Show skeletons while loading
             heroDesktop.classList.remove('hidden');
             heroDesktop.innerHTML = `
-                <div class="hero-skeleton h-full"></div>
-                <div class="flex flex-col gap-3">
-                    <div class="hero-skeleton flex-1"></div>
-                    <div class="hero-skeleton flex-1"></div>
+                <div class="min-h-0 overflow-hidden h-full hero-skeleton"></div>
+                <div class="flex flex-col gap-3 h-full min-h-0 overflow-hidden">
+                    <div class="hero-skeleton flex-1 min-h-0"></div>
+                    <div class="hero-skeleton flex-1 min-h-0"></div>
                 </div>`;
             heroMobile.innerHTML = `
-                <div class="hero-mobile-item hero-skeleton"></div>
-                <div class="hero-mobile-item hero-skeleton"></div>
-                <div class="hero-mobile-item hero-skeleton"></div>`;
+                <div class="hero-mobile-item overflow-hidden hero-skeleton"></div>
+                <div class="hero-mobile-item overflow-hidden hero-skeleton"></div>
+                <div class="hero-mobile-item overflow-hidden hero-skeleton"></div>`;
 
             try {
                 let query = supabaseClient
@@ -4166,20 +4185,25 @@ const addAudioForm = document.getElementById('addAudioForm');
 
             const playSize = isLarge ? 'w-8 h-8' : 'w-5 h-5 ml-0.5';
             const padMeta  = isLarge ? 'p-4 pt-10' : 'p-3 pt-8';
+            const shellClass = isLarge ? 'hero-shell hero-shell-large' : 'hero-shell';
 
+            // hero-shell is the ONLY layout-participating element — it fills its grid cell.
+            // hero-card sits absolute inside it so the video can never resize the shell.
             return `
-                <div class="hero-card ${isLarge ? 'hero-card-large' : ''} w-full h-full" onclick="openYTPlayer(${clip.id})">
-                    <video src="${videoUrl}" class="w-full h-full object-cover" muted loop playsinline preload="metadata"
-                           onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)"></video>
-                    <div class="hero-overlay"></div>
-                    <div class="absolute top-3 right-3 bg-black/75 text-white text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">${clip.duration || '0:00'}</div>
-                    <div class="hero-play-btn">
-                        <svg class="${playSize}" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                <div class="${shellClass}" onclick="openYTPlayer(${clip.id})">
+                    <div class="hero-card ${isLarge ? 'hero-card-large' : ''}">
+                        <video src="${videoUrl}" muted loop playsinline preload="metadata"
+                               onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)"></video>
+                        <div class="hero-overlay"></div>
+                        <div class="absolute top-3 right-3 bg-black/75 text-white text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">${clip.duration || '0:00'}</div>
+                        <div class="hero-play-btn">
+                            <svg class="${playSize}" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        </div>
+                        <div class="hero-meta ${padMeta}">
+                            ${isLarge ? largeMeta : smallMeta}
+                        </div>
                     </div>
-                    <div class="hero-meta ${padMeta}">
-                        ${isLarge ? largeMeta : smallMeta}
-                    </div>
-                </div>`;
+                </div>`; 
         }
 
         function renderHeroSection() {
@@ -4190,19 +4214,21 @@ const addAudioForm = document.getElementById('addAudioForm');
             const [main, ...secondary] = heroClips;
             const secondaryCapped = secondary.slice(0, 3);
 
-            // Desktop layout
+            // Each wrapper div is the explicit size-owner; hero-shell fills it completely.
+            // min-h-0 + overflow:hidden prevent any child from escaping the grid track.
             let rightColHtml = '';
             secondaryCapped.forEach(clip => {
-                rightColHtml += `<div class="flex-1 min-h-0">${heroCardHtml(clip, false)}</div>`;
+                rightColHtml += `<div class="flex-1 min-h-0 overflow-hidden">${heroCardHtml(clip, false)}</div>`;
             });
+
             heroDesktop.classList.remove('hidden');
             heroDesktop.innerHTML = `
-                <div class="h-full">${heroCardHtml(main, true)}</div>
-                <div class="flex flex-col gap-3 h-full">${rightColHtml}</div>`;
+                <div class="min-h-0 overflow-hidden h-full">${heroCardHtml(main, true)}</div>
+                <div class="flex flex-col gap-3 min-h-0 overflow-hidden h-full">${rightColHtml}</div>`;
 
-            // Mobile carousel – show all 4
+            // Mobile carousel — each item has a fixed height set via .hero-mobile-item
             heroMobile.innerHTML = heroClips.map(clip => `
-                <div class="hero-mobile-item snap-start">${heroCardHtml(clip, false)}</div>
+                <div class="hero-mobile-item snap-start overflow-hidden">${heroCardHtml(clip, false)}</div>
             `).join('');
         }
 
@@ -4808,4 +4834,3 @@ const addAudioForm = document.getElementById('addAudioForm');
     </script>
 </body>
 </html>
-
