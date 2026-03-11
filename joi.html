@@ -3801,6 +3801,32 @@ const addAudioForm = document.getElementById('addAudioForm');
         let allPlaylists = [];
         let currentPlaylistFilter = null; // null = show all clips (no playlist filter)
 
+        // ---- Smart (Auto-Generated) Playlists ----
+        // These use string IDs prefixed with 'smart:' so they never collide with DB integer IDs
+        const SMART_PLAYLISTS = [
+            {
+                id: 'smart:highest_rated',
+                name: 'Highest Rated Models',
+                description: 'Clips from your top-rated models',
+                icon: '⭐',
+                color: '#f59e0b'
+            },
+            {
+                id: 'smart:top_watched',
+                name: 'Top Watched Clips',
+                description: 'Your most-viewed clips',
+                icon: '🔥',
+                color: '#ef4444'
+            },
+            {
+                id: 'smart:content_queen',
+                name: 'Content Queen',
+                description: 'Models with the most clips',
+                icon: '👑',
+                color: '#8b5cf6'
+            }
+        ];
+
         // ---- Fetch playlists from Supabase ----
         async function fetchPlaylists() {
             try {
@@ -3825,38 +3851,54 @@ const addAudioForm = document.getElementById('addAudioForm');
             const nav = document.getElementById('playlistsSidebarNav');
             if (!nav) return;
 
-            if (allPlaylists.length === 0) {
-                nav.innerHTML = `<div class="p-4 text-center text-xs text-slate-400 dark:text-slate-500">No playlists yet.<br>Click <strong>+</strong> to create one.</div>`;
-                return;
-            }
-
             let html = `<button onclick="filterByPlaylist(null)" class="w-full text-left px-4 py-2.5 rounded-xl font-medium text-sm transition-colors ${!currentPlaylistFilter ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'}">All Clips</button>`;
 
-            allPlaylists.forEach(pl => {
-                const isActive = currentPlaylistFilter === pl.id;
-                const coverHtml = pl.cover_url
-                    ? `<img src="${pl.cover_url}" class="w-7 h-7 rounded-lg object-cover flex-shrink-0">`
-                    : `<div class="w-7 h-7 rounded-lg bg-[#7fe826]/20 flex items-center justify-center flex-shrink-0"><svg class="w-3.5 h-3.5 text-[#7fe826]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h10M4 18h10"></path></svg></div>`;
-
+            // ---- Smart (Auto) Playlists ----
+            html += `<div class="px-3 pt-3 pb-1"><span class="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Auto-Generated</span></div>`;
+            SMART_PLAYLISTS.forEach(spl => {
+                const isActive = currentPlaylistFilter === spl.id;
                 html += `
-                    <div class="flex items-center gap-2 w-full rounded-xl transition-colors ${isActive ? 'bg-slate-100 dark:bg-slate-700' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'} group">
-                        <button onclick="filterByPlaylist(${pl.id})" class="flex items-center gap-2.5 flex-1 text-left px-3 py-2.5 min-w-0">
-                            ${coverHtml}
-                            <span class="text-sm font-medium truncate ${isActive ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300'}">${pl.name}</span>
+                    <div class="flex items-center gap-2 w-full rounded-xl transition-colors ${isActive ? 'bg-slate-100 dark:bg-slate-700' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}">
+                        <button onclick="filterByPlaylist('${spl.id}')" class="flex items-center gap-2.5 flex-1 text-left px-3 py-2.5 min-w-0">
+                            <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 text-base" style="background:${spl.color}22;">${spl.icon}</div>
+                            <span class="text-sm font-medium truncate ${isActive ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300'}">${spl.name}</span>
+                            <span class="ml-auto flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white" style="background:${spl.color};">AUTO</span>
                         </button>
-                        <div class="flex items-center gap-1 pr-2 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                            <button onclick="event.stopPropagation(); openPlaylistDetailModal(${pl.id})" class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors" title="View Playlist">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
-                            </button>
-                            <button onclick="event.stopPropagation(); openEditPlaylistModal(${pl.id})" class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors" title="Edit Playlist">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                            </button>
-                            <button onclick="event.stopPropagation(); deletePlaylist(${pl.id}, this)" class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-colors" title="Delete Playlist">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                            </button>
-                        </div>
                     </div>`;
             });
+
+            // ---- Manual Playlists ----
+            if (allPlaylists.length > 0) {
+                html += `<div class="px-3 pt-3 pb-1"><span class="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">My Playlists</span></div>`;
+                allPlaylists.forEach(pl => {
+                    const isActive = currentPlaylistFilter === pl.id;
+                    const coverHtml = pl.cover_url
+                        ? `<img src="${pl.cover_url}" class="w-7 h-7 rounded-lg object-cover flex-shrink-0">`
+                        : `<div class="w-7 h-7 rounded-lg bg-[#7fe826]/20 flex items-center justify-center flex-shrink-0"><svg class="w-3.5 h-3.5 text-[#7fe826]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h10M4 18h10"></path></svg></div>`;
+
+                    html += `
+                        <div class="flex items-center gap-2 w-full rounded-xl transition-colors ${isActive ? 'bg-slate-100 dark:bg-slate-700' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'} group">
+                            <button onclick="filterByPlaylist(${pl.id})" class="flex items-center gap-2.5 flex-1 text-left px-3 py-2.5 min-w-0">
+                                ${coverHtml}
+                                <span class="text-sm font-medium truncate ${isActive ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300'}">${pl.name}</span>
+                            </button>
+                            <div class="flex items-center gap-1 pr-2 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                <button onclick="event.stopPropagation(); openPlaylistDetailModal(${pl.id})" class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors" title="View Playlist">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                </button>
+                                <button onclick="event.stopPropagation(); openEditPlaylistModal(${pl.id})" class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors" title="Edit Playlist">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                </button>
+                                <button onclick="event.stopPropagation(); deletePlaylist(${pl.id}, this)" class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-colors" title="Delete Playlist">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                </button>
+                            </div>
+                        </div>`;
+                });
+            } else {
+                html += `<div class="px-3 pt-3 pb-1"><span class="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">My Playlists</span></div>`;
+                html += `<div class="p-4 text-center text-xs text-slate-400 dark:text-slate-500">No playlists yet.<br>Click <strong>+</strong> to create one.</div>`;
+            }
 
             nav.innerHTML = html;
         }
@@ -3872,7 +3914,13 @@ const addAudioForm = document.getElementById('addAudioForm');
                 return;
             }
 
-            // Fetch clips that belong to this playlist
+            // ---- Handle Smart (Auto-Generated) Playlists ----
+            if (typeof playlistId === 'string' && playlistId.startsWith('smart:')) {
+                await loadSmartPlaylist(playlistId);
+                return;
+            }
+
+            // Fetch clips that belong to this manual playlist
             try {
                 const { data, error } = await supabaseClient
                     .from('playlist_clips')
@@ -3902,6 +3950,114 @@ const addAudioForm = document.getElementById('addAudioForm');
                 renderYTClipsGrid(true);
             } catch(e) {
                 console.error('Error filtering by playlist', e);
+            }
+        }
+
+        // ---- Load a smart auto-generated playlist ----
+        async function loadSmartPlaylist(playlistId) {
+            const grid = document.getElementById('ytClipsGrid');
+            if (!grid) return;
+
+            grid.innerHTML = `<div class="col-span-full py-20 flex flex-col items-center justify-center gap-3"><div class="w-8 h-8 border-4 border-slate-200 border-t-[#7fe826] rounded-full animate-spin"></div><span class="text-sm text-slate-400">Building playlist…</span></div>`;
+
+            try {
+                if (playlistId === 'smart:top_watched') {
+                    // Top Watched: clips sorted by views descending
+                    const { data, error } = await supabaseClient
+                        .from('global_clips')
+                        .select('*, cards(id, title, main_image_url, tags)')
+                        .order('views', { ascending: false })
+                        .limit(50);
+                    if (error) throw error;
+                    const clips = (data || []).filter(c => (c.views || 0) > 0);
+                    if (clips.length === 0) {
+                        grid.innerHTML = `<div class="col-span-full py-20 text-center text-slate-400 font-medium">No views tracked yet. Watch some clips first!</div>`;
+                        return;
+                    }
+                    ytGlobalClips = clips;
+                    grid.innerHTML = '';
+                    renderYTClipsGrid(true);
+
+                } else if (playlistId === 'smart:highest_rated') {
+                    // Highest Rated Models: get top 10 cards by avg rating, then fetch their clips
+                    const topCards = [...allLoadedCards]
+                        .map(c => ({
+                            ...c,
+                            avgRating: ((c.rating_hotness || 0) + (c.rating_chest || 0) + (c.rating_glutes || 0) + (c.rating_biceps || 0) + (c.rating_shoulders || 0)) / 5
+                        }))
+                        .sort((a, b) => b.avgRating - a.avgRating)
+                        .slice(0, 10);
+
+                    if (topCards.length === 0) {
+                        grid.innerHTML = `<div class="col-span-full py-20 text-center text-slate-400 font-medium">No models found.</div>`;
+                        return;
+                    }
+
+                    const topCardIds = topCards.map(c => c.id);
+                    const { data, error } = await supabaseClient
+                        .from('global_clips')
+                        .select('*, cards(id, title, main_image_url, tags)')
+                        .in('card_id', topCardIds)
+                        .order('created_at', { ascending: false })
+                        .limit(60);
+                    if (error) throw error;
+
+                    if (!data || data.length === 0) {
+                        grid.innerHTML = `<div class="col-span-full py-20 text-center text-slate-400 font-medium">Your top-rated models don't have any clips yet.</div>`;
+                        return;
+                    }
+                    ytGlobalClips = data;
+                    grid.innerHTML = '';
+                    renderYTClipsGrid(true);
+
+                } else if (playlistId === 'smart:content_queen') {
+                    // Content Queen: model with the most clips
+                    // Count clips per card_id from global_clips
+                    const { data, error } = await supabaseClient
+                        .from('global_clips')
+                        .select('card_id, cards(id, title, main_image_url, tags)');
+                    if (error) throw error;
+
+                    // Count clips per model
+                    const counts = {};
+                    (data || []).forEach(clip => {
+                        if (clip.card_id) counts[clip.card_id] = (counts[clip.card_id] || 0) + 1;
+                    });
+
+                    // Sort by count descending, take top 5 models
+                    const topModelIds = Object.entries(counts)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 5)
+                        .map(([id]) => parseInt(id));
+
+                    if (topModelIds.length === 0) {
+                        grid.innerHTML = `<div class="col-span-full py-20 text-center text-slate-400 font-medium">No clips uploaded yet.</div>`;
+                        return;
+                    }
+
+                    // Fetch actual clips for top models, ordered so the queen's clips come first
+                    const { data: clipData, error: clipError } = await supabaseClient
+                        .from('global_clips')
+                        .select('*, cards(id, title, main_image_url, tags)')
+                        .in('card_id', topModelIds)
+                        .order('created_at', { ascending: false })
+                        .limit(60);
+                    if (clipError) throw clipError;
+
+                    // Re-sort so clips from the model with most clips appear first
+                    clipData.sort((a, b) => {
+                        const rankA = topModelIds.indexOf(a.card_id);
+                        const rankB = topModelIds.indexOf(b.card_id);
+                        return rankA - rankB;
+                    });
+
+                    ytGlobalClips = clipData;
+                    grid.innerHTML = '';
+                    renderYTClipsGrid(true);
+                }
+            } catch(e) {
+                console.error('Error loading smart playlist', e);
+                grid.innerHTML = `<div class="col-span-full py-20 text-center text-red-400 font-medium">Failed to load playlist. Check console.</div>`;
             }
         }
 
