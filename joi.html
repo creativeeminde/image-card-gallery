@@ -2683,9 +2683,12 @@ let editingClipId = null; // Track if we are editing
             document.querySelector('#ytUploadModal h3').textContent = 'Edit Clip';
             document.querySelector('#ytUploadForm button[type="submit"]').textContent = 'Save Changes';
 
-            // 4. Close the player and open the form
-            closeYTPlayer();
-            document.getElementById('ytUploadModal').classList.add('active');
+            // 4. Open the edit form ON TOP of the player (do NOT close the player)
+            //    Temporarily raise the edit modal above the player's z-index
+            const uploadModal = document.getElementById('ytUploadModal');
+            uploadModal.style.zIndex = '200';
+            uploadModal.dataset.openedFromPlayer = 'true';
+            uploadModal.classList.add('active');
         }
 
         function openYTUploadModal() { 
@@ -2693,7 +2696,12 @@ let editingClipId = null; // Track if we are editing
         }
 
         function closeYTUploadModal() { 
-            document.getElementById('ytUploadModal').classList.remove('active');
+            const uploadModal = document.getElementById('ytUploadModal');
+            const openedFromPlayer = uploadModal.dataset.openedFromPlayer === 'true';
+
+            uploadModal.classList.remove('active');
+            uploadModal.style.zIndex = '';
+            uploadModal.dataset.openedFromPlayer = '';
             document.getElementById('ytUploadForm').reset();
             clearSelectedModel();
             
@@ -2701,6 +2709,9 @@ let editingClipId = null; // Track if we are editing
             editingClipId = null;
             document.querySelector('#ytUploadModal h3').textContent = 'Upload New Clip';
             document.querySelector('#ytUploadForm button[type="submit"]').textContent = 'Upload Clip';
+
+            // If opened from player, player is still open behind — nothing else needed
+            // If NOT from player, do nothing (normal close behaviour)
         }
         // --- YT Player Modal ---
        function openYTPlayer(id) {
@@ -4123,8 +4134,17 @@ const addAudioForm = document.getElementById('addAudioForm');
                             
                         if (error) throw error;
                         
+                        const savedEditId = editingClipId;
+                        const uploadModal = document.getElementById('ytUploadModal');
+                        const openedFromPlayer = uploadModal.dataset.openedFromPlayer === 'true';
+
                         closeYTUploadModal();
                         fetchYTClips(true); // Refresh main global grid
+
+                        // If edited from inside the player, refresh the player's displayed info
+                        if (openedFromPlayer && savedEditId) {
+                            openYTPlayer(savedEditId);
+                        }
                         
                     } catch(err) {
                         console.error(err);
