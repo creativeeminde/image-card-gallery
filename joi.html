@@ -1859,6 +1859,27 @@
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Select Tags</label>
+                    <!-- Search / create new tag -->
+                    <div class="relative mb-2">
+                        <div class="flex gap-2">
+                            <div class="relative flex-1">
+                                <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                                <input type="text" id="newModelTagSearch" autocomplete="off" placeholder="Search or create a tag…"
+                                    oninput="filterModelTagsGrid()"
+                                    onkeydown="handleModelTagSearchKey(event)"
+                                    class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl pl-9 pr-4 py-2.5 outline-none text-sm shadow-sm focus:ring-2 focus:ring-[#7fe826] transition-all">
+                            </div>
+                            <button type="button" id="newModelTagCreateBtn" onclick="createAndSelectModelTag()" class="hidden flex-shrink-0 flex items-center gap-1.5 px-3 py-2.5 bg-[#7fe826] hover:bg-[#6ed11f] text-[#111] rounded-xl text-sm font-bold transition-colors shadow-sm">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg>
+                                Create
+                            </button>
+                        </div>
+                        <!-- "No match" hint shown inline when typed value doesn't match existing -->
+                        <p id="newModelTagHint" class="hidden text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 pl-1">
+                            Press <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] font-mono">Enter</kbd> or click <strong>Create</strong> to add this as a new tag.
+                        </p>
+                    </div>
+                    <!-- Tag grid (filtered) -->
                     <div id="newModelTagsGrid" class="flex flex-wrap gap-2 max-h-40 overflow-y-auto custom-scrollbar p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
                     </div>
                 </div>
@@ -2213,6 +2234,7 @@ function initCarouselDrag() {
         let selectedModalTags = new Set();
         let newMediaSelectedTags = new Set();
         let newModelSelectedTags = new Set();
+        let customModelTags = new Set(); // tags created in-session that don't yet exist in any card
         let currentActiveModelData = null;
         let pickerTargetType = null;
         let allLoadedCards = [];
@@ -2309,6 +2331,12 @@ function initCarouselDrag() {
             document.getElementById('modelName').value = '';
             document.getElementById('modelImage').value = '';
             newModelSelectedTags.clear();
+            const searchEl = document.getElementById('newModelTagSearch');
+            if (searchEl) searchEl.value = '';
+            const createBtn = document.getElementById('newModelTagCreateBtn');
+            if (createBtn) createBtn.classList.add('hidden');
+            const hint = document.getElementById('newModelTagHint');
+            if (hint) hint.classList.add('hidden');
             renderNewModelTags();
             document.getElementById('addModelModal').classList.add('active'); 
         }
@@ -2435,22 +2463,42 @@ function closeCategoryModal() {
 }
 
         // --- NEW MODEL TAGS SYSTEM ---
-        function renderNewModelTags() {
-            const grid = document.getElementById('newModelTagsGrid');
-            if (!grid) return;
+        function _getAllModelTags() {
             let tempSet = new Set();
             allLoadedCards.forEach(c => {
-                const addTags = (str) => { if(str) str.split(',').forEach(t => tempSet.add(t.trim())); };
+                const addTags = (str) => { if(str) str.split(',').forEach(t => { const v = t.trim(); if(v) tempSet.add(v); }); };
                 addTags(c.tags); addTags(c.class_tags); addTags(c.amazing_at_tags);
-                (c.related_images_with_tags || []).forEach(a => { if(a.tags) a.tags.split(',').forEach(t => tempSet.add(t.trim())); });
-                (c.related_videos_with_tags || []).forEach(v => { if(v.tags) v.tags.split(',').forEach(t => tempSet.add(t.trim())); });
+                (c.related_images_with_tags || []).forEach(a => { if(a.tags) a.tags.split(',').forEach(t => { const v = t.trim(); if(v) tempSet.add(v); }); });
+                (c.related_videos_with_tags || []).forEach(v => { if(v.tags) v.tags.split(',').forEach(t => { const vv = t.trim(); if(vv) tempSet.add(vv); }); });
             });
-            let displayTags = Array.from(tempSet).filter(t => t).sort();
-            if (displayTags.length === 0) { grid.innerHTML = '<span class="text-xs text-slate-500">No tags available. Add some globally first!</span>'; return; }
+            // merge in any custom tags created this session
+            customModelTags.forEach(t => tempSet.add(t));
+            return Array.from(tempSet).filter(t => t).sort();
+        }
+
+        function renderNewModelTags(filterStr) {
+            const grid = document.getElementById('newModelTagsGrid');
+            if (!grid) return;
+            const q = (filterStr || '').toLowerCase().trim();
+            let displayTags = _getAllModelTags();
+            if (q) displayTags = displayTags.filter(t => t.toLowerCase().includes(q));
+
+            if (displayTags.length === 0) {
+                grid.innerHTML = q
+                    ? `<span class="text-xs text-slate-400 dark:text-slate-500 italic">No matching tags — click <strong>Create</strong> to add "<strong>${q}</strong>".</span>`
+                    : '<span class="text-xs text-slate-500">No tags yet. Type a name above to create one!</span>';
+                return;
+            }
             grid.innerHTML = displayTags.map(tag => {
                 const isSelected = newModelSelectedTags.has(tag);
+                const isNew = customModelTags.has(tag);
                 return `
-                    <button type="button" onclick="toggleNewModelTag('${tag.replace(/'/g, "\\'")}')" class="px-3 py-1.5 rounded-full text-[11px] font-bold transition-colors border ${isSelected ? 'bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] border-transparent shadow-md' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'}">
+                    <button type="button" onclick="toggleNewModelTag('${tag.replace(/'/g, "\\'")}')"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all border
+                        ${isSelected
+                            ? 'bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] border-transparent shadow-md'
+                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-[#7fe826] hover:text-[#3d7a0a] dark:hover:text-[#7fe826]'}">
+                        ${isNew ? '<span class="w-1.5 h-1.5 rounded-full bg-[#7fe826] flex-shrink-0"></span>' : ''}
                         ${tag}
                     </button>
                 `;
@@ -2460,7 +2508,60 @@ function closeCategoryModal() {
         function toggleNewModelTag(tag) {
             if (newModelSelectedTags.has(tag)) newModelSelectedTags.delete(tag);
             else newModelSelectedTags.add(tag);
+            const q = document.getElementById('newModelTagSearch')?.value || '';
+            renderNewModelTags(q);
+        }
+
+        function filterModelTagsGrid() {
+            const searchEl = document.getElementById('newModelTagSearch');
+            const q = searchEl ? searchEl.value.trim() : '';
+            renderNewModelTags(q);
+
+            // Show/hide "Create" button — only if typed value doesn't already exist
+            const allTags = _getAllModelTags();
+            const exact = allTags.some(t => t.toLowerCase() === q.toLowerCase());
+            const createBtn = document.getElementById('newModelTagCreateBtn');
+            const hint = document.getElementById('newModelTagHint');
+            if (q && !exact) {
+                createBtn?.classList.remove('hidden');
+                hint?.classList.remove('hidden');
+            } else {
+                createBtn?.classList.add('hidden');
+                hint?.classList.add('hidden');
+            }
+        }
+
+        function handleModelTagSearchKey(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const createBtn = document.getElementById('newModelTagCreateBtn');
+                if (!createBtn?.classList.contains('hidden')) {
+                    createAndSelectModelTag();
+                }
+            }
+        }
+
+        function createAndSelectModelTag() {
+            const searchEl = document.getElementById('newModelTagSearch');
+            if (!searchEl) return;
+            const newTag = searchEl.value.trim();
+            if (!newTag) return;
+
+            // Check it doesn't already exist
+            const allTags = _getAllModelTags();
+            const existing = allTags.find(t => t.toLowerCase() === newTag.toLowerCase());
+            const finalTag = existing || newTag;
+
+            if (!existing) customModelTags.add(finalTag); // register as custom
+            newModelSelectedTags.add(finalTag);           // auto-select it
+
+            // Reset search
+            searchEl.value = '';
+            document.getElementById('newModelTagCreateBtn')?.classList.add('hidden');
+            document.getElementById('newModelTagHint')?.classList.add('hidden');
             renderNewModelTags();
+
+            showSuccessToast(`Tag "${finalTag}" ${existing ? 'selected' : 'created & selected'}!`);
         }
 
         function renderNewMediaTags() {
