@@ -26,6 +26,7 @@
         }
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -54,6 +55,184 @@
         
         #successToast { transform: translateY(100%); opacity: 0; transition: all 0.3s ease; }
         #successToast.show { transform: translateY(0); opacity: 1; }
+
+        /* ===== SIMILAR MODELS PANEL ===== */
+        #similarModelsPanel {
+            background: white;
+            border-radius: 1.5rem;
+            padding: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .dark #similarModelsPanel { background: #1e293b; }
+        .similar-model-card {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+        .similar-model-card:hover { background: rgba(127,232,38,0.08); }
+        /* ===== /SIMILAR MODELS PANEL ===== */
+
+        /* ===== CLOSE-UP SLIDE TRANSITION ===== */
+        @keyframes slideInFromRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to   { transform: translateX(0);    opacity: 1; }
+        }
+        @keyframes slideInFromLeft {
+            from { transform: translateX(-100%); opacity: 0; }
+            to   { transform: translateX(0);     opacity: 1; }
+        }
+        @keyframes slideOutToLeft {
+            from { transform: translateX(0);    opacity: 1; }
+            to   { transform: translateX(-100%); opacity: 0; }
+        }
+        @keyframes slideOutToRight {
+            from { transform: translateX(0);   opacity: 1; }
+            to   { transform: translateX(100%); opacity: 0; }
+        }
+        #closeUpImageSlider img.slide-in-right  { animation: slideInFromRight 0.38s cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
+        #closeUpImageSlider img.slide-in-left   { animation: slideInFromLeft  0.38s cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
+        #closeUpImageSlider img.slide-out-left  { animation: slideOutToLeft   0.32s cubic-bezier(0.25,0.46,0.45,0.94) forwards; pointer-events:none; }
+        #closeUpImageSlider img.slide-out-right { animation: slideOutToRight  0.32s cubic-bezier(0.25,0.46,0.45,0.94) forwards; pointer-events:none; }
+        /* ===== /CLOSE-UP SLIDE TRANSITION ===== */
+
+        /* ===== CLOSE-UP FULLSCREEN MODE ===== */
+        :fullscreen #closeUpView,
+        :-webkit-full-screen #closeUpView {
+            background: #000;
+            overflow: hidden;
+        }
+        :fullscreen #closeUpMainPanelWrapper,
+        :-webkit-full-screen #closeUpMainPanelWrapper {
+            display: flex !important;
+            width: 100vw !important;
+            height: 100dvh !important;
+            max-width: 100vw !important;
+        }
+        /* In fullscreen: hide sidebar panels, show only image */
+        :fullscreen #closeUpRightPanel,
+        :-webkit-full-screen #closeUpRightPanel,
+        :fullscreen #closeUpAvatarColumn,
+        :-webkit-full-screen #closeUpAvatarColumn,
+        :fullscreen #quickTagThumbnails,
+        :-webkit-full-screen #quickTagThumbnails,
+        :fullscreen .close-up-back-btn,
+        :-webkit-full-screen .close-up-back-btn {
+            display: none !important;
+        }
+        :fullscreen #closeUpImageColumn,
+        :-webkit-full-screen #closeUpImageColumn {
+            width: 100vw !important;
+            max-width: 100vw !important;
+            height: 100dvh !important;
+        }
+        :fullscreen #closeUpImageColumn > div,
+        :-webkit-full-screen #closeUpImageColumn > div {
+            height: 100dvh !important;
+            aspect-ratio: unset !important;
+        }
+        /* Fullscreen exit button */
+        #closeUpFsExitBtn {
+            display: none;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            padding: 10px 18px;
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 999px;
+            color: white;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        #closeUpFsExitBtn:hover { background: rgba(0,0,0,0.8); }
+        :fullscreen #closeUpFsExitBtn,
+        :-webkit-full-screen #closeUpFsExitBtn { display: flex; align-items: center; gap: 8px; }
+        /* ===== /CLOSE-UP FULLSCREEN MODE ===== */
+
+        /* ===== RECENTLY VISITED ROW ===== */
+        #recentlyVisitedRow {
+            display: flex;
+            gap: 12px;
+            overflow-x: auto;
+            padding: 4px 2px 8px;
+            scrollbar-width: none;
+        }
+        #recentlyVisitedRow::-webkit-scrollbar { display: none; }
+        .recently-visited-card {
+            flex-shrink: 0;
+            width: 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+        .recently-visited-ring {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            position: relative;
+            flex-shrink: 0;
+            transition: transform 0.2s ease;
+        }
+        .recently-visited-card:hover .recently-visited-ring { transform: scale(1.1); }
+        .recently-visited-ring .rv-inner {
+            position: absolute;
+            inset: 3px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 2px solid var(--bg-color, #f1f5f0);
+        }
+        .recently-visited-ring img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .recently-visited-name {
+            font-size: 10px;
+            font-weight: 700;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 75px;
+            color: #64748b;
+        }
+        .dark .recently-visited-name { color: #94a3b8; }
+        /* ===== /RECENTLY VISITED ROW ===== */
+
+        .gallery-hotness-ring {
+            position: absolute;
+            inset: 0;
+            border-radius: 1.5rem;
+            pointer-events: none;
+            z-index: 15;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .gallery-model-card:hover .gallery-hotness-ring {
+            opacity: 1;
+        }
+        .gallery-hotness-ring::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 1.5rem;
+            padding: 3px;
+            background: var(--ring-gradient);
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+        }
+        /* ===== /HOTNESS RING ===== */
 
         .gallery-model-card { cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; }
         .gallery-model-card:hover { transform: translateY(-4px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05); }
@@ -826,6 +1005,15 @@
 
             <div id="modelsAlphabetBar" class="flex items-center justify-center gap-1 sm:gap-1.5 pb-4 mb-4 overflow-x-auto no-scrollbar w-full border-b border-slate-200/50 dark:border-slate-700/50"></div>
 
+            <!-- Recently Visited Row -->
+            <div id="recentlyVisitedSection" class="hidden mb-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Recently Visited</h3>
+                    <button onclick="clearRecentlyVisited()" class="text-[10px] text-slate-400 hover:text-red-400 transition-colors font-medium">Clear</button>
+                </div>
+                <div id="recentlyVisitedRow"></div>
+            </div>
+
             <div id="modelsEmptyState" class="hidden flex-col items-center justify-center py-24 px-4 text-center bg-white/50 dark:bg-slate-800/50 border border-dashed border-slate-300 dark:border-slate-700 rounded-[2rem] backdrop-blur-sm transition-colors duration-300">
                 <svg class="w-16 h-16 text-slate-300 dark:text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                 <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-1">No models found</h3>
@@ -886,6 +1074,11 @@
         </div>
 
         <div id="closeUpView" class="view-section hidden lg:px-6 w-full max-w-[1500px] mx-auto -mt-[85px] pt-[85px]">
+            <!-- Fullscreen exit button (only visible in fullscreen via CSS) -->
+            <button id="closeUpFsExitBtn" onclick="toggleCloseUpFullscreen()" title="Exit Fullscreen">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 3v3a2 2 0 01-2 2H3m18 0h-3a2 2 0 01-2-2V3m0 18v-3a2 2 0 012-2h3M3 16h3a2 2 0 012 2v3"></path></svg>
+                Exit Fullscreen
+            </button>
             <div class="flex flex-col lg:grid lg:grid-cols-[1fr_auto_1fr] items-start gap-0 lg:gap-10 xl:gap-14 pt-0 lg:pt-2 w-full">
                 
                 <div class="w-full lg:w-[320px] xl:w-[360px] justify-self-center z-10 flex-shrink-0 order-1 lg:order-2 flex flex-col items-center">
@@ -893,13 +1086,25 @@
                     <h1 id="closeUpModelName" class="text-2xl xl:text-3xl font-extrabold text-slate-900 dark:text-white text-center tracking-tight w-full truncate px-2 leading-none"></h1>
                 </div>
 
-                <div class="relative w-full h-[calc(100dvh-85px)] lg:h-auto lg:w-full lg:aspect-[3/4] overflow-hidden lg:overflow-visible bg-transparent">
+                <div id="closeUpImageColumn" class="relative w-full h-[calc(100dvh-85px)] lg:h-auto lg:w-full lg:aspect-[3/4] overflow-hidden lg:overflow-visible bg-transparent">
                     <button onclick="document.querySelector('.nav-item[data-target=\'modelsView\']').click()" class="lg:hidden absolute top-4 left-4 z-50 p-2.5 bg-black/40 hover:bg-black/60 backdrop-blur-md rounded-full text-white transition-all border border-white/20 shadow-lg">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                     </button>
-                    <img id="closeUpMainImage" src="" fetchpriority="high" decoding="async" class="w-full h-full object-cover object-center transition-all duration-500">
+                    <div id="closeUpImageSlider" class="absolute inset-0 overflow-hidden" style="border-radius:inherit;">
+                        <img id="closeUpMainImage" src="" fetchpriority="high" decoding="async" class="w-full h-full object-cover object-center absolute inset-0">
+                    </div>
                     <button onclick="openEditMainImageModal()" class="absolute bottom-4 right-4 lg:bottom-6 lg:right-6 z-50 p-3 bg-black/50 hover:bg-black/80 backdrop-blur-md rounded-full text-white transition-all border border-white/10 shadow-lg group">
                         <svg class="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                    </button>
+                    <!-- Fullscreen Button -->
+                    <button onclick="toggleCloseUpFullscreen()" id="closeUpFullscreenBtn" class="absolute top-4 right-4 z-50 p-2.5 bg-black/40 hover:bg-black/70 backdrop-blur-md rounded-full text-white transition-all border border-white/20 shadow-lg group" title="Fullscreen (F)">
+                        <svg id="closeUpFsIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+                    </button>
+                    <button onclick="navigateCloseUp(-1)" class="absolute left-4 top-1/2 -translate-y-1/2 z-50 p-3 bg-black/40 hover:bg-black/70 backdrop-blur-md rounded-full text-white transition-all border border-white/20 shadow-lg group" title="Previous Model">
+                        <svg class="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                    </button>
+                    <button onclick="navigateCloseUp(1)" class="absolute right-4 top-1/2 -translate-y-1/2 z-50 p-3 bg-black/40 hover:bg-black/70 backdrop-blur-md rounded-full text-white transition-all border border-white/20 shadow-lg group" title="Next Model">
+                        <svg class="w-5 h-5 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                     </button>
                     <div id="mobileCarouselContainer" class="absolute bottom-0 left-0 w-full lg:hidden z-20 hidden">
                         <div class="absolute bottom-0 left-0 w-full h-40 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none"></div>
@@ -908,7 +1113,7 @@
                 </div> <div id="quickTagThumbnails" class="flex items-center justify-center gap-3 mt-4 overflow-x-auto no-scrollbar w-full px-2 py-2">
                     </div>
 
-            </div> <div class="w-full lg:max-w-[440px] justify-self-end min-w-0 order-2 lg:order-1 px-6 lg:px-0 py-8 lg:py-0 flex gap-4 xl:gap-6"><div id="closeUpAvatarColumn" class="hidden lg:flex flex-col gap-4 overflow-y-auto no-scrollbar h-[calc(100vh-120px)] w-22 xl:w-26 shrink-0 sticky top-4 pt-14 pb-10 items-center"></div>
+            </div> <div id="closeUpRightPanel" class="w-full lg:max-w-[440px] justify-self-end min-w-0 order-2 lg:order-1 px-6 lg:px-0 py-8 lg:py-0 flex gap-4 xl:gap-6"><div id="closeUpAvatarColumn" class="hidden lg:flex flex-col gap-4 overflow-y-auto no-scrollbar h-[calc(100vh-120px)] w-22 xl:w-26 shrink-0 sticky top-4 pt-14 pb-10 items-center"></div>
                     <div class="flex-1 space-y-1 lg:space-y-1 min-w-0">
                         <div class="hidden lg:flex items-center h-10 mb-4">
                             <button onclick="document.querySelector('.nav-item[data-target=\'modelsView\']').click()" class="flex items-center gap-3 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors group">
@@ -1002,10 +1207,21 @@
                             </div>
                             <div id="closeUpClipsGrid" class="grid grid-cols-3 gap-4"></div>
                         </div>
+                        <!-- Similar Models Panel -->
+                        <div id="similarModelsPanel" class="hidden">
+                            <div class="mb-3">
+                                <p class="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Because you viewed</p>
+                                <div class="flex items-end justify-between gap-2">
+                                    <h2 id="similarModelsTitle" class="text-[17px] font-bold text-slate-900 dark:text-white leading-tight truncate"></h2>
+                                    <span id="similarModelsCount" class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex-shrink-0 pb-0.5"></span>
+                                </div>
+                            </div>
+                            <div id="similarModelsGrid" class="flex flex-col gap-2"></div>
+                        </div>
+
                         <div class="pt-2">
                             <div class="flex justify-between items-center mb-4">
-                                <h2 class="text-[17px] font-bold text-slate-900 dark:text-white">Moaning Vibes</h2>
-                                <button onclick="openAddAudioModal()" class="w-7 h-7 rounded-full bg-slate-50 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors">
+                                <h2 class="text-[17px] font-bold text-slate-900 dark:text-white">Moaning Vibes</h2>                                <button onclick="openAddAudioModal()" class="w-7 h-7 rounded-full bg-slate-50 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                                 </button>
                             </div>
@@ -1205,6 +1421,14 @@
               <select id="infiniteTagFilter" class="bg-transparent text-sm outline-none font-medium text-slate-700 dark:text-slate-200 cursor-pointer">
                     <option value="all">Tags</option>
                 </select>
+                <div class="w-px h-4 bg-slate-200 dark:bg-slate-600"></div>
+                <label class="flex items-center gap-2 cursor-pointer" title="Snap to Grid">
+                    <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400 hidden sm:block">Snap</span>
+                    <div id="snapGridToggle" class="w-7 h-4 bg-slate-300 dark:bg-slate-600 rounded-full relative transition-colors duration-300 cursor-pointer" onclick="toggleSnapGrid()">
+                        <div id="snapGridThumb" class="w-3 h-3 bg-white rounded-full absolute top-0.5 left-0.5 transition-transform duration-300 shadow-sm"></div>
+                    </div>
+                </label>
+                <button onclick="tidyInfiniteCanvas()" class="text-[11px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors" title="Auto-arrange items">Tidy</button>
             </div>
             
             <div class="absolute bottom-6 sm:bottom-8 right-4 sm:right-8 z-20 flex flex-col gap-2 sm:gap-3 pointer-events-auto">
@@ -5463,6 +5687,711 @@ const addAudioForm = document.getElementById('addAudioForm');
                 }
             });
         });
+
+        // ==========================================
+        // FEATURE 1: GALLERY HOTNESS RING (injected via generateGalleryCardHTML patch)
+        // ==========================================
+        // Patch generateGalleryCardHTML to add hotness rings
+        (function() {
+            const origFn = window.generateGalleryCardHTML || generateGalleryCardHTML;
+            const patched = function(cardData) {
+                const ratingNum = cardData.rating_hotness ?? 50;
+                const ratingBadgeHTML = `<span class="absolute bottom-3 left-3 z-10 bg-[#111]/90 dark:bg-slate-900/90 backdrop-blur-md text-white text-[10px] font-bold px-2.5 py-1 rounded-lg shadow-sm">${ratingNum}%</span>`;
+                
+                // Build hotness ring using conic-gradient
+                const ringColor = ratingNum >= 80 ? '#7fe826' : ratingNum >= 60 ? '#a3ff4d' : ratingNum >= 40 ? '#fbbf24' : '#f87171';
+                const ringStyle = `conic-gradient(${ringColor} 0% ${ratingNum}%, transparent ${ratingNum}% 100%)`;
+
+                let mediaHTML = '';
+                if (isGalleryVideoMode) {
+                    let clipVideo = null;
+                    if (cardData.related_videos_with_tags) {
+                        clipVideo = cardData.related_videos_with_tags.find(v => (v.tags || '').toLowerCase().includes('clip'));
+                    }
+                    if (clipVideo) {
+                        const vidUrl = optimizeMediaUrl(clipVideo.url || clipVideo.video_url || clipVideo.src || clipVideo, true);
+                        mediaHTML = `<video data-src="${vidUrl}" preload="none" class="lazy-media gallery-video opacity-0 w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105" muted loop playsinline></video>`;
+                    }
+                }
+                if (!mediaHTML) {
+                    const optUrl = optimizeMediaUrl(cardData.main_image_url, false, 400);
+                    mediaHTML = `<img data-src="${optUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105">`;
+                }
+
+                return `
+                    <div class="gallery-model-card relative w-full cursor-pointer group overflow-hidden bg-slate-100 dark:bg-slate-900 rounded-[1.5rem]" onclick="openModelById(${cardData.id})" title="${cardData.title}">
+                        <div class="relative aspect-[10/16] w-full h-full">
+                            ${mediaHTML}
+                            ${ratingBadgeHTML}
+                            <div class="gallery-hotness-ring" style="--ring-gradient: ${ringStyle};"></div>
+                        </div>
+                    </div>
+                `;
+            };
+            // Override the global function
+            window.generateGalleryCardHTML = patched;
+        })();
+
+        // ==========================================
+        // FEATURE 2: RECENTLY VISITED MODELS
+        // ==========================================
+        const RECENTLY_VISITED_KEY = 'studiohub_recently_visited';
+        const MAX_RECENTLY_VISITED = 8;
+
+        function getRecentlyVisited() {
+            try { return JSON.parse(localStorage.getItem(RECENTLY_VISITED_KEY) || '[]'); }
+            catch(e) { return []; }
+        }
+
+        function addToRecentlyVisited(modelId) {
+            try {
+                let list = getRecentlyVisited();
+                list = list.filter(id => id !== modelId);
+                list.unshift(modelId);
+                if (list.length > MAX_RECENTLY_VISITED) list = list.slice(0, MAX_RECENTLY_VISITED);
+                localStorage.setItem(RECENTLY_VISITED_KEY, JSON.stringify(list));
+            } catch(e) {}
+        }
+
+        function renderRecentlyVisitedRow() {
+            const section = document.getElementById('recentlyVisitedSection');
+            const row = document.getElementById('recentlyVisitedRow');
+            if (!section || !row) return;
+            const visited = getRecentlyVisited().map(id => allLoadedCards.find(c => c.id === id)).filter(Boolean);
+            if (visited.length === 0) { section.classList.add('hidden'); return; }
+            section.classList.remove('hidden');
+            const isDark = document.documentElement.classList.contains('dark');
+            const bgColor = isDark ? '#0f172a' : '#f1f5f0';
+            row.innerHTML = visited.map(card => {
+                const rating = card.rating_hotness ?? 50;
+                const avatarAsset = (card.related_images_with_tags || []).find(a => (a.tags||'').toLowerCase().includes('avatar'));
+                let avatarUrl = avatarAsset ? optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset, false, 100) : optimizeMediaUrl(card.main_image_url, false, 100);
+                return `
+                    <div class="recently-visited-card" onclick="openModelById(${card.id})" title="${card.title}">
+                        <div class="recently-visited-ring" style="background: conic-gradient(#7fe826 0% ${rating}%, #e2e8f0 ${rating}% 100%);">
+                            <div class="rv-inner" style="--bg-color:${bgColor}; border-color:${bgColor}">
+                                <img src="${avatarUrl}" alt="${card.title}" loading="lazy">
+                            </div>
+                        </div>
+                        <span class="recently-visited-name">${card.title}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function clearRecentlyVisited() {
+            try { localStorage.removeItem(RECENTLY_VISITED_KEY); }
+            catch(e) {}
+            renderRecentlyVisitedRow();
+        }
+
+        // Patch openModelById to track recently visited
+        (function() {
+            const origOpenModelById = window.openModelById || openModelById;
+            window.openModelById = function(id) {
+                addToRecentlyVisited(id);
+                origOpenModelById(id);
+                // Re-render recently visited row if gallery is visible
+                renderRecentlyVisitedRow();
+            };
+        })();
+
+        // ==========================================
+        // FEATURE 5: AUTO-TAGGING SUGGESTIONS
+        // ==========================================
+        function suggestTagsFromUrl(url) {
+            if (!url) return [];
+            const lower = url.toLowerCase();
+            const suggestions = [];
+            const urlPatterns = [
+                { patterns: ['face', 'facial', 'head'], tag: 'Face' },
+                { patterns: ['ass', 'butt', 'glute', 'booty', 'bum'], tag: 'Ass' },
+                { patterns: ['tit', 'breast', 'boob', 'chest', 'topless'], tag: 'Tits' },
+                { patterns: ['pussy', 'puss', 'vagina'], tag: 'Pussy Close Up' },
+                { patterns: ['nude', 'naked', 'full_nude', 'fullnude'], tag: 'Full Nude' },
+                { patterns: ['.mp4', '.webm', '.mov', 'clip', 'video', 'vid'], tag: 'Clip' },
+                { patterns: ['avatar', 'profile', 'pfp', 'headshot'], tag: 'Avatar' },
+                { patterns: ['bj', 'blowjob', 'oral'], tag: 'BJ' },
+                { patterns: ['cowgirl', 'riding', 'ride'], tag: 'Cowgirl' },
+                { patterns: ['doggy', 'doggystyle'], tag: 'Doggy' },
+            ];
+            urlPatterns.forEach(({ patterns, tag }) => {
+                if (patterns.some(p => lower.includes(p))) suggestions.push(tag);
+            });
+            return [...new Set(suggestions)];
+        }
+
+        // Hook into media URL input to auto-suggest tags
+        document.addEventListener('DOMContentLoaded', () => {
+            const mediaUrlInput = document.getElementById('mediaUrlInput');
+            if (mediaUrlInput) {
+                mediaUrlInput.addEventListener('blur', () => {
+                    const url = mediaUrlInput.value;
+                    const suggestions = suggestTagsFromUrl(url);
+                    suggestions.forEach(tag => { newMediaSelectedTags.add(tag); });
+                    if (suggestions.length > 0) renderNewMediaTags();
+                });
+            }
+        });
+
+        // ==========================================
+        // FEATURE 4: SIMILAR MODELS PANEL
+        // ==========================================
+        function renderSimilarModels(currentModel) {
+            const panel = document.getElementById('similarModelsPanel');
+            const grid = document.getElementById('similarModelsGrid');
+            const countEl = document.getElementById('similarModelsCount');
+            const titleEl = document.getElementById('similarModelsTitle');
+            if (!panel || !grid || !currentModel) return;
+
+            // Set dynamic "Because you viewed X" title
+            if (titleEl) titleEl.textContent = currentModel.title || 'this model';
+
+            const currentClassTags = (currentModel.class_tags || '').split(',').map(t => t.trim()).filter(t => t);
+            const currentAmazingTags = (currentModel.amazing_at_tags || '').split(',').map(t => t.trim()).filter(t => t);
+            const currentTags = [...currentClassTags, ...currentAmazingTags];
+
+            if (currentTags.length === 0) { panel.classList.add('hidden'); return; }
+
+            const similar = allLoadedCards
+                .filter(c => c.id !== currentModel.id)
+                .map(c => {
+                    const cTags = [
+                        ...(c.class_tags || '').split(',').map(t => t.trim()).filter(t => t),
+                        ...(c.amazing_at_tags || '').split(',').map(t => t.trim()).filter(t => t),
+                    ];
+                    // Score: class_tag matches worth 2pts, amazing_at matches worth 1pt — incentivises body-type overlap
+                    let score = 0;
+                    const matchTags = [];
+                    for (const t of currentTags) {
+                        if (cTags.includes(t)) {
+                            score += currentClassTags.includes(t) ? 2 : 1;
+                            matchTags.push(t);
+                        }
+                    }
+                    return { card: c, score, matchCount: matchTags.length, matchTags };
+                })
+                .filter(x => x.matchCount >= 2)
+                .sort((a, b) => b.score - a.score || b.matchCount - a.matchCount)
+                .slice(0, 6);
+
+            if (similar.length === 0) { panel.classList.add('hidden'); return; }
+            panel.classList.remove('hidden');
+            if (countEl) countEl.textContent = `${similar.length} similar`;
+
+            grid.innerHTML = similar.map(({ card, matchCount, matchTags }) => {
+                const avatarAsset = (card.related_images_with_tags || []).find(a => (a.tags||'').toLowerCase().includes('avatar'));
+                const avatarUrl = avatarAsset
+                    ? optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset, false, 80)
+                    : optimizeMediaUrl(card.main_image_url, false, 80);
+                const rating = card.rating_hotness ?? 50;
+                // Colour gradient: ≥4 = lime, 3 = amber, 2 = rose
+                const scoreColor = matchCount >= 4 ? '#7fe826' : matchCount === 3 ? '#f59e0b' : '#f43f5e';
+                // Tag chips — max 4 shown
+                const chipHtml = matchTags.slice(0, 4).map(tag =>
+                    `<span style="background:${scoreColor}18;color:${scoreColor};border:1px solid ${scoreColor}44"
+                           class="inline-block text-[9px] font-semibold px-1.5 py-px rounded-full leading-tight whitespace-nowrap">${tag}</span>`
+                ).join('');
+                return `
+                    <div class="similar-model-card group cursor-pointer" onclick="openModelById(${card.id})"
+                         style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:12px;
+                                transition:background 0.15s;background:transparent;"
+                         onmouseenter="this.style.background='rgba(127,232,38,0.06)'"
+                         onmouseleave="this.style.background='transparent'">
+                        <div class="relative flex-shrink-0" style="width:44px;height:44px;">
+                            <div class="absolute inset-0 rounded-full" style="background:conic-gradient(${scoreColor} 0% ${rating}%,#e2e8f030 ${rating}% 100%);"></div>
+                            <div class="absolute inset-[2.5px] rounded-full overflow-hidden">
+                                <img src="${avatarUrl}" class="w-full h-full object-cover" loading="lazy">
+                            </div>
+                        </div>
+                        <div class="flex-1 min-w-0 pt-0.5">
+                            <p class="text-sm font-bold text-slate-900 dark:text-white truncate leading-tight mb-1.5">${card.title}</p>
+                            <div class="flex flex-wrap gap-1">${chipHtml}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Patch openCloseUpPage to call renderSimilarModels after data is set
+        (function() {
+            const origOpenCloseUp = window.openCloseUpPage;
+            if (origOpenCloseUp) {
+                window.openCloseUpPage = async function(cardData) {
+                    await origOpenCloseUp(cardData);
+                    renderSimilarModels(cardData);
+                    addToRecentlyVisited(cardData.id);
+                };
+            }
+        })();
+
+        // ==========================================
+        // FEATURE 6: SNAP-TO-GRID + TIDY CANVAS
+        // ==========================================
+        let snapGridEnabled = false;
+        const SNAP_SIZE = 20;
+
+        function toggleSnapGrid() {
+            snapGridEnabled = !snapGridEnabled;
+            const toggle = document.getElementById('snapGridToggle');
+            const thumb = document.getElementById('snapGridThumb');
+            if (snapGridEnabled) {
+                toggle.classList.add('bg-[#7fe826]');
+                toggle.classList.remove('bg-slate-300', 'dark:bg-slate-600');
+                if (thumb) thumb.style.transform = 'translateX(12px)';
+            } else {
+                toggle.classList.remove('bg-[#7fe826]');
+                toggle.classList.add('bg-slate-300', 'dark:bg-slate-600');
+                if (thumb) thumb.style.transform = 'translateX(0)';
+            }
+        }
+
+        function snapToGrid(val) {
+            if (!snapGridEnabled) return val;
+            return Math.round(val / SNAP_SIZE) * SNAP_SIZE;
+        }
+
+        async function tidyInfiniteCanvas() {
+            if (infiniteItems.length === 0) return;
+            const COLS = Math.ceil(Math.sqrt(infiniteItems.length));
+            const GAP_X = INF_ITEM_WIDTH + 40;
+            const GAP_Y = INF_ITEM_HEIGHT + 40;
+
+            const updates = [];
+            infiniteItems.forEach((item, i) => {
+                const col = i % COLS;
+                const row = Math.floor(i / COLS);
+                item.x = col * GAP_X;
+                item.y = row * GAP_Y;
+                updates.push(supabaseClient.from('infinite_canvas_items').update({ x: item.x, y: item.y }).eq('id', item.id));
+            });
+
+            // Clear and re-render
+            for (let [id, el] of activeVisibleItems.entries()) {
+                if (el && el.parentNode) el.parentNode.removeChild(el);
+            }
+            activeVisibleItems.clear();
+
+            const totalW = COLS * GAP_X;
+            const totalH = Math.ceil(infiniteItems.length / COLS) * GAP_Y;
+            infScale = 0.3;
+            infX = (window.innerWidth / 2) - (totalW / 2) * infScale;
+            infY = (window.innerHeight / 2) - (totalH / 2) * infScale;
+
+            renderInfiniteCanvas();
+            showSuccessToast('Canvas tidied!');
+            await Promise.allSettled(updates);
+        }
+
+        // Patch item drag to apply snap
+        (function() {
+            const origMouseMove = window._infMouseMove;
+            window.addEventListener('mousemove', (e) => {
+                if (isItemDragging && draggedItem && draggedItemEl && snapGridEnabled) {
+                    // After base drag logic runs, snap the position
+                    requestAnimationFrame(() => {
+                        if (draggedItem && snapGridEnabled) {
+                            draggedItem.x = snapToGrid(draggedItem.x);
+                            draggedItem.y = snapToGrid(draggedItem.y);
+                            draggedItemEl.style.left = `${draggedItem.x}px`;
+                            draggedItemEl.style.top = `${draggedItem.y}px`;
+                        }
+                    });
+                }
+            }, true);
+        })();
+
+        // ==========================================
+        // FEATURE 7: CLOSE-UP PREV/NEXT NAVIGATION (with slide animation)
+        // ==========================================
+        let _closeUpSliding = false;
+
+        function navigateCloseUp(direction) {
+            if (_closeUpSliding) return; // prevent rapid fire during animation
+            if (!currentActiveModelData || allLoadedCards.length === 0) return;
+            const currentIdx = allLoadedCards.findIndex(c => c.id === currentActiveModelData.id);
+            if (currentIdx === -1) return;
+            let newIdx = currentIdx + direction;
+            if (newIdx < 0) newIdx = allLoadedCards.length - 1;
+            if (newIdx >= allLoadedCards.length) newIdx = 0;
+            const nextCard = allLoadedCards[newIdx];
+            if (!nextCard) return;
+
+            const slider = document.getElementById('closeUpImageSlider');
+            const currentImg = document.getElementById('closeUpMainImage');
+
+            // direction: 1 = going forward (next), -1 = going back (prev)
+            const outClass    = direction > 0 ? 'slide-out-left'  : 'slide-out-right';
+            const inClass     = direction > 0 ? 'slide-in-right'  : 'slide-in-left';
+
+            if (!slider || !currentImg) {
+                // Fallback: no animation
+                openCloseUpPage(nextCard);
+                return;
+            }
+
+            _closeUpSliding = true;
+
+            // Clone current image to animate out
+            const outgoingImg = currentImg.cloneNode();
+            outgoingImg.removeAttribute('id');
+            outgoingImg.className = 'w-full h-full object-cover object-center absolute inset-0';
+            slider.appendChild(outgoingImg);
+
+            // Animate outgoing image out
+            requestAnimationFrame(() => {
+                outgoingImg.classList.add(outClass);
+            });
+
+            // Prepare incoming image (off-screen, hidden)
+            currentImg.style.opacity = '0';
+            currentImg.style.transform = direction > 0 ? 'translateX(100%)' : 'translateX(-100%)';
+            currentImg.classList.remove('slide-in-right', 'slide-in-left');
+
+            // Load new page data (don't await the full openCloseUpPage — we handle image separately)
+            openCloseUpPage(nextCard).then(() => {
+                // After data swap, animate the main image in
+                requestAnimationFrame(() => {
+                    currentImg.style.opacity = '';
+                    currentImg.style.transform = '';
+                    currentImg.classList.add(inClass);
+                });
+
+                // Clean up outgoing image after animation completes
+                setTimeout(() => {
+                    if (outgoingImg.parentNode) outgoingImg.parentNode.removeChild(outgoingImg);
+                    currentImg.classList.remove(inClass);
+                    _closeUpSliding = false;
+                }, 420);
+            }).catch(() => {
+                // Clean up on error
+                if (outgoingImg.parentNode) outgoingImg.parentNode.removeChild(outgoingImg);
+                currentImg.style.opacity = '';
+                currentImg.style.transform = '';
+                _closeUpSliding = false;
+            });
+        }
+
+        // ==========================================
+        // FEATURE 3: GLOBAL KEYBOARD NAVIGATION
+        // ==========================================
+        document.addEventListener('keydown', (e) => {
+            // Ignore when typing in inputs
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+
+            const activeView = [...document.querySelectorAll('.view-section')].find(s => !s.classList.contains('hidden') && s.style.display !== 'none');
+            const viewId = activeView ? activeView.id : null;
+
+            // ESCAPE: close any open modal
+            if (e.key === 'Escape') {
+                if (document.getElementById('ytPlayerModal').classList.contains('active')) { closeYTPlayer(); return; }
+                if (document.getElementById('lightboxModal').classList.contains('active')) { closeLightbox(); return; }
+                if (document.getElementById('tagPickerModal').classList.contains('active')) { closeTagPicker(); return; }
+                if (document.getElementById('addModelModal').classList.contains('active')) { closeModelModal(); return; }
+                if (document.getElementById('addMediaModal').classList.contains('active')) { closeAddMediaModal(); return; }
+                if (document.getElementById('ytUploadModal').classList.contains('active')) { closeYTUploadModal(); return; }
+                return;
+            }
+
+            // LIGHTBOX keyboard nav
+            if (document.getElementById('lightboxModal').classList.contains('active')) {
+                if (e.key === 'ArrowLeft') { navigateLightbox(-1); return; }
+                if (e.key === 'ArrowRight') { navigateLightbox(1); return; }
+                if (e.key === ' ') { e.preventDefault(); togglePlayPause(null); return; }
+                return;
+            }
+
+            // YT PLAYER keyboard nav
+            if (document.getElementById('ytPlayerModal').classList.contains('active')) {
+                const vidEl = document.getElementById('ytPlayerVideo');
+                if (e.key === ' ') {
+                    e.preventDefault();
+                    if (vidEl.paused) { vidEl.play().catch(()=>{}); } else { vidEl.pause(); }
+                    return;
+                }
+                if (e.key === 'ArrowLeft') { e.preventDefault(); vidEl.currentTime = Math.max(0, vidEl.currentTime - 10); return; }
+                if (e.key === 'ArrowRight') { e.preventDefault(); vidEl.currentTime = Math.min(vidEl.duration || 0, vidEl.currentTime + 10); return; }
+                return;
+            }
+
+            // RUNWAY arrow navigation
+            if (viewId === 'runwayView') {
+                if (e.key === 'ArrowLeft') { e.preventDefault(); prevRunway(); return; }
+                if (e.key === 'ArrowRight') { e.preventDefault(); nextRunway(); return; }
+            }
+
+            // CLOSE-UP arrow navigation
+            if (viewId === 'closeUpView') {
+                if (e.key === 'ArrowLeft') { e.preventDefault(); navigateCloseUp(-1); return; }
+                if (e.key === 'ArrowRight') { e.preventDefault(); navigateCloseUp(1); return; }
+            }
+        });
+
+        // Init recently visited on load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Render recently visited after models load — hook into existing flow
+            const origApplyFilters = window.applyFilters;
+            window.applyFilters = function() {
+                origApplyFilters();
+                renderRecentlyVisitedRow();
+            };
+        });
+
+        // ==========================================
+        // FEATURE 8: CLOSE-UP FULLSCREEN MODE
+        // ==========================================
+        let _isCloseUpFullscreen = false;
+
+        function toggleCloseUpFullscreen() {
+            const closeUpEl = document.getElementById('closeUpView');
+            if (!closeUpEl) return;
+
+            if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+                // Enter fullscreen on the closeUpView element
+                const reqFs = closeUpEl.requestFullscreen || closeUpEl.webkitRequestFullscreen;
+                if (reqFs) {
+                    reqFs.call(closeUpEl).then(() => {
+                        _isCloseUpFullscreen = true;
+                        updateFsButtonIcon(true);
+                    }).catch(err => console.warn('Fullscreen error:', err));
+                }
+            } else {
+                exitCloseUpFullscreen();
+            }
+        }
+
+        function exitCloseUpFullscreen() {
+            const exitFs = document.exitFullscreen || document.webkitExitFullscreen;
+            if (exitFs) exitFs.call(document);
+            _isCloseUpFullscreen = false;
+            updateFsButtonIcon(false);
+        }
+
+        function updateFsButtonIcon(isFs) {
+            const icon = document.getElementById('closeUpFsIcon');
+            if (!icon) return;
+            if (isFs) {
+                // Compress/exit icon
+                icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 3v3a2 2 0 01-2 2H3m18 0h-3a2 2 0 01-2-2V3m0 18v-3a2 2 0 012-2h3M3 16h3a2 2 0 012 2v3"></path>`;
+            } else {
+                // Expand icon
+                icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path>`;
+            }
+        }
+
+        // Listen for native fullscreen exit (e.g. Esc key)
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                _isCloseUpFullscreen = false;
+                updateFsButtonIcon(false);
+            }
+        });
+        document.addEventListener('webkitfullscreenchange', () => {
+            if (!document.webkitFullscreenElement) {
+                _isCloseUpFullscreen = false;
+                updateFsButtonIcon(false);
+            }
+        });
+
+        // ==========================================
+        // FEATURE 9: CLIP SERIES (ordered sequences with auto-advance)
+        // ==========================================
+        // Series are stored in `playlists` table with a `series_mode = true` flag
+        // and `playlist_clips` with an `order_index` column.
+        // The UI adds a "Series" section in the OnlyClips sidebar.
+
+        let allSeries = [];
+        let currentSeriesId = null;
+        let currentSeriesClips = [];
+        let currentSeriesIndex = -1;
+        let seriesAutoAdvanceTimer = null;
+
+        async function fetchSeries() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('playlists')
+                    .select('*')
+                    .eq('series_mode', true)
+                    .order('created_at', { ascending: false });
+                if (data) {
+                    allSeries = data;
+                    renderSeriesSidebar();
+                }
+            } catch(e) {
+                // series_mode column might not exist yet — graceful fallback
+                console.info('Series: playlists.series_mode column not found. Run the SQL migration to enable Series.', e);
+            }
+        }
+
+        function renderSeriesSidebar() {
+            // Inject a "Series" section into the existing playlists sidebar nav
+            const nav = document.getElementById('playlistsSidebarNav');
+            if (!nav || allSeries.length === 0) return;
+
+            // Remove old series section if any
+            const old = nav.querySelector('#seriesSidebarSection');
+            if (old) old.remove();
+
+            const section = document.createElement('div');
+            section.id = 'seriesSidebarSection';
+
+            let html = `<div class="px-3 pt-3 pb-1"><span class="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">📽 Series</span></div>`;
+            allSeries.forEach(s => {
+                const isActive = currentSeriesId === s.id;
+                html += `
+                    <div class="flex items-center gap-2 w-full rounded-xl transition-colors ${isActive ? 'bg-slate-100 dark:bg-slate-700' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}">
+                        <button onclick="loadSeries(${s.id})" class="flex items-center gap-2.5 flex-1 text-left px-3 py-2.5 min-w-0">
+                            <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 text-base" style="background:#7fe82622;">🎬</div>
+                            <span class="text-sm font-medium truncate ${isActive ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300'}">${s.name}</span>
+                            <span class="ml-auto flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full text-[#111] bg-[#7fe826]">SERIES</span>
+                        </button>
+                    </div>`;
+            });
+            section.innerHTML = html;
+            nav.appendChild(section);
+        }
+
+        async function loadSeries(seriesId) {
+            currentSeriesId = seriesId;
+            clearSeriesAutoAdvance();
+
+            try {
+                const { data, error } = await supabaseClient
+                    .from('playlist_clips')
+                    .select('clip_id, order_index, global_clips(*)')
+                    .eq('playlist_id', seriesId)
+                    .order('order_index', { ascending: true });
+
+                if (error) throw error;
+
+                currentSeriesClips = (data || [])
+                    .map(d => d.global_clips)
+                    .filter(Boolean);
+
+                if (currentSeriesClips.length === 0) {
+                    showSuccessToast('This series has no clips yet.');
+                    return;
+                }
+
+                // Add card data
+                currentSeriesClips.forEach(clip => {
+                    if (!clip.cards && clip.card_id) {
+                        clip.cards = allLoadedCards.find(c => c.id === clip.card_id) || null;
+                    }
+                });
+
+                currentSeriesIndex = 0;
+                playSeriesClip(0);
+                renderSeriesSidebar();
+            } catch(e) {
+                console.error('Error loading series:', e);
+                showSuccessToast('Error loading series. Check SQL migration.');
+            }
+        }
+
+        function playSeriesClip(index) {
+            if (index < 0 || index >= currentSeriesClips.length) return;
+            currentSeriesIndex = index;
+            const clip = currentSeriesClips[index];
+
+            // Use the existing YT player if available
+            const ytUrl = clip.url || clip.youtube_url || clip.video_url || '';
+            if (typeof openYTPlayer === 'function' && ytUrl) {
+                openYTPlayer(ytUrl, clip);
+            } else {
+                // Inject into clips grid and show
+                ytGlobalClips = currentSeriesClips;
+                const grid = document.getElementById('ytClipsGrid');
+                if (grid) { grid.innerHTML = ''; renderYTClipsGrid(true); }
+            }
+
+            // Show series progress toast
+            showSuccessToast(`Series: Scene ${index + 1} of ${currentSeriesClips.length}`);
+
+            // Auto-advance: schedule next clip after estimated duration
+            scheduleSeriesAutoAdvance();
+        }
+
+        function scheduleSeriesAutoAdvance() {
+            clearSeriesAutoAdvance();
+            // Auto-advance after 180s (3 min) — a reasonable default; user can also manually advance
+            seriesAutoAdvanceTimer = setTimeout(() => {
+                const nextIdx = currentSeriesIndex + 1;
+                if (nextIdx < currentSeriesClips.length) {
+                    playSeriesClip(nextIdx);
+                } else {
+                    showSuccessToast('Series complete! 🎬');
+                    currentSeriesId = null;
+                    currentSeriesIndex = -1;
+                }
+            }, 180000);
+        }
+
+        function clearSeriesAutoAdvance() {
+            if (seriesAutoAdvanceTimer) {
+                clearTimeout(seriesAutoAdvanceTimer);
+                seriesAutoAdvanceTimer = null;
+            }
+        }
+
+        // SQL migration note (shown in console for developer)
+        console.info(`[StudioHub Series] To enable Series, run this SQL in your Supabase dashboard:
+ALTER TABLE playlists ADD COLUMN IF NOT EXISTS series_mode BOOLEAN DEFAULT false;
+ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 0;
+-- Then set series_mode = true on any playlist to turn it into a series.`);
+
+        // Fetch series alongside playlists
+        (function() {
+            const origFetchPlaylists = window.fetchPlaylists;
+            if (origFetchPlaylists) {
+                window.fetchPlaylists = async function() {
+                    await origFetchPlaylists();
+                    await fetchSeries();
+                };
+            } else {
+                // fallback: fetch on DOMContentLoaded
+                document.addEventListener('DOMContentLoaded', fetchSeries);
+            }
+        })();
+
+        // ==========================================
+        // FEATURE 10: CONFETTI ON HIGH HOTNESS RATING
+        // ==========================================
+        let _lastConfettiRating = -1;
+        let _confettiCooldown = false;
+
+        function fireHotnessConfetti(rating) {
+            if (_confettiCooldown) return;
+            if (rating < 90) { _lastConfettiRating = rating; return; }
+            // Only fire if we just crossed the 90 threshold (not on every drag event above 90)
+            if (_lastConfettiRating >= 90 && rating >= 90) { _lastConfettiRating = rating; return; }
+            _lastConfettiRating = rating;
+
+            _confettiCooldown = true;
+            setTimeout(() => { _confettiCooldown = false; }, 2500);
+
+            if (typeof confetti !== 'function') return;
+
+            // Two quick bursts from left and right
+            const defaults = { startVelocity: 30, spread: 60, ticks: 60, zIndex: 9999 };
+            confetti({ ...defaults, particleCount: 40, origin: { x: 0.25, y: 0.65 }, colors: ['#7fe826','#a3f550','#ffffff','#ffd700'] });
+            setTimeout(() => {
+                confetti({ ...defaults, particleCount: 40, origin: { x: 0.75, y: 0.65 }, colors: ['#7fe826','#a3f550','#ffffff','#ff6b6b'] });
+            }, 150);
+        }
+
+        // Patch calculateHotness to trigger confetti
+        (function() {
+            const origCalcHotness = window.calculateHotness;
+            if (origCalcHotness) {
+                window.calculateHotness = function() {
+                    origCalcHotness();
+                    const avg = currentActiveModelData ? (currentActiveModelData.rating_hotness ?? 0) : 0;
+                    fireHotnessConfetti(avg);
+                };
+            }
+        })();
+
     </script>
 </body>
 </html>
