@@ -46,6 +46,10 @@
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+        /* ── Category multi-picker ── */
+        .cat-picker-item { user-select: none; }
+        .cat-picker-item:hover .cat-check { border-color: #7fe826; }
+
         /* ── Tag suggestion dropdown ── */
         .tag-suggestions { position: absolute; }
         .tag-suggestion-item {
@@ -1621,10 +1625,21 @@
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Category</label>
-                        <select id="ytClipCategory" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none cursor-pointer">
-                            <option value="">No Category</option>
-                        </select>
+                        <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Categories</label>
+                        <!-- Selected chips -->
+                        <div id="ytClipCategoryChips" class="flex flex-wrap gap-1.5 mb-2 min-h-[24px]"></div>
+                        <!-- Dropdown picker -->
+                        <div class="relative">
+                            <button type="button" id="ytCategoryPickerBtn" onclick="toggleCategoryPicker()" class="w-full flex items-center justify-between bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 rounded-xl px-3 py-2.5 outline-none cursor-pointer text-sm hover:border-[#7fe826] transition-colors">
+                                <span>Pick categories…</span>
+                                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </button>
+                            <div id="ytCategoryDropdown" class="hidden absolute z-50 left-0 right-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl max-h-52 overflow-y-auto custom-scrollbar">
+                                <div id="ytCategoryDropdownList" class="py-1"></div>
+                            </div>
+                        </div>
+                        <!-- Hidden storage -->
+                        <input type="hidden" id="ytClipCategory">
                     </div>
                     <div>
                         <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Duration (e.g., 4:20)</label>
@@ -2228,6 +2243,7 @@ function initCarouselDrag() {
         let editingWaveId = null;
         let _moanAddTags = [], _moanEditTags = [], _waveAddTags = [], _waveEditTags = [];
         let allKnownMoanTags = new Set(); // persistent tag library
+        let selectedClipCategoryIds = []; // multi-category selection for upload/edit form
 
         let isAddingClip = false, deleteConfirmTimeout;
         let currentlyPlayingAudio = null;
@@ -3032,15 +3048,21 @@ function toggleCategoryExpand(id, event) {
             const parentSelect = document.getElementById('catParentSelect');
             if (parentSelect) parentSelect.innerHTML = html;
 
-            let catHtml = '<option value="">No Category</option>';
+            let catHtml = '';
             clipCategories.filter(c => !c.parent_id).forEach(c => {
-                catHtml += `<option value="${c.id}">${c.name}</option>`;
+                catHtml += `<div class="cat-picker-item px-4 py-2.5 cursor-pointer flex items-center gap-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors" data-id="${c.id}" data-name="${c.name}" onclick="toggleClipCategory(${c.id},'${c.name.replace(/'/g,"\\'")}')">
+                    <span class="cat-check w-4 h-4 rounded flex items-center justify-center border border-slate-300 dark:border-slate-600 flex-shrink-0 transition-colors"></span>
+                    <span class="text-sm font-semibold text-slate-700 dark:text-slate-200">${c.name}</span>
+                </div>`;
                 clipCategories.filter(sub => sub.parent_id === c.id).forEach(sub => {
-                    catHtml += `<option value="${sub.id}">-- ${sub.name}</option>`;
+                    catHtml += `<div class="cat-picker-item px-4 py-2 cursor-pointer flex items-center gap-2.5 pl-9 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors" data-id="${sub.id}" data-name="${sub.name}" onclick="toggleClipCategory(${sub.id},'${sub.name.replace(/'/g,"\\'")}')">
+                        <span class="cat-check w-4 h-4 rounded flex items-center justify-center border border-slate-300 dark:border-slate-600 flex-shrink-0 transition-colors"></span>
+                        <span class="text-sm text-slate-500 dark:text-slate-400">${sub.name}</span>
+                    </div>`;
                 });
             });
-            const ytClipCat = document.getElementById('ytClipCategory');
-            if (ytClipCat) ytClipCat.innerHTML = catHtml;
+            const ytCatList = document.getElementById('ytCategoryDropdownList');
+            if (ytCatList) ytCatList.innerHTML = catHtml || '<div class="px-4 py-3 text-sm text-slate-400">No categories yet</div>';
         }
 let currentClipTagFilter = '';
 
@@ -3130,7 +3152,7 @@ function renderClipTagsDropdown() {
         // Active vs Inactive styling
         const ringClass = isSelected 
             ? 'ring-[3px] ring-[#7fe826] scale-105 opacity-100' 
-            : 'ring-2 ring-transparent opacity-100 hover:opacity-100 hover:scale-105';
+            : 'ring-2 ring-transparent opacity-70 hover:opacity-100 hover:scale-105';
         const textClass = isSelected
             ? 'text-[#7fe826]'
             : 'text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-white';
@@ -3181,7 +3203,10 @@ function filterClipsByModel(modelId) {
                 // FIXED QUERY HERE: Added 'tags' to the cards select so the filter can see them
                 let query = supabaseClient.from('global_clips').select('*, cards(id, title, main_image_url, tags)').order('created_at', { ascending: false });
                 
-                if (currentCategoryFilter) query = query.eq('category_id', currentCategoryFilter);
+                if (currentCategoryFilter) {
+                    // Match clips that have this category as primary OR in their category_ids array
+                    query = query.or(`category_id.eq.${currentCategoryFilter},category_ids.cs.{${currentCategoryFilter}}`);
+                }
                 if (searchVal) query = query.ilike('title', `%${searchVal}%`);
                 if (currentModelClipFilter) query = query.eq('card_id', currentModelClipFilter);
                 
@@ -3374,7 +3399,12 @@ let editingClipId = null; // Track if we are editing
             document.getElementById('ytPlayerEditBtn').onclick = () => openYTEditModal(id);
             document.getElementById('ytClipUrl').value = clip.url;
             document.getElementById('ytClipDuration').value = clip.duration || '0:00';
-            document.getElementById('ytClipCategory').value = clip.category_id || '';
+
+            // Multi-category: support both legacy category_id and new category_ids array
+            const catIds = Array.isArray(clip.category_ids) && clip.category_ids.length
+                ? clip.category_ids
+                : (clip.category_id ? [clip.category_id] : []);
+            setClipCategories(catIds);
             
             // 2. Populate the Model
             if (clip.cards) {
@@ -3417,6 +3447,7 @@ let editingClipId = null; // Track if we are editing
             uploadModal.dataset.openedFromPlayer = '';
             document.getElementById('ytUploadForm').reset();
             clearSelectedModel();
+            setClipCategories([]);  // clear multi-cat selection
             
             // Reset state back to "Upload" mode
             editingClipId = null;
@@ -3490,7 +3521,12 @@ let editingClipId = null; // Track if we are editing
             const sidebar = document.getElementById('ytPlayerSidebarGrid');
             
             // 1. Filter by identical category ID, excluding the currently playing video
-            let related = ytGlobalClips.filter(c => c.id !== currentClip.id && c.category_id === currentClip.category_id);
+            let related = ytGlobalClips.filter(c => {
+                if (c.id === currentClip.id) return false;
+                const clipCatIds = Array.isArray(currentClip.category_ids) && currentClip.category_ids.length ? currentClip.category_ids : (currentClip.category_id ? [currentClip.category_id] : []);
+                const cCatIds = Array.isArray(c.category_ids) && c.category_ids.length ? c.category_ids : (c.category_id ? [c.category_id] : []);
+                return clipCatIds.some(id => cCatIds.includes(id));
+            });
             
             // 2. If the category is empty, just grab the most recent videos as fallback
             if (related.length === 0) {
@@ -4822,7 +4858,8 @@ const addAudioForm = document.getElementById('addAudioForm');
                     const url = document.getElementById('ytClipUrl').value;
                     const card_id = document.getElementById('selectedModelId').value;
                     const duration = document.getElementById('ytClipDuration').value || '0:00';
-                    const category_id = document.getElementById('ytClipCategory').value || null;
+                    const category_ids = getSelectedClipCategoryIds();
+                    const category_id = category_ids.length ? category_ids[0] : null; // primary for backward compat / filtering
 
                     if (!card_id) {
                         alert("Please select a valid model from the search dropdown.");
@@ -4834,7 +4871,8 @@ const addAudioForm = document.getElementById('addAudioForm');
                             title: title, 
                             url: url, 
                             duration: duration, 
-                            category_id: category_id ? parseInt(category_id) : null, 
+                            category_id: category_id ? parseInt(category_id) : null,
+                            category_ids: category_ids.map(Number),
                             card_id: parseInt(card_id) 
                         };
                         
@@ -5053,6 +5091,94 @@ const addAudioForm = document.getElementById('addAudioForm');
 
         const _TAG_STORAGE_KEY = 'studiohub_moan_tags_v1';
 
+        // ==========================================
+        // MULTI-CATEGORY CLIP PICKER
+        // ==========================================
+        function getSelectedClipCategoryIds() {
+            return [...selectedClipCategoryIds];
+        }
+
+        function setClipCategories(ids) {
+            selectedClipCategoryIds = ids.map(Number).filter(Boolean);
+            _renderCategoryChips();
+            _syncCategoryDropdownChecks();
+        }
+
+        function toggleClipCategory(id, name) {
+            const idx = selectedClipCategoryIds.indexOf(id);
+            if (idx === -1) {
+                selectedClipCategoryIds.push(id);
+            } else {
+                selectedClipCategoryIds.splice(idx, 1);
+            }
+            _renderCategoryChips();
+            _syncCategoryDropdownChecks();
+        }
+
+        function _renderCategoryChips() {
+            const container = document.getElementById('ytClipCategoryChips');
+            if (!container) return;
+            if (selectedClipCategoryIds.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+            container.innerHTML = selectedClipCategoryIds.map(id => {
+                const cat = clipCategories.find(c => c.id === id);
+                const name = cat ? cat.name : `Cat ${id}`;
+                return `<span class="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600">
+                    ${name}
+                    <button type="button" onclick="toggleClipCategory(${id},'${name.replace(/'/g,"\\'")}')" class="ml-0.5 hover:text-red-500 leading-none font-bold text-sm">×</button>
+                </span>`;
+            }).join('');
+        }
+
+        function _syncCategoryDropdownChecks() {
+            const items = document.querySelectorAll('.cat-picker-item');
+            items.forEach(item => {
+                const id = parseInt(item.dataset.id);
+                const check = item.querySelector('.cat-check');
+                if (!check) return;
+                if (selectedClipCategoryIds.includes(id)) {
+                    check.innerHTML = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>`;
+                    check.classList.add('bg-[#7fe826]', 'border-[#7fe826]', 'text-[#111]');
+                    check.classList.remove('border-slate-300', 'dark:border-slate-600');
+                } else {
+                    check.innerHTML = '';
+                    check.classList.remove('bg-[#7fe826]', 'border-[#7fe826]', 'text-[#111]');
+                    check.classList.add('border-slate-300', 'dark:border-slate-600');
+                }
+            });
+        }
+
+        function toggleCategoryPicker() {
+            const dropdown = document.getElementById('ytCategoryDropdown');
+            if (!dropdown) return;
+            const isHidden = dropdown.classList.contains('hidden');
+            if (isHidden) {
+                dropdown.classList.remove('hidden');
+                _syncCategoryDropdownChecks();
+                // Close when clicking outside
+                setTimeout(() => {
+                    document.addEventListener('click', _closeCatPickerOnOutsideClick, { once: true });
+                }, 10);
+            } else {
+                dropdown.classList.add('hidden');
+            }
+        }
+
+        function _closeCatPickerOnOutsideClick(e) {
+            const dropdown = document.getElementById('ytCategoryDropdown');
+            const btn = document.getElementById('ytCategoryPickerBtn');
+            if (dropdown && !dropdown.contains(e.target) && btn && !btn.contains(e.target)) {
+                dropdown.classList.add('hidden');
+            } else if (dropdown && !dropdown.classList.contains('hidden')) {
+                // Re-attach if click was inside
+                setTimeout(() => {
+                    document.addEventListener('click', _closeCatPickerOnOutsideClick, { once: true });
+                }, 10);
+            }
+        }
+
         function loadTagLibrary() {
             try {
                 const raw = localStorage.getItem(_TAG_STORAGE_KEY);
@@ -5182,7 +5308,7 @@ const addAudioForm = document.getElementById('addAudioForm');
             const tagHtml = tags.length ? `<div class="flex flex-wrap gap-1 mt-2">${tags.map(t=>`<span class="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#7fe826]/10 text-[#3d7a0a] dark:text-[#7fe826] border border-[#7fe826]/25">${t}</span>`).join('')}</div>` : '';
             const coverSrc = wave.cover_url ? optimizeMediaUrl(wave.cover_url, false, 300) : '';
             const coverInner = coverSrc
-    ? `<img src="${coverSrc}" class="w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-110">`
+                ? `<img src="${coverSrc}" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110">`
                 : `<div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-800"><svg class="w-10 h-10 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg></div>`;
             return `
             <div class="bg-white dark:bg-slate-800 rounded-3xl p-3 sm:p-4 shadow-sm border border-slate-100 dark:border-slate-700/50 group relative">
