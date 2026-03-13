@@ -9278,10 +9278,10 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                     // Delete old nodes + edges
                     await supabaseClient.from('dreamflow_nodes').delete().eq('workflow_id', workflowId);
                 }
-                // Insert nodes
+                // Insert nodes — never include id, always let the DB generate UUIDs
                 if (DF.nodes.length > 0) {
+                    const localIds = DF.nodes.map(n => n.id); // snapshot before mutation
                     const nodeRows = DF.nodes.map(n => ({
-                        id: n.id.startsWith('df_') ? undefined : n.id, // let DB generate uuid if temp id
                         workflow_id: workflowId,
                         clip_id: n.clipId,
                         pos_x: n.x, pos_y: n.y,
@@ -9291,15 +9291,14 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                         video_url: n.videoUrl,
                         tags: n.tags,
                     }));
-                    // We need the real UUIDs back to map edges
                     const { data: savedNodes, error: nErr } = await supabaseClient.from('dreamflow_nodes').insert(nodeRows).select();
                     if (nErr) throw nErr;
-                    // Build old-id → new-uuid map
+                    // Build old-local-id -> new-DB-uuid map
                     const idMap = {};
-                    DF.nodes.forEach((n, i) => { if (savedNodes[i]) idMap[n.id] = savedNodes[i].id; });
-                    // Update local node ids
+                    localIds.forEach((oldId, i) => { if (savedNodes[i]) idMap[oldId] = savedNodes[i].id; });
+                    // Update local node ids to real DB UUIDs so re-saves work
                     DF.nodes.forEach((n, i) => { if (savedNodes[i]) n.id = savedNodes[i].id; });
-                    // Insert edges
+                    // Insert edges using resolved UUIDs
                     const edgeRows = DF.edges.map(e => ({
                         workflow_id: workflowId,
                         source_node_id: idMap[e.sourceId] || e.sourceId,
