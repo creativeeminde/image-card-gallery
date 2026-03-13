@@ -953,15 +953,6 @@
             transition: border-color 0.15s;
         }
         .df-lib-item:hover .df-lib-avatar { border-color: rgba(127,232,38,0.6); }
-        .df-lib-thumb {
-            width: 44px;
-            height: 28px;
-            border-radius: 5px;
-            object-fit: cover;
-            background: #1e2433;
-            flex-shrink: 0;
-            pointer-events: none;
-        }
         .df-lib-info { min-width: 0; flex: 1; }
         .df-lib-title {
             font-size: 11px;
@@ -6377,7 +6368,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                                 .from('global_clips')
                                 .update(clipData)
                                 .eq('id', editingClipId)
-                                .select('*, cards(id, title, main_image_url)');
+                                .select('*, cards(id, title, main_image_url, related_images_with_tags)');
                             data = response.data;
                             error = response.error;
                             
@@ -8502,7 +8493,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             try {
                 const { data, error } = await supabaseClient
                     .from('global_clips')
-                    .select('*, cards(id, title, main_image_url)')
+                    .select('*, cards(id, title, main_image_url, related_images_with_tags)')
                     .order('created_at', { ascending: false })
                     .limit(200);
                 if (data) {
@@ -8523,6 +8514,21 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             dfRenderLibrary(DF.libFiltered);
         }
 
+        function dfGetAvatarUrl(card) {
+            // Find the asset tagged "avatar" in related_images_with_tags
+            const assets = card?.related_images_with_tags || [];
+            const avatarAsset = assets.find(a => {
+                const tags = (typeof a === 'string') ? '' : (a.tags || '');
+                return tags.toLowerCase().split(',').map(t => t.trim()).includes('avatar');
+            });
+            if (avatarAsset) {
+                const raw = avatarAsset.url || avatarAsset.image_url || avatarAsset.src || '';
+                return optimizeMediaUrl(raw, false, 60);
+            }
+            // Fallback to main_image_url if no avatar tag found
+            return optimizeMediaUrl(card?.main_image_url || '', false, 60);
+        }
+
         function dfRenderLibrary(clips) {
             const el = document.getElementById('dfLibraryList');
             if (!el) return;
@@ -8530,12 +8536,11 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                 el.innerHTML = '<div style="padding:20px;text-align:center;font-size:12px;color:#334155;font-weight:600;">No clips found.</div>';
                 return;
             }
+            const fallback = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='12' fill='%231e2433'/%3E%3Ccircle cx='12' cy='9' r='4' fill='%23475569'/%3E%3Cellipse cx='12' cy='20' rx='7' ry='4' fill='%23475569'/%3E%3C/svg%3E";
             el.innerHTML = clips.map(c => {
-                const avatarUrl = optimizeMediaUrl(c.cards?.main_image_url || '', false, 60);
-                const thumb     = c.cards?.main_image_url || '';
+                const avatarUrl = dfGetAvatarUrl(c.cards);
                 const model     = c.cards?.title || 'Unknown';
                 const title     = c.title || 'Untitled';
-                const fallback  = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='12' fill='%231e2433'/%3E%3Ccircle cx='12' cy='9' r='4' fill='%23475569'/%3E%3Cellipse cx='12' cy='20' rx='7' ry='4' fill='%23475569'/%3E%3C/svg%3E";
                 return `<div class="df-lib-item"
                     draggable="true"
                     ondragstart="dfLibDragStart(event, ${c.id})"
@@ -8544,13 +8549,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                          src="${avatarUrl || fallback}"
                          alt="${model}"
                          title="${model}"
-                         onerror="this.src='${fallback}'"
-                         style="opacity:${avatarUrl ? '1' : '0.4'}">
-                    <img class="df-lib-thumb"
-                         src="${optimizeMediaUrl(thumb, false, 80)}"
-                         alt=""
-                         onerror="this.style.display='none'"
-                         style="opacity:1">
+                         onerror="this.src='${fallback}'">
                     <div class="df-lib-info">
                         <div class="df-lib-title">${title}</div>
                         <div class="df-lib-model">${model}</div>
@@ -8558,7 +8557,6 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                     <div class="df-lib-add-btn" onclick="dfAddClipToWorkflow(${c.id})" title="Add to Workflow">+</div>
                 </div>`;
             }).join('');
-            // Images load directly via src= attributes
         }
 
         // ---- Drag from Library ----
