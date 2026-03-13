@@ -860,6 +860,717 @@
             #ytClipsGrid { grid-template-columns: repeat(2, 1fr) !important; }
         }
 
+        /* ===================================================
+           DREAMFLOW — Node-Based Video Workflow Editor
+        =================================================== */
+        #dreamflowView {
+            display: none;
+            flex-direction: row;
+            width: 100%;
+            height: calc(100dvh);
+            margin-top: -85px;
+            padding-top: 85px;
+            overflow: hidden;
+            background: #0f1117;
+            color: #e2e8f0;
+            font-family: 'Inter', sans-serif;
+            position: relative;
+        }
+        #dreamflowView.block { display: flex !important; }
+
+        /* ---- Left Library Panel ---- */
+        #dfLibraryPanel {
+            width: 240px;
+            flex-shrink: 0;
+            background: #181b23;
+            border-right: 1px solid rgba(127,232,38,0.12);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 10;
+        }
+        #dfLibraryPanel .df-panel-header {
+            padding: 14px 16px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            flex-shrink: 0;
+        }
+        #dfLibraryPanel .df-panel-title {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #7fe826;
+            margin-bottom: 8px;
+        }
+        #dfLibrarySearch {
+            width: 100%;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 7px 10px;
+            font-size: 12px;
+            color: #e2e8f0;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        #dfLibrarySearch:focus { border-color: #7fe826; }
+        #dfLibrarySearch::placeholder { color: #475569; }
+        #dfLibraryList {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 8px 16px;
+        }
+        #dfLibraryList::-webkit-scrollbar { width: 3px; }
+        #dfLibraryList::-webkit-scrollbar-thumb { background: rgba(127,232,38,0.3); border-radius: 4px; }
+        .df-lib-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 10px;
+            cursor: grab;
+            transition: background 0.15s, transform 0.15s;
+            user-select: none;
+            margin-bottom: 2px;
+            border: 1px solid transparent;
+            position: relative;
+        }
+        .df-lib-item:hover {
+            background: rgba(127,232,38,0.08);
+            border-color: rgba(127,232,38,0.18);
+            transform: translateX(2px);
+        }
+        .df-lib-item:active { cursor: grabbing; }
+        .df-lib-thumb {
+            width: 44px;
+            height: 28px;
+            border-radius: 5px;
+            object-fit: cover;
+            background: #1e2433;
+            flex-shrink: 0;
+            pointer-events: none;
+        }
+        .df-lib-info { min-width: 0; flex: 1; }
+        .df-lib-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #cbd5e1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .df-lib-model {
+            font-size: 10px;
+            color: #64748b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .df-lib-add-btn {
+            width: 22px;
+            height: 22px;
+            background: rgba(127,232,38,0.15);
+            border: 1px solid rgba(127,232,38,0.3);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            cursor: pointer;
+            transition: background 0.15s, transform 0.15s;
+            color: #7fe826;
+            font-size: 14px;
+            font-weight: bold;
+            line-height: 1;
+        }
+        .df-lib-add-btn:hover {
+            background: rgba(127,232,38,0.3);
+            transform: scale(1.1);
+        }
+
+        /* ---- Center Canvas ---- */
+        #dfCanvasWrap {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: #0f1117;
+            background-image:
+                radial-gradient(circle at 50% 50%, rgba(127,232,38,0.03) 0%, transparent 60%),
+                linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+            background-size: 100% 100%, 30px 30px, 30px 30px;
+            cursor: default;
+        }
+        #dfCanvasWrap.df-panning { cursor: grabbing; }
+        #dfCanvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            transform-origin: 0 0;
+        }
+
+        /* SVG edge layer */
+        #dfEdgeSvg {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            overflow: visible;
+        }
+        .df-edge-path {
+            fill: none;
+            stroke: rgba(127,232,38,0.5);
+            stroke-width: 2;
+            pointer-events: stroke;
+            cursor: pointer;
+            transition: stroke 0.2s;
+        }
+        .df-edge-path:hover { stroke: #ff4444; stroke-width: 3; }
+        .df-edge-path.df-active-edge { stroke: #7fe826; stroke-width: 2.5; }
+        .df-edge-temp {
+            fill: none;
+            stroke: rgba(127,232,38,0.6);
+            stroke-width: 1.5;
+            stroke-dasharray: 6 4;
+            pointer-events: none;
+        }
+
+        /* ---- Nodes ---- */
+        .df-node {
+            position: absolute;
+            width: 200px;
+            background: #1a1f2e;
+            border: 1.5px solid rgba(255,255,255,0.1);
+            border-radius: 14px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 0 0 0 rgba(127,232,38,0);
+            cursor: move;
+            user-select: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            z-index: 5;
+        }
+        .df-node:hover {
+            border-color: rgba(127,232,38,0.4);
+            box-shadow: 0 6px 28px rgba(0,0,0,0.6), 0 0 0 1px rgba(127,232,38,0.15);
+        }
+        .df-node.df-node-selected {
+            border-color: #7fe826;
+            box-shadow: 0 6px 28px rgba(0,0,0,0.6), 0 0 0 2px rgba(127,232,38,0.3);
+        }
+        .df-node.df-node-playing {
+            border-color: #7fe826;
+            box-shadow: 0 0 0 2px rgba(127,232,38,0.4), 0 0 30px rgba(127,232,38,0.2);
+            animation: dfNodePulse 1.2s ease-in-out infinite;
+        }
+        @keyframes dfNodePulse {
+            0%, 100% { box-shadow: 0 0 0 2px rgba(127,232,38,0.4), 0 0 20px rgba(127,232,38,0.15); }
+            50% { box-shadow: 0 0 0 3px rgba(127,232,38,0.6), 0 0 40px rgba(127,232,38,0.35); }
+        }
+        .df-node-header {
+            padding: 9px 12px 7px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .df-node-icon {
+            width: 22px;
+            height: 22px;
+            background: rgba(127,232,38,0.15);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .df-node-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #94a3b8;
+            flex: 1;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .df-node-delete {
+            width: 18px;
+            height: 18px;
+            border-radius: 5px;
+            background: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #475569;
+            flex-shrink: 0;
+            transition: color 0.15s, background 0.15s;
+            font-size: 12px;
+        }
+        .df-node-delete:hover { color: #ff4444; background: rgba(255,68,68,0.12); }
+        .df-node-thumb-wrap {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: #0d1117;
+            overflow: hidden;
+            border-radius: 0;
+        }
+        .df-node-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .df-node-play-btn {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.4);
+            opacity: 0;
+            transition: opacity 0.2s;
+            cursor: pointer;
+        }
+        .df-node-thumb-wrap:hover .df-node-play-btn { opacity: 1; }
+        .df-node-play-inner {
+            width: 36px;
+            height: 36px;
+            background: rgba(127,232,38,0.9);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #111;
+            transition: transform 0.15s, background 0.15s;
+        }
+        .df-node-play-inner:hover { transform: scale(1.1); background: #7fe826; }
+        .df-node-footer {
+            padding: 8px 12px;
+        }
+        .df-node-clip-name {
+            font-size: 11px;
+            font-weight: 700;
+            color: #e2e8f0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 2px;
+        }
+        .df-node-model-name {
+            font-size: 10px;
+            color: #64748b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* ---- Connectors ---- */
+        .df-connector {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #1a1f2e;
+            border: 2px solid rgba(127,232,38,0.5);
+            cursor: crosshair;
+            transition: background 0.15s, border-color 0.15s, transform 0.15s;
+            z-index: 10;
+        }
+        .df-connector:hover {
+            background: rgba(127,232,38,0.3);
+            border-color: #7fe826;
+            transform: scale(1.3);
+        }
+        .df-connector-in {
+            left: -7px;
+            top: 50%;
+            margin-top: -6px;
+        }
+        .df-connector-out {
+            right: -7px;
+            top: 50%;
+            margin-top: -6px;
+        }
+
+        /* ---- Right Settings Panel ---- */
+        #dfSettingsPanel {
+            width: 260px;
+            flex-shrink: 0;
+            background: #181b23;
+            border-left: 1px solid rgba(127,232,38,0.12);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 10;
+        }
+        #dfSettingsPanel .df-panel-header {
+            padding: 14px 16px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            flex-shrink: 0;
+        }
+        #dfSettingsPanel .df-panel-title {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #7fe826;
+        }
+        #dfSettingsContent {
+            flex: 1;
+            overflow-y: auto;
+            padding: 14px 16px;
+        }
+        #dfSettingsContent::-webkit-scrollbar { width: 3px; }
+        #dfSettingsContent::-webkit-scrollbar-thumb { background: rgba(127,232,38,0.3); border-radius: 4px; }
+        .df-settings-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 200px;
+            gap: 10px;
+            color: #334155;
+            text-align: center;
+        }
+        .df-settings-empty svg { opacity: 0.3; }
+        .df-settings-empty p { font-size: 12px; font-weight: 600; }
+        .df-settings-label {
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #475569;
+            margin-bottom: 6px;
+            margin-top: 14px;
+        }
+        .df-settings-label:first-child { margin-top: 0; }
+        .df-settings-value {
+            font-size: 12px;
+            font-weight: 600;
+            color: #cbd5e1;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 8px;
+            padding: 8px 10px;
+            min-height: 34px;
+            word-break: break-word;
+        }
+        .df-settings-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        .df-settings-tag {
+            background: rgba(127,232,38,0.1);
+            border: 1px solid rgba(127,232,38,0.2);
+            color: #7fe826;
+            border-radius: 20px;
+            padding: 2px 9px;
+            font-size: 10px;
+            font-weight: 700;
+        }
+        #dfSettingsPreview {
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: #0d1117;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.07);
+            margin-top: 6px;
+        }
+        #dfSettingsVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        /* ---- Toolbar ---- */
+        #dfToolbar {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(24,27,35,0.9);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(127,232,38,0.2);
+            border-radius: 40px;
+            padding: 6px 10px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            z-index: 20;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        .df-toolbar-btn {
+            height: 32px;
+            padding: 0 12px;
+            border-radius: 20px;
+            background: transparent;
+            border: none;
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: color 0.15s, background 0.15s;
+            white-space: nowrap;
+        }
+        .df-toolbar-btn:hover { color: #e2e8f0; background: rgba(255,255,255,0.06); }
+        .df-toolbar-btn.df-btn-primary {
+            background: rgba(127,232,38,0.15);
+            color: #7fe826;
+            border: 1px solid rgba(127,232,38,0.25);
+        }
+        .df-toolbar-btn.df-btn-primary:hover { background: rgba(127,232,38,0.25); }
+        .df-toolbar-btn.df-btn-danger { color: #ff6b6b; }
+        .df-toolbar-btn.df-btn-danger:hover { background: rgba(255,68,68,0.1); }
+        .df-toolbar-sep {
+            width: 1px;
+            height: 18px;
+            background: rgba(255,255,255,0.08);
+            margin: 0 2px;
+        }
+        #dfZoomDisplay {
+            font-size: 11px;
+            font-weight: 700;
+            color: #475569;
+            min-width: 36px;
+            text-align: center;
+        }
+
+        /* ---- Workflow List Modal ---- */
+        #dfWorkflowModal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 300;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            align-items: center;
+            justify-content: center;
+        }
+        #dfWorkflowModal.active { display: flex; }
+        #dfWorkflowModalInner {
+            background: #181b23;
+            border: 1px solid rgba(127,232,38,0.2);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 500px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+        }
+        .df-modal-header {
+            padding: 18px 20px 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .df-modal-title {
+            font-size: 16px;
+            font-weight: 800;
+            color: #e2e8f0;
+        }
+        .df-modal-close {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.06);
+            border: none;
+            color: #64748b;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.15s, background 0.15s;
+        }
+        .df-modal-close:hover { color: #e2e8f0; background: rgba(255,255,255,0.1); }
+        #dfWorkflowList {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+        #dfWorkflowList::-webkit-scrollbar { width: 3px; }
+        #dfWorkflowList::-webkit-scrollbar-thumb { background: rgba(127,232,38,0.3); border-radius: 4px; }
+        .df-workflow-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.06);
+            margin-bottom: 6px;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            background: rgba(255,255,255,0.02);
+        }
+        .df-workflow-item:hover { border-color: rgba(127,232,38,0.3); background: rgba(127,232,38,0.05); }
+        .df-workflow-icon {
+            width: 40px;
+            height: 40px;
+            background: rgba(127,232,38,0.12);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            color: #7fe826;
+        }
+        .df-workflow-info { flex: 1; min-width: 0; }
+        .df-workflow-name {
+            font-size: 13px;
+            font-weight: 700;
+            color: #e2e8f0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .df-workflow-meta {
+            font-size: 11px;
+            color: #475569;
+            margin-top: 2px;
+        }
+        .df-workflow-del {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: transparent;
+            border: none;
+            color: #475569;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.15s, background 0.15s;
+        }
+        .df-workflow-del:hover { color: #ff4444; background: rgba(255,68,68,0.1); }
+        .df-modal-footer {
+            padding: 12px 16px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+            display: flex;
+            gap: 8px;
+        }
+        .df-modal-input {
+            flex: 1;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 8px 12px;
+            font-size: 13px;
+            color: #e2e8f0;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .df-modal-input:focus { border-color: #7fe826; }
+        .df-modal-input::placeholder { color: #334155; }
+        .df-modal-save-btn {
+            background: rgba(127,232,38,0.2);
+            border: 1px solid rgba(127,232,38,0.3);
+            color: #7fe826;
+            border-radius: 10px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.15s;
+            white-space: nowrap;
+        }
+        .df-modal-save-btn:hover { background: rgba(127,232,38,0.3); }
+
+        /* ---- Canvas drop overlay ---- */
+        #dfDropOverlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(127,232,38,0.05);
+            border: 2px dashed rgba(127,232,38,0.4);
+            border-radius: 4px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            z-index: 30;
+        }
+        #dfDropOverlay.active { display: flex; }
+        #dfDropOverlay span {
+            font-size: 16px;
+            font-weight: 800;
+            color: #7fe826;
+            letter-spacing: 0.05em;
+        }
+
+        /* ---- Empty canvas hint ---- */
+        #dfEmptyHint {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            pointer-events: none;
+            z-index: 1;
+        }
+        #dfEmptyHint .df-hint-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+            opacity: 0.15;
+        }
+        #dfEmptyHint p {
+            font-size: 13px;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 4px;
+        }
+        #dfEmptyHint span {
+            font-size: 11px;
+            color: #1e293b;
+        }
+
+        /* Playback progress bar on node */
+        .df-node-progress {
+            height: 2px;
+            background: rgba(255,255,255,0.08);
+            position: relative;
+            overflow: hidden;
+        }
+        .df-node-progress-bar {
+            height: 100%;
+            background: #7fe826;
+            width: 0%;
+            transition: width 0.3s linear;
+        }
+
+        /* ---- "Add to Workflow" button on clip cards ---- */
+        .df-add-to-workflow-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(127,232,38,0.15);
+            border: 1px solid rgba(127,232,38,0.3);
+            color: #7fe826;
+            border-radius: 20px;
+            padding: 4px 10px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.15s, transform 0.1s;
+            white-space: nowrap;
+        }
+        .df-add-to-workflow-btn:hover {
+            background: rgba(127,232,38,0.25);
+            transform: scale(1.03);
+        }
+
+        /* Responsive: hide library/settings on small screens */
+        @media (max-width: 900px) {
+            #dfLibraryPanel { display: none; }
+            #dfSettingsPanel { display: none; }
+        }
     </style>
 </head>
 <body class="min-h-screen flex flex-col overflow-x-hidden bg-[#f1f5f0] text-[#1a1a1a] dark:bg-slate-900 dark:text-slate-100 transition-colors duration-300">
@@ -880,6 +1591,7 @@
                 <button class="nav-item px-3 sm:px-6 py-2 sm:py-2.5 rounded-full text-slate-500 dark:text-slate-400 font-medium text-[11px] sm:text-sm transition-all whitespace-nowrap" data-target="assetsView">OnlyAssets</button>
                 <button class="nav-item px-3 sm:px-6 py-2 sm:py-2.5 rounded-full text-slate-500 dark:text-slate-400 font-medium text-[11px] sm:text-sm transition-all whitespace-nowrap" data-target="infiniteView">Infinite</button>
                 <button class="nav-item px-3 sm:px-6 py-2 sm:py-2.5 rounded-full text-slate-500 dark:text-slate-400 font-medium text-[11px] sm:text-sm transition-all whitespace-nowrap" data-target="wavesView">Waves</button>
+                <button class="nav-item px-3 sm:px-6 py-2 sm:py-2.5 rounded-full text-slate-500 dark:text-slate-400 font-medium text-[11px] sm:text-sm transition-all whitespace-nowrap" data-target="dreamflowView">Dreamflow</button>
             </nav>
             <div class="flex items-center gap-1.5 sm:gap-3 justify-self-end min-w-0 flex-shrink-0">
                 <button onclick="toggleTheme()" class="bg-white dark:bg-slate-800 w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center shadow-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors">
@@ -1452,6 +2164,126 @@
             </div>
             <div id="moansWaveGrid" class="hidden grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-6 pb-32"></div>
 
+        </div>
+
+        <!-- ===================================================
+             DREAMFLOW VIEW
+        =================================================== -->
+        <div id="dreamflowView" class="view-section">
+
+            <!-- Left Panel: Clip Library -->
+            <div id="dfLibraryPanel">
+                <div class="df-panel-header">
+                    <div class="df-panel-title">Clip Library</div>
+                    <input id="dfLibrarySearch" type="text" placeholder="Search clips…" oninput="dfFilterLibrary(this.value)">
+                </div>
+                <div id="dfLibraryList">
+                    <div style="padding:20px;text-align:center;font-size:12px;color:#334155;font-weight:600;">Loading clips…</div>
+                </div>
+            </div>
+
+            <!-- Center: Canvas -->
+            <div id="dfCanvasWrap"
+                 onmousedown="dfCanvasMouseDown(event)"
+                 onmousemove="dfCanvasMouseMove(event)"
+                 onmouseup="dfCanvasMouseUp(event)"
+                 onwheel="dfCanvasWheel(event)"
+                 ondragover="event.preventDefault(); document.getElementById('dfDropOverlay').classList.add('active')"
+                 ondragleave="document.getElementById('dfDropOverlay').classList.remove('active')"
+                 ondrop="dfHandleDrop(event)">
+
+                <!-- Toolbar -->
+                <div id="dfToolbar">
+                    <button class="df-toolbar-btn df-btn-primary" onclick="dfNewWorkflow()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                        New
+                    </button>
+                    <div class="df-toolbar-sep"></div>
+                    <button class="df-toolbar-btn" onclick="dfOpenWorkflowModal()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/><path d="M8 12h8M8 8h8M8 16h5"/></svg>
+                        Workflows
+                    </button>
+                    <button class="df-toolbar-btn" onclick="dfSaveWorkflow()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                        Save
+                    </button>
+                    <div class="df-toolbar-sep"></div>
+                    <button class="df-toolbar-btn" onclick="dfZoomIn()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35M11 8v6M8 11h6"/></svg>
+                    </button>
+                    <span id="dfZoomDisplay">100%</span>
+                    <button class="df-toolbar-btn" onclick="dfZoomOut()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35M8 11h6"/></svg>
+                    </button>
+                    <button class="df-toolbar-btn" onclick="dfZoomFit()">Fit</button>
+                    <div class="df-toolbar-sep"></div>
+                    <button class="df-toolbar-btn df-btn-danger" onclick="dfClearCanvas()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                        Clear
+                    </button>
+                </div>
+
+                <!-- Canvas -->
+                <div id="dfCanvas">
+                    <svg id="dfEdgeSvg">
+                        <defs>
+                            <marker id="dfArrowHead" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                                <path d="M0,0 L0,6 L8,3 z" fill="rgba(127,232,38,0.6)"/>
+                            </marker>
+                            <marker id="dfArrowHeadActive" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                                <path d="M0,0 L0,6 L8,3 z" fill="#7fe826"/>
+                            </marker>
+                        </defs>
+                        <!-- Edges drawn here by JS -->
+                        <path id="dfTempEdge" class="df-edge-temp" d="" style="display:none"/>
+                    </svg>
+                    <!-- Nodes appended here by JS -->
+                </div>
+
+                <!-- Drop overlay -->
+                <div id="dfDropOverlay">
+                    <span>⚡ Drop clip here</span>
+                </div>
+
+                <!-- Empty hint -->
+                <div id="dfEmptyHint">
+                    <div class="df-hint-icon">⚡</div>
+                    <p>No nodes yet</p>
+                    <span>Drag a clip from the library or click ➕ on any clip</span>
+                </div>
+            </div>
+
+            <!-- Right Panel: Node Settings -->
+            <div id="dfSettingsPanel">
+                <div class="df-panel-header">
+                    <div class="df-panel-title">Node Settings</div>
+                </div>
+                <div id="dfSettingsContent">
+                    <div class="df-settings-empty">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 8v8M8 12h8"/></svg>
+                        <p>Select a node to see details</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dreamflow: Workflow List Modal -->
+        <div id="dfWorkflowModal">
+            <div id="dfWorkflowModalInner">
+                <div class="df-modal-header">
+                    <span class="df-modal-title">Saved Workflows</span>
+                    <button class="df-modal-close" onclick="dfCloseWorkflowModal()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div id="dfWorkflowList">
+                    <div style="padding:30px;text-align:center;color:#334155;font-size:12px;font-weight:600;">Loading workflows…</div>
+                </div>
+                <div class="df-modal-footer">
+                    <input class="df-modal-input" id="dfNewWorkflowName" placeholder="Workflow name…" maxlength="80" onkeydown="if(event.key==='Enter') dfSaveNewWorkflow()">
+                    <button class="df-modal-save-btn" onclick="dfSaveNewWorkflow()">Save Current</button>
+                </div>
+            </div>
         </div>
 
     </main>
@@ -4971,6 +5803,9 @@ let editingClipId = null; // Track if we are editing
                         viewEl.style.display = 'flex'; // Critical for the sidebar layout
                         fetchYTClips(true); // Force fetch now that container is visible
                         fetchHeroClips();   // Refresh hero section
+                    } else if (target === 'dreamflowView') {
+                        viewEl.style.display = 'flex'; // Dreamflow needs flex for 3-panel layout
+                        if (typeof dfOnViewActivated === 'function') dfOnViewActivated();
                     } else {
                         viewEl.style.display = 'block';
                     }
@@ -7256,6 +8091,841 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                 };
             }
         })();
+
+        // ==========================================
+        // DREAMFLOW — Node-Based Video Workflow Editor
+        // ==========================================
+
+        // ---- State ----
+        const DF = {
+            nodes: [],          // { id, clipId, title, modelName, videoUrl, thumbnail, tags, x, y }
+            edges: [],          // { id, sourceId, targetId }
+            selectedNodeId: null,
+            panX: 0,
+            panY: 0,
+            zoom: 1,
+            isPanning: false,
+            panStartX: 0,
+            panStartY: 0,
+            isDraggingNode: false,
+            draggingNodeId: null,
+            dragOffsetX: 0,
+            dragOffsetY: 0,
+            isDrawingEdge: false,
+            edgeSourceId: null,
+            activeWorkflowId: null,
+            playingNodeId: null,
+            libClips: [],
+            libFiltered: [],
+            dragLibClip: null,
+        };
+
+        // ---- Helpers ----
+        function dfGenId() { return 'df_' + Math.random().toString(36).substr(2, 9); }
+
+        function dfGetCanvas() { return document.getElementById('dfCanvas'); }
+        function dfGetSvg()    { return document.getElementById('dfEdgeSvg'); }
+        function dfGetWrap()   { return document.getElementById('dfCanvasWrap'); }
+
+        function dfApplyTransform() {
+            const canvas = dfGetCanvas();
+            if (canvas) canvas.style.transform = `translate(${DF.panX}px,${DF.panY}px) scale(${DF.zoom})`;
+            const zd = document.getElementById('dfZoomDisplay');
+            if (zd) zd.textContent = Math.round(DF.zoom * 100) + '%';
+        }
+
+        function dfScreenToCanvas(sx, sy) {
+            const wrap = dfGetWrap();
+            const rect = wrap.getBoundingClientRect();
+            return {
+                x: (sx - rect.left - DF.panX) / DF.zoom,
+                y: (sy - rect.top  - DF.panY) / DF.zoom,
+            };
+        }
+
+        // ---- Library ----
+        async function dfLoadLibrary() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('global_clips')
+                    .select('*, cards(id, title, main_image_url)')
+                    .order('created_at', { ascending: false })
+                    .limit(200);
+                if (data) {
+                    DF.libClips = data;
+                    DF.libFiltered = data;
+                    dfRenderLibrary(data);
+                }
+            } catch(e) { console.error('Dreamflow: library load error', e); }
+        }
+
+        function dfFilterLibrary(q) {
+            const lq = q.toLowerCase();
+            DF.libFiltered = DF.libClips.filter(c =>
+                !lq ||
+                (c.title || '').toLowerCase().includes(lq) ||
+                (c.cards?.title || '').toLowerCase().includes(lq)
+            );
+            dfRenderLibrary(DF.libFiltered);
+        }
+
+        function dfRenderLibrary(clips) {
+            const el = document.getElementById('dfLibraryList');
+            if (!el) return;
+            if (!clips || clips.length === 0) {
+                el.innerHTML = '<div style="padding:20px;text-align:center;font-size:12px;color:#334155;font-weight:600;">No clips found.</div>';
+                return;
+            }
+            el.innerHTML = clips.map(c => {
+                const thumb = c.cards?.main_image_url || '';
+                const model = c.cards?.title || 'Unknown';
+                const title = c.title || 'Untitled';
+                return `<div class="df-lib-item"
+                    draggable="true"
+                    ondragstart="dfLibDragStart(event, ${c.id})"
+                    ondragend="dfLibDragEnd(event)">
+                    <img class="df-lib-thumb lazy-media"
+                         data-src="${optimizeMediaUrl(thumb, false, 80)}"
+                         src=""
+                         alt=""
+                         onerror="this.style.display='none'"
+                         onload="this.classList.add('loaded')"
+                         style="opacity:0;transition:opacity 0.3s">
+                    <div class="df-lib-info">
+                        <div class="df-lib-title">${title}</div>
+                        <div class="df-lib-model">${model}</div>
+                    </div>
+                    <div class="df-lib-add-btn" onclick="dfAddClipToWorkflow(${c.id})" title="Add to Workflow">+</div>
+                </div>`;
+            }).join('');
+            // lazy load thumbs
+            el.querySelectorAll('.lazy-media').forEach(img => {
+                const src = img.getAttribute('data-src');
+                if (src) {
+                    img.src = src;
+                    img.removeAttribute('data-src');
+                }
+            });
+        }
+
+        // ---- Drag from Library ----
+        function dfLibDragStart(event, clipId) {
+            DF.dragLibClip = DF.libClips.find(c => c.id === clipId);
+            event.dataTransfer.effectAllowed = 'copy';
+            event.dataTransfer.setData('text/plain', String(clipId));
+            document.getElementById('dfDropOverlay').classList.add('active');
+        }
+        function dfLibDragEnd(event) {
+            document.getElementById('dfDropOverlay').classList.remove('active');
+        }
+        function dfHandleDrop(event) {
+            event.preventDefault();
+            document.getElementById('dfDropOverlay').classList.remove('active');
+            const clip = DF.dragLibClip;
+            if (!clip) return;
+            const pos = dfScreenToCanvas(event.clientX, event.clientY);
+            dfCreateNode(clip, pos.x - 100, pos.y - 60);
+            DF.dragLibClip = null;
+        }
+
+        // ---- "Add to Workflow" button (called from clip card overlay) ----
+        window.dfAddClipToWorkflow = function(clipId) {
+            const clip = DF.libClips.find(c => c.id == clipId) || DF.libClips.find(c => String(c.id) === String(clipId));
+            if (!clip) {
+                // Try fetching from ytGlobalClips as fallback
+                const gc = ytGlobalClips.find(c => String(c.id) === String(clipId));
+                if (gc) {
+                    dfCreateNodeFromData({
+                        clipId: gc.id,
+                        title: gc.title || 'Untitled',
+                        modelName: gc.cards?.title || 'Unknown',
+                        videoUrl: optimizeMediaUrl(gc.url, true),
+                        thumbnail: gc.cards?.main_image_url || '',
+                        tags: Array.isArray(gc.tags) ? gc.tags : (gc.tags ? gc.tags.split(',').map(t=>t.trim()) : []),
+                    });
+                    dfSwitchToView();
+                    showSuccessToast('Clip added to Dreamflow!');
+                    return;
+                }
+                showSuccessToast('Clip not found in library — open Dreamflow tab first.');
+                return;
+            }
+            dfCreateNodeFromData({
+                clipId: clip.id,
+                title: clip.title || 'Untitled',
+                modelName: clip.cards?.title || 'Unknown',
+                videoUrl: optimizeMediaUrl(clip.url, true),
+                thumbnail: clip.cards?.main_image_url || '',
+                tags: Array.isArray(clip.tags) ? clip.tags : (clip.tags ? clip.tags.split(',').map(t=>t.trim()) : []),
+            });
+            dfSwitchToView();
+            showSuccessToast('Clip added to Dreamflow! ⚡');
+        };
+
+        function dfSwitchToView() {
+            const btn = document.querySelector('[data-target="dreamflowView"]');
+            if (btn) btn.click();
+        }
+
+        // ---- Node Creation ----
+        function dfCreateNode(clip, x, y) {
+            dfCreateNodeFromData({
+                clipId: clip.id,
+                title: clip.title || 'Untitled',
+                modelName: clip.cards?.title || 'Unknown',
+                videoUrl: optimizeMediaUrl(clip.url, true),
+                thumbnail: clip.cards?.main_image_url || '',
+                tags: Array.isArray(clip.tags) ? clip.tags : (clip.tags ? clip.tags.split(',').map(t=>t.trim()) : []),
+            }, x, y);
+        }
+
+        function dfCreateNodeFromData(data, x, y) {
+            const node = {
+                id: dfGenId(),
+                clipId: data.clipId,
+                title: data.title,
+                modelName: data.modelName,
+                videoUrl: data.videoUrl,
+                thumbnail: data.thumbnail,
+                tags: data.tags || [],
+                x: x !== undefined ? x : 80 + Math.random() * 300,
+                y: y !== undefined ? y : 80 + Math.random() * 200,
+            };
+            DF.nodes.push(node);
+            dfRenderNode(node);
+            dfUpdateEmptyHint();
+            return node;
+        }
+
+        function dfRenderNode(node) {
+            const el = document.createElement('div');
+            el.className = 'df-node';
+            el.id = node.id;
+            el.style.left = node.x + 'px';
+            el.style.top  = node.y + 'px';
+            el.innerHTML = `
+                <div class="df-connector df-connector-in" data-node="${node.id}" data-role="in" title="Input connector"></div>
+                <div class="df-connector df-connector-out" data-node="${node.id}" data-role="out" title="Output connector — drag to connect"></div>
+                <div class="df-node-header">
+                    <div class="df-node-icon">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7fe826" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    </div>
+                    <span class="df-node-title">${node.title}</span>
+                    <div class="df-node-delete" onclick="dfDeleteNode('${node.id}')" title="Delete node">✕</div>
+                </div>
+                <div class="df-node-thumb-wrap">
+                    <video class="df-node-video" id="dfvid_${node.id}"
+                        src="${node.videoUrl}"
+                        preload="metadata"
+                        muted
+                        loop
+                        playsinline
+                        onmouseenter="this.play().catch(()=>{})"
+                        onmouseleave="this.pause(); this.currentTime=0;"
+                        ontimeupdate="dfUpdateNodeProgress('${node.id}', this)"
+                        onended="dfOnNodeVideoEnded('${node.id}')">
+                    </video>
+                    <div class="df-node-play-btn" onclick="dfPlayFromNode('${node.id}')">
+                        <div class="df-node-play-inner">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="df-node-progress"><div class="df-node-progress-bar" id="dfprog_${node.id}"></div></div>
+                <div class="df-node-footer">
+                    <div class="df-node-clip-name">${node.title}</div>
+                    <div class="df-node-model-name">${node.modelName}</div>
+                </div>
+            `;
+            // Mouse events on node
+            el.addEventListener('mousedown', (e) => dfNodeMouseDown(e, node.id));
+            el.addEventListener('click', (e) => { e.stopPropagation(); dfSelectNode(node.id); });
+            // Connector drag for edge drawing
+            el.querySelectorAll('.df-connector').forEach(conn => {
+                conn.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                    if (conn.dataset.role === 'out') {
+                        dfStartEdgeDraw(e, node.id);
+                    }
+                });
+                conn.addEventListener('mouseup', (e) => {
+                    e.stopPropagation();
+                    if (conn.dataset.role === 'in' && DF.isDrawingEdge && DF.edgeSourceId !== node.id) {
+                        dfFinishEdgeDraw(node.id);
+                    }
+                });
+            });
+            dfGetCanvas().appendChild(el);
+        }
+
+        function dfUpdateNodeProgress(nodeId, vid) {
+            const bar = document.getElementById('dfprog_' + nodeId);
+            if (bar && vid.duration) {
+                bar.style.width = (vid.currentTime / vid.duration * 100) + '%';
+            }
+        }
+
+        // ---- Node Selection / Deletion ----
+        function dfSelectNode(nodeId) {
+            DF.selectedNodeId = nodeId;
+            document.querySelectorAll('.df-node').forEach(el => el.classList.remove('df-node-selected'));
+            const el = document.getElementById(nodeId);
+            if (el) el.classList.add('df-node-selected');
+            dfRenderSettings(nodeId);
+        }
+
+        function dfDeleteNode(nodeId) {
+            // Remove from state
+            DF.nodes = DF.nodes.filter(n => n.id !== nodeId);
+            DF.edges = DF.edges.filter(e => e.sourceId !== nodeId && e.targetId !== nodeId);
+            // Remove DOM
+            const el = document.getElementById(nodeId);
+            if (el) el.remove();
+            // Redraw edges
+            dfRenderAllEdges();
+            if (DF.selectedNodeId === nodeId) {
+                DF.selectedNodeId = null;
+                dfRenderSettings(null);
+            }
+            dfUpdateEmptyHint();
+        }
+
+        // ---- Dragging Nodes ----
+        function dfNodeMouseDown(e, nodeId) {
+            if (e.target.classList.contains('df-connector') || e.target.classList.contains('df-node-delete') || e.target.closest('.df-node-play-btn') || e.target.tagName === 'VIDEO') return;
+            e.stopPropagation();
+            e.preventDefault();
+            DF.isDraggingNode = true;
+            DF.draggingNodeId = nodeId;
+            const node = DF.nodes.find(n => n.id === nodeId);
+            const wrap = dfGetWrap();
+            const rect = wrap.getBoundingClientRect();
+            DF.dragOffsetX = (e.clientX - rect.left - DF.panX) / DF.zoom - node.x;
+            DF.dragOffsetY = (e.clientY - rect.top  - DF.panY) / DF.zoom - node.y;
+            dfSelectNode(nodeId);
+        }
+
+        // ---- Canvas pan / zoom ----
+        function dfCanvasMouseDown(e) {
+            if (e.target === dfGetWrap() || e.target === dfGetCanvas() || e.target === dfGetSvg()) {
+                DF.isPanning = true;
+                DF.panStartX = e.clientX - DF.panX;
+                DF.panStartY = e.clientY - DF.panY;
+                dfGetWrap().classList.add('df-panning');
+                // Deselect
+                DF.selectedNodeId = null;
+                document.querySelectorAll('.df-node').forEach(el => el.classList.remove('df-node-selected'));
+                dfRenderSettings(null);
+            }
+        }
+
+        function dfCanvasMouseMove(e) {
+            if (DF.isDraggingNode && DF.draggingNodeId) {
+                const wrap = dfGetWrap();
+                const rect = wrap.getBoundingClientRect();
+                const nx = (e.clientX - rect.left - DF.panX) / DF.zoom - DF.dragOffsetX;
+                const ny = (e.clientY - rect.top  - DF.panY) / DF.zoom - DF.dragOffsetY;
+                const node = DF.nodes.find(n => n.id === DF.draggingNodeId);
+                if (node) { node.x = nx; node.y = ny; }
+                const el = document.getElementById(DF.draggingNodeId);
+                if (el) { el.style.left = nx + 'px'; el.style.top = ny + 'px'; }
+                dfRenderAllEdges();
+                return;
+            }
+            if (DF.isPanning) {
+                DF.panX = e.clientX - DF.panStartX;
+                DF.panY = e.clientY - DF.panStartY;
+                dfApplyTransform();
+                return;
+            }
+            if (DF.isDrawingEdge) {
+                dfUpdateTempEdge(e.clientX, e.clientY);
+            }
+        }
+
+        function dfCanvasMouseUp(e) {
+            if (DF.isDraggingNode) {
+                DF.isDraggingNode = false;
+                DF.draggingNodeId = null;
+            }
+            if (DF.isPanning) {
+                DF.isPanning = false;
+                dfGetWrap().classList.remove('df-panning');
+            }
+            if (DF.isDrawingEdge) {
+                dfCancelEdgeDraw();
+            }
+        }
+
+        function dfCanvasWheel(e) {
+            e.preventDefault();
+            const wrap = dfGetWrap();
+            const rect = wrap.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            const newZoom = Math.min(3, Math.max(0.2, DF.zoom * delta));
+            DF.panX = mx - (mx - DF.panX) * (newZoom / DF.zoom);
+            DF.panY = my - (my - DF.panY) * (newZoom / DF.zoom);
+            DF.zoom = newZoom;
+            dfApplyTransform();
+        }
+
+        // ---- Zoom controls ----
+        function dfZoomIn()  { DF.zoom = Math.min(3, DF.zoom * 1.2);  dfApplyTransform(); }
+        function dfZoomOut() { DF.zoom = Math.max(0.2, DF.zoom / 1.2); dfApplyTransform(); }
+        function dfZoomFit() {
+            if (DF.nodes.length === 0) { DF.panX = 0; DF.panY = 0; DF.zoom = 1; dfApplyTransform(); return; }
+            const wrap = dfGetWrap();
+            const rect = wrap.getBoundingClientRect();
+            const xs = DF.nodes.map(n => n.x); const ys = DF.nodes.map(n => n.y);
+            const minX = Math.min(...xs) - 20, maxX = Math.max(...xs) + 220;
+            const minY = Math.min(...ys) - 20, maxY = Math.max(...ys) + 200;
+            const contentW = maxX - minX, contentH = maxY - minY;
+            const scaleX = rect.width / contentW, scaleY = rect.height / contentH;
+            DF.zoom = Math.min(scaleX, scaleY, 1.5) * 0.85;
+            DF.panX = (rect.width  - contentW * DF.zoom) / 2 - minX * DF.zoom;
+            DF.panY = (rect.height - contentH * DF.zoom) / 2 - minY * DF.zoom;
+            dfApplyTransform();
+        }
+
+        // ---- Edge Drawing ----
+        function dfStartEdgeDraw(e, sourceId) {
+            DF.isDrawingEdge = true;
+            DF.edgeSourceId = sourceId;
+            const tempEdge = document.getElementById('dfTempEdge');
+            if (tempEdge) tempEdge.style.display = 'block';
+        }
+
+        function dfUpdateTempEdge(clientX, clientY) {
+            const sourceNode = DF.nodes.find(n => n.id === DF.edgeSourceId);
+            if (!sourceNode) return;
+            const outPos = dfGetConnectorPos(DF.edgeSourceId, 'out');
+            const targetPos = dfScreenToCanvas(clientX, clientY);
+            const tempEdge = document.getElementById('dfTempEdge');
+            if (tempEdge && outPos) {
+                tempEdge.setAttribute('d', dfBezierPath(outPos.x, outPos.y, targetPos.x, targetPos.y));
+            }
+        }
+
+        function dfFinishEdgeDraw(targetId) {
+            if (!DF.isDrawingEdge || !DF.edgeSourceId) return;
+            // Prevent duplicate or self-loop
+            const alreadyExists = DF.edges.some(e => e.sourceId === DF.edgeSourceId && e.targetId === targetId);
+            if (!alreadyExists && DF.edgeSourceId !== targetId) {
+                const edge = { id: dfGenId(), sourceId: DF.edgeSourceId, targetId: targetId };
+                DF.edges.push(edge);
+                dfRenderAllEdges();
+            }
+            dfCancelEdgeDraw();
+        }
+
+        function dfCancelEdgeDraw() {
+            DF.isDrawingEdge = false;
+            DF.edgeSourceId = null;
+            const tempEdge = document.getElementById('dfTempEdge');
+            if (tempEdge) { tempEdge.style.display = 'none'; tempEdge.setAttribute('d', ''); }
+        }
+
+        function dfGetConnectorPos(nodeId, role) {
+            const node = DF.nodes.find(n => n.id === nodeId);
+            if (!node) return null;
+            const nodeW = 200;
+            const nodeH = 200; // approximate
+            if (role === 'out') return { x: node.x + nodeW, y: node.y + 80 };
+            if (role === 'in')  return { x: node.x, y: node.y + 80 };
+            return null;
+        }
+
+        function dfBezierPath(x1, y1, x2, y2) {
+            const dx = Math.abs(x2 - x1) * 0.5 + 30;
+            return `M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`;
+        }
+
+        function dfRenderAllEdges() {
+            const svg = dfGetSvg();
+            // Remove old rendered edges (keep defs and temp edge)
+            svg.querySelectorAll('.df-edge-rendered').forEach(el => el.remove());
+            DF.edges.forEach(edge => {
+                const outPos = dfGetConnectorPos(edge.sourceId, 'out');
+                const inPos  = dfGetConnectorPos(edge.targetId,  'in');
+                if (!outPos || !inPos) return;
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', dfBezierPath(outPos.x, outPos.y, inPos.x, inPos.y));
+                path.setAttribute('class', 'df-edge-path df-edge-rendered' + (edge.id === DF._activeEdgeId ? ' df-active-edge' : ''));
+                path.setAttribute('marker-end', edge.id === DF._activeEdgeId ? 'url(#dfArrowHeadActive)' : 'url(#dfArrowHead)');
+                path.addEventListener('click', () => dfDeleteEdge(edge.id));
+                svg.appendChild(path);
+            });
+        }
+
+        function dfDeleteEdge(edgeId) {
+            DF.edges = DF.edges.filter(e => e.id !== edgeId);
+            dfRenderAllEdges();
+        }
+
+        // ---- Playback ----
+        function dfPlayFromNode(startNodeId) {
+            // Stop any currently playing
+            dfStopPlayback();
+            DF.playingNodeId = startNodeId;
+            dfHighlightPlayingNode(startNodeId);
+            const vid = document.getElementById('dfvid_' + startNodeId);
+            if (vid) {
+                vid.loop = false;
+                vid.muted = false;
+                vid.currentTime = 0;
+                vid.play().catch(()=>{});
+            }
+        }
+
+        function dfOnNodeVideoEnded(nodeId) {
+            if (DF.playingNodeId !== nodeId) return;
+            // Find next node via edges
+            const edge = DF.edges.find(e => e.sourceId === nodeId);
+            if (edge) {
+                dfHighlightPlayingNode(edge.targetId);
+                DF.playingNodeId = edge.targetId;
+                const nextVid = document.getElementById('dfvid_' + edge.targetId);
+                if (nextVid) {
+                    nextVid.loop = false;
+                    nextVid.muted = false;
+                    nextVid.currentTime = 0;
+                    nextVid.play().catch(()=>{});
+                }
+            } else {
+                // End of chain
+                dfStopPlayback();
+            }
+        }
+
+        function dfHighlightPlayingNode(nodeId) {
+            document.querySelectorAll('.df-node').forEach(el => el.classList.remove('df-node-playing'));
+            const el = document.getElementById(nodeId);
+            if (el) el.classList.add('df-node-playing');
+        }
+
+        function dfStopPlayback() {
+            document.querySelectorAll('.df-node').forEach(el => el.classList.remove('df-node-playing'));
+            DF.nodes.forEach(n => {
+                const vid = document.getElementById('dfvid_' + n.id);
+                if (vid) { vid.pause(); vid.currentTime = 0; vid.muted = true; vid.loop = true; }
+            });
+            DF.playingNodeId = null;
+        }
+
+        // ---- Settings Panel ----
+        function dfRenderSettings(nodeId) {
+            const el = document.getElementById('dfSettingsContent');
+            if (!el) return;
+            if (!nodeId) {
+                el.innerHTML = `<div class="df-settings-empty">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 8v8M8 12h8"/></svg>
+                    <p>Select a node to see details</p>
+                </div>`;
+                return;
+            }
+            const node = DF.nodes.find(n => n.id === nodeId);
+            if (!node) return;
+            const tagsHtml = node.tags.length
+                ? node.tags.map(t => `<span class="df-settings-tag">${t}</span>`).join('')
+                : '<span style="color:#475569;font-size:11px;">No tags</span>';
+            el.innerHTML = `
+                <div class="df-settings-label">Preview</div>
+                <div id="dfSettingsPreview">
+                    <video id="dfSettingsVideo" src="${node.videoUrl}" muted loop autoplay playsinline style="width:100%;height:100%;object-fit:cover;border-radius:10px;"></video>
+                </div>
+                <div class="df-settings-label">Clip Title</div>
+                <div class="df-settings-value">${node.title}</div>
+                <div class="df-settings-label">Model</div>
+                <div class="df-settings-value">${node.modelName}</div>
+                <div class="df-settings-label">Tags</div>
+                <div class="df-settings-value df-settings-tags">${tagsHtml}</div>
+                <div class="df-settings-label" style="margin-top:20px;">Actions</div>
+                <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px;">
+                    <button onclick="dfPlayFromNode('${nodeId}')" style="background:rgba(127,232,38,0.15);border:1px solid rgba(127,232,38,0.3);color:#7fe826;border-radius:10px;padding:8px;font-size:12px;font-weight:700;cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background='rgba(127,232,38,0.25)'" onmouseout="this.style.background='rgba(127,232,38,0.15)'">
+                        ▶ Play from this node
+                    </button>
+                    <button onclick="dfDeleteNode('${nodeId}')" style="background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.2);color:#ff6b6b;border-radius:10px;padding:8px;font-size:12px;font-weight:700;cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background='rgba(255,68,68,0.15)'" onmouseout="this.style.background='rgba(255,68,68,0.08)'">
+                        🗑 Delete node
+                    </button>
+                </div>
+            `;
+        }
+
+        // ---- Empty hint ----
+        function dfUpdateEmptyHint() {
+            const hint = document.getElementById('dfEmptyHint');
+            if (hint) hint.style.display = DF.nodes.length === 0 ? 'block' : 'none';
+        }
+
+        // ---- Clear Canvas ----
+        function dfClearCanvas() {
+            if (DF.nodes.length > 0 && !confirm('Clear all nodes and connections?')) return;
+            dfStopPlayback();
+            DF.nodes = [];
+            DF.edges = [];
+            DF.selectedNodeId = null;
+            // Remove all node elements
+            const canvas = dfGetCanvas();
+            canvas.querySelectorAll('.df-node').forEach(el => el.remove());
+            dfRenderAllEdges();
+            dfRenderSettings(null);
+            dfUpdateEmptyHint();
+        }
+
+        function dfNewWorkflow() {
+            if (DF.nodes.length > 0 && !confirm('Start a new workflow? Unsaved changes will be lost.')) return;
+            dfClearCanvas();
+            DF.activeWorkflowId = null;
+            showSuccessToast('New workflow started ⚡');
+        }
+
+        // ---- Save / Load workflows via Supabase ----
+        async function dfSaveWorkflow() {
+            if (DF.nodes.length === 0) { showSuccessToast('Nothing to save — add some clips first!'); return; }
+            // If no active workflow, prompt name
+            let name = DF.activeWorkflowId ? null : prompt('Name this workflow:', 'My Workflow');
+            if (name === null && !DF.activeWorkflowId) return; // cancelled
+            try {
+                let workflowId = DF.activeWorkflowId;
+                if (!workflowId) {
+                    // Create workflow
+                    const { data: wf, error: wErr } = await supabaseClient.from('dreamflow_workflows').insert({
+                        name: name || 'Untitled Workflow',
+                        canvas_x: DF.panX,
+                        canvas_y: DF.panY,
+                        canvas_zoom: DF.zoom,
+                    }).select().single();
+                    if (wErr) throw wErr;
+                    workflowId = wf.id;
+                    DF.activeWorkflowId = workflowId;
+                } else {
+                    // Update viewport
+                    await supabaseClient.from('dreamflow_workflows').update({
+                        canvas_x: DF.panX,
+                        canvas_y: DF.panY,
+                        canvas_zoom: DF.zoom,
+                        updated_at: new Date().toISOString(),
+                    }).eq('id', workflowId);
+                    // Delete old nodes + edges
+                    await supabaseClient.from('dreamflow_nodes').delete().eq('workflow_id', workflowId);
+                }
+                // Insert nodes
+                if (DF.nodes.length > 0) {
+                    const nodeRows = DF.nodes.map(n => ({
+                        id: n.id.startsWith('df_') ? undefined : n.id, // let DB generate uuid if temp id
+                        workflow_id: workflowId,
+                        clip_id: n.clipId,
+                        pos_x: n.x, pos_y: n.y,
+                        clip_title: n.title,
+                        model_name: n.modelName,
+                        thumbnail: n.thumbnail,
+                        video_url: n.videoUrl,
+                        tags: n.tags,
+                    }));
+                    // We need the real UUIDs back to map edges
+                    const { data: savedNodes, error: nErr } = await supabaseClient.from('dreamflow_nodes').insert(nodeRows).select();
+                    if (nErr) throw nErr;
+                    // Build old-id → new-uuid map
+                    const idMap = {};
+                    DF.nodes.forEach((n, i) => { if (savedNodes[i]) idMap[n.id] = savedNodes[i].id; });
+                    // Update local node ids
+                    DF.nodes.forEach((n, i) => { if (savedNodes[i]) n.id = savedNodes[i].id; });
+                    // Insert edges
+                    const edgeRows = DF.edges.map(e => ({
+                        workflow_id: workflowId,
+                        source_node_id: idMap[e.sourceId] || e.sourceId,
+                        target_node_id: idMap[e.targetId] || e.targetId,
+                    })).filter(e => e.source_node_id && e.target_node_id);
+                    if (edgeRows.length > 0) {
+                        await supabaseClient.from('dreamflow_edges').insert(edgeRows);
+                    }
+                }
+                showSuccessToast('Workflow saved! ✓');
+            } catch(e) {
+                console.error('Dreamflow save error', e);
+                showSuccessToast('Save failed — check console.');
+            }
+        }
+
+        async function dfLoadWorkflow(workflowId) {
+            try {
+                const { data: wf } = await supabaseClient.from('dreamflow_workflows').select('*').eq('id', workflowId).single();
+                const { data: nodes } = await supabaseClient.from('dreamflow_nodes').select('*').eq('workflow_id', workflowId);
+                const { data: edges } = await supabaseClient.from('dreamflow_edges').select('*').eq('workflow_id', workflowId);
+                if (!wf) return;
+
+                dfClearCanvas();
+                DF.activeWorkflowId = workflowId;
+                DF.panX = wf.canvas_x || 0;
+                DF.panY = wf.canvas_y || 0;
+                DF.zoom = wf.canvas_zoom || 1;
+                dfApplyTransform();
+
+                // Create nodes
+                (nodes || []).forEach(n => {
+                    const node = {
+                        id: n.id,
+                        clipId: n.clip_id,
+                        title: n.clip_title || 'Untitled',
+                        modelName: n.model_name || 'Unknown',
+                        videoUrl: n.video_url || '',
+                        thumbnail: n.thumbnail || '',
+                        tags: Array.isArray(n.tags) ? n.tags : [],
+                        x: n.pos_x,
+                        y: n.pos_y,
+                    };
+                    DF.nodes.push(node);
+                    dfRenderNode(node);
+                });
+                // Create edges
+                (edges || []).forEach(e => {
+                    DF.edges.push({ id: e.id, sourceId: e.source_node_id, targetId: e.target_node_id });
+                });
+                dfRenderAllEdges();
+                dfUpdateEmptyHint();
+                dfCloseWorkflowModal();
+                showSuccessToast(`"${wf.name}" loaded ⚡`);
+            } catch(e) {
+                console.error('Dreamflow load error', e);
+                showSuccessToast('Load failed — check console.');
+            }
+        }
+
+        async function dfDeleteWorkflow(workflowId, event) {
+            event.stopPropagation();
+            if (!confirm('Delete this workflow permanently?')) return;
+            await supabaseClient.from('dreamflow_workflows').delete().eq('id', workflowId);
+            if (DF.activeWorkflowId === workflowId) { dfClearCanvas(); DF.activeWorkflowId = null; }
+            dfOpenWorkflowModal(); // refresh
+        }
+
+        // ---- Workflow Modal ----
+        async function dfOpenWorkflowModal() {
+            document.getElementById('dfWorkflowModal').classList.add('active');
+            const listEl = document.getElementById('dfWorkflowList');
+            listEl.innerHTML = '<div style="padding:30px;text-align:center;color:#334155;font-size:12px;font-weight:600;">Loading…</div>';
+            try {
+                const { data, error } = await supabaseClient.from('dreamflow_workflows').select('*').order('updated_at', { ascending: false });
+                if (!data || data.length === 0) {
+                    listEl.innerHTML = '<div style="padding:30px;text-align:center;color:#334155;font-size:12px;font-weight:600;">No saved workflows yet. Save your first one below!</div>';
+                    return;
+                }
+                listEl.innerHTML = data.map(wf => `
+                    <div class="df-workflow-item" onclick="dfLoadWorkflow('${wf.id}')">
+                        <div class="df-workflow-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M9 10.5l6-3M9 13.5l6 3"/></svg>
+                        </div>
+                        <div class="df-workflow-info">
+                            <div class="df-workflow-name">${wf.name || 'Untitled'}</div>
+                            <div class="df-workflow-meta">Updated ${new Date(wf.updated_at).toLocaleDateString()}</div>
+                        </div>
+                        <button class="df-workflow-del" onclick="dfDeleteWorkflow('${wf.id}', event)" title="Delete">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                        </button>
+                    </div>
+                `).join('');
+            } catch(e) {
+                listEl.innerHTML = '<div style="padding:30px;text-align:center;color:#ff6b6b;font-size:12px;font-weight:600;">Error loading workflows.</div>';
+            }
+        }
+
+        function dfCloseWorkflowModal() {
+            document.getElementById('dfWorkflowModal').classList.remove('active');
+        }
+
+        async function dfSaveNewWorkflow() {
+            const name = document.getElementById('dfNewWorkflowName').value.trim() || 'My Workflow';
+            DF.activeWorkflowId = null; // force create new
+            const origPrompt = window.prompt;
+            window.prompt = () => name;
+            await dfSaveWorkflow();
+            window.prompt = origPrompt;
+            document.getElementById('dfNewWorkflowName').value = '';
+            dfOpenWorkflowModal();
+        }
+
+        // Close workflow modal on backdrop click
+        document.getElementById('dfWorkflowModal').addEventListener('click', function(e) {
+            if (e.target === this) dfCloseWorkflowModal();
+        });
+
+        // ---- Inject "Add to Workflow" button into clip cards ----
+        function dfInjectAddToWorkflowButtons() {
+            // Inject into ytClipsGrid cards via mutation-style approach in renderYTClipsGrid
+            // This patches openYTPlayer to add button to player modal
+        }
+
+        // Patch renderYTClipsGrid to add "Add to Workflow" button
+        (function() {
+            const origRender = window.renderYTClipsGrid;
+            if (origRender) {
+                window.renderYTClipsGrid = function(clearFirst) {
+                    origRender(clearFirst);
+                    // Add buttons to freshly rendered cards
+                    setTimeout(() => {
+                        document.querySelectorAll('#ytClipsGrid > div').forEach(card => {
+                            if (card.querySelector('.df-add-to-workflow-btn')) return; // already has button
+                            // Find clip id from onclick attr of title/video
+                            const clickEl = card.querySelector('[onclick*="openYTPlayer"]');
+                            if (!clickEl) return;
+                            const match = clickEl.getAttribute('onclick').match(/openYTPlayer\((\d+)\)/);
+                            if (!match) return;
+                            const clipId = match[1];
+                            const footer = card.querySelector('.flex.flex-col.min-w-0');
+                            if (footer) {
+                                const btn = document.createElement('button');
+                                btn.className = 'df-add-to-workflow-btn';
+                                btn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 5v14M5 12h14"/></svg> Add to Workflow';
+                                btn.style.marginTop = '6px';
+                                btn.onclick = (e) => { e.stopPropagation(); dfAddClipToWorkflow(clipId); };
+                                footer.appendChild(btn);
+                            }
+                        });
+                    }, 100);
+                };
+            }
+        })();
+
+        // Patch openYTPlayer to add "Add to Workflow" button in player modal
+        (function() {
+            const origOpen = window.openYTPlayer;
+            if (origOpen) {
+                window.openYTPlayer = function(clipId) {
+                    origOpen(clipId);
+                    setTimeout(() => {
+                        const modal = document.getElementById('ytPlayerModal');
+                        if (!modal) return;
+                        if (modal.querySelector('.df-add-to-workflow-btn')) return;
+                        const actionsArea = modal.querySelector('.flex.gap-2') || modal.querySelector('.flex.items-center.gap-2');
+                        if (actionsArea) {
+                            const btn = document.createElement('button');
+                            btn.className = 'df-add-to-workflow-btn';
+                            btn.innerHTML = '⚡ Add to Workflow';
+                            btn.onclick = () => dfAddClipToWorkflow(clipId);
+                            actionsArea.appendChild(btn);
+                        }
+                    }, 200);
+                };
+            }
+        })();
+
+        let dfInitialized = false;
+        function dfOnViewActivated() {
+            if (dfInitialized) return;
+            dfInitialized = true;
+            dfLoadLibrary();
+            dfApplyTransform();
+            dfUpdateEmptyHint();
+        }
+
+        // Also try hooking nav-item clicks directly
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.nav-item[data-target="dreamflowView"]').forEach(btn => {
+                btn.addEventListener('click', () => setTimeout(dfOnViewActivated, 50));
+            });
+        });
 
     </script>
 </body>
