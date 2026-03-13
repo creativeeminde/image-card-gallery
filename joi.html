@@ -2057,7 +2057,14 @@
         <div class="flex-1 h-full flex flex-col relative overflow-hidden bg-[#f5f5f5] dark:bg-slate-950">
             <div class="absolute top-0 left-0 w-full p-6 flex justify-between items-start z-20 pointer-events-none">
                 <button onclick="deleteCurrentMedia(this, event)" class="pointer-events-auto text-slate-400 p-2" title="Delete Media"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
-                <button onclick="closeLightbox()" class="pointer-events-auto text-slate-600 p-2"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                <div class="flex items-center gap-2 pointer-events-auto">
+                    <button id="lightboxDownloadBtn" onclick="downloadLightboxMedia()" title="Download full-resolution image"
+                        class="flex items-center gap-2 px-4 py-2 bg-[#7fe826] hover:bg-[#6ed11f] active:scale-95 text-[#111] rounded-full text-xs font-bold shadow-lg transition-all select-none">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        <span class="hidden sm:inline">Download</span>
+                    </button>
+                    <button onclick="closeLightbox()" class="text-slate-600 p-2"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                </div>
             </div>
             <button onclick="navigateLightbox(-1)" class="absolute left-8 top-1/2 -translate-y-1/2 z-30 p-2 text-slate-400"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="square" stroke-linejoin="miter" stroke-width="1" d="M15 19l-7-7 7-7"></path></svg></button>
             <button onclick="navigateLightbox(1)" class="absolute right-8 top-1/2 -translate-y-1/2 z-30 p-2 text-slate-400"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="square" stroke-linejoin="miter" stroke-width="1" d="M9 5l7 7-7 7"></path></svg></button>
@@ -4225,6 +4232,64 @@ let editingClipId = null; // Track if we are editing
         function openLightbox(idx, isClip) { currentLightboxIndex = idx; isClipViewer = isClip; isGlobalViewer = false; updateLightboxContent(); document.getElementById('lightboxModal').classList.add('active'); }
         function openGlobalLightbox(idx, filteredMedia, isClip) { lightboxMediaList = filteredMedia; currentLightboxIndex = idx; isClipViewer = isClip; isGlobalViewer = true; updateLightboxContent(); document.getElementById('lightboxModal').classList.add('active'); }
         function closeLightbox() { document.getElementById('lightboxModal').classList.remove('active'); document.getElementById('lightboxVideo').pause(); document.getElementById('lightboxVideo').removeAttribute('src'); }
+
+        async function downloadLightboxMedia() {
+            const media = lightboxMediaList[currentLightboxIndex];
+            if (!media) return;
+
+            // Get the raw source URL — strip CDN optimisation params for full resolution
+            const rawUrl = media.url || media.image_url || media.src || (typeof media === 'string' ? media : null);
+            if (!rawUrl) return;
+
+            let fullResUrl = rawUrl;
+            try {
+                const u = new URL(rawUrl);
+                // Remove ImageKit / Cloudinary / imgix transform params
+                ['tr', 'w', 'h', 'format', 'q', 'quality', 'fit', 'auto', 'f', 'dpr'].forEach(p => u.searchParams.delete(p));
+                // Remove cache-busting params added by optimizeMediaUrl
+                ['t', 'cb', 'v', 'timestamp', 'nocache'].forEach(p => u.searchParams.delete(p));
+                fullResUrl = u.toString();
+            } catch(e) { /* not a valid URL object, use rawUrl as-is */ }
+
+            // Derive a sensible filename from the URL
+            const pathPart = fullResUrl.split('?')[0].split('/').pop() || 'image';
+            const filename = pathPart.includes('.') ? pathPart : pathPart + '.jpg';
+
+            const btn = document.getElementById('lightboxDownloadBtn');
+            const originalHtml = btn ? btn.innerHTML : '';
+
+            try {
+                if (btn) {
+                    btn.innerHTML = `<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg><span class="hidden sm:inline">Downloading…</span>`;
+                    btn.disabled = true;
+                }
+
+                const response = await fetch(fullResUrl);
+                if (!response.ok) throw new Error('Fetch failed');
+                const blob = await response.blob();
+                const objectUrl = URL.createObjectURL(blob);
+
+                const a = document.createElement('a');
+                a.href = objectUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(objectUrl);
+
+                showSuccessToast('Download started! 📥');
+            } catch(err) {
+                // CORS fallback — open full-res in new tab so the user can save manually
+                console.warn('Fetch download failed, opening in new tab:', err);
+                window.open(fullResUrl, '_blank');
+                showSuccessToast('Opened full-res in new tab — right-click to save 🖼️');
+            } finally {
+                if (btn) {
+                    btn.innerHTML = originalHtml;
+                    btn.disabled = false;
+                }
+            }
+        }
         function navigateLightbox(dir) { if (lightboxMediaList.length === 0) return; currentLightboxIndex = (currentLightboxIndex + dir + lightboxMediaList.length) % lightboxMediaList.length; updateLightboxContent(); }
         function updateLightboxContent() {
             const media = lightboxMediaList[currentLightboxIndex];
@@ -4233,6 +4298,7 @@ let editingClipId = null; // Track if we are editing
             
             const imgEl = document.getElementById('lightboxImage');
             const vidEl = document.getElementById('lightboxVideo');
+            const dlBtn = document.getElementById('lightboxDownloadBtn');
             
             currentZoom = 1; panTranslateX = 0; panTranslateY = 0; applyTransform();
             document.getElementById('lightboxPanContainer').style.cursor = 'default';
@@ -4243,10 +4309,12 @@ let editingClipId = null; // Track if we are editing
                 if (playPromise !== undefined) { playPromise.catch(e => { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') console.error(e); }); }
                 document.getElementById('videoControls').classList.remove('hidden');
                 document.getElementById('videoControls').classList.add('flex');
+                if (dlBtn) dlBtn.classList.add('hidden');
             } else {
                 vidEl.classList.add('hidden'); vidEl.pause(); vidEl.removeAttribute('src'); imgEl.classList.remove('hidden'); imgEl.src = url;
                 document.getElementById('videoControls').classList.remove('flex');
                 document.getElementById('videoControls').classList.add('hidden');
+                if (dlBtn) dlBtn.classList.remove('hidden');
             }
             
             const tagsContainer = document.getElementById('lightboxTagsContainer');
