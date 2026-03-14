@@ -1998,7 +1998,10 @@
             <div class="w-full h-full flex flex-col lg:flex-row overflow-hidden bg-[#f1f5f0] dark:bg-slate-900 pt-[85px]">
                 <div class="flex-1 relative flex items-center justify-center h-[50vh] lg:h-full overflow-hidden shrink-0">
                     <div id="runwayAlphabetBar" class="absolute top-2 sm:top-4 left-1/2 -translate-x-1/2 z-50 flex items-center justify-center gap-1 sm:gap-1.5 px-4 py-3 dark:border-slate-700/50 overflow-x-auto no-scrollbar transition-colors duration-300 w-max max-w-[95vw]"></div>
-                    <div class="absolute top-20 left-4 lg:top-20 lg:left-8 z-50 flex items-center bg-white/80 dark:bg-slate-800/80 backdrop-blur-md p-1 rounded-full shadow-md border border-slate-200/50 dark:border-slate-700/50 transition-colors duration-300 gap-1">
+                    <!-- Runway Site Filter Bar -->
+                    <div id="runwaySiteFilterBar" class="hidden absolute top-20 left-1/2 -translate-x-1/2 z-50 flex-wrap items-center justify-center gap-1.5 px-3 py-1.5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md rounded-full shadow-md border border-slate-200/50 dark:border-slate-700/50 max-w-[90vw] overflow-x-auto no-scrollbar"></div>
+
+                    <div class="absolute top-32 left-4 lg:top-32 lg:left-8 z-50 flex items-center bg-white/80 dark:bg-slate-800/80 backdrop-blur-md p-1 rounded-full shadow-md border border-slate-200/50 dark:border-slate-700/50 transition-colors duration-300 gap-1">
                         <button id="runwayModeMain" onclick="setRunwayMode('main')" class="px-3 py-1.5 text-[10px] font-bold rounded-full bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm transition-all uppercase tracking-wider">Main</button>
                         <button id="runwayModeNude" onclick="setRunwayMode('nude')" class="px-3 py-1.5 text-[10px] font-bold rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-all uppercase tracking-wider">Nude</button>
                         <button id="runwayModeVideo" onclick="setRunwayMode('video')" class="px-3 py-1.5 text-[10px] font-bold rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-all uppercase tracking-wider">Clips</button>
@@ -3485,6 +3488,7 @@ function initCarouselDrag() {
         
         let currentZoom = 1, isPanning = false, panStartX = 0, panStartY = 0, panTranslateX = 0, panTranslateY = 0;
         let runwayCurrentIndex = 0, runwayMode = 'main', runwayPanelMode = 'images', currentRunwayItems = [], runwayActiveLetter = 'All';
+        let runwaySiteFilter = null; // null = show only models with no site assigned
         let galleryActiveLetter = 'All'; 
         let isGalleryVideoMode = false; 
         
@@ -5232,7 +5236,12 @@ let editingClipId = null; // Track if we are editing
             const container = document.getElementById('runwayAlphabetBar');
             if (!container) return;
             const letters = new Set();
-            allLoadedCards.forEach(c => { if (c.title) letters.add(c.title.charAt(0).toUpperCase()); });
+            // Only letters for models visible under current site filter
+            allLoadedCards.forEach(c => {
+                const site = (c.site_name || '').trim();
+                const visible = runwaySiteFilter === null ? site === '' : site.toLowerCase() === runwaySiteFilter.toLowerCase();
+                if (visible && c.title) letters.add(c.title.charAt(0).toUpperCase());
+            });
             const sortedLetters = Array.from(letters).sort();
             sortedLetters.unshift('All');
             container.innerHTML = sortedLetters.map(letter => `
@@ -5245,6 +5254,14 @@ let editingClipId = null; // Track if we are editing
         function initRunway() {
             currentRunwayItems = [];
             allLoadedCards.forEach(card => {
+                // ── Site filter ────────────────────────────────────────────
+                const cardSite = (card.site_name || '').trim();
+                if (runwaySiteFilter === null) {
+                    if (cardSite !== '') return; // hide site-assigned models by default
+                } else {
+                    if (cardSite.toLowerCase() !== runwaySiteFilter.toLowerCase()) return;
+                }
+                // ──────────────────────────────────────────────────────────
                 if (runwayActiveLetter !== 'All' && card.title && card.title.charAt(0).toUpperCase() !== runwayActiveLetter) return; 
 
                 if (runwayMode === 'main') {
@@ -5454,6 +5471,51 @@ let editingClipId = null; // Track if we are editing
             const activeBtn = mode === 'main' ? btnMain : (mode === 'nude' ? btnNude : btnVideo);
             if(activeBtn) activeBtn.className = "px-3 py-1.5 text-[10px] font-bold rounded-full bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm transition-all uppercase tracking-wider";
             initRunway(); 
+        }
+
+        function buildRunwaySiteBar() {
+            const bar = document.getElementById('runwaySiteFilterBar');
+            if (!bar) return;
+
+            // Collect unique site names across all cards
+            const siteSet = new Set();
+            allLoadedCards.forEach(c => {
+                const s = (c.site_name || '').trim();
+                if (s) siteSet.add(s);
+            });
+
+            // Hide bar entirely when no sites exist
+            if (siteSet.size === 0) {
+                bar.classList.add('hidden');
+                bar.classList.remove('flex');
+                return;
+            }
+            bar.classList.remove('hidden');
+            bar.classList.add('flex');
+
+            const sites = Array.from(siteSet).sort();
+            const activeBase = 'px-3 py-1 text-[10px] font-bold rounded-full transition-all uppercase tracking-wider flex-shrink-0';
+            const activeOn  = activeBase + ' bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] shadow-sm';
+            const activeOff = activeBase + ' bg-white/70 dark:bg-slate-700/70 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white border border-slate-200/60 dark:border-slate-600/60';
+
+            bar.innerHTML = '';
+
+            const makeBtn = (label, value) => {
+                const btn = document.createElement('button');
+                btn.textContent = label;
+                btn.className = (runwaySiteFilter === value) ? activeOn : activeOff;
+                btn.addEventListener('click', () => {
+                    runwaySiteFilter = value;
+                    runwayActiveLetter = 'All'; // reset letter when switching site
+                    buildRunwaySiteBar();
+                    renderRunwayAlphabetBar();
+                    initRunway();
+                });
+                return btn;
+            };
+
+            bar.appendChild(makeBtn('All', null));
+            sites.forEach(s => bar.appendChild(makeBtn(s, s)));
         }
 
         function setRunwayPanelMode(mode) { 
@@ -6174,7 +6236,8 @@ let editingClipId = null; // Track if we are editing
             buildSiteFilterBar();
             applyFilters(); 
             buildGlobalAssetsList(); 
-            renderRunwayAlphabetBar(); 
+            renderRunwayAlphabetBar();
+            buildRunwaySiteBar();
             initRunway();
             
             // Carousel Setup
@@ -6353,7 +6416,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                         allLoadedCards.unshift(data[0]);
                         closeModelModal();
                         showSuccessToast("Model added successfully!");
-                        buildFilters(); buildSiteFilterBar(); renderGalleryAlphabetBar(); applyFilters(); renderRunwayAlphabetBar(); initRunway();
+                        buildFilters(); buildSiteFilterBar(); renderGalleryAlphabetBar(); applyFilters(); renderRunwayAlphabetBar(); buildRunwaySiteBar(); initRunway();
                         openCloseUpPage(data[0]);
                     } catch(err) { console.error("Error adding model", err); }
                 });
@@ -6394,7 +6457,7 @@ const addAudioForm = document.getElementById('addAudioForm');
 
                         closeEditMainImageModal();
                         showSuccessToast('Model updated!');
-                        buildFilters(); applyFilters(); renderGalleryAlphabetBar(); initRunway(); buildSiteFilterBar();
+                        buildFilters(); applyFilters(); renderGalleryAlphabetBar(); initRunway(); buildSiteFilterBar(); buildRunwaySiteBar();
                     } catch(err) { console.error('Error updating model', err); }
                 });
             }
