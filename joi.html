@@ -1963,6 +1963,12 @@
 
             <div id="modelsAlphabetBar" class="flex items-center justify-center gap-1 sm:gap-1.5 pb-4 mb-4 overflow-x-auto no-scrollbar w-full border-b border-slate-200/50 dark:border-slate-700/50"></div>
 
+            <!-- Site Filter Bar -->
+            <div id="siteFilterBar" class="hidden items-center gap-2 pb-4 mb-2 overflow-x-auto no-scrollbar w-full">
+                <span class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex-shrink-0">Site</span>
+                <div id="siteFilterButtons" class="flex items-center gap-2 flex-nowrap"></div>
+            </div>
+
             <!-- Recently Visited Row -->
             <div id="recentlyVisitedSection" class="hidden mb-4">
                 <div class="flex items-center justify-between mb-3">
@@ -2757,6 +2763,13 @@
                     <div id="editModelTagsGrid" class="flex flex-wrap gap-2 max-h-36 overflow-y-auto custom-scrollbar p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
                     </div>
                 </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Site <span class="text-slate-400 dark:text-slate-500 font-normal">(optional)</span>
+                    </label>
+                    <input type="text" id="editModelSiteName" maxlength="80" placeholder="e.g. Brazzers, OnlyFans, BangBros…" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#7fe826] outline-none transition-all shadow-sm">
+                    <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 pl-1">Leave empty to show in the main gallery. Fill in to assign this model to a site.</p>
+                </div>
                 <div class="pt-2 flex gap-3 flex-shrink-0">
                     <button type="button" onclick="closeEditMainImageModal()" class="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 py-3 rounded-xl font-bold">Cancel</button>
                     <button type="submit" class="flex-1 bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] py-3 rounded-xl font-bold">Save Changes</button>
@@ -3089,6 +3102,13 @@
                     <!-- Tag grid (filtered) -->
                     <div id="newModelTagsGrid" class="flex flex-wrap gap-2 max-h-40 overflow-y-auto custom-scrollbar p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
                     </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Site <span class="text-slate-400 dark:text-slate-500 font-normal">(optional)</span>
+                    </label>
+                    <input type="text" id="modelSiteName" maxlength="80" placeholder="e.g. Brazzers, OnlyFans, BangBros…" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none transition-all shadow-sm focus:ring-2 focus:ring-[#7fe826]">
+                    <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 pl-1">Models with a site are hidden from the main gallery unless that site's filter is active.</p>
                 </div>
                 <div class="pt-4 flex gap-3 flex-shrink-0">
                     <button type="button" onclick="closeModelModal()" class="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 py-3 rounded-xl font-bold">Cancel</button>
@@ -3456,6 +3476,7 @@ function initCarouselDrag() {
         let savedGalleryScrollPosition = 0; 
         
         let currentMinRating = 0, currentMaxRating = 100;
+        let activeSiteFilter = null; // null = show only unassigned models
         let currentMinFace = 0, currentMinChest = 0, currentMinGlutes = 0, currentMinPuss = 0;
         
         let globalAssetsList = [];
@@ -3545,6 +3566,7 @@ function initCarouselDrag() {
         function openModelModal() { 
             document.getElementById('modelName').value = '';
             document.getElementById('modelImage').value = '';
+            const siteEl = document.getElementById('modelSiteName'); if (siteEl) siteEl.value = '';
             newModelSelectedTags.clear();
             const searchEl = document.getElementById('newModelTagSearch');
             if (searchEl) searchEl.value = '';
@@ -3562,6 +3584,9 @@ function initCarouselDrag() {
             document.getElementById('editModelNameInput').value = currentActiveModelData.title || '';
             // Pre-fill image URL
             document.getElementById('editMainImageUrlInput').value = currentActiveModelData.main_image_url || '';
+            // Pre-fill site name
+            const editSiteEl = document.getElementById('editModelSiteName');
+            if (editSiteEl) editSiteEl.value = currentActiveModelData.site_name || '';
             // Pre-fill tags
             const currentTags = (currentActiveModelData.tags || '').split(',').map(t => t.trim()).filter(Boolean);
             editModelSelectedTags = new Set(currentTags);
@@ -4144,11 +4169,16 @@ function openModelById(id) {
                 mediaHTML = `<img data-src="${optUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105">`;
             }
 
+            const siteBadgeHTML = (cardData.site_name || '').trim()
+                ? `<span class="absolute top-3 right-3 z-10 bg-[#7fe826]/90 text-[#111] text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm tracking-wide pointer-events-none">${(cardData.site_name).trim()}</span>`
+                : '';
+
             return `
                 <div class="gallery-model-card relative w-full cursor-pointer group overflow-hidden bg-slate-100 dark:bg-slate-900 rounded-[1.5rem]" onclick="openModelById(${cardData.id})" title="${cardData.title}">
                     <div class="relative aspect-[10/16] w-full h-full">
                         ${mediaHTML}
                         ${ratingBadgeHTML}
+                        ${siteBadgeHTML}
                     </div>
                 </div>
             `;
@@ -4266,6 +4296,47 @@ function openModelById(id) {
             updateSelect('globalAssetTagFilter', assetTagSet, 'All Asset Tags');
         }
 
+        function buildSiteFilterBar() {
+            const bar = document.getElementById('siteFilterBar');
+            const btnsContainer = document.getElementById('siteFilterButtons');
+            if (!bar || !btnsContainer) return;
+
+            // Collect unique non-empty site names
+            const siteSet = new Set();
+            allLoadedCards.forEach(c => {
+                const s = (c.site_name || '').trim();
+                if (s) siteSet.add(s);
+            });
+
+            // Hide bar entirely if no sites exist
+            if (siteSet.size === 0) {
+                bar.classList.add('hidden');
+                bar.classList.remove('flex');
+                return;
+            }
+            bar.classList.remove('hidden');
+            bar.classList.add('flex');
+
+            const sites = Array.from(siteSet).sort();
+            const makeBtn = (label, value, isActive) => {
+                const btn = document.createElement('button');
+                btn.textContent = label;
+                btn.className = isActive
+                    ? 'flex-shrink-0 px-4 py-1.5 rounded-full text-[11px] font-bold transition-all bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] shadow-sm'
+                    : 'flex-shrink-0 px-4 py-1.5 rounded-full text-[11px] font-bold transition-all bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-[#7fe826] hover:text-[#3d7a0a] dark:hover:text-[#7fe826]';
+                btn.addEventListener('click', () => {
+                    activeSiteFilter = value;
+                    buildSiteFilterBar(); // re-render buttons with new active state
+                    applyFilters();
+                });
+                return btn;
+            };
+
+            btnsContainer.innerHTML = '';
+            btnsContainer.appendChild(makeBtn('All', null, activeSiteFilter === null));
+            sites.forEach(s => btnsContainer.appendChild(makeBtn(s, s, activeSiteFilter === s)));
+        }
+
         function applyFilters() {
             const filterTag = document.getElementById('tagFilter') ? document.getElementById('tagFilter').value : 'all';
             const searchQuery = document.getElementById('modelSearchInput') ? document.getElementById('modelSearchInput').value.toLowerCase().trim() : '';
@@ -4273,6 +4344,16 @@ function openModelById(id) {
             const emptyState = document.getElementById('modelsEmptyState');
             
             let filteredCards = allLoadedCards.filter(card => {
+                // ── Site filter ──────────────────────────────────────────
+                const cardSite = (card.site_name || '').trim();
+                if (activeSiteFilter === null) {
+                    // Default: only show models with no site assigned
+                    if (cardSite !== '') return false;
+                } else {
+                    // Site selected: only show models belonging to that site
+                    if (cardSite.toLowerCase() !== activeSiteFilter.toLowerCase()) return false;
+                }
+                // ─────────────────────────────────────────────────────────
                 let matchesSearch = searchQuery === '' || (card.title && card.title.toLowerCase().includes(searchQuery));
                 let matchesTag = true;
                 if (filterTag !== 'all') {
@@ -6090,6 +6171,7 @@ let editingClipId = null; // Track if we are editing
             
             buildFilters(); 
             renderGalleryAlphabetBar(); 
+            buildSiteFilterBar();
             applyFilters(); 
             buildGlobalAssetsList(); 
             renderRunwayAlphabetBar(); 
@@ -6254,10 +6336,12 @@ const addAudioForm = document.getElementById('addAudioForm');
                     const imgUrl = document.getElementById('modelImage').value;
                     const tagsStr = Array.from(newModelSelectedTags).join(', ');
                     
+                    const siteNameVal = (document.getElementById('modelSiteName')?.value || '').trim() || null;
                     const newCard = {
                         title: title,
                         main_image_url: imgUrl,
                         tags: tagsStr,
+                        site_name: siteNameVal,
                         rating_chest: 50, rating_biceps: 50, rating_glutes: 50, rating_shoulders: 50, rating_hotness: 50,
                         related_images_with_tags: [], related_videos_with_tags: [], audio_clips: [],
                         class_tags: '', amazing_at_tags: ''
@@ -6269,7 +6353,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                         allLoadedCards.unshift(data[0]);
                         closeModelModal();
                         showSuccessToast("Model added successfully!");
-                        buildFilters(); renderGalleryAlphabetBar(); applyFilters(); renderRunwayAlphabetBar(); initRunway();
+                        buildFilters(); buildSiteFilterBar(); renderGalleryAlphabetBar(); applyFilters(); renderRunwayAlphabetBar(); initRunway();
                         openCloseUpPage(data[0]);
                     } catch(err) { console.error("Error adding model", err); }
                 });
@@ -6287,7 +6371,8 @@ const addAudioForm = document.getElementById('addAudioForm');
 
                     if (!newName) { alert('Model name cannot be empty.'); return; }
 
-                    const updates = { title: newName, tags: newTags };
+                    const newSiteName = (document.getElementById('editModelSiteName')?.value || '').trim() || null;
+                    const updates = { title: newName, tags: newTags, site_name: newSiteName };
                     if (newUrl) updates.main_image_url = newUrl;
 
                     try {
@@ -6296,6 +6381,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                         // Update in-memory model data
                         currentActiveModelData.title = newName;
                         currentActiveModelData.tags  = newTags;
+                        currentActiveModelData.site_name = newSiteName;
                         if (newUrl) currentActiveModelData.main_image_url = newUrl;
 
                         // Update the card in allLoadedCards too
@@ -6308,7 +6394,7 @@ const addAudioForm = document.getElementById('addAudioForm');
 
                         closeEditMainImageModal();
                         showSuccessToast('Model updated!');
-                        buildFilters(); applyFilters(); renderGalleryAlphabetBar(); initRunway();
+                        buildFilters(); applyFilters(); renderGalleryAlphabetBar(); initRunway(); buildSiteFilterBar();
                     } catch(err) { console.error('Error updating model', err); }
                 });
             }
