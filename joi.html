@@ -3053,8 +3053,20 @@
                 </div>
                 <button onclick="closeTagPicker()" class="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-400"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
             </div>
-            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 flex-shrink-0">
-                <input type="text" id="tagSearchInput" onkeyup="renderPickerTags()" placeholder="Search tags..." class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none transition-all shadow-sm text-slate-800 dark:text-slate-200">
+            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 flex-shrink-0 space-y-2.5">
+                <div class="flex gap-2">
+                    <div class="relative flex-1">
+                        <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        <input type="text" id="tagSearchInput" oninput="renderPickerTags()" onkeydown="handlePickerSearchKey(event)" placeholder="Search or create a tag…" class="w-full pl-9 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none transition-all shadow-sm text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-[#7fe826]">
+                    </div>
+                    <button type="button" id="pickerCreateBtn" onclick="createAndSavePickerTag()" class="hidden flex-shrink-0 flex items-center gap-1.5 px-3 py-2.5 bg-[#7fe826] hover:bg-[#6ed11f] text-[#111] rounded-xl text-sm font-bold transition-colors shadow-sm">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+                        Create
+                    </button>
+                </div>
+                <p id="pickerCreateHint" class="hidden text-[11px] text-slate-400 dark:text-slate-500 pl-1">
+                    Press <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] font-mono">Enter</kbd> or click <strong>Create</strong> to add this as a new tag.
+                </p>
             </div>
             <div class="p-6 overflow-y-auto custom-scrollbar bg-white dark:bg-slate-800">
                 <div id="pickerTagsGrid" class="flex flex-wrap gap-2.5"></div>
@@ -5838,24 +5850,75 @@ let editingClipId = null; // Track if we are editing
         function renderPickerTags() {
             const grid = document.getElementById('pickerTagsGrid');
             const searchInput = document.getElementById('tagSearchInput');
-            const search = searchInput ? searchInput.value.toLowerCase() : '';
-            if(!grid) return;
-            
-            masterTagsList = []; let tempSet = new Set();
+            const search = searchInput ? searchInput.value.trim() : '';
+            const searchLower = search.toLowerCase();
+            const createBtn  = document.getElementById('pickerCreateBtn');
+            const createHint = document.getElementById('pickerCreateHint');
+            if (!grid) return;
+
+            // Rebuild master list from all cards
+            masterTagsList = [];
+            const tempSet = new Set();
             allLoadedCards.forEach(c => {
-                const addTags = (str) => { if(str) str.split(',').forEach(t => tempSet.add(t.trim())); };
+                const addTags = (str) => { if (str) str.split(',').forEach(t => { const v = t.trim(); if (v) tempSet.add(v); }); };
                 addTags(c.tags); addTags(c.class_tags); addTags(c.amazing_at_tags);
-                (c.related_images_with_tags || []).forEach(a => { if(a.tags) a.tags.split(',').forEach(t => tempSet.add(t.trim())); });
-                (c.related_videos_with_tags || []).forEach(v => { if(v.tags) v.tags.split(',').forEach(t => tempSet.add(t.trim())); });
+                (c.related_images_with_tags || []).forEach(a => { if (a.tags) a.tags.split(',').forEach(t => tempSet.add(t.trim())); });
+                (c.related_videos_with_tags || []).forEach(v => { if (v.tags) v.tags.split(',').forEach(t => tempSet.add(t.trim())); });
             });
             masterTagsList = Array.from(tempSet).filter(t => t).sort();
-            let displayTags = masterTagsList.filter(t => t.toLowerCase().includes(search));
-            if (search && !displayTags.find(t => t.toLowerCase() === search)) displayTags.unshift(search); 
+
+            // Show / hide Create button — only for class_tags and amazing_at_tags
+            const isCreateableType = (pickerTargetType === 'class_tags' || pickerTargetType === 'amazing_at_tags');
+            const exactMatch = masterTagsList.some(t => t.toLowerCase() === searchLower);
+            const showCreate = isCreateableType && search.length > 0 && !exactMatch;
+            if (createBtn)  createBtn.classList.toggle('hidden', !showCreate);
+            if (createHint) createHint.classList.toggle('hidden', !showCreate);
+
+            // Filter displayed tags
+            const displayTags = search
+                ? masterTagsList.filter(t => t.toLowerCase().includes(searchLower))
+                : masterTagsList;
+
+            if (displayTags.length === 0 && !showCreate) {
+                grid.innerHTML = '<p class="text-sm text-slate-400 dark:text-slate-500 font-medium w-full text-center py-4">No tags found. Type above to create one.</p>';
+                return;
+            }
 
             grid.innerHTML = displayTags.map(tag => {
                 const isSelected = selectedModalTags.has(tag);
-                return `<button onclick="toggleModalTag('${tag.replace(/'/g, "\\'")}')" class="px-4 py-2 rounded-full text-sm font-bold transition-colors border ${isSelected ? 'bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] border-transparent shadow-md' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'}">${tag}</button>`;
+                return `<button onclick="toggleModalTag('${tag.replace(/'/g, "\'")}')" class="px-4 py-2 rounded-full text-sm font-bold transition-colors border ${isSelected ? 'bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] border-transparent shadow-md' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'}">${tag}</button>`;
             }).join('');
+        }
+
+        function handlePickerSearchKey(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const createBtn = document.getElementById('pickerCreateBtn');
+                if (createBtn && !createBtn.classList.contains('hidden')) createAndSavePickerTag();
+            }
+        }
+
+        async function createAndSavePickerTag() {
+            const input = document.getElementById('tagSearchInput');
+            const newTag = input ? input.value.trim() : '';
+            if (!newTag || !currentActiveModelData) return;
+            if (pickerTargetType !== 'class_tags' && pickerTargetType !== 'amazing_at_tags') return;
+
+            // Add to in-memory selected set
+            selectedModalTags.add(newTag);
+
+            // Clear input + hide create affordances immediately
+            if (input) input.value = '';
+            const createBtn = document.getElementById('pickerCreateBtn');
+            const createHint = document.getElementById('pickerCreateHint');
+            if (createBtn)  createBtn.classList.add('hidden');
+            if (createHint) createHint.classList.add('hidden');
+
+            // Save to model in memory and persist to Supabase
+            await saveTagsToModel();
+
+            // Re-render so the new tag appears selected in the grid
+            renderPickerTags();
         }
 
         function toggleModalTag(tag) {
