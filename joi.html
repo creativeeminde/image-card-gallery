@@ -1999,9 +1999,9 @@
                 <div class="flex-1 relative flex items-center justify-center h-[50vh] lg:h-full overflow-hidden shrink-0">
                     <div id="runwayAlphabetBar" class="absolute top-2 sm:top-4 left-1/2 -translate-x-1/2 z-50 flex items-center justify-center gap-1 sm:gap-1.5 px-4 py-3 dark:border-slate-700/50 overflow-x-auto no-scrollbar transition-colors duration-300 w-max max-w-[95vw]"></div>
                     <!-- Runway Site Filter Bar -->
-                    <div id="runwaySiteFilterBar" class="absolute top-20 left-4 z-50 flex-wrap items-center justify-center gap-1.5 px-3 py-1.5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md rounded-full shadow-md border border-slate-200/50 dark:border-slate-700/50 max-w-[90vw] overflow-x-auto no-scrollbar flex"></div>
+                    <div id="runwaySiteFilterBar" class="hidden absolute top-20 left-1/2 -translate-x-1/2 z-50 flex-wrap items-center justify-center gap-1.5 px-3 py-1.5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md rounded-full shadow-md border border-slate-200/50 dark:border-slate-700/50 max-w-[90vw] overflow-x-auto no-scrollbar"></div>
 
-                    <div class="absolute top-32 left-4 lg:top-32 z-50 flex items-center bg-white/80 dark:bg-slate-800/80 backdrop-blur-md p-1 rounded-full shadow-md border border-slate-200/50 dark:border-slate-700/50 transition-colors duration-300 gap-1">
+                    <div class="absolute top-32 left-4 lg:top-32 lg:left-8 z-50 flex items-center bg-white/80 dark:bg-slate-800/80 backdrop-blur-md p-1 rounded-full shadow-md border border-slate-200/50 dark:border-slate-700/50 transition-colors duration-300 gap-1">
                         <button id="runwayModeMain" onclick="setRunwayMode('main')" class="px-3 py-1.5 text-[10px] font-bold rounded-full bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm transition-all uppercase tracking-wider">Main</button>
                         <button id="runwayModeNude" onclick="setRunwayMode('nude')" class="px-3 py-1.5 text-[10px] font-bold rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-all uppercase tracking-wider">Nude</button>
                         <button id="runwayModeVideo" onclick="setRunwayMode('video')" class="px-3 py-1.5 text-[10px] font-bold rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-all uppercase tracking-wider">Clips</button>
@@ -5286,15 +5286,48 @@ let editingClipId = null; // Track if we are editing
                         }
                     });
                 } else if (runwayMode === 'video') {
-                    (card.related_videos_with_tags || []).forEach(clip => {
-                        const url = optimizeMediaUrl(clip.url || clip.video_url || clip.src || clip, true);
-                        if (url && (clip.tags || '').toLowerCase().includes('clip')) {
-                            currentRunwayItems.push({ card: card, imgUrl: url, isVideo: true });
-                        }
-                    });
+                    const isSiteModel = (card.site_name || '').trim() !== '';
+                    const PRIORITY_TAGS = ['face', 'bj', 'ride', 'doggy', 'missionary', 'facial'];
+
+                    if (isSiteModel) {
+                        // For site-linked models: show ALL videos, sorted by priority tag order
+                        const allClips = (card.related_videos_with_tags || []).filter(clip => {
+                            const url = clip.url || clip.video_url || clip.src || clip;
+                            return url && typeof url === 'string' && url.trim() !== '';
+                        });
+
+                        // Assign a sort key: index in PRIORITY_TAGS (0–5), or Infinity for untagged
+                        const getPriorityIndex = (clip) => {
+                            const tags = (clip.tags || '').toLowerCase();
+                            const tagList = tags.split(',').map(t => t.trim());
+                            for (let i = 0; i < PRIORITY_TAGS.length; i++) {
+                                if (tagList.includes(PRIORITY_TAGS[i])) return i;
+                            }
+                            return Infinity;
+                        };
+
+                        allClips.sort((a, b) => getPriorityIndex(a) - getPriorityIndex(b));
+
+                        allClips.forEach(clip => {
+                            const url = optimizeMediaUrl(clip.url || clip.video_url || clip.src || clip, true);
+                            if (url) currentRunwayItems.push({ card: card, imgUrl: url, isVideo: true, clipTags: clip.tags || '' });
+                        });
+                    } else {
+                        // For regular models: existing behaviour (only clips tagged 'clip')
+                        (card.related_videos_with_tags || []).forEach(clip => {
+                            const url = optimizeMediaUrl(clip.url || clip.video_url || clip.src || clip, true);
+                            if (url && (clip.tags || '').toLowerCase().includes('clip')) {
+                                currentRunwayItems.push({ card: card, imgUrl: url, isVideo: true, clipTags: clip.tags || '' });
+                            }
+                        });
+                    }
                 }
             });
-            currentRunwayItems.sort((a, b) => b.card.id - a.card.id);
+            // When a site filter is active the items are already in priority-tag order
+            // per model — don't re-sort by card id or we'd destroy that ordering.
+            if (runwaySiteFilter === null) {
+                currentRunwayItems.sort((a, b) => b.card.id - a.card.id);
+            }
 
             const container = document.getElementById('runwayCarouselContainer');
             if (currentRunwayItems.length === 0) {
@@ -5403,9 +5436,35 @@ let editingClipId = null; // Track if we are editing
 
             let tagsConfig = runwayPanelMode === 'images' ? 
                 [{ label: "Face", search: ["face"] }, { label: "Tits", search: ["tits", "chest", "boob"] }, { label: "Ass", search: ["ass", "glute"] }, { label: "Pussy", search: ["pussy", "puss"] }] :
-                [{ label: "BJ", search: ["bj", "blowjob"] }, { label: "Cowgirl", search: ["cowgirl", "ride"] }, { label: "Doggy", search: ["doggy"] }, { label: "Facial", search: ["facial"] }];
-            
-            let assets = runwayPanelMode === 'images' ? (card.related_images_with_tags || []) : (card.related_videos_with_tags || []);
+                [{ label: "Face",        search: ["face"] },
+                 { label: "BJ",          search: ["bj", "blowjob"] },
+                 { label: "Ride",        search: ["ride", "cowgirl"] },
+                 { label: "Doggy",       search: ["doggy"] },
+                 { label: "Missionary",  search: ["missionary"] },
+                 { label: "Facial",      search: ["facial"] }];
+
+            // For site-linked models, clips live in global_clips (ytGlobalClips),
+            // not in the card's related_videos_with_tags JSONB array.
+            // Build the video asset pool from both sources.
+            const isSiteCard = (card.site_name || '').trim() !== '';
+            let videoAssets = [];
+            if (isSiteCard) {
+                // Pull from the already-loaded global clips array, filtered by card_id
+                const globalForCard = (typeof ytGlobalClips !== 'undefined' ? ytGlobalClips : [])
+                    .filter(c => c.card_id === card.id && (c.url || '').trim() !== '');
+                // Normalise shape to match related_videos_with_tags objects
+                globalForCard.forEach(c => videoAssets.push({
+                    url: c.url,
+                    tags: c.tags || '',
+                    title: c.title || ''
+                }));
+                // Also include anything already in related_videos_with_tags
+                (card.related_videos_with_tags || []).forEach(v => videoAssets.push(v));
+            } else {
+                videoAssets = card.related_videos_with_tags || [];
+            }
+
+            let assets = runwayPanelMode === 'images' ? (card.related_images_with_tags || []) : videoAssets;
             let usedUrls = new Set();
             let panelHTML = '';
 
@@ -5415,8 +5474,9 @@ let editingClipId = null; // Track if we are editing
                     const matches = assets.filter(a => {
                         const url = optimizeMediaUrl(a.url || a.image_url || a.video_url || a.src || a, true);
                         if (!url) return false;
+                        // Exact tag match: split by comma, trim, then check each term
                         const individualTags = (a.tags || '').toLowerCase().split(',').map(t => t.trim());
-                        return tagConfig.search.some(sw => individualTags.some(t => t.includes(sw)));
+                        return tagConfig.search.some(sw => individualTags.includes(sw));
                     });
 
                     matches.forEach(match => {
@@ -5931,15 +5991,40 @@ let editingClipId = null; // Track if we are editing
             
             if (pickerTargetType === 'media_tags') {
                 const media = lightboxMediaList[currentLightboxIndex];
-                if (typeof media === 'object') media.tags = newTagsStr; 
-                
-                let targetCardId = isGlobalViewer ? media.cardId : currentActiveModelData.id;
+                if (typeof media === 'object') media.tags = newTagsStr;
+
+                // ── Path A: global_clips row (has its own .id and .tags column) ──────────
+                // Clips opened via openYTPlayer / openAllClipsView that come from the
+                // global_clips table are stored as rows with an integer `id`, NOT inside
+                // a card's related_videos_with_tags JSONB array.  Trying to update the
+                // JSONB array for these clips silently fails (findIndex returns -1).
+                if (isClipViewer && media && media.id) {
+                    try {
+                        await supabaseClient
+                            .from('global_clips')
+                            .update({ tags: newTagsStr })
+                            .eq('id', media.id);
+                        // Keep in-memory ytGlobalClips array in sync
+                        const inMem = ytGlobalClips.find(c => c.id === media.id);
+                        if (inMem) inMem.tags = newTagsStr;
+                        updateLightboxContent();
+                    } catch(e) { console.error("Failed to save clip tags to global_clips", e); }
+                    buildFilters();
+                    return;
+                }
+
+                // ── Path B: asset in a card's JSONB array (images or embedded videos) ───
+                let targetCardId = isGlobalViewer ? media.cardId : currentActiveModelData?.id;
                 let targetCard = allLoadedCards.find(c => c.id === targetCardId);
                 
                 if (targetCard) {
                     const dbField = isClipViewer ? 'related_videos_with_tags' : 'related_images_with_tags';
                     const targetMediaArray = targetCard[dbField] || [];
-                    const originalAssetIdx = targetMediaArray.findIndex(a => (a.url || a) === (media.url || media));
+                    const mediaUrl = media.url || media.image_url || media.video_url || media.src || media;
+                    const originalAssetIdx = targetMediaArray.findIndex(a => {
+                        const aUrl = a.url || a.image_url || a.video_url || a.src || a;
+                        return aUrl === mediaUrl;
+                    });
                     
                     if (originalAssetIdx !== -1) {
                         let originalAsset = targetMediaArray[originalAssetIdx];
@@ -5947,7 +6032,9 @@ let editingClipId = null; // Track if we are editing
                         else targetMediaArray[originalAssetIdx].tags = newTagsStr;
                         
                         try { await supabaseClient.from('cards').update({ [dbField]: targetMediaArray }).eq('id', targetCard.id); updateLightboxContent(); } 
-                        catch(e) { console.error("Failed to save media tags", e); }
+                        catch(e) { console.error("Failed to save media tags to cards", e); }
+                    } else {
+                        console.warn("saveTagsToModel: asset not found in", dbField, "for card", targetCard.id, "url:", mediaUrl);
                     }
                 }
                 buildFilters();
@@ -8322,12 +8409,23 @@ const addAudioForm = document.getElementById('addAudioForm');
         function navigateCloseUp(direction) {
             if (_closeUpSliding) return; // prevent rapid fire during animation
             if (!currentActiveModelData || allLoadedCards.length === 0) return;
-            const currentIdx = allLoadedCards.findIndex(c => c.id === currentActiveModelData.id);
+
+            // Build a peer list that matches the current model's site group:
+            //   - site model  → only models with the same site_name
+            //   - no-site model → only models with no site_name
+            const currentSite = (currentActiveModelData.site_name || '').trim().toLowerCase();
+            const peerCards = allLoadedCards.filter(c => {
+                const s = (c.site_name || '').trim().toLowerCase();
+                return currentSite === '' ? s === '' : s === currentSite;
+            });
+            if (peerCards.length === 0) return;
+
+            const currentIdx = peerCards.findIndex(c => c.id === currentActiveModelData.id);
             if (currentIdx === -1) return;
             let newIdx = currentIdx + direction;
-            if (newIdx < 0) newIdx = allLoadedCards.length - 1;
-            if (newIdx >= allLoadedCards.length) newIdx = 0;
-            const nextCard = allLoadedCards[newIdx];
+            if (newIdx < 0) newIdx = peerCards.length - 1;
+            if (newIdx >= peerCards.length) newIdx = 0;
+            const nextCard = peerCards[newIdx];
             if (!nextCard) return;
 
             const slider = document.getElementById('closeUpImageSlider');
