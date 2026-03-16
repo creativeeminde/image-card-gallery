@@ -4012,7 +4012,6 @@ function closeCategoryModal() {
                 const input = document.getElementById(`slider-input-${metric}`);
                 if (input) { input.value = val; updateSliderVisual(metric, val); }
             });
-            calculateHotness();
 
             // Load skills
             ['bj', 'ride', 'doggy', 'missionary', 'revcowgirl'].forEach(skill => {
@@ -4021,6 +4020,7 @@ function closeCategoryModal() {
                 if (input) { input.value = val; updateSkillVisual(skill, val); }
             });
 
+            calculateHotness();
             renderClassSection(); 
             renderAmazingAtSection();
             renderCloseUpAvatars();
@@ -4196,8 +4196,12 @@ function openModelById(id) {
 
         function calculateHotness() {
             if (!currentActiveModelData) return;
-            const avg = Math.round(((currentActiveModelData.rating_chest ?? 50) + (currentActiveModelData.rating_biceps ?? 50) + (currentActiveModelData.rating_glutes ?? 50) + (currentActiveModelData.rating_shoulders ?? 50)) / 4);
-            currentActiveModelData.rating_hotness = avg;
+            const d = currentActiveModelData;
+            // 4 body balance metrics + 5 skills → weighted average
+            const balanceSum = (d.rating_chest ?? 50) + (d.rating_biceps ?? 50) + (d.rating_glutes ?? 50) + (d.rating_shoulders ?? 50);
+            const skillSum   = (d.skill_bj ?? 50) + (d.skill_ride ?? 50) + (d.skill_doggy ?? 50) + (d.skill_missionary ?? 50) + (d.skill_revcowgirl ?? 50);
+            const avg = Math.round((balanceSum + skillSum) / 9);
+            d.rating_hotness = avg;
             document.getElementById('hotness-display-value').innerText = `${avg}%`;
             document.getElementById('hotness-fill-bar').style.width = `${avg}%`;
         }
@@ -4206,14 +4210,24 @@ function openModelById(id) {
             if (saveRatingsTimeout) clearTimeout(saveRatingsTimeout);
             saveRatingsTimeout = setTimeout(async () => {
                 if (!currentActiveModelData || !currentActiveModelData.id) return;
+                const d = currentActiveModelData;
                 const updateData = {
-                    rating_chest: currentActiveModelData.rating_chest,
-                    rating_biceps: currentActiveModelData.rating_biceps,
-                    rating_glutes: currentActiveModelData.rating_glutes,
-                    rating_shoulders: currentActiveModelData.rating_hotness
+                    rating_chest:     d.rating_chest,
+                    rating_biceps:    d.rating_biceps,
+                    rating_glutes:    d.rating_glutes,
+                    rating_shoulders: d.rating_shoulders,
+                    rating_hotness:   d.rating_hotness,
+                    skill_bj:         d.skill_bj         ?? 50,
+                    skill_ride:       d.skill_ride       ?? 50,
+                    skill_doggy:      d.skill_doggy      ?? 50,
+                    skill_missionary: d.skill_missionary ?? 50,
+                    skill_revcowgirl: d.skill_revcowgirl ?? 50,
                 };
                 try {
-                    await supabaseClient.from('cards').update(updateData).eq('id', currentActiveModelData.id);
+                    await supabaseClient.from('cards').update(updateData).eq('id', d.id);
+                    // Keep allLoadedCards in sync so gallery rating badges refresh
+                    const idx = allLoadedCards.findIndex(c => c.id === d.id);
+                    if (idx > -1) allLoadedCards[idx] = { ...allLoadedCards[idx], ...updateData };
                 } catch(e) { console.error("Error saving ratings:", e); }
             }, 1000);
         }
@@ -4226,9 +4240,7 @@ function openModelById(id) {
             scheduleRatingSave();
         }
 
-        // ── Skills section ──────────────────────────────────────────────
-        let saveSkillsTimeout = null;
-
+        // ── Skills ──────────────────────────────────────────────────────
         function updateSkillVisual(skill, value) {
             const fillBar = document.getElementById(`skill-fill-${skill}`);
             const textSpan = document.getElementById(`skill-text-${skill}`);
@@ -4240,26 +4252,10 @@ function openModelById(id) {
             if (!currentActiveModelData) return;
             currentActiveModelData[`skill_${skill}`] = parseInt(value);
             updateSkillVisual(skill, value);
-            scheduleSkillSave();
+            calculateHotness();   // skills feed into overall rating
+            scheduleRatingSave(); // single save covers both balance + skills
         }
-
-        function scheduleSkillSave() {
-            if (saveSkillsTimeout) clearTimeout(saveSkillsTimeout);
-            saveSkillsTimeout = setTimeout(async () => {
-                if (!currentActiveModelData || !currentActiveModelData.id) return;
-                const updateData = {
-                    skill_bj:          currentActiveModelData.skill_bj          ?? 50,
-                    skill_ride:        currentActiveModelData.skill_ride        ?? 50,
-                    skill_doggy:       currentActiveModelData.skill_doggy       ?? 50,
-                    skill_missionary:  currentActiveModelData.skill_missionary  ?? 50,
-                    skill_revcowgirl:  currentActiveModelData.skill_revcowgirl  ?? 50,
-                };
-                try {
-                    await supabaseClient.from('cards').update(updateData).eq('id', currentActiveModelData.id);
-                } catch(e) { console.error('Error saving skills:', e); }
-            }, 1000);
-        }
-        // ── /Skills section ─────────────────────────────────────────────
+        // ── /Skills ─────────────────────────────────────────────────────
 
         function generateGalleryCardHTML(cardData) {
             const ratingNum = cardData.rating_hotness ?? 50;
@@ -6652,6 +6648,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                         tags: tagsStr,
                         site_name: siteNameVal,
                         rating_chest: 50, rating_biceps: 50, rating_glutes: 50, rating_shoulders: 50, rating_hotness: 50,
+                        skill_bj: 50, skill_ride: 50, skill_doggy: 50, skill_missionary: 50, skill_revcowgirl: 50,
                         related_images_with_tags: [], related_videos_with_tags: [], audio_clips: [],
                         class_tags: '', amazing_at_tags: ''
                     };
@@ -7777,7 +7774,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                     const topCards = [...allLoadedCards]
                         .map(c => ({
                             ...c,
-                            avgRating: ((c.rating_hotness || 0) + (c.rating_chest || 0) + (c.rating_glutes || 0) + (c.rating_biceps || 0) + (c.rating_shoulders || 0)) / 5
+                            avgRating: ((c.rating_hotness || 0) + (c.rating_chest || 0) + (c.rating_glutes || 0) + (c.rating_biceps || 0) + (c.rating_shoulders || 0) + (c.skill_bj || 0) + (c.skill_ride || 0) + (c.skill_doggy || 0) + (c.skill_missionary || 0) + (c.skill_revcowgirl || 0)) / 10
                         }))
                         .sort((a, b) => b.avgRating - a.avgRating)
                         .slice(0, 10);
