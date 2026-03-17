@@ -5384,6 +5384,10 @@ let editingClipId = null; // Track if we are editing
     lbBuildLeaderboards(false, null);
     // =========================================
 
+    // ===== You May Like sidebar =====
+    renderYTSidebar(clip);
+    // ================================
+
     // ==========================================
     // ADD THIS NEW BLOCK:
     // Attach the click event to navigate to the Close Up view
@@ -5409,53 +5413,129 @@ let editingClipId = null; // Track if we are editing
 
         function renderYTSidebar(currentClip) {
             const sidebar = document.getElementById('ytPlayerSidebarGrid');
-            
-            // 1. Filter by identical category ID, excluding the currently playing video
-            let related = ytGlobalClips.filter(c => {
-                if (c.id === currentClip.id) return false;
-                const clipCatIds = Array.isArray(currentClip.category_ids) && currentClip.category_ids.length ? currentClip.category_ids : (currentClip.category_id ? [currentClip.category_id] : []);
-                const cCatIds = Array.isArray(c.category_ids) && c.category_ids.length ? c.category_ids : (c.category_id ? [c.category_id] : []);
-                return clipCatIds.some(id => cCatIds.includes(id));
-            });
-            
-            // 2. If the category is empty, just grab the most recent videos as fallback
+            if (!sidebar) return;
+
+            // Show skeleton loaders while scoring
+            sidebar.innerHTML = Array.from({length: 5}).map(() => `
+                <div class="flex gap-4 mb-1 animate-pulse">
+                    <div class="w-40 sm:w-44 aspect-video rounded-xl bg-white/10 flex-shrink-0"></div>
+                    <div class="flex-1 flex flex-col gap-2 py-1">
+                        <div class="h-3 bg-white/10 rounded-md w-full"></div>
+                        <div class="h-3 bg-white/10 rounded-md w-3/4"></div>
+                        <div class="flex items-center gap-2 mt-2">
+                            <div class="w-5 h-5 rounded-full bg-white/10 flex-shrink-0"></div>
+                            <div class="h-2.5 bg-white/10 rounded-md w-24"></div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            // ── Similarity scoring ──────────────────────────────────────────────────
+            const parseTags = (raw) => {
+                if (!raw) return [];
+                if (Array.isArray(raw)) return raw.map(t => String(t).toLowerCase().trim()).filter(Boolean);
+                return String(raw).split(',').map(t => t.toLowerCase().trim()).filter(Boolean);
+            };
+
+            const currentTags  = new Set(parseTags(currentClip.tags));
+            const currentCatIds = new Set(
+                Array.isArray(currentClip.category_ids) && currentClip.category_ids.length
+                    ? currentClip.category_ids
+                    : (currentClip.category_id ? [currentClip.category_id] : [])
+            );
+            const currentSite   = (currentClip.site || '').toLowerCase().trim();
+            const currentCardId = currentClip.card_id;
+
+            const scored = ytGlobalClips
+                .filter(c => c.id !== currentClip.id && (c.url || '').trim())
+                .map(c => {
+                    let score = 0;
+
+                    // 1. Same model (strongest signal) ─ +40
+                    if (c.card_id && c.card_id === currentCardId) score += 40;
+
+                    // 2. Matching tags ─ +8 per shared tag (up to 5 tags = +40)
+                    const cTags = parseTags(c.tags);
+                    let tagMatches = 0;
+                    cTags.forEach(t => { if (currentTags.has(t)) tagMatches++; });
+                    score += Math.min(tagMatches, 5) * 8;
+
+                    // 3. Same category ─ +15
+                    const cCatIds = Array.isArray(c.category_ids) && c.category_ids.length
+                        ? c.category_ids : (c.category_id ? [c.category_id] : []);
+                    if (cCatIds.some(id => currentCatIds.has(id))) score += 15;
+
+                    // 4. Same site ─ +10
+                    if (currentSite && (c.site || '').toLowerCase().trim() === currentSite) score += 10;
+
+                    // 5. Recency tiebreaker ─ small boost for newer clips
+                    const ageDays = (Date.now() - new Date(c.created_at)) / 86400000;
+                    score += Math.max(0, 5 - ageDays / 30);
+
+                    return { clip: c, score };
+                })
+                .sort((a, b) => b.score - a.score);
+
+            // Primary: clips with any positive signal; fallback: most recent
+            let related = scored.filter(s => s.score > 0).slice(0, 12).map(s => s.clip);
+            if (related.length < 6) {
+                const fallbackIds = new Set(related.map(c => c.id));
+                const fallback = scored
+                    .filter(s => s.score === 0 && !fallbackIds.has(s.clip.id))
+                    .sort((a, b) => new Date(b.clip.created_at) - new Date(a.clip.created_at))
+                    .slice(0, 12 - related.length)
+                    .map(s => s.clip);
+                related = [...related, ...fallback];
+            }
+            // ───────────────────────────────────────────────────────────────────────
+
             if (related.length === 0) {
-                related = ytGlobalClips.filter(c => c.id !== currentClip.id).slice(0, 12);
-            } else {
-                related = related.slice(0, 12);
+                sidebar.innerHTML = `<p class="text-slate-500 text-sm text-center py-10">No related videos found.</p>`;
+                return;
             }
 
             sidebar.innerHTML = related.map(clip => {
-                let mName = clip.cards ? clip.cards.title : 'Unknown';
+                let mName   = clip.cards ? clip.cards.title : 'Unknown';
                 let mAvatar = clip.cards ? optimizeMediaUrl(clip.cards.main_image_url, false, 100) : '';
-                
-                // Find specific avatar tag for sidebar items
+
                 if (clip.card_id) {
-                     const mData = allLoadedCards.find(c => c.id === clip.card_id);
-                     if (mData) {
-                         const av = (mData.related_images_with_tags || []).find(a => (a.tags||'').toLowerCase().includes('avatar'));
-                         if (av) mAvatar = optimizeMediaUrl(av.url || av.image_url || av.src || av, false, 100);
-                     }
+                    const mData = allLoadedCards.find(c => c.id === clip.card_id);
+                    if (mData) {
+                        const av = (mData.related_images_with_tags || []).find(a => (a.tags || '').toLowerCase().includes('avatar'));
+                        if (av) mAvatar = optimizeMediaUrl(av.url || av.image_url || av.src || av, false, 100);
+                    }
                 }
-                
-                const cUrl = optimizeMediaUrl(clip.url, true);
-                const vCount = clip.views > 1000 ? (clip.views / 1000).toFixed(1) + 'K' : (clip.views || 0);
+
+                const cUrl   = optimizeMediaUrl(clip.url, true);
+                const vCount = (clip.views || 0) > 1000
+                    ? ((clip.views / 1000).toFixed(1) + 'K')
+                    : (clip.views || 0);
+                const clipTags = parseTags(clip.tags).slice(0, 2);
+                const tagPills = clipTags.map(t =>
+                    `<span class="text-[9px] font-bold bg-white/8 border border-white/10 text-slate-400 px-1.5 py-0.5 rounded-full">${t}</span>`
+                ).join('');
 
                 return `
                     <div class="flex gap-4 cursor-pointer group mb-1" onclick="openYTPlayer(${clip.id})">
-                        <div class="relative w-40 sm:w-44 aspect-video rounded-xl overflow-hidden bg-slate-900 flex-shrink-0 border border-white/5">
+                        <div class="relative w-40 sm:w-44 aspect-video rounded-xl overflow-hidden bg-slate-900 flex-shrink-0 border border-white/5 shadow-sm">
                             <video src="${cUrl}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline preload="metadata"></video>
+                            <div class="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <div class="w-8 h-8 rounded-full bg-[#7fe826]/90 flex items-center justify-center shadow-lg">
+                                    <svg class="w-3.5 h-3.5 text-black ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                </div>
+                            </div>
                             <div class="absolute bottom-1.5 right-1.5 bg-black/80 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm">${clip.duration || '0:00'}</div>
                         </div>
                         <div class="flex-1 min-w-0 flex flex-col py-0.5">
-                            <h4 class="font-bold text-slate-100 text-sm line-clamp-2 leading-snug group-hover:text-white transition-colors">${clip.title}</h4>
+                            <h4 class="font-bold text-slate-100 text-sm line-clamp-2 leading-snug group-hover:text-white transition-colors">${clip.title || 'Untitled'}</h4>
+                            ${tagPills ? `<div class="flex flex-wrap gap-1 mt-1.5">${tagPills}</div>` : ''}
                             <div class="flex items-center gap-2 mt-2">
-                                <img src="${mAvatar}" class="w-5 h-5 rounded-full object-cover border border-slate-700" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2212%22 fill=%22%23cbd5e1%22/></svg>'">
+                                <img src="${mAvatar}" class="w-5 h-5 rounded-full object-cover border border-slate-700 flex-shrink-0" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2212%22 fill=%22%23475569%22/></svg>'">
                                 <span class="text-xs text-slate-400 truncate font-medium">${mName}</span>
                             </div>
-                            <div class="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5 font-medium">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
-                                <span>${vCount}</span>
+                            <div class="text-[11px] text-slate-500 mt-1.5 flex items-center gap-1.5 font-medium">
+                                <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                <span>${vCount} views</span>
                             </div>
                         </div>
                     </div>
