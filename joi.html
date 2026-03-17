@@ -3220,18 +3220,15 @@
                 </div>
                 
                 <div class="relative mt-2">
-                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Assign to Model</label>
-                    <input type="text" id="modelSearchInputModal" onkeyup="searchModelsForAssign()" placeholder="Type model name..." class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none">
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Assign to Models <span class="text-xs font-normal text-slate-400">(select one or more)</span></label>
+                    <!-- Selected model chips -->
+                    <div id="selectedModelsChips" class="flex flex-wrap gap-1.5 mb-2 min-h-[28px]"></div>
+                    <!-- Search input -->
+                    <input type="text" id="modelSearchInputModal" onkeyup="searchModelsForAssign()" placeholder="Type model name to add…" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none">
+                    <!-- Hidden storage: comma-separated ids -->
                     <input type="hidden" id="selectedModelId">
-                    
-                    <div id="selectedModelPreview" class="hidden items-center gap-3 mt-3 p-2 border border-[#7fe826] bg-[#7fe826]/10 rounded-xl">
-                        <img id="selectedModelAvatar" src="" class="w-10 h-10 rounded-full object-cover">
-                        <span id="selectedModelNameText" class="font-bold text-sm text-slate-800 dark:text-white flex-1"></span>
-                        <button type="button" onclick="clearSelectedModel()" class="text-slate-500 hover:text-red-500 p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                    <div id="modelSearchResults" class="hidden absolute left-0 right-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl max-h-48 overflow-y-auto custom-scrollbar z-20 flex flex-col" style="top: calc(100% + 4px);">
                     </div>
-
-                    <div id="modelSearchResults" class="hidden absolute top-[70px] left-0 right-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl max-h-48 overflow-y-auto custom-scrollbar z-20 flex flex-col">
-                        </div>
                 </div>
 
                 <div class="pt-4 flex gap-3">
@@ -4378,7 +4375,11 @@ function closeCategoryModal() {
             // Fetch specific relational clips for this model
             const clipsGrid = document.getElementById('closeUpClipsGrid');
             try {
-                const { data: relationalClips } = await supabaseClient.from('global_clips').select('*').eq('card_id', cardData.id).order('created_at', { ascending: false });
+                const { data: relationalClips } = await supabaseClient
+                    .from('global_clips')
+                    .select('*')
+                    .or(`card_id.eq.${cardData.id},card_ids.cs.{${cardData.id}}`)
+                    .order('created_at', { ascending: false });
                 
                 // Combine legacy JSON clips with new relational clips
                 let combinedClips = [];
@@ -5264,27 +5265,42 @@ function renderYTClipsGrid(clearFirst = false) {
             }
         }
 
-        // --- Model Linking inside YT Upload Modal ---
+        // --- Model Linking inside YT Upload Modal (Multi-Model) ---
+        // Internal state: array of {id, name, imgUrl}
+        let _selectedModels = [];
+
+        function _renderSelectedModelChips() {
+            const chipsEl = document.getElementById('selectedModelsChips');
+            const hiddenInput = document.getElementById('selectedModelId');
+            if (!chipsEl) return;
+            chipsEl.innerHTML = _selectedModels.map(m => `
+                <span class="inline-flex items-center gap-1.5 bg-[#7fe826]/15 border border-[#7fe826]/40 text-slate-800 dark:text-white text-xs font-bold rounded-full pl-1 pr-2 py-1">
+                    <img src="${optimizeMediaUrl(m.imgUrl, false, 60)}" class="w-5 h-5 rounded-full object-cover flex-shrink-0">
+                    ${m.name}
+                    <button type="button" onclick="removeModelChip(${m.id})" class="ml-0.5 text-slate-400 hover:text-red-500 transition-colors leading-none" title="Remove">&times;</button>
+                </span>
+            `).join('');
+            // Store comma-separated IDs in hidden input (first id = primary for backward compat)
+            hiddenInput.value = _selectedModels.map(m => m.id).join(',');
+        }
+
         function searchModelsForAssign() {
             const input = document.getElementById('modelSearchInputModal').value.toLowerCase();
             const resultsContainer = document.getElementById('modelSearchResults');
             if (input.length < 1) { resultsContainer.classList.add('hidden'); return; }
-            const matches = allLoadedCards.filter(c => c.title && c.title.toLowerCase().includes(input));
+            // Exclude already-selected models from results
+            const selectedIds = new Set(_selectedModels.map(m => m.id));
+            const matches = allLoadedCards.filter(c => c.title && c.title.toLowerCase().includes(input) && !selectedIds.has(c.id));
             if (matches.length > 0) {
                 resultsContainer.innerHTML = matches.map(m => {
-                    // --- AVATAR LOOKUP LOGIC ---
-                    let avatarUrl = m.main_image_url; // Fallback to main image
+                    let avatarUrl = m.main_image_url;
                     if (m.related_images_with_tags) {
                         const avatarAsset = m.related_images_with_tags.find(a => {
                             const t = typeof a === 'string' ? '' : (a.tags || '');
                             return t.toLowerCase().includes('avatar');
                         });
-                        if (avatarAsset) {
-                            avatarUrl = avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset;
-                        }
+                        if (avatarAsset) avatarUrl = avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset;
                     }
-                    // ---------------------------
-
                     return `
                         <button type="button" onclick="selectModelForClip(${m.id}, '${m.title.replace(/'/g, "\\'")}', '${avatarUrl}')" class="flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-left w-full border-b border-slate-100 dark:border-slate-700 last:border-0">
                             <img src="${optimizeMediaUrl(avatarUrl, false, 100)}" class="w-8 h-8 rounded-full object-cover">
@@ -5300,23 +5316,29 @@ function renderYTClipsGrid(clearFirst = false) {
         }
 
         function selectModelForClip(id, name, imgUrl) {
-            document.getElementById('selectedModelId').value = id;
-            document.getElementById('selectedModelNameText').textContent = name;
-            document.getElementById('selectedModelAvatar').src = optimizeMediaUrl(imgUrl, false, 100);
-            document.getElementById('selectedModelPreview').classList.remove('hidden');
-            document.getElementById('selectedModelPreview').classList.add('flex');
-            document.getElementById('modelSearchInputModal').classList.add('hidden');
+            // Add to multi-selection if not already present
+            if (!_selectedModels.find(m => m.id === id)) {
+                _selectedModels.push({ id, name, imgUrl });
+                _renderSelectedModelChips();
+            }
+            // Clear search
+            const input = document.getElementById('modelSearchInputModal');
+            input.value = '';
             document.getElementById('modelSearchResults').classList.add('hidden');
+            input.focus();
+        }
+
+        function removeModelChip(id) {
+            _selectedModels = _selectedModels.filter(m => m.id !== id);
+            _renderSelectedModelChips();
         }
 
         function clearSelectedModel() {
-            document.getElementById('selectedModelId').value = '';
-            document.getElementById('selectedModelPreview').classList.add('hidden');
-            document.getElementById('selectedModelPreview').classList.remove('flex');
+            _selectedModels = [];
+            _renderSelectedModelChips();
             const input = document.getElementById('modelSearchInputModal');
-            input.classList.remove('hidden');
             input.value = '';
-            input.focus();
+            document.getElementById('modelSearchResults').classList.add('hidden');
         }
 
        
@@ -5340,21 +5362,24 @@ let editingClipId = null; // Track if we are editing
                 : (clip.category_id ? [clip.category_id] : []);
             setClipCategories(catIds);
             
-            // 2. Populate the Model
-            if (clip.cards) {
-                let avatarUrl = clip.cards.main_image_url;
-                const fullCard = allLoadedCards.find(c => c.id === clip.card_id);
-                if (fullCard && fullCard.related_images_with_tags) {
-                    const avatarAsset = fullCard.related_images_with_tags.find(a => {
+            // 2. Populate the Model(s)
+            clearSelectedModel();
+            const clipModelIds = Array.isArray(clip.card_ids) && clip.card_ids.length
+                ? clip.card_ids
+                : (clip.card_id ? [clip.card_id] : []);
+            clipModelIds.forEach(mid => {
+                const modelCard = allLoadedCards.find(c => c.id === mid) || (clip.cards && clip.cards.id === mid ? clip.cards : null);
+                if (!modelCard) return;
+                let avatarUrl = modelCard.main_image_url;
+                if (modelCard.related_images_with_tags) {
+                    const avatarAsset = modelCard.related_images_with_tags.find(a => {
                         const t = typeof a === 'string' ? '' : (a.tags || '');
                         return t.toLowerCase().includes('avatar');
                     });
                     if (avatarAsset) avatarUrl = avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset;
                 }
-                selectModelForClip(clip.card_id, clip.cards.title, avatarUrl);
-            } else {
-                clearSelectedModel();
-            }
+                selectModelForClip(mid, modelCard.title, avatarUrl);
+            });
 
             // 3. Update Modal Text for Editing
             document.querySelector('#ytUploadModal h3').textContent = 'Edit Clip';
@@ -7168,13 +7193,16 @@ const addAudioForm = document.getElementById('addAudioForm');
                     e.preventDefault();
                     const title = document.getElementById('ytClipTitle').value;
                     const url = document.getElementById('ytClipUrl').value;
-                    const card_id = document.getElementById('selectedModelId').value;
+                    const card_id_raw = document.getElementById('selectedModelId').value;
+                    // Multi-model: parse comma-separated ids from hidden input (populated by _selectedModels)
+                    const allCardIds = card_id_raw ? card_id_raw.split(',').map(Number).filter(Boolean) : [];
+                    const card_id = allCardIds.length ? allCardIds[0] : null; // primary for backward compat
                     const duration = document.getElementById('ytClipDuration').value || '0:00';
                     const category_ids = getSelectedClipCategoryIds();
                     const category_id = category_ids.length ? category_ids[0] : null; // primary for backward compat / filtering
 
-                    if (!card_id) {
-                        alert("Please select a valid model from the search dropdown.");
+                    if (!allCardIds.length) {
+                        alert("Please select at least one model from the search dropdown.");
                         return;
                     }
 
@@ -7185,7 +7213,8 @@ const addAudioForm = document.getElementById('addAudioForm');
                             duration: duration, 
                             category_id: category_id ? parseInt(category_id) : null,
                             category_ids: category_ids.map(Number),
-                            card_id: parseInt(card_id) 
+                            card_id: card_id ? parseInt(card_id) : null,
+                            card_ids: allCardIds
                         };
                         
                         let data, error;
