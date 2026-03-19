@@ -2633,6 +2633,13 @@
         </button>
     </div>
 </div>
+                <div id="clipsSiteFilterBar" class="hidden w-full bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 sm:px-6 py-3 shrink-0">
+                    <div class="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wide shrink-0 mr-1">Site:</span>
+                        <button id="clipsSiteFilterAll" onclick="filterClipsBySite(null)" class="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-bold transition-all bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] shadow-sm">All</button>
+                        <!-- Site pills injected by JS -->
+                    </div>
+                </div>
                 <div class="sticky top-0 z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700 p-4 flex gap-4 items-center justify-between">
   
                     <div class="relative max-w-2xl w-full flex-1">
@@ -3266,6 +3273,14 @@
                     <input type="hidden" id="selectedModelId">
                     <div id="modelSearchResults" class="hidden absolute left-0 right-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl max-h-48 overflow-y-auto custom-scrollbar z-20 flex flex-col" style="top: calc(100% + 4px);">
                     </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Website <span class="text-xs font-normal text-slate-400">(optional)</span>
+                    </label>
+                    <input type="text" id="ytClipSiteName" maxlength="80" placeholder="e.g. Brazzers, OnlyFans, BangBros…" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none transition-all shadow-sm focus:ring-2 focus:ring-[#7fe826]">
+                    <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 pl-1">Associate this clip with a website to enable filtering by site in OnlyClips.</p>
                 </div>
 
                 <div class="pt-4 flex gap-3">
@@ -3903,6 +3918,7 @@ function initCarouselDrag() {
         let allKnownMoanTags = new Set(); // persistent tag library
         let selectedClipCategoryIds = []; // multi-category selection for upload/edit form
 
+        let currentClipSiteFilter = null; // null = show all sites
         let isAddingClip = false, deleteConfirmTimeout;
         let currentlyPlayingAudio = null;
         let saveRatingsTimeout;
@@ -4490,7 +4506,7 @@ function closeCategoryModal() {
                 const { data: relationalClips } = await supabaseClient
                     .from('global_clips')
                     .select('*')
-                    .or(`card_id.eq.${cardData.id},card_ids.cs.{${cardData.id}}`)
+                    .eq('card_id', cardData.id)
                     .order('created_at', { ascending: false });
                 
                 // Combine legacy JSON clips with new relational clips
@@ -5218,8 +5234,50 @@ function renderClipTagsDropdown() {
     container.innerHTML = html;
 }
 
+        function renderClipsSiteFilterBar() {
+            const bar = document.getElementById('clipsSiteFilterBar');
+            if (!bar) return;
+
+            const sites = [...new Set(
+                ytGlobalClips
+                    .map(c => (c.site_name || '').trim())
+                    .filter(Boolean)
+            )].sort();
+
+            if (sites.length === 0) {
+                bar.classList.add('hidden');
+                return;
+            }
+
+            bar.classList.remove('hidden');
+
+            const allBtn = document.getElementById('clipsSiteFilterAll');
+            while (allBtn.nextSibling) allBtn.nextSibling.remove();
+
+            allBtn.className = !currentClipSiteFilter
+                ? 'shrink-0 px-3 py-1.5 rounded-full text-[12px] font-bold transition-all bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] shadow-sm'
+                : 'shrink-0 px-3 py-1.5 rounded-full text-[12px] font-bold transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700';
+
+            sites.forEach(site => {
+                const isActive = currentClipSiteFilter === site;
+                const pill = document.createElement('button');
+                pill.className = isActive
+                    ? 'shrink-0 px-3 py-1.5 rounded-full text-[12px] font-bold transition-all bg-[#7fe826] text-[#111] shadow-sm'
+                    : 'shrink-0 px-3 py-1.5 rounded-full text-[12px] font-bold transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700';
+                pill.textContent = site;
+                pill.onclick = () => filterClipsBySite(isActive ? null : site);
+                bar.querySelector('.flex').appendChild(pill);
+            });
+        }
+
+        function filterClipsBySite(siteName) {
+            currentClipSiteFilter = siteName;
+            renderClipsSiteFilterBar();
+            fetchYTClips(true);
+        }
+
+
 function filterClipsByModel(modelId) {
-    // If clicking the same model, toggle the filter off
     if (currentModelClipFilter === modelId) {
         currentModelClipFilter = null;
     } else {
@@ -5254,11 +5312,11 @@ function filterClipsByModel(modelId) {
                 let query = supabaseClient.from('global_clips').select('*, cards(id, title, main_image_url, tags)').order('created_at', { ascending: false });
                 
                 if (currentCategoryFilter) {
-                    // Match clips that have this category as primary OR in their category_ids array
-                    query = query.or(`category_id.eq.${currentCategoryFilter},category_ids.cs.{${currentCategoryFilter}}`);
+                    query = query.eq('category_id', currentCategoryFilter);
                 }
                 if (searchVal) query = query.ilike('title', `%${searchVal}%`);
                 if (currentModelClipFilter) query = query.eq('card_id', currentModelClipFilter);
+                if (currentClipSiteFilter) query = query.eq('site_name', currentClipSiteFilter);
                 
                 query = query.range(ytClipsPage * YT_CLIPS_PER_PAGE, (ytClipsPage + 1) * YT_CLIPS_PER_PAGE - 1);
 
@@ -5277,6 +5335,7 @@ function filterClipsByModel(modelId) {
                     ytGlobalClips = reset ? data : [...ytGlobalClips, ...data];
                     renderClipTagsDropdown();
                     renderYTClipsGrid(reset);
+                    renderClipsSiteFilterBar();
                     ytClipsPage++;
                 }
             } catch(e) { 
@@ -5496,7 +5555,11 @@ let editingClipId = null; // Track if we are editing
                 selectModelForClip(mid, modelCard.title, avatarUrl);
             });
 
-            // 3. Update Modal Text for Editing
+            // 3. Pre-fill site name
+            const siteNameEl = document.getElementById('ytClipSiteName');
+            if (siteNameEl) siteNameEl.value = clip.site_name || '';
+
+            // 4. Update Modal Text for Editing
             document.querySelector('#ytUploadModal h3').textContent = 'Edit Clip';
             document.querySelector('#ytUploadForm button[type="submit"]').textContent = 'Save Changes';
 
@@ -5520,6 +5583,8 @@ let editingClipId = null; // Track if we are editing
             uploadModal.style.zIndex = '';
             uploadModal.dataset.openedFromPlayer = '';
             document.getElementById('ytUploadForm').reset();
+            const siteNameEl = document.getElementById('ytClipSiteName');
+            if (siteNameEl) siteNameEl.value = '';
             clearSelectedModel();
             setClipCategories([]);  // clear multi-cat selection
             
@@ -5866,25 +5931,75 @@ let editingClipId = null; // Track if we are editing
     renderMore('fullAssets');
 }
 
-       function openAllClipsView() {
-    // 1. Hide all sections and explicitly set display to none
+       async function openAllClipsView() {
+    // 1. Hide all sections
     document.querySelectorAll('.view-section').forEach(s => {
         s.classList.add('hidden');
         s.style.display = 'none';
     });
-    
-    // 2. Reveal the target section and explicitly set display to block
+
+    // 2. Reveal the target section
     const targetView = document.getElementById('allClipsView');
     targetView.classList.remove('hidden');
     targetView.style.display = 'block';
 
-    // Uses the combined relational + json clips configured in openCloseUpPage
-    lightboxMediaList = currentActiveModelData?.combined_clips || [];
     isClipViewer = true; isGlobalViewer = false;
-    document.getElementById('fullClipsGrid').innerHTML = `<div id="fullClipsGridInner" class="columns-1 sm:columns-2 gap-6 w-full space-y-6"></div>`;
-    renderState.fullClips.items = lightboxMediaList;
-    renderState.fullClips.index = 0;
-    renderMore('fullClips');
+
+    // 3. Show a loading spinner while we fetch
+    const grid = document.getElementById('fullClipsGrid');
+    grid.innerHTML = `<div class="flex items-center justify-center py-20"><div class="w-8 h-8 border-4 border-slate-200 border-t-[#111] dark:border-slate-700 dark:border-t-[#7fe826] rounded-full animate-spin"></div></div>`;
+
+    // 4. Always do a fresh Supabase fetch so we never show stale or missing clips
+    try {
+        const modelId = currentActiveModelData?.id;
+        let freshClips = [];
+
+        if (modelId) {
+            const { data: relationalClips, error } = await supabaseClient
+                .from('global_clips')
+                .select('*')
+                .eq('card_id', modelId)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            // Legacy JSON clips stored directly on the card row
+            const legacyClips = (currentActiveModelData?.related_videos_with_tags || [])
+                .map(c => typeof c === 'string' ? { url: c, tags: 'Clip' } : c);
+
+            // Relational clips from global_clips table
+            const relational = (relationalClips || [])
+                .map(c => ({ url: c.url, tags: 'YT Clip', ...c }));
+
+            // Merge: relational first, then legacy; deduplicate by URL
+            const seen = new Set();
+            for (const c of [...relational, ...legacyClips]) {
+                const key = c.url || c.video_url || c.src || '';
+                if (key && !seen.has(key)) { seen.add(key); freshClips.push(c); }
+            }
+        } else {
+            freshClips = currentActiveModelData?.combined_clips || [];
+        }
+
+        // Keep combined_clips in sync so the Close Up preview grid also reflects this
+        if (currentActiveModelData) currentActiveModelData.combined_clips = freshClips;
+
+        lightboxMediaList = freshClips;
+
+        if (freshClips.length === 0) {
+            grid.innerHTML = `<div class="py-20 text-center text-slate-500 font-medium">No clips saved for this model yet.</div>`;
+            return;
+        }
+
+        grid.innerHTML = `<div id="fullClipsGridInner" class="columns-1 sm:columns-2 gap-6 w-full space-y-6"></div>`;
+        renderState.fullClips.items = lightboxMediaList;
+        renderState.fullClips.index = 0;
+        renderMore('fullClips');
+
+    } catch (e) {
+        console.error('Error loading clips for All Saved Clips view', e);
+        grid.innerHTML = `<div class="py-20 text-center text-red-500 font-medium">Error loading clips. Please try again.</div>`;
+    }
 }
         
         function renderGalleryAlphabetBar() {
@@ -7324,15 +7439,16 @@ const addAudioForm = document.getElementById('addAudioForm');
                         return;
                     }
 
+                    const siteNameVal = (document.getElementById('ytClipSiteName')?.value || '').trim() || null;
+
                     try {
                         const clipData = { 
                             title: title, 
                             url: url, 
                             duration: duration, 
                             category_id: category_id ? parseInt(category_id) : null,
-                            category_ids: category_ids.map(Number),
                             card_id: card_id ? parseInt(card_id) : null,
-                            card_ids: allCardIds
+                            site_name: siteNameVal
                         };
                         
                         let data, error;
