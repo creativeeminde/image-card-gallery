@@ -6275,7 +6275,12 @@ let editingClipId = null; // Track if we are editing
                 // Also include anything already in related_videos_with_tags
                 (card.related_videos_with_tags || []).forEach(v => videoAssets.push(v));
             } else {
-                videoAssets = card.related_videos_with_tags || [];
+                // Use the full related_videos_with_tags pool so that tag-based panel matching
+                // works regardless of which tags are present (not just clips tagged 'clip').
+                videoAssets = (card.related_videos_with_tags || []).filter(v => {
+                    const url = v.url || v.video_url || v.src || v;
+                    return url && typeof url === 'string' && url.trim() !== '';
+                });
             }
 
             let assets = runwayPanelMode === 'images' ? (card.related_images_with_tags || []) : videoAssets;
@@ -6741,8 +6746,8 @@ let editingClipId = null; // Track if we are editing
             });
             masterTagsList = Array.from(tempSet).filter(t => t).sort();
 
-            // Show / hide Create button — only for class_tags and amazing_at_tags
-            const isCreateableType = (pickerTargetType === 'class_tags' || pickerTargetType === 'amazing_at_tags');
+            // Show / hide Create button — for class_tags, amazing_at_tags, and media_tags (clip/asset tags)
+            const isCreateableType = (pickerTargetType === 'class_tags' || pickerTargetType === 'amazing_at_tags' || pickerTargetType === 'media_tags');
             const exactMatch = masterTagsList.some(t => t.toLowerCase() === searchLower);
             const showCreate = isCreateableType && search.length > 0 && !exactMatch;
             if (createBtn)  createBtn.classList.toggle('hidden', !showCreate);
@@ -6775,8 +6780,9 @@ let editingClipId = null; // Track if we are editing
         async function createAndSavePickerTag() {
             const input = document.getElementById('tagSearchInput');
             const newTag = input ? input.value.trim() : '';
-            if (!newTag || !currentActiveModelData) return;
-            if (pickerTargetType !== 'class_tags' && pickerTargetType !== 'amazing_at_tags') return;
+            if (!newTag) return;
+            // Allow tag creation for class_tags, amazing_at_tags, and media_tags (clip/asset tags)
+            if (pickerTargetType !== 'class_tags' && pickerTargetType !== 'amazing_at_tags' && pickerTargetType !== 'media_tags') return;
 
             // Add to in-memory selected set
             selectedModalTags.add(newTag);
