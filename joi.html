@@ -3688,10 +3688,61 @@
             <div class="flex-1 w-full h-full flex items-center justify-center px-8 sm:px-12 relative cursor-default" id="lightboxPanContainer" onmousedown="startPan(event)" onmousemove="panImage(event)" onmouseup="endPan()" onmouseleave="endPan()" onwheel="handleWheelZoom(event)" ondblclick="handleDoubleClickZoom(event)">
                 <img id="lightboxImage" src="" loading="lazy" decoding="async" class="hidden max-w-full max-h-full object-contain transition-transform duration-100 ease-out pointer-events-none" style="transform: scale(1) translate(0px, 0px);">
                 <video id="lightboxVideo" loop playsinline preload="none" class="hidden max-w-full max-h-full object-contain transition-transform duration-100 ease-out" onclick="togglePlayPause(event)" style="transform: scale(1) translate(0px, 0px);"></video>
-                <div id="videoControls" class="hidden absolute bottom-8 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-black/80 backdrop-blur-xl rounded-full px-6 py-3 items-center gap-6 shadow-xl border border-slate-200 dark:border-white/10 transition-opacity z-30" onclick="event.stopPropagation();">
-                    <button onclick="skipVideo(-10, event)" class="flex flex-col items-center text-slate-500"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.333 4zM4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z"></path></svg></button>
-                    <button onclick="togglePlayPause(event)" class="text-white dark:text-black bg-slate-900 dark:bg-white p-2.5 rounded-full"><svg id="pauseIcon" class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z"></path></svg><svg id="playIcon" class="hidden w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg></button>
-                    <button onclick="skipVideo(10, event)" class="flex flex-col items-center text-slate-500"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.933 12.8a1 1 0 000-1.6l-5.333-4A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.334-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.334-4z"></path></svg></button>
+                <!-- VIDEO CONTROLS: progress bar + buttons -->
+                <div id="videoControls" class="hidden absolute z-30" style="bottom:28px;left:50%;transform:translateX(-50%);width:min(700px,90vw);display:none;flex-direction:column;align-items:stretch;gap:10px;" onclick="event.stopPropagation()">
+
+                    <!-- Scrub row: time — track — duration -->
+                    <div style="display:flex;align-items:center;gap:10px;padding:0 4px;">
+                        <span id="lbCurTime" style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.75);font-family:Inter,sans-serif;white-space:nowrap;min-width:30px;text-align:right;text-shadow:0 1px 4px rgba(0,0,0,.9);">0:00</span>
+                        <div id="lbTrack" style="flex:1;position:relative;height:5px;border-radius:999px;background:rgba(255,255,255,0.18);cursor:pointer;"
+                             onmousedown="lbScrubDown(event)"
+                             ontouchstart="lbScrubTouch(event)"
+                             onmouseenter="document.getElementById('lbThumb').style.opacity='1'"
+                             onmouseleave="if(!window._lbDragging)document.getElementById('lbThumb').style.opacity='0'">
+                            <div id="lbBuf"   style="position:absolute;left:0;top:0;height:100%;border-radius:999px;background:rgba(255,255,255,0.2);width:0%;pointer-events:none;"></div>
+                            <div id="lbBar"   style="position:absolute;left:0;top:0;height:100%;border-radius:999px;background:linear-gradient(90deg,#7fe826,#a3ff4d);width:0%;pointer-events:none;"></div>
+                            <div id="lbThumb" style="position:absolute;top:50%;left:0%;transform:translate(-50%,-50%);width:13px;height:13px;border-radius:50%;background:#7fe826;box-shadow:0 0 0 3px rgba(127,232,38,.3),0 2px 6px rgba(0,0,0,.6);pointer-events:none;opacity:0;transition:opacity .15s;"></div>
+                        </div>
+                        <span id="lbDurTime" style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.38);font-family:Inter,sans-serif;white-space:nowrap;min-width:30px;text-shadow:0 1px 4px rgba(0,0,0,.9);">0:00</span>
+                    </div>
+
+                    <!-- Buttons pill -->
+                    <div style="display:flex;align-items:center;justify-content:center;gap:14px;background:rgba(0,0,0,0.70);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.10);border-radius:999px;padding:8px 22px;box-shadow:0 8px 32px rgba(0,0,0,.55);align-self:center;">
+
+                        <!-- Mute -->
+                        <button id="lbMuteBtn" onclick="lbMute(event)" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;">
+                            <svg id="lbVolSvg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+                            </svg>
+                        </button>
+
+                        <!-- Skip -10 -->
+                        <button onclick="skipVideo(-10,event)" style="background:none;border:none;cursor:pointer;color:rgba(255,255,255,.65);display:flex;align-items:center;">
+                            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.333 4zM4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z"/></svg>
+                        </button>
+
+                        <!-- Play/Pause -->
+                        <button onclick="togglePlayPause(event)" style="background:#7fe826;border:none;border-radius:50%;width:38px;height:38px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 0 0 3px rgba(127,232,38,.2),0 4px 14px rgba(0,0,0,.45);flex-shrink:0;">
+                            <svg id="pauseIcon" width="16" height="16" fill="#111" viewBox="0 0 24 24"><path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z"/></svg>
+                            <svg id="playIcon"  width="16" height="16" fill="#111" viewBox="0 0 24 24" class="hidden" style="margin-left:2px"><path d="M8 5v14l11-7z"/></svg>
+                        </button>
+
+                        <!-- Skip +10 -->
+                        <button onclick="skipVideo(10,event)" style="background:none;border:none;cursor:pointer;color:rgba(255,255,255,.65);display:flex;align-items:center;">
+                            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.933 12.8a1 1 0 000-1.6l-5.333-4A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.334-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.334-4z"/></svg>
+                        </button>
+
+                        <!-- Fullscreen -->
+                        <button onclick="lbFullscreen(event)" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+                                <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+                            </svg>
+                        </button>
+
+                    </div>
                 </div>
             </div>
             <div class="absolute bottom-6 left-6 z-20 flex flex-col items-start gap-2 max-w-[50%] pointer-events-auto">
@@ -6441,7 +6492,7 @@ let editingClipId = null; // Track if we are editing
         // Lightbox Core Functions
         function openLightbox(idx, isClip) { currentLightboxIndex = idx; isClipViewer = isClip; isGlobalViewer = false; updateLightboxContent(); document.getElementById('lightboxModal').classList.add('active'); }
         function openGlobalLightbox(idx, filteredMedia, isClip) { lightboxMediaList = filteredMedia; currentLightboxIndex = idx; isClipViewer = isClip; isGlobalViewer = true; updateLightboxContent(); document.getElementById('lightboxModal').classList.add('active'); }
-        function closeLightbox() { document.getElementById('lightboxModal').classList.remove('active'); document.getElementById('lightboxVideo').pause(); document.getElementById('lightboxVideo').removeAttribute('src'); }
+        function closeLightbox() { lbStopRAF(); document.getElementById('lightboxModal').classList.remove('active'); document.getElementById('lightboxVideo').pause(); document.getElementById('lightboxVideo').removeAttribute('src'); const vc=document.getElementById('videoControls'); if(vc) vc.style.display='none'; }
 
         async function downloadLightboxMedia() {
             const media = lightboxMediaList[currentLightboxIndex];
@@ -6517,14 +6568,17 @@ let editingClipId = null; // Track if we are editing
                 imgEl.classList.add('hidden'); vidEl.classList.remove('hidden'); vidEl.src = url; 
                 const playPromise = vidEl.play();
                 if (playPromise !== undefined) { playPromise.catch(e => { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') console.error(e); }); }
-                document.getElementById('videoControls').classList.remove('hidden');
-                document.getElementById('videoControls').classList.add('flex');
+                const vc = document.getElementById('videoControls');
+                if (vc) { vc.style.display = 'flex'; }
                 if (dlBtn) dlBtn.classList.add('hidden');
+                // reset & start progress bar
+                lbResetBar(); lbStartRAF(vidEl);
             } else {
                 vidEl.classList.add('hidden'); vidEl.pause(); vidEl.removeAttribute('src'); imgEl.classList.remove('hidden'); imgEl.src = url;
-                document.getElementById('videoControls').classList.remove('flex');
-                document.getElementById('videoControls').classList.add('hidden');
+                const vc = document.getElementById('videoControls');
+                if (vc) { vc.style.display = 'none'; }
                 if (dlBtn) dlBtn.classList.remove('hidden');
+                lbStopRAF();
             }
             
             const tagsContainer = document.getElementById('lightboxTagsContainer');
@@ -6561,6 +6615,124 @@ let editingClipId = null; // Track if we are editing
             const container = document.getElementById('lightboxThumbnails');
             if (container) container.scrollBy({ top: direction * 150, behavior: 'smooth' });
         }
+
+        // ===== LIGHTBOX VIDEO PROGRESS BAR =====
+        window._lbRAF = null;
+        window._lbDragging = false;
+
+        function lbFmt(s) {
+            if (!s || isNaN(s) || s < 0) return '0:00';
+            const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+            return m + ':' + (sec < 10 ? '0' : '') + sec;
+        }
+
+        function lbResetBar() {
+            const bar = document.getElementById('lbBar'), buf = document.getElementById('lbBuf'),
+                  th  = document.getElementById('lbThumb'),
+                  cur = document.getElementById('lbCurTime'), dur = document.getElementById('lbDurTime');
+            if (bar) bar.style.width = '0%';
+            if (buf) buf.style.width = '0%';
+            if (th)  th.style.left  = '0%';
+            if (cur) cur.textContent = '0:00';
+            if (dur) dur.textContent = '0:00';
+            // sync icons to "playing"
+            const pi = document.getElementById('playIcon'), pa = document.getElementById('pauseIcon');
+            if (pi) pi.classList.add('hidden');
+            if (pa) pa.classList.remove('hidden');
+        }
+
+        function lbTick(vid) {
+            if (!vid) return;
+            const dur = vid.duration || 0, cur = vid.currentTime || 0;
+            const pct = dur > 0 ? (cur / dur * 100) : 0;
+            if (!window._lbDragging) {
+                const bar = document.getElementById('lbBar'), th = document.getElementById('lbThumb');
+                if (bar) bar.style.width = pct + '%';
+                if (th)  th.style.left  = pct + '%';
+            }
+            if (dur > 0 && vid.buffered.length) {
+                const b = document.getElementById('lbBuf');
+                if (b) b.style.width = (vid.buffered.end(vid.buffered.length-1)/dur*100) + '%';
+            }
+            const curEl = document.getElementById('lbCurTime'), durEl = document.getElementById('lbDurTime');
+            if (curEl) curEl.textContent = lbFmt(cur);
+            if (durEl) durEl.textContent = lbFmt(dur);
+            // sync play/pause icon
+            const pi = document.getElementById('playIcon'), pa = document.getElementById('pauseIcon');
+            if (pi && pa) { if (vid.paused) { pi.classList.remove('hidden'); pa.classList.add('hidden'); } else { pi.classList.add('hidden'); pa.classList.remove('hidden'); } }
+        }
+
+        function lbStartRAF(vid) {
+            lbStopRAF();
+            function loop() { lbTick(vid); window._lbRAF = requestAnimationFrame(loop); }
+            window._lbRAF = requestAnimationFrame(loop);
+        }
+        function lbStopRAF() { if (window._lbRAF) { cancelAnimationFrame(window._lbRAF); window._lbRAF = null; } }
+
+        function lbScrubSetPos(clientX) {
+            const track = document.getElementById('lbTrack'), vid = document.getElementById('lightboxVideo');
+            if (!track || !vid || !vid.duration) return;
+            const rect = track.getBoundingClientRect();
+            const pct  = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            vid.currentTime = pct * vid.duration;
+            const bar = document.getElementById('lbBar'), th = document.getElementById('lbThumb'), curEl = document.getElementById('lbCurTime');
+            if (bar) bar.style.width = (pct*100)+'%';
+            if (th)  th.style.left  = (pct*100)+'%';
+            if (curEl) curEl.textContent = lbFmt(pct * vid.duration);
+        }
+
+        window.lbScrubDown = function(e) {
+            e.preventDefault(); e.stopPropagation();
+            window._lbDragging = true;
+            const th = document.getElementById('lbThumb');
+            if (th) { th.style.opacity='1'; th.style.transition='none'; }
+            lbScrubSetPos(e.clientX);
+            function move(ev) { lbScrubSetPos(ev.clientX); }
+            function up() {
+                window._lbDragging = false;
+                if (th) { th.style.opacity=''; th.style.transition=''; }
+                document.removeEventListener('mousemove', move);
+                document.removeEventListener('mouseup', up);
+            }
+            document.addEventListener('mousemove', move);
+            document.addEventListener('mouseup', up);
+        };
+
+        window.lbScrubTouch = function(e) {
+            e.preventDefault(); e.stopPropagation();
+            window._lbDragging = true;
+            const th = document.getElementById('lbThumb');
+            if (th) { th.style.opacity='1'; th.style.transition='none'; }
+            lbScrubSetPos(e.touches[0].clientX);
+            function move(ev) { ev.preventDefault(); lbScrubSetPos(ev.touches[0].clientX); }
+            function end() {
+                window._lbDragging = false;
+                if (th) { th.style.opacity=''; th.style.transition=''; }
+                document.removeEventListener('touchmove', move);
+                document.removeEventListener('touchend', end);
+            }
+            document.addEventListener('touchmove', move, {passive:false});
+            document.addEventListener('touchend', end);
+        };
+
+        window.lbMute = function(e) {
+            if (e) e.stopPropagation();
+            const vid = document.getElementById('lightboxVideo'), icon = document.getElementById('lbVolSvg');
+            if (!vid) return;
+            vid.muted = !vid.muted;
+            if (icon) icon.innerHTML = vid.muted
+                ? '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>'
+                : '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>';
+        };
+
+        window.lbFullscreen = function(e) {
+            if (e) e.stopPropagation();
+            const vid = document.getElementById('lightboxVideo');
+            if (!vid) return;
+            if (document.fullscreenElement) document.exitFullscreen();
+            else vid.requestFullscreen && vid.requestFullscreen();
+        };
+        // ===== /LIGHTBOX VIDEO PROGRESS BAR =====
 
         function togglePlayPause(e) {
             if(e) e.stopPropagation();
