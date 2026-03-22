@@ -2612,7 +2612,7 @@
                 </div>
             </aside>
 
-            <main class="flex-1 min-h-0 md:h-full flex flex-col min-w-0 overflow-y-auto custom-scrollbar relative" onscroll="handleClipsScroll(this)">
+            <main class="flex-1 min-h-0 md:h-full flex flex-col min-w-0 overflow-y-auto custom-scrollbar relative" >
                 
                 <div id="clipsModelCarouselContainer" class="w-full bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 pt-6 pb-4 px-4 sm:px-6 shrink-0">
     <div class="flex items-center justify-between mb-4">
@@ -2697,6 +2697,12 @@
                         </div>
                     <div id="ytClipsSentinel" class="w-full h-20 my-4 flex items-center justify-center hidden">
                         <div class="w-8 h-8 border-4 border-slate-200 border-t-[#111] dark:border-slate-700 dark:border-t-[#7fe826] rounded-full animate-spin"></div>
+                    </div>
+                    <div id="ytClipsShowMoreContainer" class="w-full flex justify-center my-6 hidden">
+                        <button id="ytClipsShowMoreBtn" onclick="fetchYTClips(false)" class="px-8 py-3 bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] rounded-full font-bold text-sm shadow hover:bg-black dark:hover:bg-[#6ed11f] transition-all flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            Show More
+                        </button>
                     </div>
                 </div>
             </main>
@@ -3943,7 +3949,7 @@ function initCarouselDrag() {
         let ytGlobalClips = [];
         let currentCategoryFilter = null;
         let ytClipsPage = 0;
-        const YT_CLIPS_PER_PAGE = 24;
+        const YT_CLIPS_PER_PAGE = 15;
         let isFetchingClips = false;
         let hasMoreClips = true;
 
@@ -5308,7 +5314,11 @@ function filterClipsByModel(modelId) {
 
             isFetchingClips = true;
             const sentinel = document.getElementById('ytClipsSentinel');
-            if(sentinel) sentinel.classList.remove('hidden');
+            const showMoreContainer = document.getElementById('ytClipsShowMoreContainer');
+            const showMoreBtn = document.getElementById('ytClipsShowMoreBtn');
+            if (sentinel) sentinel.classList.remove('hidden');
+            if (showMoreContainer) showMoreContainer.classList.add('hidden');
+            if (showMoreBtn) { showMoreBtn.disabled = true; showMoreBtn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> Loading...'; }
             
             try {
                 // FIXED QUERY HERE: Added 'tags' to the cards select so the filter can see them
@@ -5336,7 +5346,16 @@ function filterClipsByModel(modelId) {
                     }
 
                     if (data.length < YT_CLIPS_PER_PAGE) hasMoreClips = false;
-                    ytGlobalClips = reset ? data : [...ytGlobalClips, ...data];
+
+                    // Deduplicate: only add clips whose IDs are not already in ytGlobalClips
+                    if (reset) {
+                        ytGlobalClips = data;
+                    } else {
+                        const existingIds = new Set(ytGlobalClips.map(c => c.id));
+                        const newClips = data.filter(c => !existingIds.has(c.id));
+                        ytGlobalClips = [...ytGlobalClips, ...newClips];
+                    }
+
                     renderClipTagsDropdown();
                     renderYTClipsGrid(reset);
                     renderClipsSiteFilterBar();
@@ -5348,15 +5367,26 @@ function filterClipsByModel(modelId) {
             }
             
             isFetchingClips = false;
-            if(sentinel) sentinel.classList.add('hidden');
+            if (sentinel) sentinel.classList.add('hidden');
+            // Show the "Show More" button only if there are more clips to load
+            if (showMoreContainer) {
+                if (hasMoreClips) {
+                    showMoreContainer.classList.remove('hidden');
+                } else {
+                    showMoreContainer.classList.add('hidden');
+                }
+            }
+            if (showMoreBtn) { showMoreBtn.disabled = false; showMoreBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg> Show More'; }
         }
 
 function renderYTClipsGrid(clearFirst = false) {
             const grid = document.getElementById('ytClipsGrid');
             if (clearFirst && grid) grid.innerHTML = '';
 
-            const startIndex = clearFirst ? 0 : ytGlobalClips.length - YT_CLIPS_PER_PAGE;
-            let itemsToRender = ytGlobalClips.slice(Math.max(0, startIndex));
+            // Track how many items are already rendered to avoid duplicates.
+            // When clearFirst=true, render all; otherwise only render items after the already-rendered count.
+            const alreadyRendered = clearFirst ? 0 : (grid ? grid.children.length : 0);
+            let itemsToRender = ytGlobalClips.slice(alreadyRendered);
 
             // --- TAG FILTERING LOGIC ---
             if (currentClipTagFilter) {
@@ -5441,9 +5471,7 @@ function renderYTClipsGrid(clearFirst = false) {
         }
 
         function handleClipsScroll(el) {
-            if (el.scrollHeight - el.scrollTop <= el.clientHeight + 100) {
-                fetchYTClips(false);
-            }
+            // Replaced by "Show More" button — infinite scroll disabled.
         }
 
         // --- Model Linking inside YT Upload Modal (Multi-Model) ---
