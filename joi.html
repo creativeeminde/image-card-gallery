@@ -6260,28 +6260,27 @@ let editingClipId = null; // Track if we are editing
             // For site-linked models, clips live in global_clips (ytGlobalClips),
             // not in the card's related_videos_with_tags JSONB array.
             // Build the video asset pool from both sources.
-            const isSiteCard = (card.site_name || '').trim() !== '';
+          // Build the video asset pool from both global clips and legacy JSON
             let videoAssets = [];
-            if (isSiteCard) {
-                // Pull from the already-loaded global clips array, filtered by card_id
-                const globalForCard = (typeof ytGlobalClips !== 'undefined' ? ytGlobalClips : [])
-                    .filter(c => c.card_id === card.id && (c.url || '').trim() !== '');
-                // Normalise shape to match related_videos_with_tags objects
-                globalForCard.forEach(c => videoAssets.push({
-                    url: c.url,
-                    tags: c.tags || '',
-                    title: c.title || ''
-                }));
-                // Also include anything already in related_videos_with_tags
-                (card.related_videos_with_tags || []).forEach(v => videoAssets.push(v));
-            } else {
-                // Use the full related_videos_with_tags pool so that tag-based panel matching
-                // works regardless of which tags are present (not just clips tagged 'clip').
-                videoAssets = (card.related_videos_with_tags || []).filter(v => {
-                    const url = v.url || v.video_url || v.src || v;
-                    return url && typeof url === 'string' && url.trim() !== '';
-                });
-            }
+
+            // 1. Pull from the already-loaded global clips array, filtered by card_id
+            const globalForCard = (typeof ytGlobalClips !== 'undefined' ? ytGlobalClips : [])
+                .filter(c => c.card_id === card.id && (c.url || '').trim() !== '');
+                
+            // Normalise shape to match related_videos_with_tags objects
+            globalForCard.forEach(c => videoAssets.push({
+                url: c.url,
+                tags: c.tags || '',
+                title: c.title || ''
+            }));
+            
+            // 2. Also include anything already in related_videos_with_tags (safely filtering valid URLs)
+            (card.related_videos_with_tags || []).forEach(v => {
+                const url = v.url || v.video_url || v.src || v;
+                if (url && typeof url === 'string' && url.trim() !== '') {
+                    videoAssets.push(v);
+                }
+            });
 
             let assets = runwayPanelMode === 'images' ? (card.related_images_with_tags || []) : videoAssets;
             let usedUrls = new Set();
