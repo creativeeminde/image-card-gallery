@@ -6726,79 +6726,109 @@ let editingClipId = null; // Track if we are editing
         }
 
         function renderPickerTags() {
-            const grid = document.getElementById('pickerTagsGrid');
-            const searchInput = document.getElementById('tagSearchInput');
-            const search = searchInput ? searchInput.value.trim() : '';
-            const searchLower = search.toLowerCase();
-            const createBtn  = document.getElementById('pickerCreateBtn');
-            const createHint = document.getElementById('pickerCreateHint');
-            if (!grid) return;
+    const grid = document.getElementById('pickerTagsGrid');
+    const searchInput = document.getElementById('tagSearchInput');
+    const search = searchInput ? searchInput.value.trim() : '';
+    const searchLower = search.toLowerCase();
+    const createBtn = document.getElementById('pickerCreateBtn');
+    const createHint = document.getElementById('pickerCreateHint');
 
-            // Rebuild master list from all cards
-            masterTagsList = [];
-            const tempSet = new Set();
-            allLoadedCards.forEach(c => {
-                const addTags = (str) => { if (str) str.split(',').forEach(t => { const v = t.trim(); if (v) tempSet.add(v); }); };
-                addTags(c.tags); addTags(c.class_tags); addTags(c.amazing_at_tags);
-                (c.related_images_with_tags || []).forEach(a => { if (a.tags) a.tags.split(',').forEach(t => tempSet.add(t.trim())); });
-                (c.related_videos_with_tags || []).forEach(v => { if (v.tags) v.tags.split(',').forEach(t => tempSet.add(t.trim())); });
+    if (!grid) return;
+
+    // Rebuild master list from all cards
+    masterTagsList = [];
+    const tempSet = new Set();
+    allLoadedCards.forEach(c => {
+        const addTags = (str) => {
+            if (str) str.split(',').forEach(t => {
+                const v = t.trim();
+                if (v) tempSet.add(v);
             });
-            masterTagsList = Array.from(tempSet).filter(t => t).sort();
+        };
+        addTags(c.tags);
+        addTags(c.class_tags);
+        addTags(c.amazing_at_tags);
+        (c.related_images_with_tags || []).forEach(a => {
+            if (a.tags) a.tags.split(',').forEach(t => tempSet.add(t.trim()));
+        });
+        (c.related_videos_with_tags || []).forEach(v => {
+            if (v.tags) v.tags.split(',').forEach(t => tempSet.add(t.trim()));
+        });
+    });
 
-            // Show / hide Create button — for class_tags, amazing_at_tags, and media_tags (clip/asset tags)
-            const isCreateableType = (pickerTargetType === 'class_tags' || pickerTargetType === 'amazing_at_tags' || pickerTargetType === 'media_tags');
-            const exactMatch = masterTagsList.some(t => t.toLowerCase() === searchLower);
-            const showCreate = isCreateableType && search.length > 0 && !exactMatch;
-            if (createBtn)  createBtn.classList.toggle('hidden', !showCreate);
-            if (createHint) createHint.classList.toggle('hidden', !showCreate);
-
-            // Filter displayed tags
-            const displayTags = search
-                ? masterTagsList.filter(t => t.toLowerCase().includes(searchLower))
-                : masterTagsList;
-
-            if (displayTags.length === 0 && !showCreate) {
-                grid.innerHTML = '<p class="text-sm text-slate-400 dark:text-slate-500 font-medium w-full text-center py-4">No tags found. Type above to create one.</p>';
-                return;
+    // FIX: Also scan the global clips array so newly created clip tags enter the pool
+    if (typeof ytGlobalClips !== 'undefined') {
+        ytGlobalClips.forEach(clip => {
+            if (clip.tags) {
+                clip.tags.split(',').forEach(t => {
+                    const v = t.trim();
+                    if (v) tempSet.add(v);
+                });
             }
+        });
+    }
 
-            grid.innerHTML = displayTags.map(tag => {
-                const isSelected = selectedModalTags.has(tag);
-                return `<button onclick="toggleModalTag('${tag.replace(/'/g, "\'")}')" class="px-4 py-2 rounded-full text-sm font-bold transition-colors border ${isSelected ? 'bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] border-transparent shadow-md' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'}">${tag}</button>`;
-            }).join('');
+    masterTagsList = Array.from(tempSet).filter(t => t).sort();
+
+    // FIX: Allow the Create button to show up for media tags (clips/assets)
+    const isCreateableType = (pickerTargetType === 'class_tags' || pickerTargetType === 'amazing_at_tags' || pickerTargetType === 'media_tags');
+
+    const exactMatch = masterTagsList.some(t => t.toLowerCase() === searchLower);
+
+    if (isCreateableType && searchLower && !exactMatch) {
+        createBtn?.classList.remove('hidden');
+        createHint?.classList.remove('hidden');
+    } else {
+        createBtn?.classList.add('hidden');
+        createHint?.classList.add('hidden');
+    }
+
+    let displayTags = masterTagsList;
+    if (searchLower) {
+        displayTags = displayTags.filter(t => t.toLowerCase().includes(searchLower));
+    }
+
+    // Merge currently selected tags so they are always visible even if not in master list yet
+    selectedModalTags.forEach(t => {
+        if (!displayTags.includes(t) && (!searchLower || t.toLowerCase().includes(searchLower))) {
+            displayTags.unshift(t);
         }
+    });
 
-        function handlePickerSearchKey(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                const createBtn = document.getElementById('pickerCreateBtn');
-                if (createBtn && !createBtn.classList.contains('hidden')) createAndSavePickerTag();
-            }
-        }
+    if (displayTags.length === 0) {
+        grid.innerHTML = '<p class="text-sm text-slate-500 p-2">No tags found. Type above to create one.</p>';
+        return;
+    }
 
+    grid.innerHTML = displayTags.map(tag => {
+        const isSelected = selectedModalTags.has(tag);
+        return `<button onclick="toggleModalTag('${tag.replace(/'/g, "\\'")}')" class="px-4 py-2 rounded-full text-sm font-bold transition-colors border ${isSelected ? 'bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] border-transparent shadow-md' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'}">${tag}</button>`;
+    }).join('');
+}
         async function createAndSavePickerTag() {
-            const input = document.getElementById('tagSearchInput');
-            const newTag = input ? input.value.trim() : '';
-            if (!newTag) return;
-            // Allow tag creation for class_tags, amazing_at_tags, and media_tags (clip/asset tags)
-            if (pickerTargetType !== 'class_tags' && pickerTargetType !== 'amazing_at_tags' && pickerTargetType !== 'media_tags') return;
+    const input = document.getElementById('tagSearchInput');
+    const newTag = input ? input.value.trim() : '';
+    if (!newTag || !currentActiveModelData) return;
+    
+    // FIX: Add 'media_tags' to the allowed list so clips and assets can create tags
+    if (pickerTargetType !== 'class_tags' && pickerTargetType !== 'amazing_at_tags' && pickerTargetType !== 'media_tags') return;
 
-            // Add to in-memory selected set
-            selectedModalTags.add(newTag);
+    // Add to in-memory selected set
+    selectedModalTags.add(newTag);
 
-            // Clear input + hide create affordances immediately
-            if (input) input.value = '';
-            const createBtn = document.getElementById('pickerCreateBtn');
-            const createHint = document.getElementById('pickerCreateHint');
-            if (createBtn)  createBtn.classList.add('hidden');
-            if (createHint) createHint.classList.add('hidden');
+    // Clear input + hide create affordances immediately
+    if (input) input.value = '';
+    const createBtn = document.getElementById('pickerCreateBtn');
+    const createHint = document.getElementById('pickerCreateHint');
+    if (createBtn) createBtn.classList.add('hidden');
+    if (createHint) createHint.classList.add('hidden');
 
-            // Save to model in memory and persist to Supabase
-            await saveTagsToModel();
+    // Save to model in memory and persist to Supabase
+    await saveTagsToModel();
 
-            // Re-render so the new tag appears selected in the grid
-            renderPickerTags();
-        }
+    // Re-render so the new tag appears selected in the grid
+    renderPickerTags();
+}
 
         function toggleModalTag(tag) {
             if (selectedModalTags.has(tag)) selectedModalTags.delete(tag); else selectedModalTags.add(tag);
