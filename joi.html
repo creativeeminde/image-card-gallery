@@ -6271,6 +6271,10 @@ let editingClipId = null; // Track if we are editing
         function prevRunway() { runwayCurrentIndex--; updateRunway(); }
         function goToRunway(i) { runwayCurrentIndex = i; updateRunway(); }
 
+        // Cache of per-card clips fetched specifically for the Runway panel.
+        // Keyed by card.id so we never re-fetch for the same card.
+        const _runwayPanelClipsCache = {};
+
         function updateRunwayPanel(clear = false) {
             const panelContainer = document.getElementById('runwaySidePanel');
             const titleEl = document.getElementById('runwayModelTitle');
@@ -6319,24 +6323,67 @@ let editingClipId = null; // Track if we are editing
                  { label: "Missionary",  search: ["missionary"] },
                  { label: "Facial",      search: ["facial"] }];
 
-            // For site-linked models, clips live in global_clips (ytGlobalClips),
-            // not in the card's related_videos_with_tags JSONB array.
-            // Build the video asset pool from both sources.
-          // Build the video asset pool from both global clips and legacy JSON
+            // ── Build video asset pool ────────────────────────────────────────
+            // Priority: per-card cache → ytGlobalClips → related_videos_with_tags
+            // If the cache is empty for this card AND we are in video mode, trigger
+            // an async fetch then re-render — completely decoupled from fetchYTClips.
             let videoAssets = [];
 
-            // 1. Pull from the already-loaded global clips array, filtered by card_id
-            const globalForCard = (typeof ytGlobalClips !== 'undefined' ? ytGlobalClips : [])
-                .filter(c => c.card_id === card.id && (c.url || '').trim() !== '');
-                
-            // Normalise shape to match related_videos_with_tags objects
-            globalForCard.forEach(c => videoAssets.push({
-                url: c.url,
-                tags: c.tags || '',
-                title: c.title || ''
-            }));
-            
-            // 2. Also include anything already in related_videos_with_tags (safely filtering valid URLs)
+            if (runwayPanelMode === 'videos') {
+                // Check per-card cache first
+                const cached = _runwayPanelClipsCache[card.id];
+
+                if (cached === undefined) {
+                    // Not yet fetched — show spinner and kick off fetch
+                    _runwayPanelClipsCache[card.id] = null; // mark as in-flight
+                    if (panelContainer) {
+                        panelContainer.innerHTML = '<div class="col-span-2 lg:col-span-1 flex flex-col items-center justify-center py-10 text-slate-400 dark:text-slate-500"><svg class="w-6 h-6 mb-2 animate-spin opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg><span class="text-xs font-bold uppercase tracking-wider text-center mt-1">Loading Videos…</span></div>';
+                    }
+                    // Fetch clips for this specific card directly — immune to race conditions
+                    supabaseClient
+                        .from('global_clips')
+                        .select('id, url, tags, title, card_id')
+                        .eq('card_id', card.id)
+                        .then(({ data, error }) => {
+                            if (!error && data) {
+                                _runwayPanelClipsCache[card.id] = data;
+                                // Also merge into ytGlobalClips so the rest of the app benefits
+                                if (typeof ytGlobalClips !== 'undefined') {
+                                    const existingIds = new Set(ytGlobalClips.map(c => c.id));
+                                    data.forEach(c => { if (!existingIds.has(c.id)) ytGlobalClips.push(c); });
+                                }
+                            } else {
+                                _runwayPanelClipsCache[card.id] = []; // mark done even on error
+                            }
+                            // Re-render panel now that data is available
+                            if (currentRunwayItems[runwayCurrentIndex] &&
+                                currentRunwayItems[runwayCurrentIndex].card.id === card.id) {
+                                updateRunwayPanel();
+                            }
+                        });
+                    return; // will re-render when fetch completes
+                }
+
+                // Use cached clips (may be [] if card genuinely has none)
+                const cardClips = cached || [];
+                cardClips.forEach(c => {
+                    if ((c.url || '').trim()) {
+                        videoAssets.push({ url: c.url, tags: c.tags || '', title: c.title || '' });
+                    }
+                });
+
+                // Also pull from in-memory ytGlobalClips for this card (already loaded pages)
+                const globalForCard = (typeof ytGlobalClips !== 'undefined' ? ytGlobalClips : [])
+                    .filter(c => c.card_id === card.id && (c.url || '').trim() !== '');
+                const cachedIds = new Set(cardClips.map(c => c.id));
+                globalForCard.forEach(c => {
+                    if (!cachedIds.has(c.id)) {
+                        videoAssets.push({ url: c.url, tags: c.tags || '', title: c.title || '' });
+                    }
+                });
+            }
+
+            // Also include related_videos_with_tags (legacy JSON column) for all modes
             (card.related_videos_with_tags || []).forEach(v => {
                 const url = v.url || v.video_url || v.src || v;
                 if (url && typeof url === 'string' && url.trim() !== '') {
@@ -6354,9 +6401,9 @@ let editingClipId = null; // Track if we are editing
                     const matches = assets.filter(a => {
                         const url = optimizeMediaUrl(a.url || a.image_url || a.video_url || a.src || a, true);
                         if (!url) return false;
-                        // Exact tag match: split by comma, trim, then check each term
+                        // Broad tag match: check if any tag contains the search term
                         const individualTags = (a.tags || '').toLowerCase().split(',').map(t => t.trim());
-                        return tagConfig.search.some(sw => individualTags.includes(sw));
+                        return tagConfig.search.some(sw => individualTags.some(t => t.includes(sw)));
                     });
 
                     matches.forEach(match => {
@@ -6364,6 +6411,17 @@ let editingClipId = null; // Track if we are editing
                         if (!usedUrls.has(matchUrl)) { usedUrls.add(matchUrl); videoMatches.push({ match, label: tagConfig.label }); }
                     });
                 });
+
+                // If no tagged matches, show ALL videos for this card (untagged)
+                if (videoMatches.length === 0 && assets.length > 0) {
+                    assets.forEach(a => {
+                        const url = optimizeMediaUrl(a.url || a.image_url || a.video_url || a.src || a, true);
+                        if (url && !usedUrls.has(url)) {
+                            usedUrls.add(url);
+                            videoMatches.push({ match: a, label: a.title || 'Clip' });
+                        }
+                    });
+                }
 
                 if (videoMatches.length > 0) {
                     panelHTML = videoMatches.map(item => {
@@ -7483,6 +7541,12 @@ let editingClipId = null; // Track if we are editing
                         viewEl.style.display = 'flex'; // Critical for the sidebar layout
                         fetchYTClips(true); // Force fetch now that container is visible
                         fetchHeroClips();   // Refresh hero section
+                    } else if (target === 'runwayView') {
+                        viewEl.style.display = 'block';
+                        // Re-init carousel so the panel refreshes for the current card.
+                        // The panel itself now fetches its own clips per-card on demand,
+                        // so no dependency on ytGlobalClips state here.
+                        initRunway();
                     } else if (target === 'dreamflowView') {
                         viewEl.style.display = 'flex'; // Dreamflow needs flex for 3-panel layout
                         if (typeof dfOnViewActivated === 'function') dfOnViewActivated();
