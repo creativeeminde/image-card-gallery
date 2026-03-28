@@ -2742,13 +2742,16 @@
                     <option value="all">Tags</option>
                 </select>
                 <div class="w-px h-4 bg-slate-200 dark:bg-slate-600"></div>
-                <label class="flex items-center gap-2 cursor-pointer" title="Snap to Grid">
-                    <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400 hidden sm:block">Snap</span>
-                    <div id="snapGridToggle" class="w-7 h-4 bg-slate-300 dark:bg-slate-600 rounded-full relative transition-colors duration-300 cursor-pointer" onclick="toggleSnapGrid()">
+                <div class="flex items-center gap-2 cursor-pointer" title="Snap to Grid" onclick="toggleSnapGrid()">
+                    <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400 hidden sm:block select-none">Snap</span>
+                    <div id="snapGridToggle" class="w-7 h-4 bg-slate-300 dark:bg-slate-600 rounded-full relative transition-colors duration-300 pointer-events-none">
                         <div id="snapGridThumb" class="w-3 h-3 bg-white rounded-full absolute top-0.5 left-0.5 transition-transform duration-300 shadow-sm"></div>
                     </div>
-                </label>
-                <button onclick="tidyInfiniteCanvas()" class="text-[11px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors" title="Auto-arrange items">Tidy</button>
+                </div>
+                <button onclick="tidyInfiniteCanvas()" class="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400 hover:text-[#3d7a0a] dark:hover:text-[#7fe826] transition-colors" title="Arrange by tag in radial dial layout">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="3" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="3" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="21" y2="12"/></svg>
+                    Tidy
+                </button>
             </div>
             
             <div class="absolute bottom-6 sm:bottom-8 right-4 sm:right-8 z-20 flex flex-col gap-2 sm:gap-3 pointer-events-auto">
@@ -9409,34 +9412,212 @@ const addAudioForm = document.getElementById('addAudioForm');
 
         async function tidyInfiniteCanvas() {
             if (infiniteItems.length === 0) return;
-            const COLS = Math.ceil(Math.sqrt(infiniteItems.length));
-            const GAP_X = INF_ITEM_WIDTH + 40;
-            const GAP_Y = INF_ITEM_HEIGHT + 40;
 
-            const updates = [];
-            infiniteItems.forEach((item, i) => {
-                const col = i % COLS;
-                const row = Math.floor(i / COLS);
-                item.x = col * GAP_X;
-                item.y = row * GAP_Y;
-                updates.push(supabaseClient.from('infinite_canvas_items').update({ x: item.x, y: item.y }).eq('id', item.id));
+            // ── Pie-slice radial layout ─────────────────────────────────
+            // Strategy: each tag group owns a wedge of the circle.
+            // Items are placed in a rectangular grid that is ROTATED to face
+            // outward along the wedge's centre-angle, then translated to sit
+            // on the ring — so every item is fully separated and visible.
+
+            const ITEM_W  = INF_ITEM_WIDTH;
+            const ITEM_H  = INF_ITEM_HEIGHT;
+            const GAP_X   = 28;   // horizontal gap between items inside a slice
+            const GAP_Y   = 24;   // vertical gap between rows inside a slice
+            const CELL_W  = ITEM_W + GAP_X;
+            const CELL_H  = ITEM_H + GAP_Y;
+            const RING_GAP = 80;  // gap between the inner edge of the slice and canvas centre
+
+            // 1. Group by first tag
+            const tagGroups = new Map();
+            const NO_TAG = '__none__';
+            infiniteItems.forEach(item => {
+                const firstTag = (item.tags || '').split(',').map(t => t.trim()).filter(Boolean)[0] || NO_TAG;
+                if (!tagGroups.has(firstTag)) tagGroups.set(firstTag, []);
+                tagGroups.get(firstTag).push(item);
             });
 
-            // Clear and re-render
+            const groups  = [...tagGroups.entries()];
+            const numGroups = groups.length;
+            const updates = [];
+
+            // 2. Figure out the largest group so we can size the ring uniformly
+            const maxItems = Math.max(...groups.map(([, items]) => items.length));
+
+            // Each group gets a grid: COLS columns, rows as needed.
+            // We want each slice's grid width ≤ arc width at the ring radius.
+            // Simple approach: fix COLS, compute ring radius so slices don't overlap.
+            const COLS = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(maxItems))));
+            const ROWS  = (tag, items) => Math.ceil(items.length / COLS);
+
+            // Slice angular width — equal for every group
+            const sliceAngle = (Math.PI * 2) / numGroups;
+
+            // The arc width at a given radius r is r * sliceAngle.
+            // We need it ≥ COLS * CELL_W so items fit side-by-side.
+            // r ≥ (COLS * CELL_W) / sliceAngle
+            const minRingR  = numGroups <= 1 ? 0 : Math.ceil((COLS * CELL_W) / sliceAngle) + RING_GAP;
+            const RING_R    = Math.max(minRingR, 400);
+
+            groups.forEach(([tag, items], groupIdx) => {
+                // Centre angle of this slice — 12 o'clock = -π/2, clockwise
+                const centreAngle = (groupIdx / numGroups) * Math.PI * 2 - Math.PI / 2;
+
+                const cols = Math.min(COLS, items.length);
+                const rows = Math.ceil(items.length / cols);
+
+                // Grid dimensions (unrotated)
+                const gridW = cols * CELL_W - GAP_X;
+                const gridH = rows * CELL_H - GAP_Y;
+
+                items.forEach((item, idx) => {
+                    const col = idx % cols;
+                    const row = Math.floor(idx / cols);
+
+                    // Local coords: centred on the grid's centre
+                    const lx = col * CELL_W - gridW / 2 + ITEM_W / 2;
+                    const ly = row * CELL_H - gridH / 2 + ITEM_H / 2;
+
+                    // Rotate local coords by centreAngle so the grid faces outward
+                    const cos = Math.cos(centreAngle);
+                    const sin = Math.sin(centreAngle);
+
+                    // The "outward" direction from centre; items sit at RING_R + halfway into grid depth
+                    const outwardOffset = RING_R + gridH / 2;
+
+                    // In the rotated frame: x → tangential, y → radial (outward)
+                    // Unrotated local: x = lx (tangential), y = ly (radial, 0 = centre of grid)
+                    // Translate so grid centre is at outwardOffset along the spoke
+                    const wx = cos * outwardOffset - sin * 0 + cos * 0 - sin * lx + sin * (RING_R + gridH / 2) * 0;
+                    // Proper rotation: rotate point (lx, outwardOffset + ly_offset) around origin
+                    // where ly_offset goes from -gridH/2 to +gridH/2
+                    const radialPos  = outwardOffset + (ly - gridH / 2); // distance from centre
+                    // Wait — simpler: think of each item in polar-ish coords
+                    // tangential = lx  (perpendicular to spoke)
+                    // radial     = RING_R + row * CELL_H  (along spoke, rows go outward)
+                    const tang   = lx;                        // tangential offset from spoke
+                    const rad    = RING_R + row * CELL_H;    // radial distance from origin
+
+                    // Rotate (tang, rad) by centreAngle
+                    // x_world =  tang * cos(centreAngle + π/2) + rad * cos(centreAngle)
+                    //          = -tang * sin(centreAngle)       + rad * cos(centreAngle)
+                    // y_world =  tang * sin(centreAngle + π/2) + rad * sin(centreAngle)
+                    //          =  tang * cos(centreAngle)       + rad * sin(centreAngle)
+                    const wx2 = -tang * sin + rad * cos;
+                    const wy2 =  tang * cos + rad * sin;
+
+                    // Offset so the item rectangle is centred on that world point
+                    item.x = wx2 - ITEM_W / 2;
+                    item.y = wy2 - ITEM_H / 2;
+
+                    updates.push(
+                        supabaseClient.from('infinite_canvas_items')
+                            .update({ x: item.x, y: item.y })
+                            .eq('id', item.id)
+                    );
+                });
+            });
+
+            // 3. Clear and re-render
             for (let [id, el] of activeVisibleItems.entries()) {
                 if (el && el.parentNode) el.parentNode.removeChild(el);
             }
             activeVisibleItems.clear();
 
-            const totalW = COLS * GAP_X;
-            const totalH = Math.ceil(infiniteItems.length / COLS) * GAP_Y;
-            infScale = 0.3;
-            infX = (window.innerWidth / 2) - (totalW / 2) * infScale;
-            infY = (window.innerHeight / 2) - (totalH / 2) * infScale;
+            // 4. Fit the whole layout on screen
+            const maxRows   = Math.max(...groups.map(([, items]) => Math.ceil(items.length / COLS)));
+            const outerR    = RING_R + maxRows * CELL_H + Math.max(ITEM_W, ITEM_H);
+            const diameter  = outerR * 2;
+            const fitScale  = Math.min(
+                (window.innerWidth  * 0.88) / diameter,
+                (window.innerHeight * 0.88) / diameter,
+                0.45
+            );
+            infScale = Math.max(fitScale, 0.06);
+            infX     = window.innerWidth  / 2;
+            infY     = window.innerHeight / 2;
 
             renderInfiniteCanvas();
-            showSuccessToast('Canvas tidied!');
+            _drawTidyLabels(groups, RING_R);
+
+            showSuccessToast('Dial view activated ✦');
             await Promise.allSettled(updates);
+        }
+
+        // Draw floating tag labels at clock positions after Tidy
+        function _drawTidyLabels(groups, ringR) {
+            document.querySelectorAll('.tidy-dial-label').forEach(el => el.remove());
+            const workspace = document.getElementById('infiniteWorkspace');
+            if (!workspace) return;
+
+            const numGroups = groups.length;
+            const LABEL_R   = Math.max(ringR * 0.55, ringR - 160); // inside the ring
+
+            // Spoke + arc SVG (drawn very large so it covers all items)
+            const SVG_R = ringR * 3;
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.classList.add('tidy-dial-label');
+            svg.style.cssText = `position:absolute;left:${-SVG_R}px;top:${-SVG_R}px;pointer-events:none;overflow:visible;z-index:0;`;
+            svg.setAttribute('width',  SVG_R * 2);
+            svg.setAttribute('height', SVG_R * 2);
+            const cx = SVG_R, cy = SVG_R;
+
+            // Inner guide circle at ring radius
+            const guideCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            guideCircle.setAttribute('cx', cx); guideCircle.setAttribute('cy', cy);
+            guideCircle.setAttribute('r',  ringR);
+            guideCircle.setAttribute('fill', 'none');
+            guideCircle.setAttribute('stroke', 'rgba(127,232,38,0.15)');
+            guideCircle.setAttribute('stroke-width', '1.5');
+            guideCircle.setAttribute('stroke-dasharray', '8 10');
+            svg.appendChild(guideCircle);
+
+            // Spoke dividers between slices
+            groups.forEach(([, ], groupIdx) => {
+                // Spoke at the BOUNDARY between slices (half a slice before centre angle)
+                const boundaryAngle = ((groupIdx - 0.5) / numGroups) * Math.PI * 2 - Math.PI / 2;
+                const x2 = cx + Math.cos(boundaryAngle) * SVG_R * 0.95;
+                const y2 = cy + Math.sin(boundaryAngle) * SVG_R * 0.95;
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', cx); line.setAttribute('y1', cy);
+                line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+                line.setAttribute('stroke', 'rgba(127,232,38,0.10)');
+                line.setAttribute('stroke-width', '1');
+                svg.appendChild(line);
+            });
+
+            workspace.appendChild(svg);
+
+            // Label at each group's centre angle, at LABEL_R radius
+            groups.forEach(([tag], groupIdx) => {
+                if (tag === '__none__') return;
+                const angle = (groupIdx / numGroups) * Math.PI * 2 - Math.PI / 2;
+                const lx = Math.cos(angle) * LABEL_R;
+                const ly = Math.sin(angle) * LABEL_R;
+
+                const label = document.createElement('div');
+                label.className = 'tidy-dial-label';
+                label.textContent = tag;
+                label.style.cssText = `
+                    position: absolute;
+                    left: ${lx}px;
+                    top: ${ly}px;
+                    transform: translate(-50%, -50%);
+                    background: rgba(17,17,17,0.88);
+                    color: #7fe826;
+                    font-size: 11px;
+                    font-weight: 800;
+                    letter-spacing: 0.09em;
+                    text-transform: uppercase;
+                    padding: 5px 12px;
+                    border-radius: 20px;
+                    pointer-events: none;
+                    white-space: nowrap;
+                    border: 1px solid rgba(127,232,38,0.4);
+                    box-shadow: 0 0 14px rgba(127,232,38,0.18);
+                    z-index: 100;
+                `;
+                workspace.appendChild(label);
+            });
         }
 
         // Patch item drag to apply snap
