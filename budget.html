@@ -602,16 +602,17 @@
 
                 let txs = [];
                 let prevTxs = [];
+                let allTxs = [];
                 
                 if (!useLocalTx) {
-                    const [txsRes, prevTxsRes] = await Promise.all([
+                    const [txsRes, prevTxsRes, allTxsRes] = await Promise.all([
                         supabaseClient.from('transactions').select('*').gte('created_at', start).lte('created_at', end),
-                        supabaseClient.from('transactions').select('*').gte('created_at', prevStart).lte('created_at', prevEnd)
+                        supabaseClient.from('transactions').select('*').gte('created_at', prevStart).lte('created_at', prevEnd),
+                        supabaseClient.from('transactions').select('*') // Ensure we get full balance context
                     ]);
                     
                     if (!txsRes.error && txsRes.data) {
                         txs = txsRes.data;
-                        cacheTransactions(txs);
                     } else {
                         useLocalTx = true;
                     }
@@ -619,9 +620,15 @@
                     if (!prevTxsRes.error && prevTxsRes.data) {
                         prevTxs = prevTxsRes.data;
                     }
+
+                    if (!allTxsRes.error && allTxsRes.data) {
+                        allTxs = allTxsRes.data;
+                        cacheTransactions(allTxs);
+                    }
                 }
                 
                 if (useLocalTx) {
+                    allTxs = loadedTransactions;
                     txs = loadedTransactions.filter(t => new Date(t.created_at) >= new Date(start) && new Date(t.created_at) <= new Date(end));
                     prevTxs = loadedTransactions.filter(t => new Date(t.created_at) >= new Date(prevStart) && new Date(t.created_at) <= new Date(prevEnd));
                 }
@@ -632,8 +639,32 @@
                 let prevInc = 0, prevExp = 0;
                 if(prevTxs) prevTxs.forEach(t => t.type === 'income' ? prevInc += Number(t.amount) : prevExp += Number(t.amount));
 
-                const currentBalance = kpiData?.total_balance || 0;
-                const currentSavings = kpiData?.total_savings || 0;
+                // Accurately compute dynamic total balance across all history vs. fallback
+                let totalInc = 0, totalExp = 0;
+                if(allTxs) allTxs.forEach(t => t.type === 'income' ? totalInc += Number(t.amount) : totalExp += Number(t.amount));
+                
+                let currentBalance = totalInc - totalExp;
+                if (currentBalance === 0 && kpiData?.total_balance) {
+                    currentBalance = kpiData.total_balance;
+                }
+
+                // Accurately compute dynamic savings from goals 
+                let goals = [];
+                try {
+                    const { data: fetchedGoals, error: goalsError } = await supabaseClient.from('cointrack_goals').select('*').order('created_at', { ascending: true });
+                    if (!goalsError && fetchedGoals) {
+                        goals = fetchedGoals;
+                        loadedGoals = goals;
+                    } else {
+                        goals = loadedGoals;
+                    }
+                } catch(e) {
+                    goals = loadedGoals;
+                }
+
+                let calculatedSavings = 0;
+                goals.forEach(g => calculatedSavings += Number(g.current_amount || 0));
+                const currentSavings = (kpiData && kpiData.total_savings) ? kpiData.total_savings : calculatedSavings;
 
                 const balEl = document.getElementById('kpi-balance');
                 if(balEl) balEl.innerHTML = formatCurrencyHTML(currentBalance);
@@ -698,12 +729,6 @@
                         });
                     } else { tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-gray-400 text-xs">No entries for this month</td></tr>`; }
                 }
-
-                let goals = [];
-                try {
-                    const { data: fetchedGoals, error: goalsError } = await supabaseClient.from('cointrack_goals').select('*').order('created_at', { ascending: true });
-                    if (!goalsError && fetchedGoals) goals = fetchedGoals;
-                } catch(e) {}
 
                 const dGoals = document.getElementById('dashboard-goals-container');
                 if (dGoals) {
@@ -1353,6 +1378,7 @@
                 showToast(goalId ? 'Goal updated (Local)' : 'Goal launched (Local)');
                 closeAddGoalModal();
                 fetchGoalsPageData(true); 
+                fetchDashboardData(true);
             }
         }
         
@@ -1376,6 +1402,7 @@
                 showToast('Goal deleted (Local)');
                 closeAddGoalModal();
                 fetchGoalsPageData(true);
+                fetchDashboardData(true);
             }
         }
 
@@ -1593,7 +1620,12 @@
             setTimeout(() => { t.classList.replace('toast-enter', 'toast-leave'); t.addEventListener('animationend', () => t.remove()); }, 3000);
         }
 
-        function formatCurrencyHTML(a) { const n = Number(a) || 0, p = n.toFixed(2).split('.'); return `MAD ${parseInt(p[0]).toLocaleString()}<span class="text-gray-300 dark:text-gray-500 font-medium text-2xl">.${p[1]}</span>`; }
+        function formatCurrencyHTML(a) { 
+            const n = Number(a) || 0;
+            const isNeg = n < 0;
+            const p = Math.abs(n).toFixed(2).split('.'); 
+            return `${isNeg ? '-' : ''}MAD ${parseInt(p[0]).toLocaleString()}<span class="text-gray-300 dark:text-gray-500 font-medium text-2xl">.${p[1]}</span>`; 
+        }
         
         function openAddGoalModal() { 
             const m = document.getElementById('add-goal-modal'); 
