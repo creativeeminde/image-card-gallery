@@ -6953,16 +6953,38 @@ let editingClipId = null; // Track if we are editing
             if(grid) { grid.className = "flex items-start justify-center gap-3 sm:gap-5 flex-wrap"; grid.innerHTML = html; }
         }
 
-        function openTagPicker(type) {
+        async function openTagPicker(type) {
             pickerTargetType = type;
             const modal = document.getElementById('tagPickerModal');
-            document.getElementById('tagPickerSubtitle').textContent = type.replace('_', ' ');
+            document.getElementById('tagPickerSubtitle').textContent = type.replace(/_/g, ' ');
             document.getElementById('tagSearchInput').value = '';
             if (modal) modal.classList.add('active');
-            
-            const currentTags = currentActiveModelData && currentActiveModelData[pickerTargetType] 
+
+            const currentTags = currentActiveModelData && currentActiveModelData[pickerTargetType]
                 ? currentActiveModelData[pickerTargetType].split(',').map(t => t.trim()).filter(t => t) : [];
             selectedModalTags = new Set(currentTags);
+
+            // FIX: Eagerly fetch all tags from Supabase so the pool is always fresh on open,
+            // even after a page refresh before cards have fully loaded in memory.
+            try {
+                const { data, error } = await supabaseClient
+                    .from('cards')
+                    .select('tags, class_tags, amazing_at_tags');
+                if (!error && data) {
+                    const tempSet = new Set();
+                    masterTagsList.forEach(t => tempSet.add(t));
+                    data.forEach(row => {
+                        ['tags', 'class_tags', 'amazing_at_tags'].forEach(field => {
+                            if (row[field]) row[field].split(',').forEach(t => {
+                                const v = t.trim();
+                                if (v) tempSet.add(v);
+                            });
+                        });
+                    });
+                    masterTagsList = Array.from(tempSet).filter(Boolean).sort();
+                }
+            } catch(e) { console.warn('openTagPicker: could not pre-fetch tags from Supabase:', e); }
+
             renderPickerTags();
         }
 
@@ -7011,8 +7033,8 @@ let editingClipId = null; // Track if we are editing
 
     masterTagsList = Array.from(tempSet).filter(t => t).sort();
 
-    // FIX: Allow the Create button to show up for media tags (clips/assets)
-    const isCreateableType = (pickerTargetType === 'class_tags' || pickerTargetType === 'amazing_at_tags' || pickerTargetType === 'media_tags');
+    // FIX: Allow the Create button to show up for all tag types including 'tags'
+    const isCreateableType = (pickerTargetType === 'tags' || pickerTargetType === 'class_tags' || pickerTargetType === 'amazing_at_tags' || pickerTargetType === 'media_tags');
 
     const exactMatch = masterTagsList.some(t => t.toLowerCase() === searchLower);
 
@@ -7051,8 +7073,8 @@ let editingClipId = null; // Track if we are editing
     const newTag = input ? input.value.trim() : '';
     if (!newTag || !currentActiveModelData) return;
     
-    // FIX: Add 'media_tags' to the allowed list so clips and assets can create tags
-    if (pickerTargetType !== 'class_tags' && pickerTargetType !== 'amazing_at_tags' && pickerTargetType !== 'media_tags') return;
+    // FIX: Add 'tags' and 'media_tags' to the allowed list so all tag types can create tags
+    if (pickerTargetType !== 'tags' && pickerTargetType !== 'class_tags' && pickerTargetType !== 'amazing_at_tags' && pickerTargetType !== 'media_tags') return;
 
     // Add to in-memory selected set
     selectedModalTags.add(newTag);
@@ -7070,6 +7092,16 @@ let editingClipId = null; // Track if we are editing
     // Re-render so the new tag appears selected in the grid
     renderPickerTags();
 }
+
+        function handlePickerSearchKey(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const createBtn = document.getElementById('pickerCreateBtn');
+                if (!createBtn?.classList.contains('hidden')) {
+                    createAndSavePickerTag();
+                }
+            }
+        }
 
         function toggleModalTag(tag) {
             if (selectedModalTags.has(tag)) selectedModalTags.delete(tag); else selectedModalTags.add(tag);
