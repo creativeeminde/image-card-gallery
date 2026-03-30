@@ -5305,15 +5305,36 @@ function renderClipTagsDropdown() {
     container.innerHTML = html;
 }
 
-        function renderClipsSiteFilterBar() {
+        // Cache of all known sites fetched from Supabase (persists across re-renders)
+        let _allKnownSites = [];
+
+        async function renderClipsSiteFilterBar() {
             const bar = document.getElementById('clipsSiteFilterBar');
             if (!bar) return;
 
-            const sites = [...new Set(
-                ytGlobalClips
-                    .map(c => (c.site_name || '').trim())
-                    .filter(Boolean)
-            )].sort();
+            // Step 1: Build site list from in-memory clips immediately (instant render)
+            const inMemorySites = [...new Set(
+                ytGlobalClips.map(c => (c.site_name || '').trim()).filter(Boolean)
+            )];
+
+            // Step 2: Fetch ALL distinct site_names from Supabase in background
+            try {
+                const { data, error } = await supabaseClient
+                    .from('global_clips')
+                    .select('site_name')
+                    .not('site_name', 'is', null)
+                    .neq('site_name', '');
+                if (!error && data) {
+                    const fetched = [...new Set(data.map(r => (r.site_name || '').trim()).filter(Boolean))];
+                    // Merge in-memory + fetched, deduplicate
+                    _allKnownSites = [...new Set([..._allKnownSites, ...inMemorySites, ...fetched])].sort();
+                }
+            } catch(e) {
+                // Fallback: use what we already know
+                _allKnownSites = [...new Set([..._allKnownSites, ...inMemorySites])].sort();
+            }
+
+            const sites = _allKnownSites;
 
             if (sites.length === 0) {
                 bar.classList.add('hidden');
@@ -5322,8 +5343,14 @@ function renderClipTagsDropdown() {
 
             bar.classList.remove('hidden');
 
+            const flexRow = bar.querySelector('.flex');
+            if (!flexRow) return;
+
+            // Remove old site pills (keep only the "All" button)
             const allBtn = document.getElementById('clipsSiteFilterAll');
-            while (allBtn.nextSibling) allBtn.nextSibling.remove();
+            Array.from(flexRow.children).forEach(el => {
+                if (el.id !== 'clipsSiteFilterAll') el.remove();
+            });
 
             allBtn.className = !currentClipSiteFilter
                 ? 'shrink-0 px-3 py-1.5 rounded-full text-[12px] font-bold transition-all bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] shadow-sm'
@@ -5333,11 +5360,11 @@ function renderClipTagsDropdown() {
                 const isActive = currentClipSiteFilter === site;
                 const pill = document.createElement('button');
                 pill.className = isActive
-                    ? 'shrink-0 px-3 py-1.5 rounded-full text-[12px] font-bold transition-all bg-[#7fe826] text-[#111] shadow-sm'
-                    : 'shrink-0 px-3 py-1.5 rounded-full text-[12px] font-bold transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700';
+                    ? 'shrink-0 px-3 py-1.5 rounded-full text-[12px] font-bold transition-all bg-[#7fe826] text-[#111] shadow-sm ring-2 ring-[#7fe826]/40'
+                    : 'shrink-0 px-3 py-1.5 rounded-full text-[12px] font-bold transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-[#7fe826]/10 hover:text-[#3d7a0a] dark:hover:text-[#7fe826] border border-transparent hover:border-[#7fe826]/30';
                 pill.textContent = site;
                 pill.onclick = () => filterClipsBySite(isActive ? null : site);
-                bar.querySelector('.flex').appendChild(pill);
+                flexRow.appendChild(pill);
             });
         }
 
@@ -5391,7 +5418,8 @@ function filterClipsByModel(modelId) {
                     query = query.or(`category_id.eq.${currentCategoryFilter},category_ids.cs.{${currentCategoryFilter}}`);
                 }
                 if (searchVal) query = query.ilike('title', `%${searchVal}%`);
-                if (currentModelClipFilter) query = query.eq('card_id', currentModelClipFilter);
+                // FIX: filter by card_id OR card_ids array contains the selected model
+                if (currentModelClipFilter) query = query.or(`card_id.eq.${currentModelClipFilter},card_ids.cs.{${currentModelClipFilter}}`);
                 if (currentClipSiteFilter) query = query.eq('site_name', currentClipSiteFilter);
                 
                 query = query.range(ytClipsPage * YT_CLIPS_PER_PAGE, (ytClipsPage + 1) * YT_CLIPS_PER_PAGE - 1);
@@ -5710,25 +5738,76 @@ let editingClipId = null; // Track if we are editing
     vidEl.play().catch(e => console.log("Autoplay prevented", e));
 
     document.getElementById('ytPlayerVideoTitle').textContent = clip.title;
-    document.getElementById('ytPlayerModelName').textContent = clip.cards ? clip.cards.title : 'Unknown Model';
+    // FIX: Collect ALL model ids for this clip (card_ids array + fallback to card_id)
+    const clipAllModelIds = Array.isArray(clip.card_ids) && clip.card_ids.length
+        ? clip.card_ids
+        : (clip.card_id ? [clip.card_id] : []);
+    const clipAllModels = clipAllModelIds
+        .map(mid => allLoadedCards.find(c => c.id === mid))
+        .filter(Boolean);
+
+    // Set title/stats using first available model
+    const primaryModel = clipAllModels[0] || (clip.cards ? clip.cards : null);
+    document.getElementById('ytPlayerModelName').textContent = clipAllModels.length > 1
+        ? clipAllModels.map(m => m.title).join(' & ')
+        : (primaryModel ? primaryModel.title : 'Unknown Model');
 
     const dateStr = new Date(clip.created_at).toLocaleDateString();
     document.getElementById('ytPlayerStats').textContent = `${clip.views || 0} views • ${dateStr}`;
-    
-    // --- AVATAR LOOKUP LOGIC ---
-    let avatarUrl = clip.cards ? optimizeMediaUrl(clip.cards.main_image_url, false, 100) : '';
-    const fullCard = allLoadedCards.find(c => c.id === clip.card_id);
-    if (fullCard && fullCard.related_images_with_tags) {
-        const avatarAsset = fullCard.related_images_with_tags.find(a => {
-            const t = typeof a === 'string' ? '' : (a.tags || '');
-            return t.toLowerCase().includes('avatar');
-        });
-        if (avatarAsset) {
-            avatarUrl = optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset, false, 100);
+
+    // --- MULTI-AVATAR LOGIC ---
+    // Helper: resolve best avatar url for a card
+    function _getCardAvatarUrl(card) {
+        if (!card) return '';
+        let url = card.main_image_url || '';
+        if (card.related_images_with_tags) {
+            const av = card.related_images_with_tags.find(a => {
+                const t = typeof a === 'string' ? '' : (a.tags || '');
+                return t.toLowerCase().includes('avatar');
+            });
+            if (av) url = av.url || av.image_url || av.src || av || url;
+        }
+        return optimizeMediaUrl(url, false, 100);
+    }
+
+    const modelLinkBtn = document.getElementById('ytPlayerModelLink');
+    if (modelLinkBtn) {
+        if (clipAllModels.length <= 1) {
+            // Single model — original layout with single avatar img
+            const singleCard = clipAllModels[0] || null;
+            const avatarUrl = _getCardAvatarUrl(singleCard || (clip.cards ? { ...clip.cards, related_images_with_tags: null } : null));
+            modelLinkBtn.innerHTML = `
+                <img id="ytPlayerAvatar" src="${avatarUrl}" class="w-14 h-14 sm:w-[60px] sm:h-[60px] rounded-[1.2rem] object-cover border border-white/10 shadow-md bg-slate-900 group-hover:scale-105 transition-transform">
+                <div class="flex flex-col">
+                    <h2 class="text-lg sm:text-xl font-bold text-white flex items-center gap-1.5 leading-none group-hover:text-[#7fe826] transition-colors">
+                        <span id="ytPlayerModelName2">${singleCard ? singleCard.title : (clip.cards ? clip.cards.title : 'Unknown Model')}</span>
+                        <svg class="w-4 h-4 text-purple-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+                    </h2>
+                    <p id="ytPlayerStats2" class="text-slate-400 text-sm mt-1.5 font-medium">${clip.views || 0} views • ${dateStr}</p>
+                </div>`;
+            modelLinkBtn.onclick = () => {
+                const mid = singleCard ? singleCard.id : clip.card_id;
+                if (mid) { closeYTPlayer(); openModelById(mid); }
+            };
+        } else {
+            // Multiple models — render stacked avatar row
+            const avatarsHtml = clipAllModels.map((m, i) => {
+                const aUrl = _getCardAvatarUrl(m);
+                return `<div class="flex flex-col items-center gap-1 cursor-pointer" onclick="closeYTPlayer();openModelById(${m.id});" title="${m.title}">
+                    <img src="${aUrl}" class="w-11 h-11 rounded-xl object-cover border-2 border-white/10 shadow bg-slate-900 hover:scale-110 transition-transform" style="margin-left:${i > 0 ? '-10px' : '0'}">
+                    <span class="text-[10px] font-bold text-slate-300 max-w-[52px] truncate">${m.title}</span>
+                </div>`;
+            }).join('');
+            modelLinkBtn.innerHTML = `
+                <div class="flex items-end gap-0">${avatarsHtml}</div>
+                <div class="flex flex-col ml-3">
+                    <h2 class="text-base font-bold text-white group-hover:text-[#7fe826] transition-colors leading-tight">${clipAllModels.map(m => m.title).join(' & ')}</h2>
+                    <p class="text-slate-400 text-sm mt-1 font-medium">${clip.views || 0} views • ${dateStr}</p>
+                </div>`;
+            modelLinkBtn.onclick = null; // individual cards handle their own clicks
         }
     }
-    document.getElementById('ytPlayerAvatar').src = avatarUrl;
-    // ---------------------------
+    // --------------------------
 
     document.getElementById('ytPlayerModal').classList.add('active');
     document.getElementById('ytPlayerEditBtn').onclick = () => openYTEditModal(id);
@@ -5740,21 +5819,6 @@ let editingClipId = null; // Track if we are editing
     // ===== You May Like sidebar =====
     renderYTSidebar(clip);
     // ================================
-
-    // ==========================================
-    // ADD THIS NEW BLOCK:
-    // Attach the click event to navigate to the Close Up view
-    // ==========================================
-    const modelLinkBtn = document.getElementById('ytPlayerModelLink');
-    if (modelLinkBtn) {
-        modelLinkBtn.onclick = () => {
-            if (clip.card_id) {
-                closeYTPlayer(); // Close the video player modal first
-                openModelById(clip.card_id); // Navigate to the Close Up page
-            }
-        };
-    }
-    // ==========================================
 
     // Increment views slightly delayed to ensure valid open
     setTimeout(() => {
@@ -5983,10 +6047,9 @@ let editingClipId = null; // Track if we are editing
         }
 
         async function lbBuildLeaderboards(showAll, section) {
-            if (!lbDataLoaded) {
-                // Load clip counts and view totals from ytGlobalClips
-                await lbLoadData();
-            }
+            // FIX: Always reload data from Supabase to ensure accuracy.
+            // (lbDataLoaded flag removed — we always want fresh counts)
+            await lbLoadData();
             if (!section || section === 'rated') lbRenderList('lb-list-rated', window._lbRated, 'lb-badge-rated', m => '★ ' + (m.rating || 0) + '%', section === 'rated' ? showAll : lbState.rated);
             if (!section || section === 'queen') lbRenderList('lb-list-queen', window._lbQueen, 'lb-badge-queen', m => m.clips + ' clips', section === 'queen' ? showAll : lbState.queen);
             if (!section || section === 'views') lbRenderList('lb-list-views', window._lbViews, 'lb-badge-views', m => lbFormatViews(m.totalViews) + ' views', section === 'views' ? showAll : lbState.views);
@@ -5995,19 +6058,56 @@ let editingClipId = null; // Track if we are editing
         async function lbLoadData() {
             lbDataLoaded = true;
             const cards = allLoadedCards || [];
-            const clips = ytGlobalClips || [];
 
             // Build per-card aggregates
             const cardMap = {};
             cards.forEach(c => {
                 cardMap[c.id] = { cardId: c.id, name: c.title || 'Unknown', rating: c.rating_hotness || 0, card: c, clips: 0, totalViews: 0 };
             });
-            clips.forEach(cl => {
-                if (cl.card_id && cardMap[cl.card_id]) {
-                    cardMap[cl.card_id].clips++;
-                    cardMap[cl.card_id].totalViews += (cl.views || 0);
+
+            // FIX: Fetch ALL clips from Supabase (not just the paginated in-memory array).
+            // Also handle card_ids array so multi-model clips are counted for every assigned model.
+            try {
+                const { data: allClips, error } = await supabaseClient
+                    .from('global_clips')
+                    .select('id, card_id, card_ids, views');
+
+                if (!error && allClips) {
+                    allClips.forEach(cl => {
+                        const views = cl.views || 0;
+
+                        // Collect all model ids this clip belongs to
+                        const modelIds = Array.isArray(cl.card_ids) && cl.card_ids.length
+                            ? cl.card_ids
+                            : (cl.card_id ? [cl.card_id] : []);
+
+                        // Credit clip + views to every assigned model
+                        modelIds.forEach(mid => {
+                            if (cardMap[mid]) {
+                                cardMap[mid].clips++;
+                                cardMap[mid].totalViews += views;
+                            }
+                        });
+                    });
+                } else {
+                    // Fallback: use in-memory ytGlobalClips if Supabase fetch fails
+                    console.warn('lbLoadData: Supabase fetch failed, using in-memory clips', error);
+                    (ytGlobalClips || []).forEach(cl => {
+                        const views = cl.views || 0;
+                        const modelIds = Array.isArray(cl.card_ids) && cl.card_ids.length
+                            ? cl.card_ids
+                            : (cl.card_id ? [cl.card_id] : []);
+                        modelIds.forEach(mid => {
+                            if (cardMap[mid]) {
+                                cardMap[mid].clips++;
+                                cardMap[mid].totalViews += views;
+                            }
+                        });
+                    });
                 }
-            });
+            } catch(e) {
+                console.error('lbLoadData error:', e);
+            }
 
             const all = Object.values(cardMap);
             window._lbRated = [...all].sort((a, b) => b.rating - a.rating);
@@ -6059,10 +6159,11 @@ let editingClipId = null; // Track if we are editing
         let freshClips = [];
 
         if (modelId) {
+            // FIX: fetch clips where card_id matches OR card_ids array contains this model
             const { data: relationalClips, error } = await supabaseClient
                 .from('global_clips')
                 .select('*')
-                .eq('card_id', modelId)
+                .or(`card_id.eq.${modelId},card_ids.cs.{${modelId}}`)
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -7573,6 +7674,7 @@ let editingClipId = null; // Track if we are editing
                         viewEl.style.display = 'flex'; // Critical for the sidebar layout
                         fetchYTClips(true); // Force fetch now that container is visible
                         fetchHeroClips();   // Refresh hero section
+                        renderClipsSiteFilterBar(); // Fetch all sites from Supabase
                     } else if (target === 'runwayView') {
                         viewEl.style.display = 'block';
                         // Re-init carousel so the panel refreshes for the current card.
@@ -7808,6 +7910,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                             category_id: category_id ? parseInt(category_id) : null,
                             category_ids: category_ids.length ? category_ids.map(Number).filter(Boolean) : null,
                             card_id: card_id ? parseInt(card_id) : null,
+                            card_ids: allCardIds.length ? allCardIds.map(Number).filter(Boolean) : null,
                             site_name: siteNameVal
                         };
                         
@@ -7854,7 +7957,8 @@ const addAudioForm = document.getElementById('addAudioForm');
                             if (data && data.length > 0) {
                                 ytGlobalClips.unshift(data[0]);
                                 
-                                if (currentActiveModelData && currentActiveModelData.id == card_id) {
+                                // FIX: update combined_clips for ALL assigned models, not just the primary card_id
+                                if (currentActiveModelData && allCardIds.includes(currentActiveModelData.id)) {
                                     if (!currentActiveModelData.combined_clips) currentActiveModelData.combined_clips = [];
                                     currentActiveModelData.combined_clips.unshift({tags: 'YT Clip', ...data[0]});
                                     
