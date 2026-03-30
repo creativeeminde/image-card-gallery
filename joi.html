@@ -3254,7 +3254,20 @@
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Video URL</label>
-                    <input type="url" id="ytClipUrl" required class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none">
+                    <div class="relative">
+                        <input type="url" id="ytClipUrl" required
+                            oninput="autoDetectClipDuration(this.value)"
+                            class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none pr-10">
+                        <!-- Spinner shown while loading metadata -->
+                        <div id="ytDurationSpinner" class="hidden absolute right-3 top-1/2 -translate-y-1/2">
+                            <svg class="w-4 h-4 animate-spin text-slate-400" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <!-- Hidden video element used purely for metadata extraction -->
+                    <video id="ytDurationProbe" preload="metadata" class="hidden" style="display:none;"></video>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
@@ -3275,8 +3288,16 @@
                         <input type="hidden" id="ytClipCategory">
                     </div>
                     <div>
-                        <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Duration (e.g., 4:20)</label>
-                        <input type="text" id="ytClipDuration" value="0:00" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none">
+                        <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
+                            Duration
+                            <span id="ytDurationBadge" class="hidden text-[10px] font-bold bg-[#7fe826]/20 text-[#3d7a0a] dark:text-[#7fe826] px-1.5 py-0.5 rounded-full">Auto</span>
+                        </label>
+                        <!-- Read-only display — value is written by autoDetectClipDuration() -->
+                        <div id="ytClipDurationDisplay" class="w-full bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 rounded-xl px-4 py-3 text-sm font-mono select-none">
+                            0:00
+                        </div>
+                        <!-- Hidden input keeps the value for form read -->
+                        <input type="hidden" id="ytClipDuration" value="0:00">
                     </div>
                 </div>
                 
@@ -5518,11 +5539,14 @@ function renderYTClipsGrid(clearFirst = false) {
                 const clipUrl = optimizeMediaUrl(clip.url, true);
                 const dateStr = new Date(clip.created_at).toLocaleDateString();
 
+                // Flag clips that need duration backfilled (null, blank, or '0:00')
+                const needsDuration = !clip.duration || clip.duration === '0:00';
                 return `
                     <div class="flex flex-col gap-3 group">
                         <div class="relative w-full aspect-video bg-slate-200 dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm cursor-pointer" onclick="openYTPlayer(${clip.id})">
-                            <video src="${clipUrl}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline preload="metadata"></video>
-                            <div class="absolute bottom-2 right-2 bg-black/80 text-white text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm">${clip.duration || '0:00'}</div>
+                            <video src="${clipUrl}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline preload="metadata"
+                                data-clip-id="${clip.id}" ${needsDuration ? 'data-needs-duration="1"' : ''}></video>
+                            <div class="absolute bottom-2 right-2 bg-black/80 text-white text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm" id="dur-badge-${clip.id}">${clip.duration && clip.duration !== '0:00' ? clip.duration : '0:00'}</div>
                             <button onclick="event.stopPropagation(); openYTEditModal(${clip.id})" class="absolute top-2 left-2 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-[#7fe826] hover:text-[#111] transition-all backdrop-blur-sm" title="Edit Clip">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                             </button>
@@ -5557,8 +5581,59 @@ function renderYTClipsGrid(clearFirst = false) {
 
             if(grid) {
                 grid.insertAdjacentHTML('beforeend', html);
+                // Backfill real durations for any clips that have '0:00' or no duration stored
+                backfillClipDurations();
             }
         }
+
+        // ── Backfill real durations for existing clips ──────────────────────────
+        // Reads duration from the <video preload="metadata"> already in the grid,
+        // updates the badge in the DOM, syncs ytGlobalClips in memory, and
+        // persists to Supabase for any clip that had a missing/zero duration.
+        function backfillClipDurations() {
+            const videos = document.querySelectorAll('#ytClipsGrid video[data-needs-duration="1"]');
+            if (!videos.length) return;
+
+            videos.forEach(vid => {
+                const clipId = parseInt(vid.dataset.clipId);
+                if (!clipId) return;
+
+                const applyDuration = () => {
+                    const secs = vid.duration;
+                    if (!secs || !isFinite(secs) || secs <= 0) return;
+
+                    const mmss = _secondsToMMSS(secs);
+
+                    // 1. Update the badge in the DOM immediately
+                    const badge = document.getElementById('dur-badge-' + clipId);
+                    if (badge) badge.textContent = mmss;
+
+                    // 2. Mark as done so we don't repeat
+                    vid.removeAttribute('data-needs-duration');
+
+                    // 3. Sync in-memory ytGlobalClips
+                    const memClip = ytGlobalClips.find(c => c.id === clipId);
+                    if (memClip) memClip.duration = mmss;
+
+                    // 4. Persist to Supabase (fire-and-forget)
+                    supabaseClient
+                        .from('global_clips')
+                        .update({ duration: mmss })
+                        .eq('id', clipId)
+                        .then(({ error }) => {
+                            if (error) console.warn('Duration backfill failed for clip', clipId, error);
+                        });
+                };
+
+                if (vid.readyState >= 1) {
+                    // Metadata already loaded (e.g. cached)
+                    applyDuration();
+                } else {
+                    vid.addEventListener('loadedmetadata', applyDuration, { once: true });
+                }
+            });
+        }
+        // ─────────────────────────────────────────────────────────────────────
 
         function handleClipsScroll(el) {
             // Replaced by "Show More" button — infinite scroll disabled.
@@ -5707,6 +5782,74 @@ let editingClipId = null; // Track if we are editing
             document.getElementById('ytUploadModal').classList.add('active'); 
         }
 
+        // ── Auto-detect video duration from URL ──────────────────────────────
+        let _durationProbeTimer = null;
+
+        function _secondsToMMSS(secs) {
+            if (!secs || isNaN(secs) || secs <= 0) return '0:00';
+            const m = Math.floor(secs / 60);
+            const s = Math.floor(secs % 60);
+            return m + ':' + (s < 10 ? '0' : '') + s;
+        }
+
+        function _setDurationUI(mmss, auto) {
+            const display = document.getElementById('ytClipDurationDisplay');
+            const hidden  = document.getElementById('ytClipDuration');
+            const badge   = document.getElementById('ytDurationBadge');
+            const spinner = document.getElementById('ytDurationSpinner');
+            if (display) { display.textContent = mmss; display.classList.toggle('text-slate-800', auto); display.classList.toggle('dark:text-slate-200', auto); }
+            if (hidden)  hidden.value = mmss;
+            if (badge)   badge.classList.toggle('hidden', !auto);
+            if (spinner) spinner.classList.add('hidden');
+        }
+
+        function autoDetectClipDuration(url) {
+            clearTimeout(_durationProbeTimer);
+            const spinner = document.getElementById('ytDurationSpinner');
+            const badge   = document.getElementById('ytDurationBadge');
+
+            // Reset on empty
+            if (!url || !url.trim()) {
+                _setDurationUI('0:00', false);
+                return;
+            }
+
+            // Show spinner while waiting
+            if (spinner) spinner.classList.remove('hidden');
+            if (badge)   badge.classList.add('hidden');
+
+            // Debounce: only probe after user stops typing for 600ms
+            _durationProbeTimer = setTimeout(() => {
+                const probe = document.getElementById('ytDurationProbe');
+                if (!probe) { if (spinner) spinner.classList.add('hidden'); return; }
+
+                // Clean up old listeners
+                probe.onloadedmetadata = null;
+                probe.onerror = null;
+                probe.src = '';
+
+                probe.onloadedmetadata = () => {
+                    const dur = probe.duration;
+                    probe.src = ''; // free the resource
+                    if (dur && isFinite(dur)) {
+                        _setDurationUI(_secondsToMMSS(dur), true);
+                    } else {
+                        _setDurationUI('0:00', false);
+                        if (spinner) spinner.classList.add('hidden');
+                    }
+                };
+
+                probe.onerror = () => {
+                    // CORS or unsupported URL — silently fall back, let user type manually
+                    probe.src = '';
+                    if (spinner) spinner.classList.add('hidden');
+                };
+
+                probe.src = url.trim();
+            }, 600);
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         function closeYTUploadModal() { 
             const uploadModal = document.getElementById('ytUploadModal');
             const openedFromPlayer = uploadModal.dataset.openedFromPlayer === 'true';
@@ -5715,6 +5858,10 @@ let editingClipId = null; // Track if we are editing
             uploadModal.style.zIndex = '';
             uploadModal.dataset.openedFromPlayer = '';
             document.getElementById('ytUploadForm').reset();
+            // Reset duration display back to default
+            _setDurationUI('0:00', false);
+            const badge = document.getElementById('ytDurationBadge');
+            if (badge) badge.classList.add('hidden');
             const siteNameEl = document.getElementById('ytClipSiteName');
             if (siteNameEl) siteNameEl.value = '';
             clearSelectedModel();
