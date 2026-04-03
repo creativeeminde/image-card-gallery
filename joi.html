@@ -5227,41 +5227,65 @@ function filterByClipTag(tag) {
     fetchYTClips(true); 
 }
 
-function renderClipTagsDropdown() {
+let _allKnownClipTags = new Set();
+
+async function renderClipTagsDropdown() {
             const select = document.getElementById('clipTagFilterSelect');
             if (!select) return;
 
-            const allTags = new Set();
-            
-            // 1. Extract from all models globally so the dropdown never shrinks!
-            allLoadedCards.forEach(card => {
-                if (card.tags && typeof card.tags === 'string') {
-                    card.tags.split(',').forEach(t => {
-                        const cleanTag = t.trim();
-                        if (cleanTag) allTags.add(cleanTag);
-                    });
-                }
-            });
+            // Helper: parse tags from a comma-separated string into the master set
+            function extractTagsInto(tagsStr, targetSet) {
+                if (!tagsStr || typeof tagsStr !== 'string') return;
+                tagsStr.split(',').forEach(t => {
+                    const cleanTag = t.trim();
+                    if (cleanTag) targetSet.add(cleanTag);
+                });
+            }
 
-            // 2. Extract from specifically uploaded clip tags
+            // 1. Seed immediately from in-memory sources so the dropdown renders fast
+            allLoadedCards.forEach(card => extractTagsInto(card.tags, _allKnownClipTags));
             ytGlobalClips.forEach(clip => {
-                if (clip.tags && typeof clip.tags === 'string') {
-                    clip.tags.split(',').forEach(t => {
-                        const cleanTag = t.trim();
-                        if (cleanTag) allTags.add(cleanTag);
-                    });
-                }
+                extractTagsInto(clip.tags, _allKnownClipTags);
+                // Also grab tags from the joined cards relation if present
+                if (clip.cards) extractTagsInto(clip.cards.tags, _allKnownClipTags);
             });
 
-            const sortedTags = Array.from(allTags).sort();
-            
-            let html = `<option value="">All Tags</option>`;
-            sortedTags.forEach(tag => {
-                const isSelected = currentClipTagFilter === tag ? 'selected' : '';
-                html += `<option value="${tag}" ${isSelected}>${tag}</option>`;
-            });
-            
-            select.innerHTML = html;
+            // 2. Render immediately with what we already know
+            function rebuildOptions() {
+                const sortedTags = Array.from(_allKnownClipTags).sort((a, b) => a.localeCompare(b));
+                let html = `<option value="">All Tags</option>`;
+                sortedTags.forEach(tag => {
+                    const escaped = tag.replace(/"/g, '&quot;');
+                    const isSelected = currentClipTagFilter === tag ? 'selected' : '';
+                    html += `<option value="${escaped}" ${isSelected}>${tag}</option>`;
+                });
+                select.innerHTML = html;
+            }
+            rebuildOptions();
+
+            // 3. Background fetch: pull ALL tags from every clip across ALL sites (no pagination,
+            //    no site/model filter) so the dropdown always shows the full universe of tags.
+            try {
+                const { data, error } = await supabaseClient
+                    .from('global_clips')
+                    .select('tags, cards(tags)')
+                    .not('tags', 'is', null)
+                    .neq('tags', '');
+                if (!error && data) {
+                    let changed = false;
+                    data.forEach(clip => {
+                        const before = _allKnownClipTags.size;
+                        extractTagsInto(clip.tags, _allKnownClipTags);
+                        if (clip.cards) extractTagsInto(clip.cards.tags, _allKnownClipTags);
+                        if (_allKnownClipTags.size !== before) changed = true;
+                    });
+                    // Only re-render if new tags were discovered to avoid unnecessary DOM churn
+                    if (changed) rebuildOptions();
+                }
+            } catch(e) {
+                // Silently fall back to the already-rendered in-memory tags
+                console.warn('renderClipTagsDropdown background fetch failed:', e);
+            }
         }
        function filterByCategory(catId) {
     currentCategoryFilter = catId;
@@ -5442,6 +5466,8 @@ function filterClipsByModel(modelId) {
                 // FIX: filter by card_id OR card_ids array contains the selected model
                 if (currentModelClipFilter) query = query.or(`card_id.eq.${currentModelClipFilter},card_ids.cs.{${currentModelClipFilter}}`);
                 if (currentClipSiteFilter) query = query.eq('site_name', currentClipSiteFilter);
+                // Server-side tag filter: use ilike to match the tag within the comma-separated tags string
+                if (currentClipTagFilter) query = query.ilike('tags', `%${currentClipTagFilter}%`);
                 
                 query = query.range(ytClipsPage * YT_CLIPS_PER_PAGE, (ytClipsPage + 1) * YT_CLIPS_PER_PAGE - 1);
 
