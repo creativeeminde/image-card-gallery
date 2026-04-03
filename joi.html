@@ -2612,7 +2612,7 @@
                 </div>
             </aside>
 
-            <main class="flex-1 min-h-0 md:h-full flex flex-col min-w-0 overflow-y-auto custom-scrollbar relative" >
+            <main id="clipsMainScroll" class="flex-1 min-h-0 md:h-full flex flex-col min-w-0 overflow-y-auto custom-scrollbar relative" >
                 
                 <div id="clipsModelCarouselContainer" class="w-full bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 pt-6 pb-4 px-4 sm:px-6 shrink-0">
     <div class="flex items-center justify-between mb-4">
@@ -5542,7 +5542,7 @@ function renderYTClipsGrid(clearFirst = false) {
                 // Flag clips that need duration backfilled (null, blank, or '0:00')
                 const needsDuration = !clip.duration || clip.duration === '0:00';
                 return `
-                    <div class="flex flex-col gap-3 group">
+                    <div class="flex flex-col gap-3 group" data-clip-id="${clip.id}">
                         <div class="relative w-full aspect-video bg-slate-200 dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm cursor-pointer" onclick="openYTPlayer(${clip.id})">
                             <video src="${clipUrl}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline preload="metadata"
                                 data-clip-id="${clip.id}" ${needsDuration ? 'data-needs-duration="1"' : ''}></video>
@@ -5584,6 +5584,85 @@ function renderYTClipsGrid(clearFirst = false) {
                 // Backfill real durations for any clips that have '0:00' or no duration stored
                 backfillClipDurations();
             }
+        }
+
+        // ── In-place update of a single clip card in the grid ──────────────────
+        // Called after an edit save so the UI updates instantly without
+        // re-fetching or resetting the entire feed or scroll position.
+        function updateClipCardInPlace(clipId, updatedClip) {
+            const card = document.querySelector(`#ytClipsGrid [data-clip-id="${clipId}"]`);
+            if (!card) return; // card not currently rendered — nothing to do
+
+            // 1. Title
+            const titleEl = card.querySelector('h4');
+            if (titleEl) titleEl.textContent = updatedClip.title || '';
+
+            // 2. Model name label + avatar image
+            const modelName = updatedClip.cards ? updatedClip.cards.title : 'Unknown Model';
+            const modelSpan = card.querySelector('span.text-xs.font-medium.w-max');
+            if (modelSpan) {
+                modelSpan.textContent = modelName;
+                modelSpan.title = 'View ' + modelName;
+                const newCardId = updatedClip.card_id || null;
+                modelSpan.setAttribute('onclick', newCardId ? `openModelById(${newCardId})` : '');
+            }
+
+            // Resolve avatar URL the same way renderYTClipsGrid does
+            let avatarUrl = updatedClip.cards ? optimizeMediaUrl(updatedClip.cards.main_image_url, false, 100) : '';
+            const primaryCardId = updatedClip.card_id;
+            if (primaryCardId) {
+                const fullCard = allLoadedCards.find(c => c.id === primaryCardId);
+                if (fullCard && fullCard.related_images_with_tags) {
+                    const avatarAsset = fullCard.related_images_with_tags.find(a => {
+                        const t = typeof a === 'string' ? '' : (a.tags || '');
+                        return t.toLowerCase().includes('avatar');
+                    });
+                    if (avatarAsset) {
+                        avatarUrl = optimizeMediaUrl(
+                            avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset,
+                            false, 100
+                        );
+                    }
+                }
+            }
+            const avatarImg = card.querySelector('img.rounded-full');
+            if (avatarImg) {
+                if (avatarUrl) avatarImg.src = avatarUrl;
+                avatarImg.title = 'View ' + modelName;
+                avatarImg.setAttribute('onclick', primaryCardId ? `openModelById(${primaryCardId})` : '');
+            }
+
+            // 3. Video source — only swap if the URL actually changed
+            const videoEl = card.querySelector('video');
+            const newVideoUrl = optimizeMediaUrl(updatedClip.url, true);
+            if (videoEl) {
+                // Compare decoded hrefs to handle browser URL-normalisation
+                const currentSrc = videoEl.getAttribute('src') || '';
+                if (currentSrc !== newVideoUrl) {
+                    videoEl.setAttribute('src', newVideoUrl);
+                    videoEl.load();
+                }
+            }
+
+            // 4. Duration badge
+            const durBadge = document.getElementById(`dur-badge-${clipId}`);
+            if (durBadge && updatedClip.duration && updatedClip.duration !== '0:00') {
+                durBadge.textContent = updatedClip.duration;
+                if (videoEl) videoEl.removeAttribute('data-needs-duration');
+            }
+
+            // 5. Brief green outline flash so the user can spot which card changed
+            card.style.outline = '2px solid #7fe826';
+            card.style.borderRadius = '12px';
+            card.style.transition = 'outline 0.9s ease, border-radius 0.9s ease';
+            setTimeout(() => {
+                card.style.outline = '2px solid transparent';
+                setTimeout(() => {
+                    card.style.outline = '';
+                    card.style.borderRadius = '';
+                    card.style.transition = '';
+                }, 900);
+            }, 900);
         }
 
         // ── Backfill real durations for existing clips ──────────────────────────
@@ -8124,13 +8203,74 @@ const addAudioForm = document.getElementById('addAudioForm');
                         }
                             
                         if (error) throw error;
-                        
+
                         const savedEditId = editingClipId;
                         const uploadModal = document.getElementById('ytUploadModal');
                         const openedFromPlayer = uploadModal.dataset.openedFromPlayer === 'true';
 
                         closeYTUploadModal();
-                        fetchYTClips(true); // Refresh main global grid
+
+                        if (savedEditId && data && data.length > 0) {
+                            // ── Edit path: update only the affected card in the DOM ──────────
+                            // No feed reset, no pagination reset, no scroll jump.
+                            updateClipCardInPlace(savedEditId, data[0]);
+                        } else if (!savedEditId) {
+                            // ── New clip path: prepend the new card at the top of the feed ──
+                            // (ytGlobalClips was already unshifted above)
+                            const grid = document.getElementById('ytClipsGrid');
+                            if (grid && data && data.length > 0) {
+                                // Build the single card HTML and insert at the top
+                                const clip = data[0];
+                                const modelName = clip.cards ? clip.cards.title : 'Unknown Model';
+                                let avatarUrl = clip.cards ? optimizeMediaUrl(clip.cards.main_image_url, false, 100) : '';
+                                const fullCard = allLoadedCards.find(c => c.id === clip.card_id);
+                                if (fullCard && fullCard.related_images_with_tags) {
+                                    const avatarAsset = fullCard.related_images_with_tags.find(a => {
+                                        const t = typeof a === 'string' ? '' : (a.tags || '');
+                                        return t.toLowerCase().includes('avatar');
+                                    });
+                                    if (avatarAsset) {
+                                        avatarUrl = optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset, false, 100);
+                                    }
+                                }
+                                const clipUrl = optimizeMediaUrl(clip.url, true);
+                                const dateStr = new Date(clip.created_at).toLocaleDateString();
+                                const needsDuration = !clip.duration || clip.duration === '0:00';
+                                const newCardHtml = `
+                                    <div class="flex flex-col gap-3 group" data-clip-id="${clip.id}">
+                                        <div class="relative w-full aspect-video bg-slate-200 dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm cursor-pointer" onclick="openYTPlayer(${clip.id})">
+                                            <video src="${clipUrl}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline preload="metadata"
+                                                data-clip-id="${clip.id}" ${needsDuration ? 'data-needs-duration="1"' : ''}></video>
+                                            <div class="absolute bottom-2 right-2 bg-black/80 text-white text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm" id="dur-badge-${clip.id}">${clip.duration && clip.duration !== '0:00' ? clip.duration : '0:00'}</div>
+                                            <button onclick="event.stopPropagation(); openYTEditModal(${clip.id})" class="absolute top-2 left-2 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-[#7fe826] hover:text-[#111] transition-all backdrop-blur-sm" title="Edit Clip">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                            </button>
+                                            <button onclick="event.stopPropagation(); openSaveToPlaylistModal(${clip.id})" class="absolute top-2 right-2 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-[#7fe826] hover:text-[#111] transition-all backdrop-blur-sm" title="Save to Playlist">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+                                            </button>
+                                        </div>
+                                        <div class="flex gap-3 px-1">
+                                            <img src="${avatarUrl}"
+                                                 onclick="${clip.card_id ? `openModelById(${clip.card_id})` : ''}"
+                                                 class="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700 mt-0.5 cursor-pointer hover:scale-110 transition-transform shadow-sm"
+                                                 onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2212%22 fill=%22%23cbd5e1%22/></svg>'"
+                                                 title="View ${modelName}">
+                                            <div class="flex flex-col min-w-0">
+                                                <h4 class="font-bold text-slate-900 dark:text-white text-sm line-clamp-2 leading-tight cursor-pointer hover:text-[#7fe826] transition-colors"
+                                                    onclick="openYTPlayer(${clip.id})">${clip.title}</h4>
+                                                <span class="text-xs text-slate-500 dark:text-slate-400 mt-1 cursor-pointer hover:text-slate-900 dark:hover:text-white transition-colors font-medium w-max"
+                                                      onclick="${clip.card_id ? `openModelById(${clip.card_id})` : ''}"
+                                                      title="View ${modelName}">${modelName}</span>
+                                                <div class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5">
+                                                    <span>${clip.views || 0} views</span><span>•</span><span>${dateStr}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>`;
+                                grid.insertAdjacentHTML('afterbegin', newCardHtml);
+                                backfillClipDurations();
+                            }
+                        }
 
                         // If edited from inside the player, refresh the player's displayed info
                         if (openedFromPlayer && savedEditId) {
