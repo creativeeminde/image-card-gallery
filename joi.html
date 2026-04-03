@@ -6378,9 +6378,22 @@ let editingClipId = null; // Track if we are editing
 
     isClipViewer = true; isGlobalViewer = false;
 
-    // 3. Show a loading spinner while we fetch
     const grid = document.getElementById('fullClipsGrid');
-    grid.innerHTML = `<div class="flex items-center justify-center py-20"><div class="w-8 h-8 border-4 border-slate-200 border-t-[#111] dark:border-slate-700 dark:border-t-[#7fe826] rounded-full animate-spin"></div></div>`;
+
+    // 3. FIX: If we already have cached clips from openCloseUpPage, render them
+    //    immediately so the user never sees "No clips saved" on first open.
+    //    The fresh Supabase fetch below will then update the grid if needed.
+    const cachedClips = currentActiveModelData?.combined_clips;
+    if (cachedClips && cachedClips.length > 0) {
+        lightboxMediaList = cachedClips;
+        grid.innerHTML = `<div id="fullClipsGridInner" class="columns-1 sm:columns-2 gap-6 w-full space-y-6"></div>`;
+        renderState.fullClips.items = lightboxMediaList;
+        renderState.fullClips.index = 0;
+        renderMore('fullClips');
+    } else {
+        // No cache yet — show a spinner while we fetch
+        grid.innerHTML = `<div class="flex items-center justify-center py-20"><div class="w-8 h-8 border-4 border-slate-200 border-t-[#111] dark:border-slate-700 dark:border-t-[#7fe826] rounded-full animate-spin"></div></div>`;
+    }
 
     // 4. Always do a fresh Supabase fetch so we never show stale or missing clips
     try {
@@ -6388,14 +6401,29 @@ let editingClipId = null; // Track if we are editing
         let freshClips = [];
 
         if (modelId) {
-            // FIX: fetch clips where card_id matches OR card_ids array contains this model
-            const { data: relationalClips, error } = await supabaseClient
+            // Primary fetch: card_id match OR card_ids array contains this model
+            let relationalClips = null;
+            let fetchError = null;
+
+            const { data: primaryData, error: primaryError } = await supabaseClient
                 .from('global_clips')
                 .select('*')
                 .or(`card_id.eq.${modelId},card_ids.cs.{${modelId}}`)
                 .order('created_at', { ascending: false });
 
-            if (error) throw error;
+            if (primaryError) {
+                // card_ids column may not exist — fall back to simple card_id-only query
+                console.warn('openAllClipsView: or-query failed, falling back to card_id-only fetch', primaryError);
+                const { data: fallbackData, error: fallbackError } = await supabaseClient
+                    .from('global_clips')
+                    .select('*')
+                    .eq('card_id', modelId)
+                    .order('created_at', { ascending: false });
+                if (fallbackError) throw fallbackError;
+                relationalClips = fallbackData;
+            } else {
+                relationalClips = primaryData;
+            }
 
             // Legacy JSON clips stored directly on the card row
             const legacyClips = (currentActiveModelData?.related_videos_with_tags || [])
@@ -6425,14 +6453,22 @@ let editingClipId = null; // Track if we are editing
             return;
         }
 
-        grid.innerHTML = `<div id="fullClipsGridInner" class="columns-1 sm:columns-2 gap-6 w-full space-y-6"></div>`;
-        renderState.fullClips.items = lightboxMediaList;
-        renderState.fullClips.index = 0;
-        renderMore('fullClips');
+        // Only re-render if the fresh fetch returned a different count than cached
+        // (avoids a jarring re-render when the cache was already correct)
+        const cachedCount = cachedClips ? cachedClips.length : 0;
+        if (freshClips.length !== cachedCount) {
+            grid.innerHTML = `<div id="fullClipsGridInner" class="columns-1 sm:columns-2 gap-6 w-full space-y-6"></div>`;
+            renderState.fullClips.items = lightboxMediaList;
+            renderState.fullClips.index = 0;
+            renderMore('fullClips');
+        }
 
     } catch (e) {
         console.error('Error loading clips for All Saved Clips view', e);
-        grid.innerHTML = `<div class="py-20 text-center text-red-500 font-medium">Error loading clips. Please try again.</div>`;
+        // Only show the error state if nothing is currently displayed
+        if (!grid.querySelector('#fullClipsGridInner')) {
+            grid.innerHTML = `<div class="py-20 text-center text-red-500 font-medium">Error loading clips. Please try again.</div>`;
+        }
     }
 }
         
