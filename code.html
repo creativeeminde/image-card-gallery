@@ -1452,6 +1452,65 @@
             }
         }
 
+        function startEditTodoById(taskId) {
+            const span = document.querySelector(`.todo-row[data-task-id="${taskId}"] .todo-title-display`);
+            if (span) startEditTodo(taskId, span);
+        }
+
+        function startEditTodo(taskId, spanEl) {
+            // Don't open a second editor if one is already open for this task
+            if (spanEl.classList.contains('hidden')) return;
+
+            const currentTitle = spanEl.textContent.trim();
+
+            // Build the inline input
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = currentTitle;
+            input.className = 'todo-edit-input flex-1 min-w-0 bg-transparent border-b-2 border-primary text-[15px] font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-0 px-0 py-0';
+            input.style.cssText = 'background:transparent;box-shadow:none;border-radius:0;border-top:none;border-left:none;border-right:none;';
+
+            // Hide the span, insert input after it
+            spanEl.classList.add('hidden');
+            spanEl.parentNode.insertBefore(input, spanEl.nextSibling);
+            input.focus();
+            input.select();
+
+            // Hide the edit/delete buttons while editing
+            const btnGroup = spanEl.closest('.todo-row').querySelector('.ml-auto');
+            if (btnGroup) btnGroup.style.visibility = 'hidden';
+
+            let editDone = false; // guard against double-fire (Enter triggers blur)
+            const finishEdit = async (save) => {
+                if (editDone) return;
+                editDone = true;
+
+                const newTitle = input.value.trim();
+                if (input.parentNode) input.remove();
+                spanEl.classList.remove('hidden');
+                if (btnGroup) btnGroup.style.visibility = '';
+
+                if (!save || !newTitle || newTitle === currentTitle) return;
+
+                if (!navigator.onLine) { alert("You are offline."); return; }
+
+                const { error } = await db.from('todos').update({ title: newTitle }).eq('id', taskId);
+                if (error) {
+                    console.error('Error updating task title:', error);
+                } else {
+                    spanEl.textContent = newTitle;
+                }
+            };
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter')  { e.preventDefault(); finishEdit(true); }
+                if (e.key === 'Escape') { e.preventDefault(); finishEdit(false); }
+            });
+
+            // Blur saves when clicking away; guard prevents double-fire with Enter/Escape
+            input.addEventListener('blur', () => finishEdit(true));
+        }
+
         // =============================================
         // === TASK ROLLOVER SYSTEM =====================
         // =============================================
@@ -1734,13 +1793,18 @@
                                     const isCarriedOver = rolloverSettings.showBadge && effectiveRolloverCount > 0;
                                     const rolloverBadge = isCarriedOver ? `<span class="rollover-badge"><span class="material-symbols-outlined">autorenew</span>Carried over${effectiveRolloverCount > 1 ? ` ×${effectiveRolloverCount}` : ''}</span>` : '';
                                     return `
-                                    <div class="flex items-center gap-3 group flex-wrap">
+                                    <div class="flex items-center gap-2 group flex-wrap todo-row" data-task-id="${task.id}">
                                         <input type="checkbox" data-id="${task.id}" class="todo-cb form-checkbox h-[18px] w-[18px] rounded-[4px] border-2 border-slate-400 dark:border-slate-500 text-[#eb5e28] focus:ring-0 cursor-pointer bg-transparent transition-colors flex-shrink-0" ${isCompleted ? 'checked' : ''}>
-                                        <span class="text-[15px] font-medium transition-colors duration-200 ${isCompleted ? 'text-slate-400 dark:text-slate-500 line-through' : 'text-slate-800 dark:text-slate-200'}">${task.title}</span>
+                                        <span class="todo-title-display text-[15px] font-medium transition-colors duration-200 cursor-text select-none ${isCompleted ? 'text-slate-400 dark:text-slate-500 line-through' : 'text-slate-800 dark:text-slate-200'}" ondblclick="startEditTodo(${task.id}, this)" title="Double-click to edit">${task.title}</span>
                                         ${rolloverBadge}
-                                        <button class="ml-auto opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity delete-inline-btn flex-shrink-0" onclick="deleteTodoInline(${task.id})">
-                                            <span class="material-symbols-outlined text-sm">close</span>
-                                        </button>
+                                        <div class="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                            <button class="text-slate-400 hover:text-primary transition-colors edit-todo-btn" onclick="startEditTodoById(${task.id})" title="Edit task name">
+                                                <span class="material-symbols-outlined text-sm">edit</span>
+                                            </button>
+                                            <button class="text-slate-400 hover:text-red-500 transition-colors delete-inline-btn" onclick="deleteTodoInline(${task.id})">
+                                                <span class="material-symbols-outlined text-sm">close</span>
+                                            </button>
+                                        </div>
                                     </div>`;
                                 }).join('')}
                             </div>
