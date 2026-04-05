@@ -703,7 +703,8 @@
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         let allNotes = [];
-        let currentOpenProjectId = null;
+        let currentOpenProjectId = null; // always mirrors the top of the nav stack
+        let projectNavStack = []; // navigation history stack: array of project note objects
 
         const mainGrid = document.getElementById('mainGrid');
         const projectView = document.getElementById('projectView');
@@ -1488,9 +1489,17 @@
         };
 
         function openProjectView(projectNode) {
+            projectNavStack.push(projectNode);
             currentOpenProjectId = projectNode.id;
             document.getElementById('projectTitleDisplay').innerText = projectNode.title || 'Project View';
-            
+
+            // Update back button label: show parent project name or "Home"
+            const backLabel = projectNavStack.length > 1
+                ? projectNavStack[projectNavStack.length - 2].title || 'Back'
+                : 'Home';
+            document.getElementById('btnBackToMain').innerHTML = `<i data-lucide="arrow-left" size="18"></i> ${backLabel}`;
+            lucide.createIcons({ root: document.getElementById('btnBackToMain') });
+
             const projNotes = allNotes.filter(n => n.project_id === currentOpenProjectId);
             projNotes.sort((a, b) => {
                 if (a.is_pinned && !b.is_pinned) return -1;
@@ -1498,21 +1507,56 @@
                 return (a.sort_order || 0) - (b.sort_order || 0);
             });
             renderGrid(projNotes, projectGrid);
-            
+
             projectView.classList.add('active');
         }
 
         document.getElementById('btnBackToMain').addEventListener('click', () => {
-            projectView.classList.remove('active');
-            setTimeout(() => { currentOpenProjectId = null; projectGrid.innerHTML = ''; }, 400);
+            projectNavStack.pop(); // remove current level
+
+            if (projectNavStack.length === 0) {
+                // Back to Home
+                currentOpenProjectId = null;
+                projectView.classList.remove('active');
+                setTimeout(() => { projectGrid.innerHTML = ''; }, 400);
+                // Reset back button label for next time
+                document.getElementById('btnBackToMain').innerHTML = `<i data-lucide="arrow-left" size="18"></i> Back`;
+                lucide.createIcons({ root: document.getElementById('btnBackToMain') });
+            } else {
+                // Go back to previous project level
+                const parentNode = projectNavStack[projectNavStack.length - 1];
+                currentOpenProjectId = parentNode.id;
+                document.getElementById('projectTitleDisplay').innerText = parentNode.title || 'Project View';
+
+                // Update back button label
+                const backLabel = projectNavStack.length > 1
+                    ? projectNavStack[projectNavStack.length - 2].title || 'Back'
+                    : 'Home';
+                document.getElementById('btnBackToMain').innerHTML = `<i data-lucide="arrow-left" size="18"></i> ${backLabel}`;
+                lucide.createIcons({ root: document.getElementById('btnBackToMain') });
+
+                const projNotes = allNotes.filter(n => n.project_id === currentOpenProjectId);
+                projNotes.sort((a, b) => {
+                    if (a.is_pinned && !b.is_pinned) return -1;
+                    if (!a.is_pinned && b.is_pinned) return 1;
+                    return (a.sort_order || 0) - (b.sort_order || 0);
+                });
+                renderGrid(projNotes, projectGrid);
+            }
         });
 
         // --- Home Button Logic ---
         document.getElementById('btnSettings').addEventListener('click', () => {
-            // Close project view if open
+            // Close project view if open — reset nav stack fully
             if (projectView.classList.contains('active')) {
                 projectView.classList.remove('active');
-                setTimeout(() => { currentOpenProjectId = null; projectGrid.innerHTML = ''; }, 400);
+                setTimeout(() => {
+                    currentOpenProjectId = null;
+                    projectNavStack = [];
+                    projectGrid.innerHTML = '';
+                    document.getElementById('btnBackToMain').innerHTML = `<i data-lucide="arrow-left" size="18"></i> Back`;
+                    lucide.createIcons({ root: document.getElementById('btnBackToMain') });
+                }, 400);
             }
             // Close note view if open
             if (noteView.classList.contains('active')) {
