@@ -75,6 +75,62 @@
 
         .nav-divider { width: 1px; height: 16px; background: var(--text-muted); opacity: 0.3; margin: 0 2px; }
 
+        /* Search Bar */
+        .search-bar-wrapper {
+            position: fixed; top: 24px; left: 50%; transform: translateX(-50%);
+            z-index: 99; display: flex; align-items: center;
+            background: var(--nav-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border-radius: 100px; border: 1px solid var(--border-light);
+            box-shadow: var(--shadow-soft); padding: 8px 18px; gap: 10px;
+            width: 340px; transition: var(--transition-smooth);
+        }
+        .search-bar-wrapper:focus-within {
+            width: 420px; box-shadow: var(--shadow-hover);
+            border-color: rgba(128,128,128,0.25);
+        }
+        .search-bar-wrapper .search-icon { color: var(--text-muted); display: flex; align-items: center; flex-shrink: 0; }
+        .search-input {
+            background: transparent; border: none; outline: none;
+            font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500;
+            color: var(--text-main); width: 100%;
+        }
+        .search-input::placeholder { color: var(--text-muted); }
+        .search-clear-btn {
+            display: none; align-items: center; justify-content: center;
+            background: rgba(128,128,128,0.15); border: none; border-radius: 50%;
+            width: 18px; height: 18px; cursor: pointer; color: var(--text-muted);
+            flex-shrink: 0; transition: var(--transition-fast); padding: 0;
+        }
+        .search-clear-btn:hover { background: rgba(128,128,128,0.3); color: var(--text-main); }
+        .search-clear-btn.visible { display: flex; }
+
+        /* Search results count badge */
+        .search-results-badge {
+            position: fixed; top: 84px; left: 50%; transform: translateX(-50%);
+            background: var(--nav-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-light); border-radius: 100px;
+            padding: 5px 14px; font-size: 11px; font-weight: 600; color: var(--text-muted);
+            z-index: 99; opacity: 0; pointer-events: none;
+            transition: opacity 0.2s ease; white-space: nowrap;
+        }
+        .search-results-badge.visible { opacity: 1; }
+
+        /* Search highlight */
+        .search-highlight {
+            background: rgba(255, 214, 0, 0.45); border-radius: 3px; padding: 0 1px;
+        }
+        body.dark-mode .search-highlight {
+            background: rgba(255, 214, 0, 0.3); color: #fff;
+        }
+
+        /* No results state */
+        .no-results-msg {
+            display: none; grid-column: 1 / -1; text-align: center;
+            padding: 80px 20px; color: var(--text-muted); font-size: 14px; font-weight: 500;
+        }
+        .no-results-msg svg { margin-bottom: 16px; opacity: 0.3; }
+        .no-results-msg p { margin-top: 8px; font-size: 12px; font-weight: 400; }
+
         .bottom-controls { position: fixed; bottom: 32px; right: 32px; display: flex; align-items: center; gap: 16px; z-index: 550; }
         .control-btn {
             width: 56px; height: 56px; border-radius: 50%; background: var(--nav-bg);
@@ -463,10 +519,26 @@
         <div class="nav-icon" id="themeToggle" title="Toggle Theme"></div>
     </nav>
 
+    <!-- Global Search Bar -->
+    <div class="search-bar-wrapper" id="searchBarWrapper">
+        <div class="search-icon"><i data-lucide="search" size="15"></i></div>
+        <input type="text" class="search-input" id="globalSearchInput" placeholder="Search notes…" autocomplete="off" spellcheck="false">
+        <button class="search-clear-btn" id="searchClearBtn" title="Clear search">
+            <i data-lucide="x" size="11"></i>
+        </button>
+    </div>
+    <div class="search-results-badge" id="searchResultsBadge"></div>
+
     <div class="loader" id="loader"></div>
 
     <!-- Main Grid -->
-    <main class="grid-container" id="mainGrid"></main>
+    <main class="grid-container" id="mainGrid">
+        <div class="no-results-msg" id="noResultsMsg">
+            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <div>No notes match your search.</div>
+            <p>Try a different keyword.</p>
+        </div>
+    </main>
 
     <!-- Project View Overlay -->
     <div class="project-view-overlay" id="projectView">
@@ -845,7 +917,7 @@
                 if (!a.is_pinned && b.is_pinned) return 1;
                 return (a.sort_order || 0) - (b.sort_order || 0);
             });
-            renderGrid(mainNotes, mainGrid);
+            _renderGrid(mainNotes, mainGrid);
 
             // Project Grid Filtering and Sorting (Pinned items first)
             if(currentOpenProjectId) {
@@ -855,12 +927,15 @@
                     if (!a.is_pinned && b.is_pinned) return 1;
                     return (a.sort_order || 0) - (b.sort_order || 0);
                 });
-                renderGrid(projNotes, projectGrid);
+                _renderGrid(projNotes, projectGrid);
             }
         }
 
-        function renderGrid(notes, container) {
+        function _renderGrid(notes, container) {
+            // Preserve the no-results message element if it exists
+            const existingMsg = container.querySelector('#noResultsMsg');
             container.innerHTML = '';
+            if (existingMsg) container.appendChild(existingMsg);
             notes.forEach(note => {
                 const wrapper = document.createElement('div');
                 wrapper.className = 'card-wrapper';
@@ -1680,6 +1755,126 @@
             editorToolbar.classList.remove('active');
             setTimeout(() => { noteViewContent.innerHTML = ''; activeEditNoteId = null; }, 400);
         });
+
+        // ─── Global Search ──────────────────────────────────────────────────────
+        const globalSearchInput  = document.getElementById('globalSearchInput');
+        const searchClearBtn     = document.getElementById('searchClearBtn');
+        const searchResultsBadge = document.getElementById('searchResultsBadge');
+        const noResultsMsg       = document.getElementById('noResultsMsg');
+
+        let currentSearchQuery = '';
+
+        function getPlainText(html) {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = html || '';
+            return tmp.textContent || tmp.innerText || '';
+        }
+
+        function escapeRegex(str) {
+            return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        function highlightTextNodes(node, query) {
+            const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
+            node.childNodes.forEach(child => {
+                if (child.nodeType === Node.TEXT_NODE) {
+                    if (regex.test(child.textContent)) {
+                        const span = document.createElement('span');
+                        span.innerHTML = child.textContent.replace(regex, '<mark class="search-highlight">$1</mark>');
+                        child.replaceWith(span);
+                    }
+                } else if (child.nodeType === Node.ELEMENT_NODE && child.tagName !== 'MARK') {
+                    highlightTextNodes(child, query);
+                }
+            });
+        }
+
+        // renderGrid: wrapper around _renderGrid that also applies search highlights
+        function renderGrid(notes, container, searchQuery) {
+            _renderGrid(notes, container);
+            if (searchQuery) {
+                const q = searchQuery.toLowerCase();
+                container.querySelectorAll('.preview-title, .project-text h2').forEach(el => {
+                    highlightTextNodes(el, q);
+                });
+                container.querySelectorAll('.preview-content, .card-sticky p, .graph-node span').forEach(el => {
+                    highlightTextNodes(el, q);
+                });
+                lucide.createIcons({ root: container });
+            }
+        }
+
+        function applySearch(query) {
+            currentSearchQuery = query.trim();
+            const q = currentSearchQuery.toLowerCase();
+
+            searchClearBtn.classList.toggle('visible', q.length > 0);
+
+            if (!q) {
+                renderViews();
+                searchResultsBadge.classList.remove('visible');
+                noResultsMsg.style.display = 'none';
+                return;
+            }
+
+            // Search across top-level notes AND notes inside project cards.
+            // Exclude attached stickies (type=sticky whose project_id points to a card, not a project).
+            const projectIds = new Set(allNotes.filter(n => n.type === 'project').map(n => n.id));
+            const searchableNotes = allNotes.filter(n => {
+                if (!n.project_id) return true;               // top-level note
+                if (projectIds.has(n.project_id)) return true; // note inside a project card
+                return false;                                  // attached sticky — skip
+            });
+
+            const titleMatches   = [];
+            const contentMatches = [];
+
+            searchableNotes.forEach(note => {
+                const titleText   = (note.title   || '').toLowerCase();
+                const contentText = getPlainText(note.content || '').toLowerCase();
+                const inTitle     = titleText.includes(q);
+                const inContent   = contentText.includes(q);
+                if (inTitle)        titleMatches.push(note);
+                else if (inContent) contentMatches.push(note);
+            });
+
+            function sortGroup(arr) {
+                return arr.sort((a, b) => {
+                    if (a.is_pinned && !b.is_pinned) return -1;
+                    if (!a.is_pinned && b.is_pinned) return 1;
+                    return (a.sort_order || 0) - (b.sort_order || 0);
+                });
+            }
+
+            const sorted = [...sortGroup(titleMatches), ...sortGroup(contentMatches)];
+
+            renderGrid(sorted, mainGrid, q);
+
+            noResultsMsg.style.display = sorted.length === 0 ? 'block' : 'none';
+
+            const total = sorted.length;
+            searchResultsBadge.textContent = total === 0
+                ? 'No results'
+                : `${total} result${total !== 1 ? 's' : ''}`;
+            searchResultsBadge.classList.add('visible');
+        }
+
+        globalSearchInput.addEventListener('input', (e) => applySearch(e.target.value));
+
+        searchClearBtn.addEventListener('click', () => {
+            globalSearchInput.value = '';
+            applySearch('');
+            globalSearchInput.focus();
+        });
+
+        globalSearchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                globalSearchInput.value = '';
+                applySearch('');
+                globalSearchInput.blur();
+            }
+        });
+        // ────────────────────────────────────────────────────────────────────────
 
         fetchNotes();
 
