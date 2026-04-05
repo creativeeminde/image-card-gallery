@@ -1187,6 +1187,8 @@
             if (response.error) {
                 alert('Error creating task: ' + response.error.message);
             } else {
+                // Expand the accordion to the task's due date so it's visible immediately
+                if (taskData.due_date) expandedTodoDate = taskData.due_date;
                 showView('#todo-view');
             }
         }
@@ -1414,13 +1416,55 @@
                 e.preventDefault();
                 const title = e.target.value.trim();
                 if (!title) return;
-                
+
                 if (!navigator.onLine) {
                     alert("You are offline.");
                     return;
                 }
 
-                e.target.disabled = true; 
+                const inputEl = e.target;
+                const tasksContainer = document.getElementById(`tasks-${dateStr}`);
+                const tempId = `temp-${Date.now()}`;
+
+                // Optimistically inject the new row instantly
+                if (tasksContainer) {
+                    const rowHtml = `
+                    <div class="flex items-center gap-2 group flex-wrap todo-row opacity-60" data-task-id="${tempId}">
+                        <input type="checkbox" data-id="${tempId}" class="todo-cb form-checkbox h-[18px] w-[18px] rounded-[4px] border-2 border-slate-400 dark:border-slate-500 text-[#eb5e28] focus:ring-0 cursor-pointer bg-transparent transition-colors flex-shrink-0" disabled>
+                        <span class="todo-title-display text-[15px] font-medium text-slate-800 dark:text-slate-200">${title}</span>
+                        <div class="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                            <button class="text-slate-400 hover:text-primary transition-colors edit-todo-btn" disabled title="Edit task name">
+                                <span class="material-symbols-outlined text-sm">edit</span>
+                            </button>
+                            <button class="text-slate-400 hover:text-red-500 transition-colors delete-inline-btn" disabled>
+                                <span class="material-symbols-outlined text-sm">close</span>
+                            </button>
+                        </div>
+                    </div>`;
+                    tasksContainer.insertAdjacentHTML('beforeend', rowHtml);
+                }
+
+                // Update pending count badge immediately
+                const accordionItem = inputEl.closest('.accordion-item');
+                if (accordionItem) {
+                    const header = accordionItem.querySelector('.accordion-header');
+                    const allCheckboxes = accordionItem.querySelectorAll('.todo-cb:not([disabled])');
+                    const pendingCount = Array.from(allCheckboxes).filter(cb => !cb.checked).length + 1;
+                    let badge = header && header.querySelector('span');
+                    if (header) {
+                        if (badge) {
+                            badge.textContent = `${pendingCount} pending`;
+                        } else {
+                            const newBadge = document.createElement('span');
+                            newBadge.className = 'text-xs font-bold text-slate-400 dark:text-slate-500 leading-none';
+                            newBadge.textContent = `${pendingCount} pending`;
+                            header.appendChild(newBadge);
+                        }
+                    }
+                }
+
+                // Clear the input immediately
+                inputEl.value = '';
 
                 const taskData = {
                     title: title,
@@ -1429,12 +1473,25 @@
                     status: 'Pending'
                 };
 
-                const { error } = await db.from('todos').insert([taskData]);
+                const { data: inserted, error } = await db.from('todos').insert([taskData]).select();
+                const tempRow = document.querySelector(`.todo-row[data-task-id="${tempId}"]`);
+
                 if (error) {
                     console.error('Error creating task:', error);
-                    e.target.disabled = false;
+                    if (tempRow) tempRow.remove();
                 } else {
-                    displayTodos();
+                    // Upgrade the temp row with the real DB id
+                    const realId = inserted && inserted[0] && inserted[0].id;
+                    if (tempRow && realId) {
+                        tempRow.dataset.taskId = realId;
+                        tempRow.classList.remove('opacity-60');
+                        const cb = tempRow.querySelector('.todo-cb');
+                        if (cb) { cb.dataset.id = realId; cb.disabled = false; }
+                        const editBtn = tempRow.querySelector('.edit-todo-btn');
+                        if (editBtn) { editBtn.setAttribute('onclick', `startEditTodoById(${realId})`); editBtn.disabled = false; }
+                        const delBtn = tempRow.querySelector('.delete-inline-btn');
+                        if (delBtn) { delBtn.setAttribute('onclick', `deleteTodoInline(${realId})`); delBtn.disabled = false; }
+                    }
                 }
             }
         }
