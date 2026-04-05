@@ -2714,10 +2714,62 @@
                         return;
                     }
                     const taskId = e.target.dataset.id;
-                    const newStatus = e.target.checked ? 'Completed' : 'Pending';
-                
+                    const isChecked = e.target.checked;
+                    const newStatus = isChecked ? 'Completed' : 'Pending';
+
+                    // --- Optimistic UI update: reflect change instantly ---
+                    const row = e.target.closest('.todo-row');
+                    const titleSpan = row && row.querySelector('.todo-title-display');
+                    if (titleSpan) {
+                        if (isChecked) {
+                            titleSpan.classList.add('text-slate-400', 'dark:text-slate-500', 'line-through');
+                            titleSpan.classList.remove('text-slate-800', 'dark:text-slate-200');
+                        } else {
+                            titleSpan.classList.remove('text-slate-400', 'dark:text-slate-500', 'line-through');
+                            titleSpan.classList.add('text-slate-800', 'dark:text-slate-200');
+                        }
+                    }
+
+                    // Update the pending count badge in the accordion header
+                    const accordionItem = e.target.closest('.accordion-item');
+                    if (accordionItem) {
+                        const dateStr = accordionItem.dataset.date;
+                        const allCheckboxes = accordionItem.querySelectorAll('.todo-cb');
+                        const pendingCount = Array.from(allCheckboxes).filter(cb => !cb.checked).length;
+                        const header = accordionItem.querySelector('.accordion-header');
+                        let badge = header && header.querySelector('span');
+                        if (header) {
+                            if (pendingCount > 0) {
+                                if (badge) {
+                                    badge.textContent = `${pendingCount} pending`;
+                                } else {
+                                    const newBadge = document.createElement('span');
+                                    newBadge.className = 'text-xs font-bold text-slate-400 dark:text-slate-500 leading-none';
+                                    newBadge.textContent = `${pendingCount} pending`;
+                                    header.appendChild(newBadge);
+                                }
+                            } else if (badge) {
+                                badge.remove();
+                            }
+                        }
+                    }
+
+                    // Persist to DB; revert on error
                     const { error } = await db.from('todos').update({ status: newStatus }).eq('id', taskId);
-                    if (error) { console.error('Error updating task:', error); } else { displayTodos(); }
+                    if (error) {
+                        console.error('Error updating task:', error);
+                        // Revert optimistic update
+                        e.target.checked = !isChecked;
+                        if (titleSpan) {
+                            if (!isChecked) {
+                                titleSpan.classList.add('text-slate-400', 'dark:text-slate-500', 'line-through');
+                                titleSpan.classList.remove('text-slate-800', 'dark:text-slate-200');
+                            } else {
+                                titleSpan.classList.remove('text-slate-400', 'dark:text-slate-500', 'line-through');
+                                titleSpan.classList.add('text-slate-800', 'dark:text-slate-200');
+                            }
+                        }
+                    }
                 }
             });
 
