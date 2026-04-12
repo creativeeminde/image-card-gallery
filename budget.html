@@ -503,13 +503,26 @@
 
                 <!-- Daily Sales Log Card -->
                 <div class="bg-white dark:bg-gray-800 rounded-[24px] border dark:border-gray-800 shadow-sm p-6 md:p-8">
-                    <div class="flex items-center justify-between mb-8">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                         <div>
                             <h2 class="font-bold text-xl text-gray-900 dark:text-white">Daily Sales Log</h2>
                             <p class="text-xs text-gray-400 font-medium mt-0.5">Track your daily cost and profit</p>
                         </div>
-                        <div class="w-10 h-10 rounded-full bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center">
-                            <i class="ph ph-storefront text-brand-500 text-lg"></i>
+                        <div class="flex items-center gap-3">
+                            <!-- Filter by Month dropdown -->
+                            <div class="relative">
+                                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Filter by Month</label>
+                                <div class="relative">
+                                    <i class="ph ph-calendar-blank absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-base pointer-events-none"></i>
+                                    <select id="sales-month-filter" onchange="applySalesMonthFilter()" class="appearance-none bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-9 pr-8 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer min-w-[160px]">
+                                        <option value="all">All</option>
+                                    </select>
+                                    <i class="ph ph-caret-down absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+                                </div>
+                            </div>
+                            <div class="w-10 h-10 rounded-full bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center self-end mb-0.5">
+                                <i class="ph ph-storefront text-brand-500 text-lg"></i>
+                            </div>
                         </div>
                     </div>
 
@@ -1902,6 +1915,7 @@
 
         // --- SALES PAGE ---
         let loadedSalesEntries = [];
+        let activeSalesMonthFilter = 'all';
 
         async function fetchSalesData() {
             try {
@@ -1917,7 +1931,50 @@
             } catch (e) {
                 console.error('Sales fetch exception:', e.message || e);
             }
+            populateSalesMonthDropdown();
             renderSalesTable();
+        }
+
+        function populateSalesMonthDropdown() {
+            const sel = document.getElementById('sales-month-filter');
+            if (!sel) return;
+            // Collect unique YYYY-MM keys from entries
+            const seen = new Set();
+            loadedSalesEntries.forEach(e => {
+                if (e.sale_date) seen.add(e.sale_date.slice(0, 7));
+            });
+            // Sort descending
+            const months = Array.from(seen).sort((a, b) => b.localeCompare(a));
+            // Rebuild options preserving current selection if still valid
+            const prev = activeSalesMonthFilter;
+            sel.innerHTML = '<option value="all">All</option>';
+            months.forEach(ym => {
+                const [y, m] = ym.split('-');
+                const label = new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                const opt = document.createElement('option');
+                opt.value = ym;
+                opt.textContent = label;
+                sel.appendChild(opt);
+            });
+            // Restore previous filter if it still exists, else reset to all
+            if (months.includes(prev)) {
+                sel.value = prev;
+                activeSalesMonthFilter = prev;
+            } else {
+                sel.value = 'all';
+                activeSalesMonthFilter = 'all';
+            }
+        }
+
+        function applySalesMonthFilter() {
+            const sel = document.getElementById('sales-month-filter');
+            activeSalesMonthFilter = sel ? sel.value : 'all';
+            renderSalesTable();
+        }
+
+        function getFilteredSalesEntries() {
+            if (activeSalesMonthFilter === 'all') return loadedSalesEntries;
+            return loadedSalesEntries.filter(e => e.sale_date && e.sale_date.slice(0, 7) === activeSalesMonthFilter);
         }
 
         function renderSalesTable() {
@@ -1926,23 +1983,30 @@
             const emptyRow = document.getElementById('sales-empty-row');
             if (!tbody) return;
 
-            // Clear existing data rows (keep the empty row element)
+            const entries = getFilteredSalesEntries();
+
+            // Clear existing data rows
             Array.from(tbody.querySelectorAll('tr.sales-row')).forEach(r => r.remove());
 
-            if (loadedSalesEntries.length === 0) {
-                if (emptyRow) emptyRow.classList.remove('hidden');
+            if (entries.length === 0) {
+                if (emptyRow) {
+                    emptyRow.classList.remove('hidden');
+                    emptyRow.querySelector('td').innerHTML = `
+                        <i class="ph ph-receipt text-4xl mb-3 block opacity-30"></i>
+                        ${activeSalesMonthFilter === 'all' ? 'No sales entries yet. Add your first entry above.' : 'No entries for this month.'}`;
+                }
                 if (tfoot) tfoot.classList.add('hidden');
-                updateSalesKPIs();
+                updateSalesKPIs(entries);
                 return;
             }
 
             if (emptyRow) emptyRow.classList.add('hidden');
             if (tfoot) tfoot.classList.remove('hidden');
 
-            loadedSalesEntries.forEach(entry => {
+            entries.forEach(entry => {
                 const tr = document.createElement('tr');
                 tr.className = 'sales-row border-b dark:border-gray-700 hover:bg-gray-50/60 dark:hover:bg-gray-700/30 transition-colors';
-                const formattedDate = entry.sale_date 
+                const formattedDate = entry.sale_date
                     ? new Date(entry.sale_date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
                     : '—';
                 const cost = Number(entry.cost || 0).toFixed(2);
@@ -1960,13 +2024,14 @@
                 tbody.appendChild(tr);
             });
 
-            updateSalesKPIs();
-            updateSalesFooter();
+            updateSalesKPIs(entries);
+            updateSalesFooter(entries);
         }
 
-        function updateSalesKPIs() {
-            const totalCost = loadedSalesEntries.reduce((s, e) => s + Number(e.cost || 0), 0);
-            const totalProfit = loadedSalesEntries.reduce((s, e) => s + Number(e.profit || 0), 0);
+        function updateSalesKPIs(entries) {
+            const list = entries !== undefined ? entries : getFilteredSalesEntries();
+            const totalCost = list.reduce((s, e) => s + Number(e.cost || 0), 0);
+            const totalProfit = list.reduce((s, e) => s + Number(e.profit || 0), 0);
             const costEl = document.getElementById('sales-total-cost');
             const profitEl = document.getElementById('sales-total-profit');
             if (costEl) {
@@ -1979,9 +2044,10 @@
             }
         }
 
-        function updateSalesFooter() {
-            const totalCost = loadedSalesEntries.reduce((s, e) => s + Number(e.cost || 0), 0);
-            const totalProfit = loadedSalesEntries.reduce((s, e) => s + Number(e.profit || 0), 0);
+        function updateSalesFooter(entries) {
+            const list = entries !== undefined ? entries : getFilteredSalesEntries();
+            const totalCost = list.reduce((s, e) => s + Number(e.cost || 0), 0);
+            const totalProfit = list.reduce((s, e) => s + Number(e.profit || 0), 0);
             const fc = document.getElementById('sales-foot-cost');
             const fp = document.getElementById('sales-foot-profit');
             if (fc) fc.textContent = 'MAD ' + totalCost.toLocaleString('en-US', {minimumFractionDigits:2});
@@ -2009,7 +2075,6 @@
                     loadedSalesEntries.unshift(data);
                     showToast('Entry added successfully');
                 } else {
-                    // Fallback: local only
                     const localEntry = { ...newEntry, id: 'local_' + Date.now() };
                     loadedSalesEntries.unshift(localEntry);
                     showToast('Entry added (local only — check Supabase table)');
@@ -2020,10 +2085,10 @@
                 showToast('Entry saved locally');
             }
 
-            // Reset form
             document.getElementById('sales-date').value = '';
             document.getElementById('sales-cost').value = '';
             document.getElementById('sales-profit').value = '';
+            populateSalesMonthDropdown();
             renderSalesTable();
         }
 
@@ -2035,6 +2100,7 @@
                 }
             } catch(e) { /* continue with local delete */ }
             loadedSalesEntries = loadedSalesEntries.filter(e => String(e.id) !== String(id));
+            populateSalesMonthDropdown();
             renderSalesTable();
             showToast('Entry deleted');
         }
@@ -2076,6 +2142,7 @@
 
             const idx = loadedSalesEntries.findIndex(e => String(e.id) === String(id));
             if (idx > -1) loadedSalesEntries[idx] = { ...loadedSalesEntries[idx], ...updates };
+            populateSalesMonthDropdown();
             renderSalesTable();
             closeSalesEditModal();
             showToast('Entry updated');
@@ -2090,6 +2157,7 @@
                 }
             } catch(e) { /* continue */ }
             loadedSalesEntries = loadedSalesEntries.filter(e => String(e.id) !== String(id));
+            populateSalesMonthDropdown();
             renderSalesTable();
             closeSalesEditModal();
             showToast('Entry deleted');
