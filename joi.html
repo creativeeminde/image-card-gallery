@@ -2097,23 +2097,24 @@
         }
         /* ===== POSES VIEW ===== */
         #posesGrid {
-            columns: 5;
-            column-gap: 12px;
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            grid-auto-rows: 8px;
+            gap: 0 12px;
         }
-        @media (max-width: 1280px) { #posesGrid { columns: 4; } }
-        @media (max-width: 1024px) { #posesGrid { columns: 3; } }
-        @media (max-width: 640px)  { #posesGrid { columns: 2; } }
-        @media (max-width: 360px)  { #posesGrid { columns: 1; } }
+        @media (max-width: 1280px) { #posesGrid { grid-template-columns: repeat(4, 1fr); } }
+        @media (max-width: 1024px) { #posesGrid { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 640px)  { #posesGrid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 360px)  { #posesGrid { grid-template-columns: repeat(1, 1fr); } }
 
         .pose-card {
-            break-inside: avoid;
-            margin-bottom: 12px;
             border-radius: 16px;
             overflow: hidden;
             position: relative;
             cursor: pointer;
             background: #e2e8f0;
             transition: transform 0.25s cubic-bezier(0.25,1,0.5,1), box-shadow 0.25s ease;
+            margin-bottom: 12px;
         }
         .dark .pose-card { background: #1e293b; }
         .pose-card:hover { transform: translateY(-4px); box-shadow: 0 14px 28px -6px rgba(0,0,0,0.18); }
@@ -3838,7 +3839,7 @@
         </div>
 
         <!-- Masonry grid -->
-        <div id="posesGrid" class="hidden" style="columns: 5; column-gap: 12px;"></div>
+        <div id="posesGrid" class="hidden"></div>
     </div>
     <!-- ===== /POSES VIEW ===== -->
 
@@ -12033,11 +12034,15 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             empty.classList.remove('flex');
             grid.classList.remove('hidden');
 
+            // Build cards HTML — images load naturally, then we calculate spans
             grid.innerHTML = filtered.map(img => {
                 const poseName = (img.poses && img.poses.name) ? img.poses.name : '';
+                const safeUrl = img.image_url.replace(/'/g, "\\'");
                 return `
-                <div class="pose-card" onclick="openPosesLightbox('${img.image_url.replace(/'/g,"\\'")}')">
-                    <img src="${img.image_url}" alt="${poseName}" loading="lazy" decoding="async" onerror="this.parentElement.style.display='none'">
+                <div class="pose-card" onclick="openPosesLightbox('${safeUrl}')">
+                    <img src="${img.image_url}" alt="${poseName}" loading="lazy" decoding="async"
+                         onload="setPosesCardSpan(this.closest('.pose-card'))"
+                         onerror="this.closest('.pose-card').style.display='none'">
                     <div class="pose-card-overlay"></div>
                     <button class="pose-card-delete" onclick="deletePoseImage(event, ${img.id})" title="Remove image">
                         <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -12045,6 +12050,28 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                     ${poseName ? `<span class="pose-card-tag">${poseName}</span>` : ''}
                 </div>`;
             }).join('');
+
+            // Recalculate spans on any window resize
+            if (!window._posesResizeListenerSet) {
+                window._posesResizeListenerSet = true;
+                window.addEventListener('resize', () => {
+                    document.querySelectorAll('#posesGrid .pose-card').forEach(setPosesCardSpan);
+                });
+            }
+        }
+
+        // Calculate and set the grid-row span so images keep their natural aspect ratio
+        function setPosesCardSpan(card) {
+            if (!card) return;
+            const img = card.querySelector('img');
+            if (!img || !img.naturalHeight) return;
+            const ROW_HEIGHT = 8;   // matches grid-auto-rows: 8px
+            const GAP = 12;         // matches the row gap
+            const cardWidth = card.offsetWidth;
+            const imgHeight = Math.round((img.naturalHeight / img.naturalWidth) * cardWidth);
+            const totalHeight = imgHeight + 12; // 12px = margin-bottom on card
+            const rowSpan = Math.ceil(totalHeight / (ROW_HEIGHT + GAP));  // account for gap between rows
+            card.style.gridRowEnd = 'span ' + rowSpan;
         }
 
         async function deletePoseImage(e, imageId) {
