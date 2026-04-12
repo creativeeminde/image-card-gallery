@@ -3199,9 +3199,10 @@
             </div>
             <form id="addMediaForm" class="p-6 space-y-4">
                 <div>
-                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Media URL</label>
-                    <input type="url" id="mediaUrlInput" required class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none transition-all shadow-sm">
-                    <p id="mediaUrlError" class="text-red-500 text-xs font-medium mt-2 hidden">Please enter a valid URL.</p>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Media URL <span class="text-slate-400 font-normal">(paste multiple, separated by commas)</span></label>
+                    <textarea id="mediaUrlInput" rows="3" placeholder="https://example.com/image1.jpg, https://example.com/image2.jpg, ..." class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none transition-all shadow-sm resize-none focus:ring-2 focus:ring-[#7fe826] text-sm"></textarea>
+                    <p id="mediaUrlError" class="text-red-500 text-xs font-medium mt-2 hidden">Please enter at least one valid URL.</p>
+                    <div id="mediaUrlPreview" class="hidden mt-2 flex flex-wrap gap-1.5"></div>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Select Tags</label>
@@ -4189,6 +4190,8 @@ function initCarouselDrag() {
             const allAssetsVisible = !document.getElementById('allAssetsView').classList.contains('hidden');
             window._addMediaOriginView = allAssetsVisible ? 'allAssetsView' : 'closeUpView';
             document.getElementById('mediaUrlInput').value = '';
+                    document.getElementById('mediaUrlPreview').innerHTML = '';
+                    document.getElementById('mediaUrlPreview').classList.add('hidden');
             newMediaSelectedTags.clear();
             renderNewMediaTags();
             document.getElementById('addMediaModal').classList.add('active'); 
@@ -8052,23 +8055,51 @@ const addAudioForm = document.getElementById('addAudioForm');
 
             const addMediaForm = document.getElementById('addMediaForm');
             if (addMediaForm) {
+                // Live preview: show URL count chips as user types
+                const mediaUrlInput = document.getElementById('mediaUrlInput');
+                if (mediaUrlInput) {
+                    mediaUrlInput.addEventListener('input', () => {
+                        const raw = mediaUrlInput.value;
+                        const urls = raw.split(',').map(u => u.trim()).filter(u => u.length > 0);
+                        const preview = document.getElementById('mediaUrlPreview');
+                        if (urls.length > 1) {
+                            preview.innerHTML = urls.map((u, i) => {
+                                const label = u.length > 40 ? u.slice(0, 38) + '…' : u;
+                                return `<span class="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#7fe826]/10 text-[#3d7a0a] dark:text-[#7fe826] border border-[#7fe826]/25">${i + 1}. ${label}</span>`;
+                            }).join('');
+                            preview.classList.remove('hidden');
+                        } else {
+                            preview.innerHTML = '';
+                            preview.classList.add('hidden');
+                        }
+                    });
+                }
+
                 addMediaForm.addEventListener('submit', async (e) => {
                     e.preventDefault();
-                    const url = document.getElementById('mediaUrlInput').value;
+                    const rawValue = document.getElementById('mediaUrlInput').value;
                     const errorMsg = document.getElementById('mediaUrlError');
-                    if (!url) { errorMsg.classList.remove('hidden'); return; }
+
+                    // Parse comma-separated URLs, filter out empty strings
+                    const urls = rawValue.split(',').map(u => u.trim()).filter(u => u.length > 0);
+
+                    if (urls.length === 0) { errorMsg.classList.remove('hidden'); return; }
                     errorMsg.classList.add('hidden');
-                    
+
                     const tagsStr = Array.from(newMediaSelectedTags).join(', ') || (isAddingClip ? 'Clip' : 'Asset');
-                    const newMediaObj = { url: url, tags: tagsStr };
                     const dbField = isAddingClip ? 'related_videos_with_tags' : 'related_images_with_tags';
                     let targetArray = currentActiveModelData[dbField] || [];
-                    targetArray.push(newMediaObj);
-                    
+
+                    // Build new media objects for each URL
+                    urls.forEach(url => {
+                        targetArray.push({ url: url, tags: tagsStr });
+                    });
+
                     try {
                         await supabaseClient.from('cards').update({ [dbField]: targetArray }).eq('id', currentActiveModelData.id);
                         closeAddMediaModal();
-                        showSuccessToast(isAddingClip ? "Clip added successfully!" : "Asset added successfully!");
+                        const plural = urls.length > 1 ? `${urls.length} items` : '1 item';
+                        showSuccessToast(isAddingClip ? `${plural} added successfully!` : `${plural} added successfully!`);
                         buildFilters();
                         if (!isAddingClip) buildGlobalAssetsList();
                         // Only navigate to Close Up if the modal was NOT opened from All Assets
@@ -9837,8 +9868,10 @@ const addAudioForm = document.getElementById('addAudioForm');
             const mediaUrlInput = document.getElementById('mediaUrlInput');
             if (mediaUrlInput) {
                 mediaUrlInput.addEventListener('blur', () => {
-                    const url = mediaUrlInput.value;
-                    const suggestions = suggestTagsFromUrl(url);
+                    // Use the first URL for auto-tag suggestions
+                    const raw = mediaUrlInput.value;
+                    const firstUrl = raw.split(',')[0].trim();
+                    const suggestions = suggestTagsFromUrl(firstUrl);
                     suggestions.forEach(tag => { newMediaSelectedTags.add(tag); });
                     if (suggestions.length > 0) renderNewMediaTags();
                 });
