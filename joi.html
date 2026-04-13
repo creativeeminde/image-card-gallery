@@ -3842,6 +3842,13 @@
 
         <!-- Masonry grid -->
         <div id="posesGrid" class="hidden"></div>
+
+        <!-- Infinite scroll sentinel + spinner -->
+        <div id="posesLoadMoreSpinner" class="hidden flex-col items-center justify-center py-10 gap-3">
+            <div class="w-8 h-8 border-4 border-[#e4ece3] dark:border-slate-700 border-t-[#7fe826] rounded-full animate-spin"></div>
+            <p class="text-xs font-semibold text-slate-400 dark:text-slate-500">Loading more...</p>
+        </div>
+        <div id="posesSentinel" class="w-full h-4"></div>
     </div>
     <!-- ===== /POSES VIEW ===== -->
 
@@ -11952,53 +11959,178 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
         })();
 
         // ==========================================
-        // POSES VIEW
         // ==========================================
-        let posesData = [];          // all pose images loaded from DB
-        let posesTagsList = [];      // all unique pose names
-        let currentPoseFilter = 'all';
-        let posesLoaded = false;
-        let isCreatingNewPose = false;
+        // POSES VIEW  —  paginated / infinite scroll
+        // ==========================================
+        const POSES_PAGE_SIZE = 25;
 
+        let posesTagsList    = [];       // unique pose names (fetched once, lightweight)
+        let currentPoseFilter = 'all';
+        let posesPageOffset  = 0;        // how many rows already fetched from DB
+        let posesHasMore     = true;     // false when DB returns fewer than PAGE_SIZE
+        let posesFetching    = false;    // guard: prevent overlapping fetches
+        let posesLoaded      = false;    // true after first activation
+        let isCreatingNewPose = false;
+        let posesSentinelObserver = null;
+
+        // ── Entry point ──────────────────────────────────────────────────────
         function posesOnViewActivated() {
             if (posesLoaded) return;
             posesLoaded = true;
-            loadPosesFromDB();
+            initPosesSentinel();
+            loadPoseTagsOnly();   // fast: fetch just pose names for the filter bar
+            fetchPosesPage(true); // then fetch first page of images
         }
 
-        async function loadPosesFromDB() {
-            if (!supabaseClient) return;
-            document.getElementById('posesLoadingState').classList.remove('hidden');
-            document.getElementById('posesEmptyState').classList.add('hidden');
-            document.getElementById('posesGrid').classList.add('hidden');
+        // ── Sentinel (IntersectionObserver triggers next page) ───────────────
+        function initPosesSentinel() {
+            if (posesSentinelObserver) return;
+            posesSentinelObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting && posesHasMore && !posesFetching) {
+                        fetchPosesPage(false);
+                    }
+                });
+            }, { rootMargin: '300px' });
+            const sentinel = document.getElementById('posesSentinel');
+            if (sentinel) posesSentinelObserver.observe(sentinel);
+        }
 
+        // ── Fetch pose names only (for filter bar) ───────────────────────────
+        async function loadPoseTagsOnly() {
+            if (!supabaseClient) return;
             try {
                 const { data, error } = await supabaseClient
-                    .from('pose_images')
-                    .select('*, poses(name)')
-                    .order('created_at', { ascending: false });
-
+                    .from('poses')
+                    .select('name')
+                    .order('name', { ascending: true });
                 if (error) throw error;
-                posesData = data || [];
-                buildPoseTagsList();
+                posesTagsList = (data || []).map(r => r.name);
                 renderPosesFilterBar();
-                renderPosesGrid('all');
             } catch (e) {
-                console.error('Poses load error:', e);
-                document.getElementById('posesLoadingState').classList.add('hidden');
-                document.getElementById('posesEmptyState').classList.remove('hidden');
-                document.getElementById('posesEmptyState').classList.add('flex');
+                console.error('Poses tags error:', e);
             }
         }
 
-        function buildPoseTagsList() {
-            const namesSet = new Set();
-            posesData.forEach(img => {
-                if (img.poses && img.poses.name) namesSet.add(img.poses.name);
-            });
-            posesTagsList = Array.from(namesSet).sort();
+        // ── Fetch one page of images from DB ─────────────────────────────────
+        async function fetchPosesPage(reset) {
+            if (!supabaseClient || posesFetching) return;
+            if (!posesHasMore && !reset) return;
+
+            posesFetching = true;
+
+            if (reset) {
+                posesPageOffset = 0;
+                posesHasMore = true;
+                document.getElementById('posesGrid').innerHTML = '';
+                document.getElementById('posesGrid').classList.add('hidden');
+                document.getElementById('posesEmptyState').classList.add('hidden');
+                document.getElementById('posesEmptyState').classList.remove('flex');
+                document.getElementById('posesLoadingState').classList.remove('hidden');
+            } else {
+                document.getElementById('posesLoadingState').classList.add('hidden');
+                document.getElementById('posesLoadMoreSpinner').classList.remove('hidden');
+                document.getElementById('posesLoadMoreSpinner').classList.add('flex');
+            }
+
+            try {
+                let query = supabaseClient
+                    .from('pose_images')
+                    .select('*, poses(name)')
+                    .order('created_at', { ascending: false })
+                    .range(posesPageOffset, posesPageOffset + POSES_PAGE_SIZE - 1);
+
+                if (currentPoseFilter !== 'all') {
+                    // Join-filter: match pose name via pose_id sub-query workaround
+                    const { data: poseRow } = await supabaseClient
+                        .from('poses').select('id').eq('name', currentPoseFilter).maybeSingle();
+                    if (poseRow) {
+                        query = supabaseClient
+                            .from('pose_images')
+                            .select('*, poses(name)')
+                            .eq('pose_id', poseRow.id)
+                            .order('created_at', { ascending: false })
+                            .range(posesPageOffset, posesPageOffset + POSES_PAGE_SIZE - 1);
+                    } else {
+                        // pose doesn't exist yet
+                        posesFetching = false;
+                        document.getElementById('posesLoadingState').classList.add('hidden');
+                        document.getElementById('posesLoadMoreSpinner').classList.add('hidden');
+                        document.getElementById('posesLoadMoreSpinner').classList.remove('flex');
+                        showPosesEmptyIfNeeded();
+                        return;
+                    }
+                }
+
+                const { data, error } = await query;
+                if (error) throw error;
+
+                const batch = data || [];
+                posesHasMore = batch.length === POSES_PAGE_SIZE;
+                posesPageOffset += batch.length;
+
+                document.getElementById('posesLoadingState').classList.add('hidden');
+                document.getElementById('posesLoadMoreSpinner').classList.add('hidden');
+                document.getElementById('posesLoadMoreSpinner').classList.remove('flex');
+
+                if (batch.length === 0 && posesPageOffset === 0) {
+                    showPosesEmptyIfNeeded();
+                } else if (batch.length > 0) {
+                    appendPoseCards(batch);
+                }
+            } catch (e) {
+                console.error('Poses fetch error:', e);
+                document.getElementById('posesLoadingState').classList.add('hidden');
+                document.getElementById('posesLoadMoreSpinner').classList.add('hidden');
+                document.getElementById('posesLoadMoreSpinner').classList.remove('flex');
+            } finally {
+                posesFetching = false;
+            }
         }
 
+        function showPosesEmptyIfNeeded() {
+            const grid = document.getElementById('posesGrid');
+            if (!grid.children.length) {
+                grid.classList.add('hidden');
+                const empty = document.getElementById('posesEmptyState');
+                empty.classList.remove('hidden');
+                empty.classList.add('flex');
+            }
+        }
+
+        // ── Append a batch of cards to the grid ──────────────────────────────
+        function appendPoseCards(batch) {
+            const grid = document.getElementById('posesGrid');
+            grid.classList.remove('hidden');
+
+            batch.forEach(img => {
+                const poseName = (img.poses && img.poses.name) ? img.poses.name : '';
+                const safeUrl = img.image_url.replace(/'/g, "\\'");
+                const card = document.createElement('div');
+                card.className = 'pose-card';
+                card.onclick = () => openPosesLightbox(img.image_url);
+                card.innerHTML = `
+                    <img src="${img.image_url}" alt="${poseName}" loading="lazy" decoding="async"
+                         onload="setPosesCardSpan(this.closest('.pose-card'))"
+                         onerror="this.closest('.pose-card').style.display='none'">
+                    <div class="pose-card-overlay"></div>
+                    <button class="pose-card-delete" onclick="deletePoseImage(event, ${img.id})" title="Remove image">
+                        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                    ${poseName ? `<span class="pose-card-tag">${poseName}</span>` : ''}`;
+                grid.appendChild(card);
+            });
+
+            // One-time resize listener
+            if (!window._posesResizeListenerSet) {
+                window._posesResizeListenerSet = true;
+                window.addEventListener('resize', () => {
+                    document.querySelectorAll('#posesGrid .pose-card').forEach(setPosesCardSpan);
+                });
+            }
+        }
+
+        // ── Filter bar ───────────────────────────────────────────────────────
         function renderPosesFilterBar() {
             const bar = document.getElementById('posesFilterBar');
             bar.innerHTML = `<button onclick="filterPosesByTag('all')" id="poseFilter_all" class="pose-filter-btn ${currentPoseFilter === 'all' ? 'active' : ''}">All</button>`;
@@ -12009,75 +12141,21 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
         }
 
         function filterPosesByTag(tag) {
+            if (tag === currentPoseFilter) return;
             currentPoseFilter = tag;
             renderPosesFilterBar();
-            renderPosesGrid(tag);
+            fetchPosesPage(true); // reset + re-fetch for new filter
         }
 
-        function renderPosesGrid(filter) {
-            const loading = document.getElementById('posesLoadingState');
-            const empty = document.getElementById('posesEmptyState');
-            const grid = document.getElementById('posesGrid');
-
-            loading.classList.add('hidden');
-
-            const filtered = filter === 'all'
-                ? posesData
-                : posesData.filter(img => img.poses && img.poses.name === filter);
-
-            if (filtered.length === 0) {
-                grid.classList.add('hidden');
-                empty.classList.remove('hidden');
-                empty.classList.add('flex');
-                return;
-            }
-
-            empty.classList.add('hidden');
-            empty.classList.remove('flex');
-            grid.classList.remove('hidden');
-
-            // Build cards HTML — images load naturally, then we calculate spans
-            grid.innerHTML = filtered.map(img => {
-                const poseName = (img.poses && img.poses.name) ? img.poses.name : '';
-                const safeUrl = img.image_url.replace(/'/g, "\\'");
-                return `
-                <div class="pose-card" onclick="openPosesLightbox('${safeUrl}')">
-                    <img src="${img.image_url}" alt="${poseName}" loading="lazy" decoding="async"
-                         onload="setPosesCardSpan(this.closest('.pose-card'))"
-                         onerror="this.closest('.pose-card').style.display='none'">
-                    <div class="pose-card-overlay"></div>
-                    <button class="pose-card-delete" onclick="deletePoseImage(event, ${img.id})" title="Remove image">
-                        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
-                    ${poseName ? `<span class="pose-card-tag">${poseName}</span>` : ''}
-                </div>`;
-            }).join('');
-
-            // Recalculate spans on any window resize
-            if (!window._posesResizeListenerSet) {
-                window._posesResizeListenerSet = true;
-                window.addEventListener('resize', () => {
-                    document.querySelectorAll('#posesGrid .pose-card').forEach(setPosesCardSpan);
-                });
-            }
-        }
-
-        // Calculate and set the grid-row span so images show at full natural height
+        // ── Span calculator ──────────────────────────────────────────────────
         function setPosesCardSpan(card) {
             if (!card) return;
             const img = card.querySelector('img');
             if (!img || !img.naturalHeight || !img.naturalWidth) return;
-
-            // grid-auto-rows: 1px, row-gap: 0  →  span = actual pixel height of content + gap allowance
             const cardWidth = card.getBoundingClientRect().width || card.offsetWidth;
             if (!cardWidth) return;
-
-            // True rendered height based on natural aspect ratio
             const imgHeight = Math.round((img.naturalHeight / img.naturalWidth) * cardWidth);
-
-            // Add 12px bottom gap baked into the span itself
-            const span = imgHeight + 12;
-            card.style.gridRowEnd = 'span ' + span;
+            card.style.gridRowEnd = 'span ' + (imgHeight + 12);
         }
 
         async function deletePoseImage(e, imageId) {
@@ -12089,10 +12167,14 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                     .delete()
                     .eq('id', imageId);
                 if (error) throw error;
-                posesData = posesData.filter(img => img.id !== imageId);
-                buildPoseTagsList();
-                renderPosesFilterBar();
-                renderPosesGrid(currentPoseFilter);
+
+                // Remove card from DOM directly — no need to re-fetch
+                const btn = e.currentTarget || e.target;
+                const card = btn.closest('.pose-card');
+                if (card) card.remove();
+
+                // If grid is now empty, show empty state
+                showPosesEmptyIfNeeded();
                 showToast('Image removed');
             } catch (e) {
                 console.error(e);
@@ -12215,14 +12297,20 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                     .select('*, poses(name)');
                 if (imgErr) throw imgErr;
 
-                // Prepend new images
-                posesData = [...inserted, ...posesData];
-                buildPoseTagsList();
+                // Prepend new images to grid immediately
+                appendPoseCards(inserted);
+
+                // Add new pose to tags list if not already there
+                if (!posesTagsList.includes(poseName)) {
+                    posesTagsList.push(poseName);
+                    posesTagsList.sort();
+                }
                 renderPosesFilterBar();
 
                 // Switch filter to the new pose
                 currentPoseFilter = poseName;
-                renderPosesGrid(poseName);
+                renderPosesFilterBar();
+                fetchPosesPage(true);
 
                 closePosesUploadModal();
                 showToast(`${inserted.length} image${inserted.length > 1 ? 's' : ''} added to "${poseName}"`);
