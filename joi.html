@@ -3422,7 +3422,7 @@
                 </div>
                 
                 <div class="relative mt-2">
-                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Assign to Models <span class="text-xs font-normal text-slate-400">(select one or more)</span></label>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Assign to Models <span class="text-xs font-normal text-slate-400">(optional)</span></label>
                     <!-- Selected model chips -->
                     <div id="selectedModelsChips" class="flex flex-wrap gap-1.5 mb-2 min-h-[28px]"></div>
                     <!-- Search input -->
@@ -5780,7 +5780,8 @@ function renderYTClipsGrid(clearFirst = false) {
             }
 
             const html = itemsToRender.map(clip => {
-                const modelName = clip.cards ? clip.cards.title : 'Unknown Model';
+                const hasModel = !!(clip.card_id || (Array.isArray(clip.card_ids) && clip.card_ids.length));
+                const modelName = clip.cards ? clip.cards.title : (hasModel ? 'Unknown Model' : null);
                 
                 // --- AVATAR LOOKUP LOGIC ---
                 let avatarUrl = clip.cards ? optimizeMediaUrl(clip.cards.main_image_url, false, 100) : '';
@@ -5815,19 +5816,19 @@ function renderYTClipsGrid(clearFirst = false) {
                         </div>
                         
                         <div class="flex gap-3 px-1">
-                            <img src="${avatarUrl}" 
+                            ${hasModel || avatarUrl ? `<img src="${avatarUrl}" 
                                  onclick="${clip.card_id ? `openModelById(${clip.card_id})` : ''}" 
-                                 class="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700 mt-0.5 cursor-pointer hover:scale-110 transition-transform shadow-sm" 
+                                 class="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700 mt-0.5 ${clip.card_id ? 'cursor-pointer hover:scale-110' : 'cursor-default'} transition-transform shadow-sm flex-shrink-0" 
                                  onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2212%22 fill=%22%23cbd5e1%22/></svg>'" 
-                                 title="View ${modelName}">
+                                 title="${modelName ? 'View ' + modelName : ''}">` : `<div class="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 border border-slate-200 dark:border-slate-700 mt-0.5 flex-shrink-0 flex items-center justify-center"><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg></div>`}
                             
                             <div class="flex flex-col min-w-0">
                                 <h4 class="font-bold text-slate-900 dark:text-white text-sm line-clamp-2 leading-tight cursor-pointer hover:text-[#7fe826] transition-colors" 
                                     onclick="openYTPlayer(${clip.id})">${clip.title}</h4>
                                 
-                                <span class="text-xs text-slate-500 dark:text-slate-400 mt-1 cursor-pointer hover:text-slate-900 dark:hover:text-white transition-colors font-medium w-max" 
+                                ${modelName ? `<span class="text-xs text-slate-500 dark:text-slate-400 mt-1 cursor-pointer hover:text-slate-900 dark:hover:text-white transition-colors font-medium w-max" 
                                       onclick="${clip.card_id ? `openModelById(${clip.card_id})` : ''}" 
-                                      title="View ${modelName}">${modelName}</span>
+                                      title="View ${modelName}">${modelName}</span>` : `<span class="text-xs text-slate-400 dark:text-slate-600 mt-1 font-medium w-max italic">No model assigned</span>`}
                                 
                                 <div class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5">
                                     <span>${clip.views || 0} views</span><span>•</span><span>${dateStr}</span>
@@ -5857,11 +5858,15 @@ function renderYTClipsGrid(clearFirst = false) {
             if (titleEl) titleEl.textContent = updatedClip.title || '';
 
             // 2. Model name label + avatar image
-            const modelName = updatedClip.cards ? updatedClip.cards.title : 'Unknown Model';
+            const hasUpdatedModel = !!(updatedClip.card_id || (Array.isArray(updatedClip.card_ids) && updatedClip.card_ids.length));
+            const modelName = updatedClip.cards ? updatedClip.cards.title : (hasUpdatedModel ? 'Unknown Model' : null);
             const modelSpan = card.querySelector('span.text-xs.font-medium.w-max');
             if (modelSpan) {
-                modelSpan.textContent = modelName;
-                modelSpan.title = 'View ' + modelName;
+                modelSpan.textContent = modelName || 'No model assigned';
+                modelSpan.title = modelName ? 'View ' + modelName : '';
+                modelSpan.className = modelName
+                    ? 'text-xs text-slate-500 dark:text-slate-400 mt-1 cursor-pointer hover:text-slate-900 dark:hover:text-white transition-colors font-medium w-max'
+                    : 'text-xs text-slate-400 dark:text-slate-600 mt-1 font-medium w-max italic';
                 const newCardId = updatedClip.card_id || null;
                 modelSpan.setAttribute('onclick', newCardId ? `openModelById(${newCardId})` : '');
             }
@@ -6237,7 +6242,7 @@ let editingClipId = null; // Track if we are editing
     const ytModelNameEl = document.getElementById('ytPlayerModelName');
     if (ytModelNameEl) ytModelNameEl.textContent = clipAllModels.length > 1
         ? clipAllModels.map(m => m.title).join(' & ')
-        : (primaryModel ? primaryModel.title : 'Unknown Model');
+        : (primaryModel ? primaryModel.title : '');
 
     const dateStr = new Date(clip.created_at).toLocaleDateString();
     const ytStatsEl = document.getElementById('ytPlayerStats');
@@ -6260,10 +6265,25 @@ let editingClipId = null; // Track if we are editing
 
     const modelLinkBtn = document.getElementById('ytPlayerModelLink');
     if (modelLinkBtn) {
-        if (clipAllModels.length <= 1) {
+        if (!primaryModel && clipAllModels.length === 0) {
+            // No model assigned — hide the model section
+            modelLinkBtn.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <div class="w-14 h-14 sm:w-[60px] sm:h-[60px] rounded-[1.2rem] bg-slate-800 border border-white/10 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                    </div>
+                    <div class="flex flex-col">
+                        <h2 class="text-lg sm:text-xl font-bold text-slate-500 leading-none italic">No model assigned</h2>
+                        <p class="text-slate-400 text-sm mt-1.5 font-medium">${clip.views || 0} views • ${dateStr}</p>
+                    </div>
+                </div>`;
+            modelLinkBtn.onclick = null;
+            modelLinkBtn.style.cursor = 'default';
+        } else if (clipAllModels.length <= 1) {
             // Single model — original layout with single avatar img
             const singleCard = clipAllModels[0] || null;
             const avatarUrl = _getCardAvatarUrl(singleCard || (clip.cards ? { ...clip.cards, related_images_with_tags: null } : null));
+            modelLinkBtn.style.cursor = '';
             modelLinkBtn.innerHTML = `
                 <img id="ytPlayerAvatar" src="${avatarUrl}" class="w-14 h-14 sm:w-[60px] sm:h-[60px] rounded-[1.2rem] object-cover border border-white/10 shadow-md bg-slate-900 group-hover:scale-105 transition-transform">
                 <div class="flex flex-col">
@@ -8449,11 +8469,6 @@ const addAudioForm = document.getElementById('addAudioForm');
                     const duration = document.getElementById('ytClipDuration').value || '0:00';
                     const category_ids = getSelectedClipCategoryIds();
                     const category_id = category_ids.length ? category_ids[0] : null; // primary for backward compat / filtering
-
-                    if (!allCardIds.length) {
-                        alert("Please select at least one model from the search dropdown.");
-                        return;
-                    }
 
                     const siteNameVal = (document.getElementById('ytClipSiteName')?.value || '').trim() || null;
 
