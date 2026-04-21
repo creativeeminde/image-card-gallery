@@ -2353,6 +2353,56 @@
         .dark .pose-filter-btn:not(.active):hover {
             color: #7fe826;
         }
+
+        /* ── Sort-by control ── */
+        #posesSortRow {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-bottom: 18px;
+            flex-wrap: wrap;
+        }
+        #posesSortRow .sort-label {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #94a3b8;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .poses-sort-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 14px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            border: 1.5px solid transparent;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.18s ease;
+            background: #e4ece3;
+            color: #64748b;
+        }
+        .dark .poses-sort-btn { background: #1e293b; color: #64748b; }
+        .poses-sort-btn.active {
+            background: #fff;
+            color: #111;
+            border-color: #cbd5e1;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .dark .poses-sort-btn.active {
+            background: #0f172a;
+            color: #e2e8f0;
+            border-color: #334155;
+        }
+        .poses-sort-btn:not(.active):hover {
+            background: rgba(127,232,38,0.13);
+            color: #3d7a0a;
+        }
+        .dark .poses-sort-btn:not(.active):hover { color: #7fe826; }
         /* ===== /POSES VIEW ===== */
         /* ===== /QUEENS VIEW ===== */
 
@@ -4527,6 +4577,23 @@
         <!-- Pose filter tabs -->
         <div id="posesFilterBar" class="flex items-center gap-2 pb-5 overflow-x-auto no-scrollbar flex-wrap">
             <button onclick="filterPosesByTag('all')" id="poseFilter_all" class="pose-filter-btn px-4 py-1.5 rounded-full text-xs font-bold bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] transition-all whitespace-nowrap">All</button>
+        </div>
+
+        <!-- Sort-by row -->
+        <div id="posesSortRow">
+            <span class="sort-label">Sort by</span>
+            <button class="poses-sort-btn active" data-sort="lastUploaded" onclick="setPosesSort('lastUploaded')">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v10l4 4"/><circle cx="12" cy="12" r="10"/></svg>
+                Last uploaded
+            </button>
+            <button class="poses-sort-btn" data-sort="firstUploaded" onclick="setPosesSort('firstUploaded')">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 6h18M3 12h12M3 18h6"/></svg>
+                First uploaded
+            </button>
+            <button class="poses-sort-btn" data-sort="shuffle" onclick="setPosesSort('shuffle')">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+                Shuffle
+            </button>
         </div>
 
         <!-- Loading state -->
@@ -12976,6 +13043,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
 
         let posesTagsList    = [];       // unique pose names (fetched once, lightweight)
         let currentPoseFilter = 'all';
+        let posesSortOrder   = 'lastUploaded'; // 'lastUploaded' | 'firstUploaded' | 'shuffle'
         let posesPageOffset  = 0;        // how many rows already fetched from DB
         let posesHasMore     = true;     // false when DB returns fewer than PAGE_SIZE
         let posesFetching    = false;    // guard: prevent overlapping fetches
@@ -13043,15 +13111,23 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                 document.getElementById('posesLoadMoreSpinner').classList.add('flex');
             }
 
+            // ── Shuffle: fetch ALL remaining rows then randomise client-side ──
+            if (posesSortOrder === 'shuffle') {
+                await _fetchPosesAllAndShuffle();
+                return;
+            }
+
+            // ── Last / First uploaded: server-side ordering ───────────────────
+            const ascending = (posesSortOrder === 'firstUploaded');
+
             try {
                 let query = supabaseClient
                     .from('pose_images')
                     .select('*, poses(name)')
-                    .order('created_at', { ascending: false })
+                    .order('created_at', { ascending })
                     .range(posesPageOffset, posesPageOffset + POSES_PAGE_SIZE - 1);
 
                 if (currentPoseFilter !== 'all') {
-                    // Join-filter: match pose name via pose_id sub-query workaround
                     const { data: poseRow } = await supabaseClient
                         .from('poses').select('id').eq('name', currentPoseFilter).maybeSingle();
                     if (poseRow) {
@@ -13059,10 +13135,9 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                             .from('pose_images')
                             .select('*, poses(name)')
                             .eq('pose_id', poseRow.id)
-                            .order('created_at', { ascending: false })
+                            .order('created_at', { ascending })
                             .range(posesPageOffset, posesPageOffset + POSES_PAGE_SIZE - 1);
                     } else {
-                        // pose doesn't exist yet
                         posesFetching = false;
                         document.getElementById('posesLoadingState').classList.add('hidden');
                         document.getElementById('posesLoadMoreSpinner').classList.add('hidden');
@@ -13096,6 +13171,88 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             } finally {
                 posesFetching = false;
             }
+        }
+
+        // ── Shuffle helper: fetch every row for the current filter, randomise ─
+        async function _fetchPosesAllAndShuffle() {
+            // Fetch in chunks of 1000 (Supabase max per request) until exhausted
+            const CHUNK = 1000;
+            let offset = 0;
+            let allRows = [];
+
+            try {
+                let poseRowId = null;
+                if (currentPoseFilter !== 'all') {
+                    const { data: poseRow } = await supabaseClient
+                        .from('poses').select('id').eq('name', currentPoseFilter).maybeSingle();
+                    if (!poseRow) {
+                        // Filter tag doesn't exist
+                        document.getElementById('posesLoadingState').classList.add('hidden');
+                        document.getElementById('posesLoadMoreSpinner').classList.add('hidden');
+                        document.getElementById('posesLoadMoreSpinner').classList.remove('flex');
+                        showPosesEmptyIfNeeded();
+                        posesFetching = false;
+                        return;
+                    }
+                    poseRowId = poseRow.id;
+                }
+
+                // Page through the whole table
+                while (true) {
+                    let q = supabaseClient
+                        .from('pose_images')
+                        .select('*, poses(name)')
+                        .order('id', { ascending: true })   // stable ordering for paging
+                        .range(offset, offset + CHUNK - 1);
+                    if (poseRowId) q = q.eq('pose_id', poseRowId);
+
+                    const { data, error } = await q;
+                    if (error) throw error;
+                    const chunk = data || [];
+                    allRows = allRows.concat(chunk);
+                    if (chunk.length < CHUNK) break; // last page
+                    offset += chunk.length;
+                }
+
+                // Fisher-Yates shuffle
+                for (let i = allRows.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [allRows[i], allRows[j]] = [allRows[j], allRows[i]];
+                }
+
+                posesHasMore = false;     // all rows are now in the DOM
+                posesPageOffset = allRows.length;
+
+                document.getElementById('posesLoadingState').classList.add('hidden');
+                document.getElementById('posesLoadMoreSpinner').classList.add('hidden');
+                document.getElementById('posesLoadMoreSpinner').classList.remove('flex');
+
+                if (allRows.length === 0) {
+                    showPosesEmptyIfNeeded();
+                } else {
+                    appendPoseCards(allRows);
+                }
+            } catch (e) {
+                console.error('Poses shuffle fetch error:', e);
+                document.getElementById('posesLoadingState').classList.add('hidden');
+                document.getElementById('posesLoadMoreSpinner').classList.add('hidden');
+                document.getElementById('posesLoadMoreSpinner').classList.remove('flex');
+            } finally {
+                posesFetching = false;
+            }
+        }
+
+        // ── Sort control ─────────────────────────────────────────────────────
+        function setPosesSort(sort) {
+            if (sort === posesSortOrder && sort !== 'shuffle') return; // no-op unless re-shuffle
+            posesSortOrder = sort;
+
+            // Update button active states
+            document.querySelectorAll('.poses-sort-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.sort === sort);
+            });
+
+            fetchPosesPage(true); // reset grid and re-fetch with new ordering
         }
 
         function showPosesEmptyIfNeeded() {
