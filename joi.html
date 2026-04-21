@@ -4597,9 +4597,9 @@
         </button>
 
         <!-- Image wrapper (overflow hidden for zoom) -->
-        <div class="relative flex items-center justify-center overflow-hidden" style="width:90vw;max-width:1200px;height:90vh;">
-            <img id="posesLightboxImg" src="" class="object-contain rounded-2xl shadow-2xl transition-transform duration-200 ease-out cursor-grab active:cursor-grabbing"
-                 style="max-width:100%;max-height:100%;transform-origin:center center;">
+        <div id="posesLightboxWrapper" class="relative flex items-center justify-center overflow-hidden" style="width:90vw;max-width:1200px;height:90vh;">
+            <img id="posesLightboxImg" src="" class="object-contain rounded-2xl shadow-2xl cursor-grab active:cursor-grabbing"
+                 style="max-width:100%;max-height:100%;transform-origin:0 0;will-change:transform;">
         </div>
 
         <!-- Next arrow -->
@@ -12949,10 +12949,27 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             batch.forEach(img => {
                 const poseName = (img.poses && img.poses.name) ? img.poses.name : '';
                 const safeUrl = img.image_url.replace(/'/g, "\\'");
+
+                // In the "All" view, skip rendering a duplicate card for the same URL.
+                // Instead, record the extra category on the existing card so the lightbox
+                // can still navigate correctly within any individual category.
+                if (currentPoseFilter === 'all') {
+                    const already = grid.querySelector(`.pose-card[data-pose-url="${CSS.escape(img.image_url)}"]`);
+                    if (already) {
+                        const cats = already.dataset.poseCategories
+                            ? already.dataset.poseCategories.split('||')
+                            : [already.dataset.poseName];
+                        if (!cats.includes(poseName)) cats.push(poseName);
+                        already.dataset.poseCategories = cats.join('||');
+                        return; // skip — card already visible
+                    }
+                }
+
                 const card = document.createElement('div');
                 card.className = 'pose-card';
-                card.dataset.poseUrl  = img.image_url;
-                card.dataset.poseName = poseName;
+                card.dataset.poseUrl        = img.image_url;
+                card.dataset.poseName       = poseName;
+                card.dataset.poseCategories = poseName;
                 card.onclick = () => openPosesLightbox(img.image_url, poseName);
                 card.innerHTML = `
                     <img src="${img.image_url}" alt="${poseName}" loading="lazy" decoding="async"
@@ -13188,12 +13205,20 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                         poseId = newPose.id;
                     }
 
-                    // Insert images for this category
-                    const inserts = urls.map(url => ({ pose_id: poseId, image_url: url }));
-                    const { data: inserted, error: imgErr } = await supabaseClient
-                        .from('pose_images').insert(inserts).select('*, poses(name)');
-                    if (imgErr) throw imgErr;
-                    allInserted = allInserted.concat(inserted || []);
+                    // Only insert URLs not already linked to this category (avoid duplicates)
+                    const { data: existingRows } = await supabaseClient
+                        .from('pose_images').select('image_url').eq('pose_id', poseId).in('image_url', urls);
+                    const existingUrls = new Set((existingRows || []).map(r => r.image_url));
+                    const newUrls = urls.filter(u => !existingUrls.has(u));
+                    let inserted = [];
+                    if (newUrls.length > 0) {
+                        const inserts = newUrls.map(url => ({ pose_id: poseId, image_url: url }));
+                        const { data: ins, error: imgErr } = await supabaseClient
+                            .from('pose_images').insert(inserts).select('*, poses(name)');
+                        if (imgErr) throw imgErr;
+                        inserted = ins || [];
+                    }
+                    allInserted = allInserted.concat(inserted);
 
                     // Update local tags list
                     if (!posesTagsList.includes(poseName)) {
@@ -13229,9 +13254,32 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
         let _lbCurrentIndex = -1;
         let _lbImages       = [];   // [{url, name}] for the active category
         let _lbZoom         = 1.0;
+        let _lbTX           = 0;    // current translateX (px, at zoom=1 space)
+        let _lbTY           = 0;    // current translateY
         const _LB_ZOOM_STEP = 0.25;
         const _LB_ZOOM_MIN  = 0.5;
         const _LB_ZOOM_MAX  = 4.0;
+
+        function _lbApplyTransform(img) {
+            // transform-origin is fixed at 0 0; we manage everything via translate+scale
+            img.style.transform = `translate(${_lbTX}px, ${_lbTY}px) scale(${_lbZoom})`;
+        }
+
+        // Return the img's natural centered offset inside its wrapper at zoom=1
+        function _lbBaseOffset(img) {
+            const wrapper = document.getElementById('posesLightboxWrapper');
+            const wW = wrapper.clientWidth, wH = wrapper.clientHeight;
+            const iW = img.offsetWidth,     iH = img.offsetHeight;
+            return { x: (wW - iW) / 2, y: (wH - iH) / 2 };
+        }
+
+        function _lbResetTransform(img) {
+            _lbZoom = 1.0;
+            const off = _lbBaseOffset(img);
+            _lbTX = off.x;
+            _lbTY = off.y;
+            _lbApplyTransform(img);
+        }
 
         function _buildLightboxImages(poseName) {
             // Collect all visible cards that share the same category
@@ -13247,9 +13295,8 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             if (_lbImages.length === 0) _lbImages = [{ url, name: poseName }];
             _lbCurrentIndex = _lbImages.findIndex(i => i.url === url);
             if (_lbCurrentIndex === -1) _lbCurrentIndex = 0;
-            _lbZoom = 1.0;
-            _applyLightboxState();
             document.getElementById('posesLightbox').classList.add('active');
+            _applyLightboxState();
         }
 
         function _applyLightboxState() {
@@ -13262,9 +13309,21 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             const entry = _lbImages[_lbCurrentIndex];
             img.src = entry ? entry.url : '';
 
-            // Reset zoom on navigation
-            img.style.transform = `scale(${_lbZoom})`;
-            label.textContent = Math.round(_lbZoom * 100) + '%';
+            // Reset zoom + centering on every navigation
+            _lbZoom = 1.0;
+            _lbTX = 0; _lbTY = 0;
+            img.style.transform = 'none'; // clear until image loads and we can measure
+            img.onload = () => {
+                _lbResetTransform(img);
+                img.onload = null;
+            };
+            // If already cached the image is loaded synchronously — fire immediately
+            if (img.complete && img.naturalWidth) {
+                _lbResetTransform(img);
+                img.onload = null;
+            }
+
+            label.textContent = '100%';
 
             // Counter
             if (_lbImages.length > 1) {
@@ -13283,30 +13342,53 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             const next = _lbCurrentIndex + dir;
             if (next < 0 || next >= _lbImages.length) return;
             _lbCurrentIndex = next;
-            _lbZoom = 1.0;
             _applyLightboxState();
         }
 
-        function zoomPosesLightbox(dir) {
-            _lbZoom = Math.min(_LB_ZOOM_MAX, Math.max(_LB_ZOOM_MIN, _lbZoom + dir * _LB_ZOOM_STEP));
-            const img   = document.getElementById('posesLightboxImg');
-            const label = document.getElementById('posesLightboxZoomLabel');
-            img.style.transform   = `scale(${_lbZoom})`;
-            label.textContent = Math.round(_lbZoom * 100) + '%';
+        // Zoom centered on a viewport point (cx, cy). Falls back to image center if omitted.
+        function _lbZoomAt(newZoom, cx, cy) {
+            const img = document.getElementById('posesLightboxImg');
+            const wrapper = document.getElementById('posesLightboxWrapper');
+            newZoom = Math.min(_LB_ZOOM_MAX, Math.max(_LB_ZOOM_MIN, newZoom));
+
+            // If no focal point given, use the wrapper center
+            if (cx === undefined) {
+                const r = wrapper.getBoundingClientRect();
+                cx = r.left + r.width  / 2;
+                cy = r.top  + r.height / 2;
+            }
+
+            // Current transform maps image-space point P to screen as:
+            //   screen = (P * oldZoom) + [TX, TY]  (with transform-origin 0 0)
+            // We want the screen position of the focal point to stay fixed.
+            // Focal point in image space:
+            const fxImg = (cx - _lbTX) / _lbZoom;
+            const fyImg = (cy - _lbTY) / _lbZoom;
+
+            // New translate so that fxImg * newZoom + newTX = cx  =>  newTX = cx - fxImg * newZoom
+            _lbTX = cx - fxImg * newZoom;
+            _lbTY = cy - fyImg * newZoom;
+            _lbZoom = newZoom;
+
+            _lbApplyTransform(img);
+            document.getElementById('posesLightboxZoomLabel').textContent = Math.round(_lbZoom * 100) + '%';
+        }
+
+        function zoomPosesLightbox(dir, cx, cy) {
+            _lbZoomAt(_lbZoom + dir * _LB_ZOOM_STEP, cx, cy);
         }
 
         function resetPosesLightboxZoom() {
+            const img = document.getElementById('posesLightboxImg');
             _lbZoom = 1.0;
-            const img   = document.getElementById('posesLightboxImg');
-            const label = document.getElementById('posesLightboxZoomLabel');
-            img.style.transform   = 'scale(1)';
-            label.textContent = '100%';
+            _lbResetTransform(img);
+            document.getElementById('posesLightboxZoomLabel').textContent = '100%';
         }
 
         function closePosesLightbox() {
             document.getElementById('posesLightbox').classList.remove('active');
             document.getElementById('posesLightboxImg').src = '';
-            _lbImages = []; _lbCurrentIndex = -1; _lbZoom = 1.0;
+            _lbImages = []; _lbCurrentIndex = -1; _lbZoom = 1.0; _lbTX = 0; _lbTY = 0;
         }
 
         document.addEventListener('keydown', e => {
@@ -13320,12 +13402,13 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             if (e.key === '0')           resetPosesLightboxZoom();
         });
 
-        // Scroll-wheel zoom inside lightbox
-        document.getElementById('posesLightbox') && document.addEventListener('wheel', e => {
+        // Scroll-wheel zoom centered on mouse cursor position
+        document.addEventListener('wheel', e => {
             const lb = document.getElementById('posesLightbox');
             if (!lb || !lb.classList.contains('active')) return;
             e.preventDefault();
-            zoomPosesLightbox(e.deltaY < 0 ? 1 : -1);
+            const dir = e.deltaY < 0 ? 1 : -1;
+            _lbZoomAt(_lbZoom + dir * _LB_ZOOM_STEP, e.clientX, e.clientY);
         }, { passive: false });
 
         let dfInitialized = false;
