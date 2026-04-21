@@ -9126,6 +9126,26 @@ let editingClipId = null; // Track if we are editing
                         s.style.display = 'none';
                     });
 
+                    // On mobile, clipsView stamps inline overflow/height styles that
+                    // can bleed through even after display:none is set (because some
+                    // iOS layouts still allocate space for display:none flex containers
+                    // when overflow or height is left on the element).  Clear them now
+                    // so the incoming view occupies the full viewport cleanly.
+                    if (window.innerWidth <= 767) {
+                        var _cv = document.getElementById('clipsView');
+                        if (_cv) {
+                            _cv.style.overflow  = '';
+                            _cv.style.overflowX = '';
+                            _cv.style.height    = '';
+                            _cv.style.minHeight = '';
+                        }
+                        var _cms = document.getElementById('clipsMainScroll');
+                        if (_cms) {
+                            _cms.style.overflowY = '';
+                            _cms.style.webkitOverflowScrolling = '';
+                        }
+                    }
+
                     // Reactivate target view
                     const viewEl = document.getElementById(target);
                     viewEl.classList.remove('hidden');
@@ -13943,33 +13963,65 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             // ── FIX E: clipsView display mode fix ────────────────────
             // On mobile the sidebar scrolls naturally with the page, so we
             // let clipsView grow to fit content (no overflow:hidden trap).
-            var _origNavSwitch = null;
+            //
+            // IMPORTANT: the deferred work is gated on _clipsViewActivation so
+            // it is a no-op if another tab was clicked in the meantime.
+            // Without this guard the 50 ms timer fires AFTER the main nav
+            // handler has already hidden clipsView, re-showing it on top of
+            // whichever tab the user actually selected.
+            var _clipsViewActivation = 0; // incremented each time clipsView is chosen
             document.addEventListener('DOMContentLoaded', function() {
-                // Hook the clipsView nav button
                 var clipsBtn = document.querySelector('.nav-item[data-target="clipsView"]');
                 if (clipsBtn) {
                     clipsBtn.addEventListener('click', function() {
                         if (!isMobile()) return;
+                        var token = ++_clipsViewActivation;
                         setTimeout(function() {
+                            // Bail if another tab was activated after us
+                            if (token !== _clipsViewActivation) return;
                             var view = document.getElementById('clipsView');
-                            if (view) {
-                                view.style.display = 'flex';
-                                view.style.flexDirection = 'column';
-                                // Do NOT set overflow:hidden — sidebar must scroll off-screen naturally
-                                view.style.overflow = '';
-                                view.style.overflowX = 'hidden';
-                            }
+                            if (!view) return;
+                            // Only apply if clipsView is actually still the active view
+                            if (view.classList.contains('hidden') || view.style.display === 'none') return;
+                            view.style.display = 'flex';
+                            view.style.flexDirection = 'column';
+                            // Do NOT set overflow:hidden — sidebar must scroll naturally
+                            view.style.overflow = '';
+                            view.style.overflowX = 'hidden';
                             var scroll = document.getElementById('clipsMainScroll');
                             if (scroll) {
-                                // Let main content flow naturally; page-level scroll handles it
                                 scroll.style.overflowY = 'visible';
                                 scroll.style.webkitOverflowScrolling = '';
                             }
-                            // Trigger thumbnail fix after clips render
                             setTimeout(fixVideoThumbnails, 500);
                         }, 50);
                     });
                 }
+
+                // When ANY non-clipsView tab is clicked on mobile, increment the
+                // activation counter so any pending clipsView timer is cancelled,
+                // and reset inline styles that clipsView may have stamped on itself.
+                document.querySelectorAll('.nav-item:not([data-target="clipsView"])').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        if (!isMobile()) return;
+                        // Invalidate any pending clipsView deferred work
+                        _clipsViewActivation++;
+                        // Strip inline overflow/height styles clipsView may have set
+                        var cv = document.getElementById('clipsView');
+                        if (cv) {
+                            cv.style.display    = 'none';
+                            cv.style.overflow   = '';
+                            cv.style.overflowX  = '';
+                            cv.style.height     = '';
+                            cv.style.minHeight  = '';
+                        }
+                        var scroll = document.getElementById('clipsMainScroll');
+                        if (scroll) {
+                            scroll.style.overflowY = '';
+                            scroll.style.webkitOverflowScrolling = '';
+                        }
+                    });
+                });
             });
 
             // ── FIX F: Hero section — fix click on mobile ────────────
