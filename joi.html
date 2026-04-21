@@ -4728,6 +4728,25 @@
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"></path></svg>
         </button>
 
+        <!-- Batch-loading indicator — shown briefly when the next page is being fetched
+             so the user knows navigation is in progress, not broken. -->
+        <div id="posesLbLoadingPill"
+             style="display:none;position:absolute;top:50%;left:50%;
+                    transform:translate(-50%,-50%);z-index:20;
+                    background:rgba(0,0,0,0.65);backdrop-filter:blur(8px);
+                    border-radius:999px;padding:10px 20px;
+                    display:none;align-items:center;gap:10px;pointer-events:none;">
+            <svg style="width:18px;height:18px;animation:spin 0.9s linear infinite;flex-shrink:0;"
+                 viewBox="0 0 24 24" fill="none" stroke="#7fe826" stroke-width="2.5">
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83
+                         M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+            </svg>
+            <span style="color:#fff;font-size:12px;font-weight:700;white-space:nowrap;">
+                Loading more…
+            </span>
+        </div>
+        <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+
         <!-- Zoom controls -->
         <div class="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-black/50 backdrop-blur-sm rounded-full px-3 py-2">
             <button onclick="zoomPosesLightbox(-1)" title="Zoom out" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center transition-colors">
@@ -13678,10 +13697,19 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             _lbApply();
         }
 
+        // ─── Collect every currently-rendered pose card that matches the active
+        //     filter.  In "all" mode we return every card; in a specific-tag mode
+        //     we return only cards whose poseName matches.
+        //     This is rebuilt on every navigation step so newly appended cards
+        //     (loaded in the background) are picked up automatically.
         function _buildLightboxImages(poseName) {
-            return [...document.querySelectorAll('#posesGrid .pose-card')]
-                .filter(c => c.dataset.poseName === poseName)
-                .map(c => ({ url: c.dataset.poseUrl, name: c.dataset.poseName }));
+            const cards = [...document.querySelectorAll('#posesGrid .pose-card')];
+            // If a specific category is active, filter to that category only.
+            // In "all" mode poseName is '' or irrelevant — return everything.
+            const filtered = (currentPoseFilter !== 'all' && poseName)
+                ? cards.filter(c => c.dataset.poseName === poseName)
+                : cards;
+            return filtered.map(c => ({ url: c.dataset.poseUrl, name: c.dataset.poseName }));
         }
 
         function openPosesLightbox(url, poseName) {
@@ -13696,32 +13724,114 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             _lbApplyState();
         }
 
+        // Whether a background batch fetch is already running for the lightbox
+        let _lbFetching = false;
+
         function _lbApplyState() {
             const img     = document.getElementById('posesLightboxImg');
             const counter = document.getElementById('posesLightboxCounter');
             const prev    = document.getElementById('posesLightboxPrev');
             const next    = document.getElementById('posesLightboxNext');
 
+            // Re-sync image list from DOM so any background-loaded cards are included
+            const currentItem = _lbImages[_lbCurrentIndex];
+            if (currentItem) {
+                _lbImages = _buildLightboxImages(currentItem.name);
+                // Re-find index after list refresh (URL is the stable key)
+                const newIdx = _lbImages.findIndex(i => i.url === currentItem.url);
+                if (newIdx !== -1) _lbCurrentIndex = newIdx;
+            }
+
             // Reset transform immediately so the image snaps back to centre
             _lbReset();
             img.src = (_lbImages[_lbCurrentIndex] || {}).url || '';
 
-            // Counter
-            if (_lbImages.length > 1) {
-                counter.textContent = `${_lbCurrentIndex + 1} / ${_lbImages.length}`;
+            // Counter — show total + hint when more are available from DB
+            const total = posesHasMore
+                ? `${_lbCurrentIndex + 1} / ${_lbImages.length}+`
+                : `${_lbCurrentIndex + 1} / ${_lbImages.length}`;
+            if (_lbImages.length > 1 || posesHasMore) {
+                counter.textContent = total;
                 counter.classList.remove('hidden');
             } else {
                 counter.classList.add('hidden');
             }
+
             prev.disabled = _lbCurrentIndex <= 0;
-            next.disabled = _lbCurrentIndex >= _lbImages.length - 1;
+            // "Next" is enabled when there's a next image already loaded OR more
+            // images are waiting in the DB.
+            next.disabled = _lbCurrentIndex >= _lbImages.length - 1 && !posesHasMore;
+
+            // Pre-fetch the next batch when we are within the last 3 images of the
+            // current loaded set and the DB still has more.
+            const nearEnd = _lbCurrentIndex >= _lbImages.length - 3;
+            if (nearEnd && posesHasMore && !posesFetching && !_lbFetching) {
+                _lbPrefetchNextBatch();
+            }
+        }
+
+        // Silently load the next page into the grid so it's ready before the
+        // user hits the very last image.
+        async function _lbPrefetchNextBatch() {
+            if (_lbFetching || posesFetching || !posesHasMore) return;
+            _lbFetching = true;
+            await fetchPosesPage(false);   // appends cards, updates posesHasMore
+            _lbFetching = false;
+            // Refresh state so the new cards are counted and "next" is re-enabled
+            _lbApplyState();
         }
 
         function navigatePosesLightbox(dir) {
             const n = _lbCurrentIndex + dir;
+
+            // Moving forward but at the last loaded image and more exist in DB
+            if (dir === 1 && n >= _lbImages.length) {
+                if (!posesHasMore) return; // genuinely at the end
+                if (_lbFetching || posesFetching) {
+                    // Fetch already in flight — show spinner, then advance when done
+                    _lbShowLoadingPill(true);
+                    const poll = setInterval(() => {
+                        if (!_lbFetching && !posesFetching) {
+                            clearInterval(poll);
+                            _lbShowLoadingPill(false);
+                            // Re-sync list and advance
+                            const cur = _lbImages[_lbCurrentIndex];
+                            _lbImages = _buildLightboxImages(cur ? cur.name : '');
+                            const ni = _lbCurrentIndex + 1;
+                            if (ni < _lbImages.length) {
+                                _lbCurrentIndex = ni;
+                                _lbApplyState();
+                            }
+                        }
+                    }, 150);
+                } else {
+                    // Start a fetch now, show spinner, advance on completion
+                    _lbShowLoadingPill(true);
+                    _lbFetching = true;
+                    fetchPosesPage(false).then(() => {
+                        _lbFetching = false;
+                        _lbShowLoadingPill(false);
+                        const cur = _lbImages[_lbCurrentIndex];
+                        _lbImages = _buildLightboxImages(cur ? cur.name : '');
+                        const ni = _lbCurrentIndex + 1;
+                        if (ni < _lbImages.length) {
+                            _lbCurrentIndex = ni;
+                            _lbApplyState();
+                        }
+                    });
+                }
+                return;
+            }
+
             if (n < 0 || n >= _lbImages.length) return;
             _lbCurrentIndex = n;
             _lbApplyState();
+        }
+
+        function _lbShowLoadingPill(visible) {
+            const pill = document.getElementById('posesLbLoadingPill');
+            if (!pill) return;
+            pill.style.display = visible ? 'flex' : 'none';
         }
 
         // Zoom pinned to viewport point (cx, cy).
