@@ -2694,9 +2694,10 @@
 
         /* ── FIX 10: clipsMainScroll height on mobile ── */
         /* overflow-y intentionally NOT set here — natural page scroll is used instead */
+        /* NOTE: display is NOT forced here — it must stay under JS control so that
+           hide/show tab switching works correctly on mobile. */
         @media (max-width: 767px) {
             #clipsView {
-                display: flex !important;
                 flex-direction: column !important;
             }
             #clipsMainScroll {
@@ -9120,10 +9121,12 @@ let editingClipId = null; // Track if we are editing
                         savedGalleryScrollPosition = window.scrollY || document.documentElement.scrollTop;
                     }
                     
-                    // Hide all views and remove inline display styles
+                    // Hide all views — use setProperty with 'important' priority so that
+                    // no CSS media-query !important rule (e.g. display:flex !important on
+                    // #clipsView at ≤767 px) can resurrect a panel that should be hidden.
                     document.querySelectorAll('.view-section').forEach(s => {
                         s.classList.add('hidden');
-                        s.style.display = 'none';
+                        s.style.setProperty('display', 'none', 'important');
                     });
 
                     // ── MOBILE FIX: neutralise the clipsView mobile CSS overrides
@@ -9138,9 +9141,11 @@ let editingClipId = null; // Track if we are editing
                         _clipsViewEl.style.height     = '0';
                     }
 
-                    // Reactivate target view
+                    // Reactivate target view — first clear the !important display override
+                    // set above, then apply the correct display type for this panel.
                     const viewEl = document.getElementById(target);
                     viewEl.classList.remove('hidden');
+                    viewEl.style.removeProperty('display'); // remove the !important 'none'
                     
                     // Force proper display types
                     if (target === 'clipsView') {
