@@ -50,6 +50,10 @@
         .cat-picker-item { user-select: none; }
         .cat-picker-item:hover .cat-check { border-color: #7fe826; }
 
+        /* ── Lightbox nav arrows disabled ── */
+        #posesLightboxPrev:disabled,
+        #posesLightboxNext:disabled { opacity: 0.25; pointer-events: none; }
+
         /* ── Tag suggestion dropdown ── */
         .tag-suggestions { position: absolute; }
         .tag-suggestion-item {
@@ -4530,26 +4534,28 @@
             </div>
 
             <div class="p-6 space-y-5 overflow-y-auto custom-scrollbar">
-                <!-- Pose selector / creator -->
+                <!-- Pose Category multi-picker -->
                 <div>
-                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Pose Category <span class="text-red-400">*</span></label>
-                    <div id="poseSelectSection" class="space-y-3">
-                        <!-- Existing poses -->
-                        <div id="poseExistingSection" class="hidden">
-                            <select id="poseSelectDropdown" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none text-sm shadow-sm focus:ring-2 focus:ring-[#7fe826]">
-                                <option value="">— Select existing pose —</option>
-                            </select>
-                            <button onclick="toggleCreateNewPose()" class="mt-2 text-xs font-bold text-[#7fe826] hover:underline">+ Create new pose instead</button>
-                        </div>
-                        <!-- New pose name input -->
-                        <div id="poseNewSection">
-                            <input type="text" id="poseNewNameInput" placeholder="Enter new pose name (e.g. Sitting, Standing...)" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none text-sm shadow-sm focus:ring-2 focus:ring-[#7fe826]">
-                            <div id="poseNewSwitchBack" class="hidden mt-2">
-                                <button onclick="toggleCreateNewPose()" class="text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:underline">← Back to existing poses</button>
-                            </div>
-                            <p id="poseDuplicateError" class="hidden mt-1.5 text-xs font-semibold text-red-400">A pose with that name already exists.</p>
-                        </div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Pose Categories <span class="text-red-400">*</span></label>
+                    <p class="text-xs text-slate-400 dark:text-slate-500 mb-2.5">Select one or more categories. The images will be added to all selected categories.</p>
+
+                    <!-- Existing categories — checkboxes -->
+                    <div id="poseCategoryPickerWrap" class="hidden">
+                        <div id="poseCategoryChecklist" class="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl max-h-44 overflow-y-auto custom-scrollbar divide-y divide-slate-100 dark:divide-slate-800"></div>
+                        <button onclick="toggleCreateNewPose()" class="mt-2 text-xs font-bold text-[#7fe826] hover:underline">+ Create new category</button>
                     </div>
+
+                    <!-- New category name input -->
+                    <div id="poseNewSection">
+                        <input type="text" id="poseNewNameInput" placeholder="Enter new category name (e.g. Sitting, Standing…)" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none text-sm shadow-sm focus:ring-2 focus:ring-[#7fe826]">
+                        <div id="poseNewSwitchBack" class="hidden mt-2">
+                            <button onclick="toggleCreateNewPose()" class="text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:underline">← Back to existing categories</button>
+                        </div>
+                        <p id="poseDuplicateError" class="hidden mt-1.5 text-xs font-semibold text-red-400">A category with that name already exists.</p>
+                    </div>
+
+                    <!-- Selected chips summary -->
+                    <div id="poseSelectedChips" class="hidden flex-wrap gap-1.5 mt-2.5"></div>
                 </div>
 
                 <!-- Image URLs textarea -->
@@ -4576,11 +4582,43 @@
     <!-- ===== /POSES UPLOAD MODAL ===== -->
 
     <!-- ===== POSES IMAGE LIGHTBOX ===== -->
-    <div id="posesLightbox" class="modal fixed inset-0 z-[200] bg-black/90 backdrop-blur-md items-center justify-center">
+    <div id="posesLightbox" class="modal fixed inset-0 z-[200] bg-black/90 backdrop-blur-md items-center justify-center select-none">
+        <!-- Close -->
         <button onclick="closePosesLightbox()" class="absolute top-5 right-5 z-10 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
         </button>
-        <img id="posesLightboxImg" src="" class="max-w-[90vw] max-h-[90vh] object-contain rounded-2xl shadow-2xl">
+
+        <!-- Counter badge -->
+        <div id="posesLightboxCounter" class="absolute top-5 left-1/2 -translate-x-1/2 z-10 px-4 py-1.5 rounded-full bg-white/10 text-white text-xs font-bold tracking-wide hidden"></div>
+
+        <!-- Prev arrow -->
+        <button id="posesLightboxPrev" onclick="navigatePosesLightbox(-1)" class="absolute left-3 sm:left-5 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center transition-colors disabled:opacity-20 disabled:cursor-not-allowed">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
+        </button>
+
+        <!-- Image wrapper (overflow hidden for zoom) -->
+        <div class="relative flex items-center justify-center overflow-hidden" style="width:90vw;max-width:1200px;height:90vh;">
+            <img id="posesLightboxImg" src="" class="object-contain rounded-2xl shadow-2xl transition-transform duration-200 ease-out cursor-grab active:cursor-grabbing"
+                 style="max-width:100%;max-height:100%;transform-origin:center center;">
+        </div>
+
+        <!-- Next arrow -->
+        <button id="posesLightboxNext" onclick="navigatePosesLightbox(1)" class="absolute right-3 sm:right-5 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center transition-colors disabled:opacity-20 disabled:cursor-not-allowed">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"></path></svg>
+        </button>
+
+        <!-- Zoom controls -->
+        <div class="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-black/50 backdrop-blur-sm rounded-full px-3 py-2">
+            <button onclick="zoomPosesLightbox(-1)" title="Zoom out" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M20 20l-4.35-4.35M15.5 10.5a5 5 0 11-10 0 5 5 0 0110 0zM8 10.5h5"></path></svg>
+            </button>
+            <span id="posesLightboxZoomLabel" class="text-white text-xs font-bold w-10 text-center">100%</span>
+            <button onclick="zoomPosesLightbox(1)" title="Zoom in" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M20 20l-4.35-4.35M15.5 10.5a5 5 0 11-10 0 5 5 0 0110 0zM10.5 8v5M8 10.5h5"></path></svg>
+            </button>
+            <div class="w-px h-5 bg-white/20 mx-1"></div>
+            <button onclick="resetPosesLightboxZoom()" title="Reset zoom" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center transition-colors text-[10px] font-bold">1:1</button>
+        </div>
     </div>
     <!-- ===== /POSES IMAGE LIGHTBOX ===== -->
 
@@ -12913,7 +12951,9 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                 const safeUrl = img.image_url.replace(/'/g, "\\'");
                 const card = document.createElement('div');
                 card.className = 'pose-card';
-                card.onclick = () => openPosesLightbox(img.image_url);
+                card.dataset.poseUrl  = img.image_url;
+                card.dataset.poseName = poseName;
+                card.onclick = () => openPosesLightbox(img.image_url, poseName);
                 card.innerHTML = `
                     <img src="${img.image_url}" alt="${poseName}" loading="lazy" decoding="async"
                          onload="setPosesCardSpan(this.closest('.pose-card'))"
@@ -12987,13 +13027,18 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             }
         }
 
-        // ---- Upload Modal ----
+        // ---- Upload Modal (multi-category) ----
+
+        // Tracks which existing categories are checked
+        let poseSelectedCategories = new Set();
+
         function openPosesUploadModal() {
-            populatePoseDropdown();
+            poseSelectedCategories.clear();
             document.getElementById('poseImageUrlsInput').value = '';
             document.getElementById('poseNewNameInput').value = '';
             document.getElementById('poseDuplicateError').classList.add('hidden');
             document.getElementById('posesUploadError').classList.add('hidden');
+            populatePoseCategoryPicker();
             document.getElementById('posesUploadModal').classList.add('active');
         }
 
@@ -13001,125 +13046,175 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             document.getElementById('posesUploadModal').classList.remove('active');
         }
 
-        function populatePoseDropdown() {
-            const existing = document.getElementById('poseExistingSection');
-            const newSec = document.getElementById('poseNewSection');
+        function populatePoseCategoryPicker() {
+            const pickerWrap = document.getElementById('poseCategoryPickerWrap');
+            const newSec     = document.getElementById('poseNewSection');
             const switchBack = document.getElementById('poseNewSwitchBack');
-            const dropdown = document.getElementById('poseSelectDropdown');
+            const checklist  = document.getElementById('poseCategoryChecklist');
+            const chipsWrap  = document.getElementById('poseSelectedChips');
+            isCreatingNewPose = false;
 
             if (posesTagsList.length === 0) {
-                // No poses yet – must create
-                existing.classList.add('hidden');
+                // No categories yet — go straight to create
+                pickerWrap.classList.add('hidden');
                 newSec.classList.remove('hidden');
                 switchBack.classList.add('hidden');
                 isCreatingNewPose = true;
             } else {
-                // Show existing + option to create new
-                existing.classList.remove('hidden');
+                pickerWrap.classList.remove('hidden');
                 newSec.classList.add('hidden');
                 switchBack.classList.add('hidden');
-                isCreatingNewPose = false;
-                dropdown.innerHTML = '<option value="">— Select existing pose —</option>';
-                posesTagsList.forEach(tag => {
-                    dropdown.innerHTML += `<option value="${tag}">${tag}</option>`;
-                });
+
+                checklist.innerHTML = posesTagsList.map(tag => `
+                    <label class="cat-picker-item flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[#7fe826]/10 transition-colors">
+                        <span class="cat-check w-4 h-4 rounded border-2 border-slate-300 dark:border-slate-600 flex items-center justify-center flex-shrink-0 transition-colors" data-tag="${tag}">
+                            <svg class="w-2.5 h-2.5 text-white hidden checkmark-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </span>
+                        <span class="text-sm font-medium text-slate-700 dark:text-slate-300">${tag}</span>
+                        <input type="checkbox" class="sr-only pose-cat-checkbox" value="${tag}" onchange="onPoseCategoryToggle(this, '${tag.replace(/'/g,"\\'")}')">
+                    </label>`).join('');
             }
+            renderPoseChips();
+        }
+
+        function onPoseCategoryToggle(checkbox, tag) {
+            const label    = checkbox.closest('label');
+            const checkBox = label.querySelector('.cat-check');
+            const icon     = label.querySelector('.checkmark-icon');
+            if (checkbox.checked) {
+                poseSelectedCategories.add(tag);
+                checkBox.style.background = '#7fe826';
+                checkBox.style.borderColor = '#7fe826';
+                icon.classList.remove('hidden');
+            } else {
+                poseSelectedCategories.delete(tag);
+                checkBox.style.background = '';
+                checkBox.style.borderColor = '';
+                icon.classList.add('hidden');
+            }
+            renderPoseChips();
+        }
+
+        function renderPoseChips() {
+            const wrap = document.getElementById('poseSelectedChips');
+            if (poseSelectedCategories.size === 0) {
+                wrap.classList.remove('flex');
+                wrap.classList.add('hidden');
+                return;
+            }
+            wrap.classList.remove('hidden');
+            wrap.classList.add('flex');
+            wrap.innerHTML = [...poseSelectedCategories].map(tag =>
+                `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#7fe826]/15 text-[#3d7a0a] dark:text-[#7fe826] text-xs font-bold border border-[#7fe826]/30">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+                    ${tag}
+                </span>`
+            ).join('');
         }
 
         function toggleCreateNewPose() {
-            const existing = document.getElementById('poseExistingSection');
-            const newSec = document.getElementById('poseNewSection');
+            const pickerWrap = document.getElementById('poseCategoryPickerWrap');
+            const newSec     = document.getElementById('poseNewSection');
             const switchBack = document.getElementById('poseNewSwitchBack');
             isCreatingNewPose = !isCreatingNewPose;
             if (isCreatingNewPose) {
-                existing.classList.add('hidden');
+                pickerWrap.classList.add('hidden');
                 newSec.classList.remove('hidden');
                 switchBack.classList.remove('hidden');
                 document.getElementById('poseNewNameInput').focus();
             } else {
-                existing.classList.remove('hidden');
+                pickerWrap.classList.remove('hidden');
                 newSec.classList.add('hidden');
             }
             document.getElementById('poseDuplicateError').classList.add('hidden');
         }
 
-async function submitPosesUpload() {
-            const btn = document.getElementById('posesSubmitBtn');
-            const errEl = document.getElementById('posesUploadError');
+        async function submitPosesUpload() {
+            const btn    = document.getElementById('posesSubmitBtn');
+            const errEl  = document.getElementById('posesUploadError');
             const dupErr = document.getElementById('poseDuplicateError');
             errEl.classList.add('hidden');
             dupErr.classList.add('hidden');
 
-            // Determine pose
-            let poseName = '';
+            // ── Determine target category names ─────────────────────────────
+            let targetNames = []; // may be multiple
+
             if (isCreatingNewPose || posesTagsList.length === 0) {
-                poseName = document.getElementById('poseNewNameInput').value.trim();
-                if (!poseName) { errEl.textContent = 'Please enter a pose name.'; errEl.classList.remove('hidden'); return; }
-                // Check duplicate
-                if (posesTagsList.some(t => t.toLowerCase() === poseName.toLowerCase())) {
-                    dupErr.classList.remove('hidden');
-                    return;
+                const newName = document.getElementById('poseNewNameInput').value.trim();
+                if (!newName) { errEl.textContent = 'Please enter a category name.'; errEl.classList.remove('hidden'); return; }
+                if (posesTagsList.some(t => t.toLowerCase() === newName.toLowerCase())) {
+                    dupErr.classList.remove('hidden'); return;
                 }
+                targetNames = [newName];
             } else {
-                poseName = document.getElementById('poseSelectDropdown').value;
-                if (!poseName) { errEl.textContent = 'Please select a pose or create a new one.'; errEl.classList.remove('hidden'); return; }
+                targetNames = [...poseSelectedCategories];
+                // Also pick up any newly-typed name if the new-section is visible
+                const newSec = document.getElementById('poseNewSection');
+                if (!newSec.classList.contains('hidden')) {
+                    const newName = document.getElementById('poseNewNameInput').value.trim();
+                    if (newName) targetNames.push(newName);
+                }
+                if (targetNames.length === 0) {
+                    errEl.textContent = 'Please select at least one category.';
+                    errEl.classList.remove('hidden'); return;
+                }
             }
 
-            // Parse URLs
+            // ── Parse URLs ───────────────────────────────────────────────────
             const rawUrls = document.getElementById('poseImageUrlsInput').value;
-            const urls = rawUrls.split('\n').map(u => u.trim()).filter(u => u.length > 0);
-            if (urls.length === 0) { errEl.textContent = 'Please enter at least one image URL.'; errEl.classList.remove('hidden'); return; }
+            const urls    = rawUrls.split('\n').map(u => u.trim()).filter(u => u.length > 0);
+            if (urls.length === 0) {
+                errEl.textContent = 'Please enter at least one image URL.';
+                errEl.classList.remove('hidden'); return;
+            }
 
             btn.disabled = true;
-            btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Uploading...';
+            btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Uploading…';
 
             try {
-                // Upsert pose
-                let poseId;
-                const { data: existingPose } = await supabaseClient
-                    .from('poses')
-                    .select('id')
-                    .ilike('name', poseName)
-                    .maybeSingle();
+                let allInserted = [];
 
-                if (existingPose) {
-                    poseId = existingPose.id;
-                } else {
-                    const { data: newPose, error: poseErr } = await supabaseClient
-                        .from('poses')
-                        .insert({ name: poseName })
-                        .select('id')
-                        .single();
-                    if (poseErr) throw poseErr;
-                    poseId = newPose.id;
+                for (const poseName of targetNames) {
+                    // Upsert pose row
+                    let poseId;
+                    const { data: existingPose } = await supabaseClient
+                        .from('poses').select('id').ilike('name', poseName).maybeSingle();
+                    if (existingPose) {
+                        poseId = existingPose.id;
+                    } else {
+                        const { data: newPose, error: poseErr } = await supabaseClient
+                            .from('poses').insert({ name: poseName }).select('id').single();
+                        if (poseErr) throw poseErr;
+                        poseId = newPose.id;
+                    }
+
+                    // Insert images for this category
+                    const inserts = urls.map(url => ({ pose_id: poseId, image_url: url }));
+                    const { data: inserted, error: imgErr } = await supabaseClient
+                        .from('pose_images').insert(inserts).select('*, poses(name)');
+                    if (imgErr) throw imgErr;
+                    allInserted = allInserted.concat(inserted || []);
+
+                    // Update local tags list
+                    if (!posesTagsList.includes(poseName)) {
+                        posesTagsList.push(poseName);
+                        posesTagsList.sort();
+                    }
                 }
 
-                // Insert images
-                const inserts = urls.map(url => ({ pose_id: poseId, image_url: url }));
-                const { data: inserted, error: imgErr } = await supabaseClient
-                    .from('pose_images')
-                    .insert(inserts)
-                    .select('*, poses(name)');
-                if (imgErr) throw imgErr;
-
-                // Prepend new images to grid immediately
-                appendPoseCards(inserted);
-
-                // Add new pose to tags list if not already there
-                if (!posesTagsList.includes(poseName)) {
-                    posesTagsList.push(poseName);
-                    posesTagsList.sort();
-                }
+                appendPoseCards(allInserted);
                 renderPosesFilterBar();
 
-                // Switch filter to the new pose
-                currentPoseFilter = poseName;
+                // Switch filter to first selected category
+                currentPoseFilter = targetNames[0];
                 renderPosesFilterBar();
                 fetchPosesPage(true);
 
                 closePosesUploadModal();
-                // Fixed line below
-                showSuccessToast(`${inserted.length} image${inserted.length > 1 ? 's' : ''} added to "${poseName}"`);
+                const catLabel = targetNames.length > 1
+                    ? `${targetNames.length} categories`
+                    : `"${targetNames[0]}"`;
+                showSuccessToast(`${urls.length} image${urls.length > 1 ? 's' : ''} added to ${catLabel}`);
             } catch (e) {
                 console.error(e);
                 errEl.textContent = 'Upload failed: ' + (e.message || 'Unknown error');
@@ -13130,18 +13225,108 @@ async function submitPosesUpload() {
             }
         }
 
-        // ---- Lightbox ----
-        function openPosesLightbox(url) {
-            document.getElementById('posesLightboxImg').src = url;
+        // ---- Lightbox (nav + zoom) ----
+        let _lbCurrentIndex = -1;
+        let _lbImages       = [];   // [{url, name}] for the active category
+        let _lbZoom         = 1.0;
+        const _LB_ZOOM_STEP = 0.25;
+        const _LB_ZOOM_MIN  = 0.5;
+        const _LB_ZOOM_MAX  = 4.0;
+
+        function _buildLightboxImages(poseName) {
+            // Collect all visible cards that share the same category
+            const cards = [...document.querySelectorAll('#posesGrid .pose-card')];
+            return cards
+                .filter(c => c.dataset.poseName === poseName)
+                .map(c => ({ url: c.dataset.poseUrl, name: c.dataset.poseName }));
+        }
+
+        function openPosesLightbox(url, poseName) {
+            poseName = poseName || '';
+            _lbImages = _buildLightboxImages(poseName);
+            if (_lbImages.length === 0) _lbImages = [{ url, name: poseName }];
+            _lbCurrentIndex = _lbImages.findIndex(i => i.url === url);
+            if (_lbCurrentIndex === -1) _lbCurrentIndex = 0;
+            _lbZoom = 1.0;
+            _applyLightboxState();
             document.getElementById('posesLightbox').classList.add('active');
         }
+
+        function _applyLightboxState() {
+            const img     = document.getElementById('posesLightboxImg');
+            const counter = document.getElementById('posesLightboxCounter');
+            const prev    = document.getElementById('posesLightboxPrev');
+            const next    = document.getElementById('posesLightboxNext');
+            const label   = document.getElementById('posesLightboxZoomLabel');
+
+            const entry = _lbImages[_lbCurrentIndex];
+            img.src = entry ? entry.url : '';
+
+            // Reset zoom on navigation
+            img.style.transform = `scale(${_lbZoom})`;
+            label.textContent = Math.round(_lbZoom * 100) + '%';
+
+            // Counter
+            if (_lbImages.length > 1) {
+                counter.textContent = `${_lbCurrentIndex + 1} / ${_lbImages.length}`;
+                counter.classList.remove('hidden');
+            } else {
+                counter.classList.add('hidden');
+            }
+
+            // Arrow states
+            prev.disabled = _lbCurrentIndex <= 0;
+            next.disabled = _lbCurrentIndex >= _lbImages.length - 1;
+        }
+
+        function navigatePosesLightbox(dir) {
+            const next = _lbCurrentIndex + dir;
+            if (next < 0 || next >= _lbImages.length) return;
+            _lbCurrentIndex = next;
+            _lbZoom = 1.0;
+            _applyLightboxState();
+        }
+
+        function zoomPosesLightbox(dir) {
+            _lbZoom = Math.min(_LB_ZOOM_MAX, Math.max(_LB_ZOOM_MIN, _lbZoom + dir * _LB_ZOOM_STEP));
+            const img   = document.getElementById('posesLightboxImg');
+            const label = document.getElementById('posesLightboxZoomLabel');
+            img.style.transform   = `scale(${_lbZoom})`;
+            label.textContent = Math.round(_lbZoom * 100) + '%';
+        }
+
+        function resetPosesLightboxZoom() {
+            _lbZoom = 1.0;
+            const img   = document.getElementById('posesLightboxImg');
+            const label = document.getElementById('posesLightboxZoomLabel');
+            img.style.transform   = 'scale(1)';
+            label.textContent = '100%';
+        }
+
         function closePosesLightbox() {
             document.getElementById('posesLightbox').classList.remove('active');
             document.getElementById('posesLightboxImg').src = '';
+            _lbImages = []; _lbCurrentIndex = -1; _lbZoom = 1.0;
         }
+
         document.addEventListener('keydown', e => {
-            if (e.key === 'Escape' && document.getElementById('posesLightbox').classList.contains('active')) closePosesLightbox();
+            const lb = document.getElementById('posesLightbox');
+            if (!lb.classList.contains('active')) return;
+            if (e.key === 'Escape')      closePosesLightbox();
+            if (e.key === 'ArrowLeft')   navigatePosesLightbox(-1);
+            if (e.key === 'ArrowRight')  navigatePosesLightbox(1);
+            if (e.key === '+' || e.key === '=') zoomPosesLightbox(1);
+            if (e.key === '-')           zoomPosesLightbox(-1);
+            if (e.key === '0')           resetPosesLightboxZoom();
         });
+
+        // Scroll-wheel zoom inside lightbox
+        document.getElementById('posesLightbox') && document.addEventListener('wheel', e => {
+            const lb = document.getElementById('posesLightbox');
+            if (!lb || !lb.classList.contains('active')) return;
+            e.preventDefault();
+            zoomPosesLightbox(e.deltaY < 0 ? 1 : -1);
+        }, { passive: false });
 
         let dfInitialized = false;
         function dfOnViewActivated() {
