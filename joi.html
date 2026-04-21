@@ -4582,7 +4582,17 @@
     <!-- ===== /POSES UPLOAD MODAL ===== -->
 
     <!-- ===== POSES IMAGE LIGHTBOX ===== -->
-    <div id="posesLightbox" class="modal fixed inset-0 z-[200] bg-black/90 backdrop-blur-md items-center justify-center select-none">
+    <!--
+      Layout strategy:
+      • #posesLightbox  – fixed full-screen flex container (items/justify = center).
+                          overflow:hidden clips zoomed content.
+      • #posesLightboxImg – sits at flex center at zoom=1.
+                            We zoom with transform-origin:center center + scale().
+                            Cursor-pinned zoom is handled in JS by computing
+                            a corrective translate so the focal point stays fixed.
+    -->
+    <div id="posesLightbox" class="modal fixed inset-0 z-[200] bg-black/90 backdrop-blur-md items-center justify-center select-none overflow-hidden">
+
         <!-- Close -->
         <button onclick="closePosesLightbox()" class="absolute top-5 right-5 z-10 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -4592,18 +4602,19 @@
         <div id="posesLightboxCounter" class="absolute top-5 left-1/2 -translate-x-1/2 z-10 px-4 py-1.5 rounded-full bg-white/10 text-white text-xs font-bold tracking-wide hidden"></div>
 
         <!-- Prev arrow -->
-        <button id="posesLightboxPrev" onclick="navigatePosesLightbox(-1)" class="absolute left-3 sm:left-5 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center transition-colors disabled:opacity-20 disabled:cursor-not-allowed">
+        <button id="posesLightboxPrev" onclick="navigatePosesLightbox(-1)" class="absolute left-3 sm:left-5 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center transition-colors disabled:opacity-20 disabled:cursor-not-allowed" style="z-index:10">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
         </button>
 
-        <!-- Image wrapper (overflow hidden for zoom) -->
-        <div id="posesLightboxWrapper" class="relative flex items-center justify-center overflow-hidden" style="width:90vw;max-width:1200px;height:90vh;">
-            <img id="posesLightboxImg" src="" class="object-contain rounded-2xl shadow-2xl cursor-grab active:cursor-grabbing"
-                 style="max-width:100%;max-height:100%;transform-origin:0 0;will-change:transform;">
-        </div>
+        <!-- Image — centered by the flex parent; zoomed in place via JS transform -->
+        <img id="posesLightboxImg" src="" alt=""
+             class="rounded-2xl shadow-2xl cursor-grab active:cursor-grabbing"
+             style="display:block;max-width:90vw;max-height:90vh;object-fit:contain;
+                    transform-origin:center center;will-change:transform;
+                    transition:transform 0.05s linear;">
 
         <!-- Next arrow -->
-        <button id="posesLightboxNext" onclick="navigatePosesLightbox(1)" class="absolute right-3 sm:right-5 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center transition-colors disabled:opacity-20 disabled:cursor-not-allowed">
+        <button id="posesLightboxNext" onclick="navigatePosesLightbox(1)" class="absolute right-3 sm:right-5 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center transition-colors disabled:opacity-20 disabled:cursor-not-allowed" style="z-index:10">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"></path></svg>
         </button>
 
@@ -13250,41 +13261,61 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             }
         }
 
-        // ---- Lightbox (nav + zoom) ----
+        // ─────────────────────────────────────────────────────────────────────
+        // LIGHTBOX — nav + zoom
+        //
+        // Zoom model
+        // ----------
+        // The image is a plain flex child of the full-screen overlay, so the
+        // browser centres it automatically at zoom=1 (no manual translate).
+        //
+        // We use transform-origin:center center and express every zoom as:
+        //
+        //   transform: translate(ox px, oy px) scale(z)
+        //
+        // where (ox, oy) is a corrective offset (0,0 at zoom=1) that keeps
+        // the cursor-pinned focal point from drifting.
+        //
+        // Math for cursor-pinned zoom:
+        //   Let C = cursor in viewport coords.
+        //   Let R = image bounding-rect BEFORE this zoom step.
+        //   Focal point in image-local coords (0..1):
+        //     fx = (C.x - R.left) / R.width
+        //     fy = (C.y - R.top)  / R.height
+        //   After changing zoom from z0 → z1 the image centre stays fixed
+        //   (that's what transform-origin:center does), so the new rect is:
+        //     R1.left = R.cx - R.width  * z1/2   (where R.cx = R.left + R.width/2)
+        //   The focal point must end up at the same screen position C, so:
+        //     newOx = ox + (C.x - (R1.left + fx*R1.width))  [correct the drift]
+        //
+        // This is computed entirely from live getBoundingClientRect(), which
+        // already incorporates any accumulated offset — so there's no state
+        // to go stale between zoom steps.
+        // ─────────────────────────────────────────────────────────────────────
+
         let _lbCurrentIndex = -1;
-        let _lbImages       = [];   // [{url, name}] for the active category
+        let _lbImages       = [];
         let _lbZoom         = 1.0;
-        let _lbTX           = 0;    // current translateX (px, at zoom=1 space)
-        let _lbTY           = 0;    // current translateY
+        let _lbOX           = 0;   // accumulated corrective translate-X (viewport px)
+        let _lbOY           = 0;   // accumulated corrective translate-Y (viewport px)
         const _LB_ZOOM_STEP = 0.25;
         const _LB_ZOOM_MIN  = 0.5;
         const _LB_ZOOM_MAX  = 4.0;
 
-        function _lbApplyTransform(img) {
-            // transform-origin is fixed at 0 0; we manage everything via translate+scale
-            img.style.transform = `translate(${_lbTX}px, ${_lbTY}px) scale(${_lbZoom})`;
+        function _lbApply() {
+            const img = document.getElementById('posesLightboxImg');
+            img.style.transform = `translate(${_lbOX}px,${_lbOY}px) scale(${_lbZoom})`;
+            document.getElementById('posesLightboxZoomLabel').textContent =
+                Math.round(_lbZoom * 100) + '%';
         }
 
-        // Return the img's natural centered offset inside its wrapper at zoom=1
-        function _lbBaseOffset(img) {
-            const wrapper = document.getElementById('posesLightboxWrapper');
-            const wW = wrapper.clientWidth, wH = wrapper.clientHeight;
-            const iW = img.offsetWidth,     iH = img.offsetHeight;
-            return { x: (wW - iW) / 2, y: (wH - iH) / 2 };
-        }
-
-        function _lbResetTransform(img) {
-            _lbZoom = 1.0;
-            const off = _lbBaseOffset(img);
-            _lbTX = off.x;
-            _lbTY = off.y;
-            _lbApplyTransform(img);
+        function _lbReset() {
+            _lbZoom = 1; _lbOX = 0; _lbOY = 0;
+            _lbApply();
         }
 
         function _buildLightboxImages(poseName) {
-            // Collect all visible cards that share the same category
-            const cards = [...document.querySelectorAll('#posesGrid .pose-card')];
-            return cards
+            return [...document.querySelectorAll('#posesGrid .pose-card')]
                 .filter(c => c.dataset.poseName === poseName)
                 .map(c => ({ url: c.dataset.poseUrl, name: c.dataset.poseName }));
         }
@@ -13292,38 +13323,22 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
         function openPosesLightbox(url, poseName) {
             poseName = poseName || '';
             _lbImages = _buildLightboxImages(poseName);
-            if (_lbImages.length === 0) _lbImages = [{ url, name: poseName }];
+            if (!_lbImages.length) _lbImages = [{ url, name: poseName }];
             _lbCurrentIndex = _lbImages.findIndex(i => i.url === url);
             if (_lbCurrentIndex === -1) _lbCurrentIndex = 0;
             document.getElementById('posesLightbox').classList.add('active');
-            _applyLightboxState();
+            _lbApplyState();
         }
 
-        function _applyLightboxState() {
+        function _lbApplyState() {
             const img     = document.getElementById('posesLightboxImg');
             const counter = document.getElementById('posesLightboxCounter');
             const prev    = document.getElementById('posesLightboxPrev');
             const next    = document.getElementById('posesLightboxNext');
-            const label   = document.getElementById('posesLightboxZoomLabel');
 
-            const entry = _lbImages[_lbCurrentIndex];
-            img.src = entry ? entry.url : '';
-
-            // Reset zoom + centering on every navigation
-            _lbZoom = 1.0;
-            _lbTX = 0; _lbTY = 0;
-            img.style.transform = 'none'; // clear until image loads and we can measure
-            img.onload = () => {
-                _lbResetTransform(img);
-                img.onload = null;
-            };
-            // If already cached the image is loaded synchronously — fire immediately
-            if (img.complete && img.naturalWidth) {
-                _lbResetTransform(img);
-                img.onload = null;
-            }
-
-            label.textContent = '100%';
+            // Reset transform immediately so the image snaps back to centre
+            _lbReset();
+            img.src = (_lbImages[_lbCurrentIndex] || {}).url || '';
 
             // Counter
             if (_lbImages.length > 1) {
@@ -13332,83 +13347,88 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             } else {
                 counter.classList.add('hidden');
             }
-
-            // Arrow states
             prev.disabled = _lbCurrentIndex <= 0;
             next.disabled = _lbCurrentIndex >= _lbImages.length - 1;
         }
 
         function navigatePosesLightbox(dir) {
-            const next = _lbCurrentIndex + dir;
-            if (next < 0 || next >= _lbImages.length) return;
-            _lbCurrentIndex = next;
-            _applyLightboxState();
+            const n = _lbCurrentIndex + dir;
+            if (n < 0 || n >= _lbImages.length) return;
+            _lbCurrentIndex = n;
+            _lbApplyState();
         }
 
-        // Zoom centered on a viewport point (cx, cy). Falls back to image center if omitted.
+        // Zoom pinned to viewport point (cx, cy).
+        // If omitted, zoom from the image's current visual centre.
         function _lbZoomAt(newZoom, cx, cy) {
-            const img = document.getElementById('posesLightboxImg');
-            const wrapper = document.getElementById('posesLightboxWrapper');
             newZoom = Math.min(_LB_ZOOM_MAX, Math.max(_LB_ZOOM_MIN, newZoom));
+            if (newZoom === _lbZoom) return;
 
-            // If no focal point given, use the wrapper center
-            if (cx === undefined) {
-                const r = wrapper.getBoundingClientRect();
-                cx = r.left + r.width  / 2;
-                cy = r.top  + r.height / 2;
-            }
-
-            // Current transform maps image-space point P to screen as:
-            //   screen = (P * oldZoom) + [TX, TY]  (with transform-origin 0 0)
-            // We want the screen position of the focal point to stay fixed.
-            // Focal point in image space:
-            const fxImg = (cx - _lbTX) / _lbZoom;
-            const fyImg = (cy - _lbTY) / _lbZoom;
-
-            // New translate so that fxImg * newZoom + newTX = cx  =>  newTX = cx - fxImg * newZoom
-            _lbTX = cx - fxImg * newZoom;
-            _lbTY = cy - fyImg * newZoom;
-            _lbZoom = newZoom;
-
-            _lbApplyTransform(img);
-            document.getElementById('posesLightboxZoomLabel').textContent = Math.round(_lbZoom * 100) + '%';
-        }
-
-        function zoomPosesLightbox(dir, cx, cy) {
-            _lbZoomAt(_lbZoom + dir * _LB_ZOOM_STEP, cx, cy);
-        }
-
-        function resetPosesLightboxZoom() {
             const img = document.getElementById('posesLightboxImg');
-            _lbZoom = 1.0;
-            _lbResetTransform(img);
-            document.getElementById('posesLightboxZoomLabel').textContent = '100%';
+
+            // Capture the image's current rendered rect BEFORE changing the transform.
+            // getBoundingClientRect() returns the post-transform screen rect,
+            // which is exactly what we need to map cursor → image-local coords.
+            const R = img.getBoundingClientRect();
+
+            // Use the image's visual centre as focal point if none was supplied
+            if (cx === undefined) { cx = R.left + R.width / 2; cy = R.top + R.height / 2; }
+
+            // Focal point in image-local fractional coords [0..1]
+            const fx = (cx - R.left) / R.width;
+            const fy = (cy - R.top)  / R.height;
+
+            // After the zoom the image will be scaled by (newZoom/oldZoom) around
+            // transform-origin:center.  The new rendered rect centre stays at the
+            // same screen position as the old centre (that's what center-origin does).
+            const oldCX = R.left + R.width  / 2;
+            const oldCY = R.top  + R.height / 2;
+            const ratio = newZoom / _lbZoom;
+            const newW  = R.width  * ratio;
+            const newH  = R.height * ratio;
+            const newLeft = oldCX - newW / 2;
+            const newTop  = oldCY - newH / 2;
+
+            // Where would the focal point land after the zoom (no correction)?
+            const fxScreen = newLeft + fx * newW;
+            const fyScreen = newTop  + fy * newH;
+
+            // Drift = where it lands minus where it should be (the cursor)
+            _lbOX += cx - fxScreen;
+            _lbOY += cy - fyScreen;
+            _lbZoom = newZoom;
+            _lbApply();
         }
+
+        function zoomPosesLightbox(dir) {
+            // Button-triggered zoom — no cursor, zooms from visual centre
+            _lbZoomAt(_lbZoom + dir * _LB_ZOOM_STEP);
+        }
+
+        function resetPosesLightboxZoom() { _lbReset(); }
 
         function closePosesLightbox() {
             document.getElementById('posesLightbox').classList.remove('active');
             document.getElementById('posesLightboxImg').src = '';
-            _lbImages = []; _lbCurrentIndex = -1; _lbZoom = 1.0; _lbTX = 0; _lbTY = 0;
+            _lbImages = []; _lbCurrentIndex = -1;
+            _lbZoom = 1; _lbOX = 0; _lbOY = 0;
         }
 
         document.addEventListener('keydown', e => {
-            const lb = document.getElementById('posesLightbox');
-            if (!lb.classList.contains('active')) return;
-            if (e.key === 'Escape')      closePosesLightbox();
-            if (e.key === 'ArrowLeft')   navigatePosesLightbox(-1);
-            if (e.key === 'ArrowRight')  navigatePosesLightbox(1);
-            if (e.key === '+' || e.key === '=') zoomPosesLightbox(1);
-            if (e.key === '-')           zoomPosesLightbox(-1);
-            if (e.key === '0')           resetPosesLightboxZoom();
+            if (!document.getElementById('posesLightbox').classList.contains('active')) return;
+            if (e.key === 'Escape')                  closePosesLightbox();
+            if (e.key === 'ArrowLeft')               navigatePosesLightbox(-1);
+            if (e.key === 'ArrowRight')              navigatePosesLightbox(1);
+            if (e.key === '+' || e.key === '=')      zoomPosesLightbox(1);
+            if (e.key === '-')                       zoomPosesLightbox(-1);
+            if (e.key === '0')                       resetPosesLightboxZoom();
         });
 
-        // Scroll-wheel zoom centered on mouse cursor position
+        // Wheel zoom — cursor position passed directly
         document.addEventListener('wheel', e => {
-            const lb = document.getElementById('posesLightbox');
-            if (!lb || !lb.classList.contains('active')) return;
+            if (!document.getElementById('posesLightbox').classList.contains('active')) return;
             e.preventDefault();
-            const dir = e.deltaY < 0 ? 1 : -1;
-            _lbZoomAt(_lbZoom + dir * _LB_ZOOM_STEP, e.clientX, e.clientY);
+            _lbZoomAt(_lbZoom + (e.deltaY < 0 ? 1 : -1) * _LB_ZOOM_STEP, e.clientX, e.clientY);
         }, { passive: false });
 
         let dfInitialized = false;
