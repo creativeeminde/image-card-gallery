@@ -4685,7 +4685,8 @@
                             Cursor-pinned zoom is handled in JS by computing
                             a corrective translate so the focal point stays fixed.
     -->
-    <div id="posesLightbox" class="modal fixed inset-0 z-[200] bg-black/90 backdrop-blur-md items-center justify-center select-none overflow-hidden">
+    <div id="posesLightbox" class="modal fixed inset-0 z-[200] bg-black/90 backdrop-blur-md select-none overflow-hidden"
+         style="display:none; flex-direction:column; width:100%; height:100dvh; top:0; left:0;">
 
         <!-- Close -->
         <button onclick="closePosesLightbox()" class="absolute top-5 right-5 z-10 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors">
@@ -4700,12 +4701,27 @@
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
         </button>
 
-        <!-- Image — centered by the flex parent; zoomed in place via JS transform -->
-        <img id="posesLightboxImg" src="" alt=""
-             class="rounded-2xl shadow-2xl cursor-grab active:cursor-grabbing"
-             style="display:block;max-width:90vw;max-height:90vh;object-fit:contain;
-                    transform-origin:center center;will-change:transform;
-                    transition:transform 0.05s linear;">
+        <!-- Image centering wrapper — fills the full lightbox and uses its own
+             flex centering so the image is always perfectly centred regardless
+             of its intrinsic size.  The wrapper itself is position:absolute so
+             it does not participate in normal flow and cannot be pushed around
+             by the absolutely-positioned buttons / counter above/below it. -->
+        <div id="posesLightboxImgWrap"
+             style="position:absolute;inset:0;display:flex;align-items:center;
+                    justify-content:center;width:100%;height:100%;pointer-events:none;">
+            <!-- Image — pointer-events re-enabled so grab/zoom still work -->
+            <img id="posesLightboxImg" src="" alt=""
+                 class="rounded-2xl shadow-2xl cursor-grab active:cursor-grabbing"
+                 style="display:block;
+                        max-width:90vw;max-height:80dvh;
+                        width:auto;height:auto;
+                        object-fit:contain;
+                        flex-shrink:0;
+                        transform-origin:center center;
+                        will-change:transform;
+                        transition:transform 0.05s linear;
+                        pointer-events:auto;">
+        </div>
 
         <!-- Next arrow -->
         <button id="posesLightboxNext" onclick="navigatePosesLightbox(1)" class="absolute right-3 sm:right-5 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center transition-colors disabled:opacity-20 disabled:cursor-not-allowed" style="z-index:10">
@@ -13674,7 +13690,9 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             if (!_lbImages.length) _lbImages = [{ url, name: poseName }];
             _lbCurrentIndex = _lbImages.findIndex(i => i.url === url);
             if (_lbCurrentIndex === -1) _lbCurrentIndex = 0;
-            document.getElementById('posesLightbox').classList.add('active');
+            const lb = document.getElementById('posesLightbox');
+            lb.classList.add('active');
+            lb.style.setProperty('display', 'flex', 'important');
             _lbApplyState();
         }
 
@@ -13756,7 +13774,9 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
         function resetPosesLightboxZoom() { _lbReset(); }
 
         function closePosesLightbox() {
-            document.getElementById('posesLightbox').classList.remove('active');
+            const lb = document.getElementById('posesLightbox');
+            lb.classList.remove('active');
+            lb.style.setProperty('display', 'none', 'important');
             document.getElementById('posesLightboxImg').src = '';
             _lbImages = []; _lbCurrentIndex = -1;
             _lbZoom = 1; _lbOX = 0; _lbOY = 0;
