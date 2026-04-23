@@ -13971,39 +13971,21 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             try {
                 const imageUrl = _editCatImageUrl;
 
-                // ── Fetch current DB state for this image ────────────────────
-                const { data: existingRows, error: fetchErr } = await supabaseClient
-                    .from('pose_images')
-                    .select('id, pose_id, poses(id, name)')
-                    .eq('image_url', imageUrl);
-                if (fetchErr) throw fetchErr;
-
-                const currentMap = new Map(); // poseName → row_id
-                (existingRows || []).forEach(r => {
-                    if (r.poses?.name) currentMap.set(r.poses.name, r.id);
-                });
-                const currentNames = new Set(currentMap.keys());
-
-                // ── Compute diff ─────────────────────────────────────────────
-                const toAdd    = targetCats.filter(n => !currentNames.has(n));
-                const toRemove = [...currentNames].filter(n => !targetCats.includes(n));
-
-                // ── Delete removed categories ────────────────────────────────
-                for (const name of toRemove) {
-                    const rowId = currentMap.get(name);
-                    if (rowId) {
-                        const { error: delErr } = await supabaseClient
-                            .from('pose_images').delete().eq('id', rowId);
-                        if (delErr) throw delErr;
-                    }
-                }
-
-                // ── Read safety type once up front ───────────────────────────
+                // ── Read safety type ─────────────────────────────────────────
                 const newSafetyType = document.getElementById('poseEditNsfwCheckbox').checked ? 'nsfw' : 'sfw';
 
-                // ── Insert added categories ──────────────────────────────────
-                for (const name of toAdd) {
-                    // Upsert pose row
+                // ── Delete ALL existing rows for this image URL ──────────────
+                // Wipe-and-reinsert is the only reliable way to guarantee
+                // safety_type is written — UPDATE can silently no-op if the
+                // PostgREST schema cache hasn't picked up the new column yet.
+                const { error: delAllErr } = await supabaseClient
+                    .from('pose_images')
+                    .delete()
+                    .eq('image_url', imageUrl);
+                if (delAllErr) throw delAllErr;
+
+                // ── Re-insert one row per target category with safety_type ───
+                for (const name of targetCats) {
                     let poseId;
                     const { data: existingPose } = await supabaseClient
                         .from('poses').select('id').ilike('name', name).maybeSingle();
@@ -14019,18 +14001,11 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                             posesTagsList.sort();
                         }
                     }
-                    // Always include safety_type on insert so new rows are correct immediately
                     const { error: insErr } = await supabaseClient
-                        .from('pose_images').insert({ pose_id: poseId, image_url: imageUrl, safety_type: newSafetyType });
+                        .from('pose_images')
+                        .insert({ pose_id: poseId, image_url: imageUrl, safety_type: newSafetyType });
                     if (insErr) throw insErr;
                 }
-
-                // ── Persist safety_type on ALL rows for this image (including unchanged ones) ──
-                const { error: safetyErr } = await supabaseClient
-                    .from('pose_images')
-                    .update({ safety_type: newSafetyType })
-                    .eq('image_url', imageUrl);
-                if (safetyErr) throw safetyErr;
 
                 // ── Update every card in the DOM that shows this image ───────
                 const firstCat = targetCats[0] || '';
