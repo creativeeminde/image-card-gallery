@@ -13299,7 +13299,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             try {
                 let query = supabaseClient
                     .from('pose_images')
-                    .select('*, poses(name)')
+                    .select('id, image_url, safety_type, poses(name)')
                     .order('created_at', { ascending })
                     .range(posesPageOffset, posesPageOffset + POSES_PAGE_SIZE - 1);
 
@@ -13309,7 +13309,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                     if (poseRow) {
                         query = supabaseClient
                             .from('pose_images')
-                            .select('*, poses(name)')
+                            .select('id, image_url, safety_type, poses(name)')
                             .eq('pose_id', poseRow.id)
                             .order('created_at', { ascending })
                             .range(posesPageOffset, posesPageOffset + POSES_PAGE_SIZE - 1);
@@ -13377,7 +13377,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                 while (true) {
                     let q = supabaseClient
                         .from('pose_images')
-                        .select('*, poses(name)')
+                        .select('id, image_url, safety_type, poses(name)')
                         .order('id', { ascending: true })   // stable ordering for paging
                         .range(offset, offset + CHUNK - 1);
                     if (poseRowId) q = q.eq('pose_id', poseRowId);
@@ -13471,7 +13471,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                 card.dataset.poseName       = poseName;
                 card.dataset.poseCategories = poseName;
                 card.dataset.poseImageId    = img.id;          // needed for delete + edit
-                card.dataset.safety         = (img.safety_type === 'nsfw') ? 'nsfw' : 'sfw';
+                card.dataset.safety         = (String(img.safety_type).toLowerCase() === 'nsfw') ? 'nsfw' : 'sfw';
                 // Apply blur immediately if currently in SFW mode and card is NSFW
                 if (posesContentMode === 'sfw' && card.dataset.safety === 'nsfw') {
                     card.classList.add('nsfw-blurred');
@@ -13998,6 +13998,9 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                     }
                 }
 
+                // ── Read safety type once up front ───────────────────────────
+                const newSafetyType = document.getElementById('poseEditNsfwCheckbox').checked ? 'nsfw' : 'sfw';
+
                 // ── Insert added categories ──────────────────────────────────
                 for (const name of toAdd) {
                     // Upsert pose row
@@ -14016,13 +14019,13 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                             posesTagsList.sort();
                         }
                     }
+                    // Always include safety_type on insert so new rows are correct immediately
                     const { error: insErr } = await supabaseClient
-                        .from('pose_images').insert({ pose_id: poseId, image_url: imageUrl });
+                        .from('pose_images').insert({ pose_id: poseId, image_url: imageUrl, safety_type: newSafetyType });
                     if (insErr) throw insErr;
                 }
 
-                // ── Update safety_type on all rows for this image ────────────
-                const newSafetyType = document.getElementById('poseEditNsfwCheckbox').checked ? 'nsfw' : 'sfw';
+                // ── Persist safety_type on ALL rows for this image (including unchanged ones) ──
                 const { error: safetyErr } = await supabaseClient
                     .from('pose_images')
                     .update({ safety_type: newSafetyType })
