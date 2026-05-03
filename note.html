@@ -1314,23 +1314,38 @@
 
                 const els = document.elementsFromPoint(e.clientX, e.clientY);
                 
-                const hoveredProject = els.find(el => el.classList && el.classList.contains('card-wrapper') && el.dataset.type === 'project' && el !== dragInfo.el && el !== dragInfo.clone);
+                const hoveredProject = els.find(el => {
+                    if (!el.classList || !el.classList.contains('card-wrapper')) return false;
+                    if (el.dataset.type !== 'project') return false;
+                    if (el === dragInfo.el || el === dragInfo.clone) return false;
+                    // Only target project cards in the current context
+                    const expectedParent = currentOpenProjectId || '';
+                    if ((el.dataset.projectId || '') !== expectedParent) return false;
+                    return true;
+                });
                 
                 const isSticky = dragInfo.el.dataset.type === 'sticky' || dragInfo.el.dataset.type === 'attached-sticky';
                 const hoveredCardForSticky = isSticky ? els.find(el => {
                     if (!el.classList || !el.classList.contains('card-wrapper')) return false;
                     if (el === dragInfo.el || el === dragInfo.clone || el === dragInfo.placeholder) return false;
                     if (!el.dataset.type || el.dataset.type === 'project' || el.dataset.type === 'sticky' || el.dataset.type === 'attached-sticky') return false;
+                    // Must belong to the same context: if inside a project, card must share that
+                    // project_id; on home page (no open project) card must be top-level.
+                    // This prevents elementsFromPoint from hitting cards in the main grid
+                    // that are rendered behind the project-view-overlay.
+                    if (currentOpenProjectId) {
+                        if (el.dataset.projectId !== currentOpenProjectId) return false;
+                    } else {
+                        if (el.dataset.projectId) return false;
+                    }
                     // For attached-stickies, only allow drop onto cards in the same project
                     if (dragInfo.el.dataset.type === 'attached-sticky' && dragInfo.parentCardId) {
                         const candidateNote = allNotes.find(n => n.id === el.dataset.id);
                         if (!candidateNote || candidateNote.project_id !== allNotes.find(n => n.id === dragInfo.parentCardId)?.project_id) {
-                            // The target card must share the same parent project as the sticky's host card
                             if (el.dataset.id !== dragInfo.parentCardId) {
                                 const hostNote = allNotes.find(n => n.id === dragInfo.parentCardId);
-                                const candidateIsHost = el.dataset.id === dragInfo.parentCardId;
                                 const sameProject = candidateNote && hostNote && candidateNote.project_id === hostNote.project_id;
-                                if (!candidateIsHost && !sameProject) return false;
+                                if (!sameProject) return false;
                             }
                         }
                     }
