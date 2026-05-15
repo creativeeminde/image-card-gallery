@@ -4263,10 +4263,25 @@
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Clip Title</label>
                     <input type="text" id="ytClipTitle" required class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none">
                 </div>
-                <div>
+                <!-- ── Upload Mode Toggle ── -->
+                <div id="ytUploadModeToggle" class="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-900 rounded-xl w-fit">
+                    <button type="button" id="ytSingleModeBtn" onclick="setYTUploadMode('single')"
+                        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                        Single URL
+                    </button>
+                    <button type="button" id="ytBulkModeBtn" onclick="setYTUploadMode('bulk')"
+                        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+                        Bulk URLs
+                    </button>
+                </div>
+
+                <!-- ── Single URL Mode ── -->
+                <div id="ytSingleUrlSection">
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Video URL</label>
                     <div class="relative">
-                        <input type="url" id="ytClipUrl" required
+                        <input type="url" id="ytClipUrl"
                             oninput="autoDetectClipDuration(this.value)"
                             class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none pr-10">
                         <!-- Spinner shown while loading metadata -->
@@ -4279,6 +4294,23 @@
                     </div>
                     <!-- Hidden video element used purely for metadata extraction -->
                     <video id="ytDurationProbe" preload="metadata" class="hidden" style="display:none;"></video>
+                </div>
+
+                <!-- ── Bulk URL Mode ── -->
+                <div id="ytBulkUrlSection" class="hidden">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300">Video URLs <span class="text-xs font-normal text-slate-400">(one per line or comma-separated)</span></label>
+                        <span id="ytBulkUrlCount" class="text-[11px] font-bold text-[#7fe826] bg-[#7fe826]/10 px-2 py-0.5 rounded-full hidden">0 URLs</span>
+                    </div>
+                    <textarea id="ytBulkUrls" rows="5"
+                        oninput="updateBulkUrlCount()"
+                        placeholder="https://example.com/video1.mp4&#10;https://example.com/video2.mp4&#10;https://example.com/video3.mp4&#10;&#10;Or paste comma-separated URLs..."
+                        class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none resize-none text-sm leading-relaxed font-mono focus:border-[#7fe826] transition-colors custom-scrollbar"></textarea>
+                    <div id="ytBulkValidationMsg" class="hidden mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold">
+                        <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span id="ytBulkValidationText"></span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 pl-1">Title and other fields below will be applied to <strong>all</strong> clips. Leave Title blank to auto-number them.</p>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
@@ -4332,9 +4364,21 @@
                     <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 pl-1">Associate this clip with a website to enable filtering by site in OnlyClips.</p>
                 </div>
 
+                <!-- ── Bulk Upload Progress ── -->
+                <div id="ytBulkProgressSection" class="hidden rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                    <div class="flex items-center justify-between px-4 py-2.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700">
+                        <span class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide">Upload Progress</span>
+                        <span id="ytBulkProgressLabel" class="text-xs font-bold text-[#7fe826]">0 / 0</span>
+                    </div>
+                    <div class="w-full h-1.5 bg-slate-100 dark:bg-slate-800">
+                        <div id="ytBulkProgressBar" class="h-full bg-[#7fe826] transition-all duration-300 rounded-r-full" style="width:0%"></div>
+                    </div>
+                    <div id="ytBulkProgressLog" class="max-h-32 overflow-y-auto custom-scrollbar px-4 py-2 space-y-1.5 text-[11px] font-mono"></div>
+                </div>
+
                 <div class="pt-4 flex gap-3">
                     <button type="button" onclick="closeYTUploadModal()" class="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 py-3 rounded-xl font-bold">Cancel</button>
-                    <button type="submit" class="flex-1 bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] py-3 rounded-xl font-bold">Upload Clip</button>
+                    <button type="submit" id="ytUploadSubmitBtn" class="flex-1 bg-[#111] dark:bg-[#7fe826] text-white dark:text-[#111] py-3 rounded-xl font-bold">Upload Clip</button>
                 </div>
             </form>
         </div>
@@ -7267,7 +7311,8 @@ let editingClipId = null; // Track if we are editing
 
             // 4. Update Modal Text for Editing
             document.querySelector('#ytUploadModal h3').textContent = 'Edit Clip';
-            document.querySelector('#ytUploadForm button[type="submit"]').textContent = 'Save Changes';
+            const _submitBtn = document.getElementById('ytUploadSubmitBtn');
+            if (_submitBtn) _submitBtn.textContent = 'Save Changes';
 
             // Open the edit form. If the player is currently open, stack on top of it;
             // otherwise open normally (e.g. triggered directly from the clip grid).
@@ -7283,6 +7328,96 @@ let editingClipId = null; // Track if we are editing
             }
             uploadModal.classList.add('active');
         }
+
+        // ── Upload Mode Toggle ──────────────────────────────────────────────────
+        let _ytUploadMode = 'single'; // 'single' | 'bulk'
+
+        function setYTUploadMode(mode) {
+            _ytUploadMode = mode;
+            const singleBtn = document.getElementById('ytSingleModeBtn');
+            const bulkBtn   = document.getElementById('ytBulkModeBtn');
+            const singleSec = document.getElementById('ytSingleUrlSection');
+            const bulkSec   = document.getElementById('ytBulkUrlSection');
+            const submitBtn = document.getElementById('ytUploadSubmitBtn');
+            const titleField = document.getElementById('ytClipTitle');
+            const singleInput = document.getElementById('ytClipUrl');
+
+            const activeClass   = ['bg-white','dark:bg-slate-700','text-slate-800','dark:text-white','shadow-sm'];
+            const inactiveClass = ['text-slate-500','dark:text-slate-400','hover:text-slate-700','dark:hover:text-slate-200'];
+
+            if (mode === 'single') {
+                singleBtn.classList.add(...activeClass);
+                singleBtn.classList.remove(...inactiveClass);
+                bulkBtn.classList.remove(...activeClass);
+                bulkBtn.classList.add(...inactiveClass);
+                singleSec.classList.remove('hidden');
+                bulkSec.classList.add('hidden');
+                if (singleInput) singleInput.required = true;
+                if (titleField) titleField.required = true;
+                if (submitBtn) submitBtn.textContent = 'Upload Clip';
+            } else {
+                bulkBtn.classList.add(...activeClass);
+                bulkBtn.classList.remove(...inactiveClass);
+                singleBtn.classList.remove(...activeClass);
+                singleBtn.classList.add(...inactiveClass);
+                bulkSec.classList.remove('hidden');
+                singleSec.classList.add('hidden');
+                if (singleInput) singleInput.required = false;
+                if (titleField) titleField.required = false;
+                if (submitBtn) submitBtn.textContent = 'Upload All Clips';
+            }
+        }
+
+        function updateBulkUrlCount() {
+            const raw   = document.getElementById('ytBulkUrls')?.value || '';
+            const urls  = parseBulkUrls(raw);
+            const badge = document.getElementById('ytBulkUrlCount');
+            const msg   = document.getElementById('ytBulkValidationMsg');
+            const msgTxt= document.getElementById('ytBulkValidationText');
+            if (!badge) return;
+            if (urls.length === 0) {
+                badge.classList.add('hidden');
+                if (msg) msg.classList.add('hidden');
+                return;
+            }
+            badge.classList.remove('hidden');
+            badge.textContent = urls.length + (urls.length === 1 ? ' URL' : ' URLs');
+            // Validate each looks like a URL
+            const invalid = urls.filter(u => {
+                try { new URL(u); return false; } catch { return true; }
+            });
+            if (invalid.length > 0 && msg && msgTxt) {
+                msg.classList.remove('hidden');
+                msg.classList.remove('text-[#7fe826]');
+                msg.classList.add('text-amber-500');
+                msgTxt.textContent = invalid.length + ' line(s) don\'t look like valid URLs and will be skipped.';
+            } else if (msg) {
+                msg.classList.add('hidden');
+            }
+        }
+
+        function parseBulkUrls(raw) {
+            // Split by newlines OR commas, then trim, then filter empty/non-url
+            return raw
+                .split(/[\n,]+/)
+                .map(s => s.trim())
+                .filter(s => s.length > 0 && (s.startsWith('http://') || s.startsWith('https://')));
+        }
+
+        function _logBulkProgress(msg, type) {
+            const log = document.getElementById('ytBulkProgressLog');
+            if (!log) return;
+            const el = document.createElement('div');
+            el.className = type === 'ok'
+                ? 'text-[#7fe826]'
+                : type === 'err'
+                    ? 'text-red-400'
+                    : 'text-slate-400 dark:text-slate-500';
+            el.textContent = msg;
+            log.appendChild(el);
+            log.scrollTop = log.scrollHeight;
+        }
+        // ─────────────────────────────────────────────────────────────────────────
 
         function openYTUploadModal() { 
             document.getElementById('ytUploadModal').classList.add('active'); 
@@ -7376,7 +7511,19 @@ let editingClipId = null; // Track if we are editing
             // Reset state back to "Upload" mode
             editingClipId = null;
             document.querySelector('#ytUploadModal h3').textContent = 'Upload New Clip';
-            document.querySelector('#ytUploadForm button[type="submit"]').textContent = 'Upload Clip';
+            // Reset bulk/single mode
+            _ytUploadMode = 'single';
+            setYTUploadMode('single');
+            const bulkTA = document.getElementById('ytBulkUrls');
+            if (bulkTA) bulkTA.value = '';
+            const bulkBadge = document.getElementById('ytBulkUrlCount');
+            if (bulkBadge) bulkBadge.classList.add('hidden');
+            const bulkMsg = document.getElementById('ytBulkValidationMsg');
+            if (bulkMsg) bulkMsg.classList.add('hidden');
+            const bulkProgress = document.getElementById('ytBulkProgressSection');
+            if (bulkProgress) bulkProgress.classList.add('hidden');
+            const bulkLog = document.getElementById('ytBulkProgressLog');
+            if (bulkLog) bulkLog.innerHTML = '';
 
             // If opened from player, player is still open behind — nothing else needed
             // If NOT from player, do nothing (normal close behaviour)
@@ -9682,17 +9829,122 @@ const addAudioForm = document.getElementById('addAudioForm');
             if (ytUploadForm) {
                 ytUploadForm.addEventListener('submit', async (e) => {
                     e.preventDefault();
-                    const title = document.getElementById('ytClipTitle').value;
-                    const url = document.getElementById('ytClipUrl').value;
+
+                    // ── Shared fields (used by both single & bulk modes) ──────────────
+                    const titleInput = document.getElementById('ytClipTitle').value.trim();
                     const card_id_raw = document.getElementById('selectedModelId').value;
-                    // Multi-model: parse comma-separated ids from hidden input (populated by _selectedModels)
                     const allCardIds = card_id_raw ? card_id_raw.split(',').map(Number).filter(Boolean) : [];
-                    const card_id = allCardIds.length ? allCardIds[0] : null; // primary for backward compat
+                    const card_id = allCardIds.length ? allCardIds[0] : null;
                     const duration = document.getElementById('ytClipDuration').value || '0:00';
                     const category_ids = getSelectedClipCategoryIds();
-                    const category_id = category_ids.length ? category_ids[0] : null; // primary for backward compat / filtering
-
+                    const category_id = category_ids.length ? category_ids[0] : null;
                     const siteNameVal = (document.getElementById('ytClipSiteName')?.value || '').trim() || null;
+
+                    // ── BULK MODE ─────────────────────────────────────────────────────
+                    if (_ytUploadMode === 'bulk' && !editingClipId) {
+                        const rawBulk = document.getElementById('ytBulkUrls')?.value || '';
+                        const bulkUrls = parseBulkUrls(rawBulk);
+                        if (bulkUrls.length === 0) {
+                            alert('Please paste at least one valid video URL.');
+                            return;
+                        }
+                        // Show progress UI
+                        const progressSection = document.getElementById('ytBulkProgressSection');
+                        const progressBar    = document.getElementById('ytBulkProgressBar');
+                        const progressLabel  = document.getElementById('ytBulkProgressLabel');
+                        const progressLog    = document.getElementById('ytBulkProgressLog');
+                        const submitBtn      = document.getElementById('ytUploadSubmitBtn');
+                        if (progressSection) { progressSection.classList.remove('hidden'); progressLog.innerHTML = ''; }
+                        if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Uploading…'; }
+
+                        let okCount = 0, failCount = 0;
+                        for (let i = 0; i < bulkUrls.length; i++) {
+                            const clipUrl = bulkUrls[i];
+                            const clipTitle = titleInput ? `${titleInput} ${i + 1}` : `Clip ${i + 1}`;
+                            if (progressLabel) progressLabel.textContent = `${i} / ${bulkUrls.length}`;
+                            if (progressBar)   progressBar.style.width = `${Math.round((i / bulkUrls.length) * 100)}%`;
+                            _logBulkProgress(`[${i+1}/${bulkUrls.length}] Uploading: ${clipUrl.length > 55 ? clipUrl.slice(0,52)+'…' : clipUrl}`, 'info');
+                            try {
+                                const clipData = {
+                                    title: clipTitle,
+                                    url: clipUrl,
+                                    duration: '0:00',
+                                    category_id: category_id ? parseInt(category_id) : null,
+                                    category_ids: category_ids.length ? category_ids.map(Number).filter(Boolean) : null,
+                                    card_id: card_id ? parseInt(card_id) : null,
+                                    card_ids: allCardIds.length ? allCardIds.map(Number).filter(Boolean) : null,
+                                    site_name: siteNameVal
+                                };
+                                const { data, error } = await supabaseClient
+                                    .from('global_clips')
+                                    .insert([clipData])
+                                    .select('*, cards(id, title, main_image_url)');
+                                if (error) throw error;
+                                if (data && data.length > 0) {
+                                    ytGlobalClips.unshift(data[0]);
+                                    if (currentActiveModelData && allCardIds.includes(currentActiveModelData.id)) {
+                                        if (!currentActiveModelData.combined_clips) currentActiveModelData.combined_clips = [];
+                                        currentActiveModelData.combined_clips.unshift({tags: 'YT Clip', ...data[0]});
+                                    }
+                                    // Prepend card to grid
+                                    const grid = document.getElementById('ytClipsGrid');
+                                    if (grid) {
+                                        const clip = data[0];
+                                        const modelName = clip.cards ? clip.cards.title : '';
+                                        const avu = clip.cards ? optimizeMediaUrl(clip.cards.main_image_url, false, 100) : '';
+                                        const cu  = optimizeMediaUrl(clip.url, true);
+                                        const ds  = new Date(clip.created_at).toLocaleDateString();
+                                        grid.insertAdjacentHTML('afterbegin', `
+                                            <div class="flex flex-col gap-3 group" data-clip-id="${clip.id}">
+                                                <div class="relative w-full aspect-video bg-slate-200 dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm cursor-pointer" onclick="openYTPlayer(${clip.id})">
+                                                    <video src="${cu}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline preload="metadata" data-clip-id="${clip.id}" data-needs-duration="1"></video>
+                                                    <div class="absolute bottom-2 right-2 bg-black/80 text-white text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm" id="dur-badge-${clip.id}">0:00</div>
+                                                    <button onclick="event.stopPropagation(); openYTEditModal(${clip.id})" class="absolute top-2 left-2 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-[#7fe826] hover:text-[#111] transition-all backdrop-blur-sm" title="Edit Clip"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
+                                                </div>
+                                                <div class="flex gap-3 px-1">
+                                                    <img src="${avu}" class="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700 mt-0.5 shadow-sm" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2212%22 fill=%22%23cbd5e1%22/></svg>'">
+                                                    <div class="flex flex-col min-w-0">
+                                                        <h4 class="font-bold text-slate-900 dark:text-white text-sm line-clamp-2 leading-tight cursor-pointer hover:text-[#7fe826] transition-colors" onclick="openYTPlayer(${clip.id})">${clip.title}</h4>
+                                                        <span class="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">${modelName}</span>
+                                                        <div class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5"><span>0 views</span><span>•</span><span>${ds}</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>`);
+                                    }
+                                    okCount++;
+                                    _logBulkProgress(`  ✓ Done: ${clipTitle}`, 'ok');
+                                }
+                            } catch (err) {
+                                failCount++;
+                                _logBulkProgress(`  ✗ Failed: ${err.message || err}`, 'err');
+                            }
+                        }
+
+                        // Final progress
+                        if (progressBar)  progressBar.style.width = '100%';
+                        if (progressLabel) progressLabel.textContent = `${bulkUrls.length} / ${bulkUrls.length}`;
+                        _logBulkProgress(`─ Done: ${okCount} uploaded, ${failCount} failed ─`, failCount ? 'err' : 'ok');
+
+                        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Upload All Clips'; }
+
+                        if (okCount > 0) {
+                            backfillClipDurations();
+                            if (isClipViewer && !isGlobalViewer && currentActiveModelData) {
+                                renderState.fullClips.items = currentActiveModelData.combined_clips;
+                                document.getElementById('fullClipsGrid').innerHTML = `<div id="fullClipsGridInner" class="columns-1 sm:columns-2 gap-6 w-full space-y-6"></div>`;
+                                renderState.fullClips.index = 0;
+                                renderMore('fullClips');
+                            }
+                            showSuccessToast(`${okCount} clip${okCount > 1 ? 's' : ''} uploaded successfully!`);
+                            // Auto-close after short delay so user can see final log
+                            setTimeout(() => closeYTUploadModal(), 1800);
+                        }
+                        return; // Exit — bulk path done
+                    }
+
+                    // ── SINGLE MODE (original logic) ──────────────────────────────────
+                    const title = titleInput || 'Untitled Clip';
+                    const url = document.getElementById('ytClipUrl').value;
 
                     try {
                         const clipData = { 
