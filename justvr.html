@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="robots" content="noindex, nofollow">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>VR 360° Gallery</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://unpkg.com/imagesloaded@5/imagesloaded.pkgd.min.js"></script>
+  <script src="https://unpkg.com/masonry-layout@4/dist/masonry.pkgd.min.js"></script>
+  <style>
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0a0a0a; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #444; }
+
+    .loader {
+      border: 4px solid #1a1a1a;
+      border-top: 4px solid #22c55e;
+      border-radius: 50%;
+      width: 40px; height: 40px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+
+    .video-loader {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 28px; height: 28px;
+      border: 3px solid rgba(255,255,255,0.2);
+      border-radius: 50%; border-top-color: #22c55e;
+      animation: spin 1s ease-in-out infinite;
+      z-index: 5; display: none; pointer-events: none;
+    }
+
+    /* Masonry */
+    #gallery { position: relative; }
+    .masonry-item {
+      width: calc(100% - 8px);
+      margin-bottom: 8px; margin-left: 4px; margin-right: 4px;
+    }
+    @media (min-width: 768px) { .masonry-item { width: calc(50% - 8px); } }
+    @media (min-width: 1024px) { .masonry-item { width: calc(33.333% - 8px); } }
+
+    /* Force 16:9 for VR thumbnails */
+    .masonry-item video {
+      aspect-ratio: 16 / 9 !important;
+      object-fit: cover;
+    }
+
+    .masonry-item .overlay { opacity: 0; transition: opacity 0.2s ease-in-out; }
+    .masonry-item:hover .overlay { opacity: 1; }
+
+    /* Viewer */
+    #viewer-image-container { width:100%; height:100%; overflow:hidden; cursor:grab; position:relative; }
+
+    /* VR Badge glow */
+    .vr-badge {
+      background: linear-gradient(135deg, #16a34a, #15803d);
+      box-shadow: 0 0 12px rgba(34,197,94,0.4);
+    }
+  </style>
+</head>
+<body class="bg-black text-gray-300 font-sans antialiased">
+
+  <!-- Header -->
+  <header class="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-sm border-b border-gray-900">
+    <nav class="container mx-auto px-6 py-4 flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-full bg-green-500/20 border border-green-500/40 flex items-center justify-center">
+          <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+          </svg>
+        </div>
+        <span class="text-white font-semibold tracking-wide">VR 360° Gallery</span>
+        <span class="text-xs text-gray-600" id="total-card-count"></span>
+      </div>
+      <button onclick="openPopup()" class="px-4 py-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        Upload VR
+      </button>
+    </nav>
+  </header>
+
+  <!-- Main -->
+  <main id="main-content" class="pt-24 pb-12 px-4 md:px-6">
+    <div id="loader" class="flex justify-center items-center py-20"><div class="loader"></div></div>
+    <div id="gallery"></div>
+    <div id="no-results" class="text-center text-gray-600 py-20" style="display:none;">No VR videos found.</div>
+    <div id="scroll-loader" class="flex justify-center items-center py-10" style="display:none;"><div class="loader"></div></div>
+    <div id="load-more-container" class="flex justify-center py-8" style="display:none;">
+      <button id="load-more-btn" onclick="loadCards()" class="px-6 py-3 bg-gray-900 hover:bg-gray-800 border border-gray-700 text-white font-medium rounded-lg transition-colors flex items-center gap-2">Load More</button>
+    </div>
+  </main>
+
+  <!-- Image/VR Viewer Modal -->
+  <div id="image-viewer" class="fixed inset-0 z-[100] bg-black/95 overflow-y-auto" style="display:none;" onclick="closeImageViewer(event)">
+    <button class="absolute top-4 right-6 text-white text-5xl font-light z-[120]" onclick="closeImageViewer()">&times;</button>
+    <div class="relative w-full max-w-6xl mx-auto" onclick="event.stopPropagation()">
+      <div class="relative w-full h-[80vh] bg-black mt-8 md:mt-12">
+
+        <div id="viewer-header" class="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/70 to-transparent z-[105]">
+          <div class="flex items-start justify-between w-full pointer-events-none">
+            <div class="pointer-events-auto">
+              <div class="flex items-center gap-3 mb-2">
+                <h3 class="text-sm font-medium text-gray-400 uppercase tracking-wider">Tags</h3>
+              </div>
+              <div id="viewer-tags" class="flex flex-wrap gap-2"></div>
+            </div>
+            <div id="viewer-actions" class="flex items-center gap-3 pointer-events-auto"></div>
+          </div>
+        </div>
+
+        <div id="viewer-loader" class="absolute inset-0 flex items-center justify-center z-[101]"><div class="loader"></div></div>
+
+        <div id="viewer-image-container" class="w-full h-full z-[100] relative bg-black">
+          <video id="viewer-video" controls loop playsinline class="w-full h-full object-contain" style="display:none;"></video>
+
+          <!-- VR Scene -->
+          <div id="viewer-vr-container" class="absolute inset-0 z-[102]" style="display:none;">
+            <a-scene embedded vr-mode-ui="enabled:false" loading-screen="enabled:false" style="width:100%;height:100%;">
+              <a-assets>
+                <video id="vr-video-texture" loop crossorigin="anonymous" playsinline webkit-playsinline></video>
+              </a-assets>
+              <a-videosphere src="#vr-video-texture" rotation="0 -90 0"></a-videosphere>
+              <a-entity camera look-controls="reverseMouseDrag:true"></a-entity>
+            </a-scene>
+            <button id="vr-play-pause-btn" class="absolute bottom-4 left-1/2 -translate-x-1/2 px-5 py-2 bg-black/60 border border-green-500/40 text-white rounded-full hover:bg-green-600 transition z-[105] text-sm" onclick="toggleVRPlay()">⏸ Pause</button>
+          </div>
+        </div>
+
+        <button id="viewer-prev" class="absolute left-4 top-1/2 -translate-y-1/2 z-[105] p-2 bg-black/30 text-white text-3xl rounded-full hover:bg-black/60 transition-colors" onclick="prevImage(event)">&#10094;</button>
+        <button id="viewer-next" class="absolute right-4 top-1/2 -translate-y-1/2 z-[105] p-2 bg-black/30 text-white text-3xl rounded-full hover:bg-black/60 transition-colors" onclick="nextImage(event)">&#10095;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload Popup -->
+  <div id="popup" class="fixed inset-0 z-[210] flex items-center justify-center bg-black/80 p-4" style="display:none;">
+    <div class="bg-gray-950 border border-gray-800 p-6 rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <h3 class="text-xl font-semibold text-white mb-1">Upload VR / 360° Video</h3>
+      <p class="text-xs text-gray-500 mb-5">Equirectangular .mp4 videos only</p>
+      <form id="cardForm">
+        <textarea id="modelUrl" rows="4" class="w-full p-3 bg-gray-900 border border-gray-800 rounded-lg text-white placeholder-gray-600 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 text-sm" placeholder="Enter VR video URLs separated by commas" required></textarea>
+
+        <div class="mt-4">
+          <label class="text-sm text-gray-400 mb-2 block">Tags (optional)</label>
+          <div id="selectedTagsContainer" class="flex flex-wrap gap-2 p-2 bg-gray-900 border border-gray-800 rounded-lg min-h-[40px] mb-2"></div>
+          <div class="flex gap-2">
+            <select id="availableTags" class="flex-grow p-2 bg-gray-900 border border-gray-800 rounded-lg text-white focus:outline-none focus:border-green-500 text-sm">
+              <option value="">Select tag to add</option>
+            </select>
+            <button type="button" onclick="addTagToSelection()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg">Add</button>
+          </div>
+          <div class="flex gap-2 mt-2">
+            <input type="text" id="newTagInput" class="flex-grow p-2 bg-gray-900 border border-gray-800 rounded-lg text-white text-sm placeholder-gray-600" placeholder="Or create new tag...">
+            <button type="button" onclick="createAndAddTag()" class="px-4 py-2 bg-green-700 hover:bg-green-600 text-white text-sm rounded-lg">Create</button>
+          </div>
+        </div>
+
+        <div id="errorMessage" class="text-sm mt-4 hidden"></div>
+        <div class="mt-6 flex justify-end space-x-3">
+          <button type="button" onclick="closePopup()" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-sm rounded-lg">Cancel</button>
+          <button type="submit" class="px-5 py-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium rounded-lg">Upload</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Quick Edit Modal -->
+  <div id="quick-edit-modal" class="fixed inset-0 z-[210] flex items-center justify-center bg-black/80 p-4" style="display:none;">
+    <div class="bg-gray-950 border border-gray-800 p-6 rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <h3 class="text-xl font-semibold text-white mb-4">Edit VR Video</h3>
+      <form id="quickEditForm">
+        <input type="hidden" id="quickEditCardId">
+        <textarea id="quickEditModelUrl" rows="3" class="w-full p-3 bg-gray-900 border border-gray-800 rounded-lg text-white mb-4 placeholder-gray-600 text-sm" placeholder="URL"></textarea>
+        <div class="mt-2">
+          <label class="text-sm text-gray-400 mb-2 block">Tags</label>
+          <div id="quickEditSelectedTagsContainer" class="flex flex-wrap gap-2 p-2 bg-gray-900 border border-gray-800 rounded-lg min-h-[40px]"></div>
+        </div>
+        <div class="flex gap-2 mt-2 mb-4">
+          <select id="quickEditAvailableTags" class="flex-grow p-2 bg-gray-900 border border-gray-800 rounded-lg text-white text-sm">
+            <option value="">Select tags to add</option>
+          </select>
+          <button type="button" onclick="addTagToQuickEdit()" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg">Add</button>
+        </div>
+        <div id="quickEditErrorMessage" class="text-red-400 text-sm mt-2 hidden"></div>
+        <div class="flex justify-end space-x-3">
+          <button type="button" onclick="closeQuickEditModal()" class="px-4 py-2 bg-gray-800 text-white rounded-lg text-sm">Cancel</button>
+          <button type="submit" class="px-5 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm">Update</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js"></script>
+  <script>
+    let supabase;
+    const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
+
+    const PAGE_SIZE = 10;
+    let currentPage = 0;
+    let isLoadingMore = false;
+    let noMoreResults = false;
+    let displayedCards = [];
+    let allTags = [];
+    let selectedTags = [];
+    let quickEditSelectedTags = [];
+    let currentViewerIndex = 0;
+    let msnry;
+
+    let gallery, loader, noResults, scrollLoader;
+    const imageViewer = document.getElementById('image-viewer');
+    const viewerVideo = document.getElementById('viewer-video');
+    const viewerVRContainer = document.getElementById('viewer-vr-container');
+    const vrVideoTexture = document.getElementById('vr-video-texture');
+    const viewerLoader = document.getElementById('viewer-loader');
+    const viewerTags = document.getElementById('viewer-tags');
+
+    // Video observer for lazy loading + autoplay
+    const videoObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        const video = entry.target;
+        const spinnerEl = video.parentElement?.querySelector('.video-loader');
+        if (entry.isIntersecting) {
+          if (!video.src && video.dataset.src) {
+            if (spinnerEl) spinnerEl.style.display = 'block';
+            video.src = video.dataset.src;
+            video.preload = 'auto';
+            video.addEventListener('loadeddata', function() {
+              if (this.currentTime === 0) this.currentTime = 0.1;
+            }, { once: true });
+            video.load();
+          }
+          video.play().then(() => {
+            if (spinnerEl) spinnerEl.style.display = 'none';
+          }).catch(() => {
+            if (spinnerEl) spinnerEl.style.display = 'none';
+          });
+        } else {
+          video.pause();
+        }
+      });
+    }, { threshold: 0.25, rootMargin: '50% 0px' });
+
+    window.onload = async function () {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      gallery = document.getElementById('gallery');
+      loader = document.getElementById('loader');
+      noResults = document.getElementById('no-results');
+      scrollLoader = document.getElementById('scroll-loader');
+
+      msnry = new Masonry(gallery, {
+        itemSelector: '.masonry-item',
+        percentPosition: true,
+        transitionDuration: 0
+      });
+
+      await loadTags();
+      await loadTotalCount();
+      await loadCards(true);
+
+      window.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { closePopup(); closeImageViewer(); closeQuickEditModal(); }
+        if (imageViewer.style.display === 'flex') {
+          if (e.key === 'ArrowLeft') prevImage();
+          if (e.key === 'ArrowRight') nextImage();
+        }
+      });
+
+      window.addEventListener('scroll', handleScroll);
+
+      document.getElementById('quickEditForm').addEventListener('submit', async e => { e.preventDefault(); await handleQuickUpdate(); });
+      document.getElementById('cardForm').addEventListener('submit', async e => { e.preventDefault(); await addCard(); });
+    };
+
+    async function loadTags() {
+      try {
+        const { data: tags } = await supabase.from('tags').select('name').order('name', { ascending: true });
+        allTags = (tags || []).map(t => t.name).filter(t => !t.startsWith('album:') && !t.startsWith('model:') && !t.startsWith('pose:'));
+        updateTagDropdowns();
+      } catch (e) { console.error(e); }
+    }
+
+    async function loadTotalCount() {
+      const el = document.getElementById('total-card-count');
+      try {
+        const { count } = await supabase.from('models').select('*', { head: true, count: 'exact' }).ilike('tags', '%vr%');
+        if (el) el.textContent = `(${count} videos)`;
+      } catch (e) {}
+    }
+
+    async function loadCards(isNewQuery = false) {
+      if (isLoadingMore || (noMoreResults && !isNewQuery)) return;
+      isLoadingMore = true;
+
+      const loadMoreContainer = document.getElementById('load-more-container');
+      const loadMoreBtn = document.getElementById('load-more-btn');
+
+      if (isNewQuery) {
+        currentPage = 0; noMoreResults = false;
+        gallery.innerHTML = ''; displayedCards = [];
+        noResults.style.display = 'none';
+        loader.style.display = 'flex';
+        loadMoreContainer.style.display = 'none';
+      } else {
+        if (loadMoreBtn) { loadMoreBtn.innerHTML = '<div class="loader" style="width:20px;height:20px;border-width:2px;"></div> Loading...'; loadMoreBtn.disabled = true; }
+      }
+
+      try {
+        const from = currentPage * PAGE_SIZE;
+        const to = from + PAGE_SIZE - 1;
+        const { data: cards, error } = await supabase
+          .from('models')
+          .select('*')
+          .ilike('tags', '%vr%')
+          .order('created_at', { ascending: false })
+          .range(from, to);
+
+        if (error) throw error;
+
+        loader.style.display = 'none';
+        if (loadMoreBtn) { loadMoreBtn.innerHTML = 'Load More'; loadMoreBtn.disabled = false; }
+
+        if (cards && cards.length > 0) {
+          noResults.style.display = 'none';
+          const newElements = [];
+          cards.forEach(card => {
+            displayedCards.push(card);
+            const el = createCardElement(card, displayedCards.length - 1);
+            gallery.appendChild(el);
+            newElements.push(el);
+          });
+          imagesLoaded(newElements, function () {
+            if (isNewQuery) msnry.reloadItems(); else msnry.addItems(newElements);
+            msnry.layout();
+            setTimeout(() => msnry.layout(), 600);
+          });
+          currentPage++;
+          if (cards.length < PAGE_SIZE) { noMoreResults = true; loadMoreContainer.style.display = 'none'; }
+          else loadMoreContainer.style.display = 'flex';
+        } else {
+          noMoreResults = true;
+          if (isNewQuery) noResults.style.display = 'block';
+          loadMoreContainer.style.display = 'none';
+        }
+      } catch (err) {
+        console.error(err);
+        loader.style.display = 'none';
+        noResults.innerHTML = 'Error loading content.';
+        noResults.style.display = 'block';
+      }
+      isLoadingMore = false;
+    }
+
+    function createCardElement(card, index) {
+      const cardElem = document.createElement('div');
+      cardElem.className = 'masonry-item bg-gray-950 rounded-lg overflow-hidden relative group cursor-pointer border border-gray-900 hover:border-green-900 transition-colors';
+      cardElem.id = `card-dom-${card.id}`;
+
+      // Video element
+      const video = document.createElement('video');
+      const videoSrc = card.main_model_url.includes('#') ? card.main_model_url : `${card.main_model_url}#t=0.001`;
+      video.dataset.src = videoSrc;
+      video.muted = true; video.loop = true; video.playsInline = true; video.preload = 'metadata';
+      video.setAttribute('playsinline', ''); video.setAttribute('webkit-playsinline', ''); video.setAttribute('muted', ''); video.setAttribute('loop', '');
+      video.style.width = '100%'; video.style.display = 'block';
+
+      const vidLoader = document.createElement('div');
+      vidLoader.className = 'video-loader';
+      video.onplaying = () => { vidLoader.style.display = 'none'; };
+      video.oncanplay = () => { vidLoader.style.display = 'none'; };
+      video.onwaiting = () => { vidLoader.style.display = 'block'; };
+
+      videoObserver.observe(video);
+      cardElem.appendChild(vidLoader);
+
+      // Sound toggle
+      const soundBtn = document.createElement('button');
+      soundBtn.className = 'absolute top-2 left-2 z-30 p-1.5 bg-black/60 rounded-full text-white hover:bg-green-600 transition-all duration-200 shadow-sm backdrop-blur-sm';
+      const mutedIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/></svg>`;
+      const unmutedIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>`;
+      soundBtn.innerHTML = mutedIcon;
+      soundBtn.onclick = e => {
+        e.stopPropagation();
+        video.muted = !video.muted;
+        soundBtn.innerHTML = video.muted ? mutedIcon : unmutedIcon;
+        soundBtn.classList.toggle('text-green-400', !video.muted);
+        soundBtn.classList.toggle('text-white', video.muted);
+      };
+      cardElem.appendChild(soundBtn);
+
+      // VR badge
+      const badge = document.createElement('div');
+      badge.className = 'absolute bottom-2 left-2 z-10 px-2 py-0.5 text-white text-xs font-bold rounded-full vr-badge';
+      badge.textContent = '360° VR';
+      cardElem.appendChild(badge);
+
+      // Expand button
+      const expandBtn = document.createElement('button');
+      expandBtn.className = 'absolute bottom-2 right-2 z-20 p-1.5 bg-black/60 rounded-full text-white hover:bg-green-600 transition-all duration-200 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 backdrop-blur-sm';
+      expandBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>`;
+      expandBtn.onclick = e => { e.stopPropagation(); openImageViewer(index); };
+      cardElem.appendChild(expandBtn);
+
+      // Edit button
+      const editBtn = document.createElement('button');
+      editBtn.className = 'absolute top-2 right-2 z-20 p-1.5 bg-black/50 rounded-full text-white hover:bg-green-600 transition-all duration-200 hidden lg:block lg:opacity-0 lg:group-hover:opacity-100 backdrop-blur-sm';
+      editBtn.innerHTML = `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z"/></svg>`;
+      editBtn.onclick = e => { e.stopPropagation(); openQuickEditModal(card.id); };
+      cardElem.appendChild(editBtn);
+
+      // Delete button
+      const delBtn = document.createElement('button');
+      delBtn.className = 'absolute top-10 right-2 z-20 p-1.5 bg-black/50 rounded-full text-white hover:bg-red-600 transition-all duration-200 hidden lg:block lg:opacity-0 lg:group-hover:opacity-100 backdrop-blur-sm';
+      delBtn.innerHTML = `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>`;
+      delBtn.onclick = e => { e.stopPropagation(); deleteCard(card.id); };
+      cardElem.appendChild(delBtn);
+
+      cardElem.appendChild(video);
+
+      // Click: toggle play/pause on grid
+      cardElem.addEventListener('click', () => {
+        if (video.paused) video.play().catch(() => {});
+        else video.pause();
+      });
+
+      return cardElem;
+    }
+
+    function handleScroll() {
+      const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
+      if (scrollTop + clientHeight >= scrollHeight - 400 && !isLoadingMore && !noMoreResults) loadCards();
+    }
+
+    // --- Viewer ---
+    function openImageViewer(index) {
+      imageViewer.style.display = 'flex';
+      currentViewerIndex = index;
+      displayCardInViewer(displayedCards[index]);
+    }
+
+    function closeImageViewer(e) {
+      if (e && e.target !== imageViewer && e.target.id !== 'image-viewer') {
+        if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+      }
+      imageViewer.style.display = 'none';
+      viewerVideo.pause(); viewerVideo.src = '';
+      vrVideoTexture.pause(); vrVideoTexture.src = '';
+      viewerVRContainer.style.display = 'none';
+      viewerVideo.style.display = 'none';
+    }
+
+    function displayCardInViewer(card) {
+      viewerLoader.style.display = 'flex';
+      viewerVideo.style.display = 'none'; viewerVideo.pause();
+      viewerVRContainer.style.display = 'none'; vrVideoTexture.pause();
+      viewerTags.innerHTML = '';
+
+      // Build action buttons
+      const actionsContainer = document.getElementById('viewer-actions');
+      actionsContainer.innerHTML = '';
+      const editBtn = document.createElement('button');
+      editBtn.className = 'p-2 bg-gray-800/80 rounded-full text-white hover:bg-green-600 transition-colors';
+      editBtn.innerHTML = `<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z"/></svg>`;
+      editBtn.onclick = () => openQuickEditModal(card.id);
+      const delBtn = document.createElement('button');
+      delBtn.className = 'p-2 bg-gray-800/80 rounded-full text-white hover:bg-red-600 transition-colors';
+      delBtn.innerHTML = `<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>`;
+      delBtn.onclick = () => { deleteCard(card.id); closeImageViewer(); };
+      actionsContainer.append(editBtn, delBtn);
+
+      // Tags
+      const tags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t) : [];
+      tags.forEach(tag => {
+        const b = document.createElement('span');
+        b.className = 'px-3 py-1 bg-gray-800 text-gray-300 text-sm rounded-full';
+        b.textContent = tag;
+        viewerTags.appendChild(b);
+      });
+
+      // VR Mode
+      viewerVRContainer.style.display = 'block';
+      vrVideoTexture.src = card.main_model_url;
+      vrVideoTexture.load();
+      vrVideoTexture.play().catch(() => {});
+      viewerLoader.style.display = 'none';
+
+      const playPauseBtn = document.getElementById('vr-play-pause-btn');
+      if (playPauseBtn) playPauseBtn.innerHTML = '⏸ Pause';
+    }
+
+    function toggleVRPlay() {
+      const vid = document.getElementById('vr-video-texture');
+      const btn = document.getElementById('vr-play-pause-btn');
+      if (vid.paused) { vid.play().catch(() => {}); if(btn) btn.innerHTML = '⏸ Pause'; }
+      else { vid.pause(); if(btn) btn.innerHTML = '▶ Play'; }
+    }
+
+    function prevImage() {
+      currentViewerIndex = (currentViewerIndex - 1 + displayedCards.length) % displayedCards.length;
+      displayCardInViewer(displayedCards[currentViewerIndex]);
+    }
+    function nextImage() {
+      currentViewerIndex = (currentViewerIndex + 1) % displayedCards.length;
+      displayCardInViewer(displayedCards[currentViewerIndex]);
+    }
+
+    // --- Upload ---
+    function openPopup() { document.getElementById('popup').style.display = 'flex'; updateTagDropdowns(); }
+    function closePopup() { document.getElementById('popup').style.display = 'none'; document.getElementById('cardForm').reset(); selectedTags = []; updateSelectedTagsDisplay(); document.getElementById('errorMessage').classList.add('hidden'); }
+
+    async function addCard() {
+      const errorMsg = document.getElementById('errorMessage');
+      const submitBtn = document.getElementById('cardForm').querySelector('button[type="submit"]');
+      try {
+        submitBtn.disabled = true;
+        errorMsg.textContent = 'Uploading...'; errorMsg.className = 'text-blue-400 text-sm mt-4'; errorMsg.classList.remove('hidden');
+
+        const urls = document.getElementById('modelUrl').value.split(',').map(u => u.trim()).filter(u => u);
+        if (urls.length === 0) throw new Error('Please provide at least one URL.');
+
+        const tagsToAdd = [...selectedTags];
+        if (!tagsToAdd.includes('vr')) tagsToAdd.push('vr');
+        const tagsString = tagsToAdd.join(', ');
+
+        const { data: existing } = await supabase.from('models').select('main_model_url').in('main_model_url', urls);
+        const existingUrls = (existing || []).map(m => m.main_model_url);
+        const newUrls = urls.filter(u => !existingUrls.includes(u));
+
+        if (newUrls.length === 0) { errorMsg.textContent = 'All URLs already exist.'; errorMsg.className = 'text-yellow-400 text-sm mt-4'; submitBtn.disabled = false; return; }
+
+        const newCards = newUrls.map(url => ({ tags: tagsString, main_model_url: url, favorited: false, nsfw: false }));
+        const { error } = await supabase.from('models').insert(newCards);
+        if (error) throw error;
+
+        errorMsg.textContent = `Added ${newUrls.length} video(s)!`;
+        errorMsg.className = 'text-green-400 text-sm mt-4';
+        await loadTotalCount();
+        setTimeout(() => { closePopup(); loadCards(true); }, 1200);
+      } catch (err) {
+        errorMsg.textContent = err.message; errorMsg.className = 'text-red-400 text-sm mt-4'; submitBtn.disabled = false;
+      }
+    }
+
+    async function deleteCard(cardId) {
+      if (!confirm('Delete this VR video?')) return;
+      try {
+        const { error } = await supabase.from('models').delete().eq('id', cardId);
+        if (error) throw error;
+        await loadTotalCount();
+        loadCards(true);
+      } catch (err) { alert('Delete failed: ' + err.message); }
+    }
+
+    // --- Quick Edit ---
+    async function openQuickEditModal(cardId) {
+      try {
+        const { data: card, error } = await supabase.from('models').select('*').eq('id', cardId).single();
+        if (error) throw error;
+        document.getElementById('quickEditCardId').value = card.id;
+        document.getElementById('quickEditModelUrl').value = card.main_model_url;
+        quickEditSelectedTags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t) : [];
+        updateQuickEditSelectedTagsDisplay(); updateQuickEditAvailableTags();
+        document.getElementById('quickEditErrorMessage').classList.add('hidden');
+        document.getElementById('quick-edit-modal').style.display = 'flex';
+      } catch (err) { alert('Error loading card.'); }
+    }
+
+    function closeQuickEditModal() { document.getElementById('quick-edit-modal').style.display = 'none'; quickEditSelectedTags = []; }
+
+    async function handleQuickUpdate() {
+      const cardId = document.getElementById('quickEditCardId').value;
+      const newUrl = document.getElementById('quickEditModelUrl').value.trim();
+      const newTags = quickEditSelectedTags.join(', ');
+      const errorMsg = document.getElementById('quickEditErrorMessage');
+      if (!newUrl) { errorMsg.textContent = 'URL required.'; errorMsg.classList.remove('hidden'); return; }
+      try {
+        const { error } = await supabase.from('models').update({ main_model_url: newUrl, tags: newTags }).eq('id', cardId);
+        if (error) throw error;
+        closeQuickEditModal(); loadCards(true);
+      } catch (err) { errorMsg.textContent = err.message; errorMsg.classList.remove('hidden'); }
+    }
+
+    function updateQuickEditAvailableTags() {
+      const select = document.getElementById('quickEditAvailableTags');
+      select.innerHTML = '<option value="">Select tags to add</option>';
+      allTags.forEach(tag => {
+        if (!quickEditSelectedTags.includes(tag)) {
+          const o = document.createElement('option'); o.value = tag; o.textContent = tag; select.appendChild(o);
+        }
+      });
+    }
+    function addTagToQuickEdit() {
+      const select = document.getElementById('quickEditAvailableTags');
+      const val = select.value;
+      if (!val || quickEditSelectedTags.includes(val)) return;
+      quickEditSelectedTags.push(val); updateQuickEditSelectedTagsDisplay(); updateQuickEditAvailableTags(); select.value = '';
+    }
+    function updateQuickEditSelectedTagsDisplay() {
+      const container = document.getElementById('quickEditSelectedTagsContainer'); container.innerHTML = '';
+      quickEditSelectedTags.forEach(tag => {
+        const span = document.createElement('span');
+        span.className = 'px-3 py-1 bg-green-800 text-white text-xs rounded-full flex items-center gap-2';
+        span.innerHTML = `${tag} <button type="button" onclick="removeQuickEditSelectedTag('${tag}')" class="hover:text-red-300">&times;</button>`;
+        container.appendChild(span);
+      });
+    }
+    function removeQuickEditSelectedTag(t) { quickEditSelectedTags = quickEditSelectedTags.filter(tag => tag !== t); updateQuickEditSelectedTagsDisplay(); updateQuickEditAvailableTags(); }
+
+    // --- Tag helpers for upload form ---
+    function updateTagDropdowns() {
+      const select = document.getElementById('availableTags');
+      select.innerHTML = '<option value="">Select tag to add</option>';
+      allTags.forEach(tag => {
+        if (!selectedTags.includes(tag)) {
+          const o = document.createElement('option'); o.value = tag; o.textContent = tag; select.appendChild(o);
+        }
+      });
+    }
+    function addTagToSelection() {
+      const select = document.getElementById('availableTags');
+      const val = select.value;
+      if (!val || selectedTags.includes(val)) return;
+      selectedTags.push(val); updateSelectedTagsDisplay(); updateTagDropdowns(); select.value = '';
+    }
+    async function createAndAddTag() {
+      const input = document.getElementById('newTagInput');
+      const val = input.value.trim();
+      if (!val) return;
+      if (!allTags.includes(val)) {
+        const { error } = await supabase.from('tags').insert({ name: val });
+        if (error && error.code !== '23505') { alert('Error creating tag.'); return; }
+        allTags.push(val);
+      }
+      if (!selectedTags.includes(val)) { selectedTags.push(val); updateSelectedTagsDisplay(); updateTagDropdowns(); }
+      input.value = '';
+    }
+    function updateSelectedTagsDisplay() {
+      const container = document.getElementById('selectedTagsContainer'); container.innerHTML = '';
+      selectedTags.forEach(tag => {
+        const span = document.createElement('span');
+        span.className = 'px-3 py-1 bg-green-800 text-white text-xs rounded-full flex items-center gap-2';
+        span.innerHTML = `${tag} <button type="button" onclick="removeSelectedTag('${tag}')" class="hover:text-red-300">&times;</button>`;
+        container.appendChild(span);
+      });
+    }
+    function removeSelectedTag(t) { selectedTags = selectedTags.filter(tag => tag !== t); updateSelectedTagsDisplay(); updateTagDropdowns(); }
+  </script>
+</body>
+</html>
