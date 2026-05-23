@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>VR 360° Gallery</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <!-- A-Frame deferred so it doesn't block initial render -->
   <script src="https://unpkg.com/imagesloaded@5/imagesloaded.pkgd.min.js"></script>
   <script src="https://unpkg.com/masonry-layout@4/dist/masonry.pkgd.min.js"></script>
   <style>
@@ -44,8 +44,17 @@
     @media (min-width: 1024px) { .masonry-item { width: calc(33.333% - 8px); } }
 
     /* Force 16:9 for VR thumbnails */
-    .masonry-item video {
-      aspect-ratio: 16 / 9 !important;
+    .masonry-item .video-wrapper {
+      position: relative;
+      padding-top: 56.25%; /* 16:9 */
+      background: #111;
+      overflow: hidden;
+    }
+    .masonry-item .video-wrapper video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
       object-fit: cover;
     }
 
@@ -60,6 +69,18 @@
       background: linear-gradient(135deg, #16a34a, #15803d);
       box-shadow: 0 0 12px rgba(34,197,94,0.4);
     }
+
+    /* Thumbnail placeholder shimmer */
+    .video-placeholder {
+      position: absolute; inset: 0;
+      background: linear-gradient(90deg, #111 25%, #1a1a1a 50%, #111 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+    /* Smooth viewer transitions */
+    #viewer-vr-container { transition: opacity 0.2s; }
   </style>
 </head>
 <body class="bg-black text-gray-300 font-sans antialiased">
@@ -116,19 +137,8 @@
         <div id="viewer-loader" class="absolute inset-0 flex items-center justify-center z-[101]"><div class="loader"></div></div>
 
         <div id="viewer-image-container" class="w-full h-full z-[100] relative bg-black">
-          <video id="viewer-video" controls loop playsinline class="w-full h-full object-contain" style="display:none;"></video>
-
-          <!-- VR Scene -->
-          <div id="viewer-vr-container" class="absolute inset-0 z-[102]" style="display:none;">
-            <a-scene embedded vr-mode-ui="enabled:false" loading-screen="enabled:false" style="width:100%;height:100%;">
-              <a-assets>
-                <video id="vr-video-texture" loop crossorigin="anonymous" playsinline webkit-playsinline></video>
-              </a-assets>
-              <a-videosphere src="#vr-video-texture" rotation="0 -90 0"></a-videosphere>
-              <a-entity camera look-controls="reverseMouseDrag:true"></a-entity>
-            </a-scene>
-            <button id="vr-play-pause-btn" class="absolute bottom-4 left-1/2 -translate-x-1/2 px-5 py-2 bg-black/60 border border-green-500/40 text-white rounded-full hover:bg-green-600 transition z-[105] text-sm" onclick="toggleVRPlay()">⏸ Pause</button>
-          </div>
+          <!-- VR Scene: injected lazily when viewer opens -->
+          <div id="viewer-vr-container" class="absolute inset-0 z-[102]" style="display:none;"></div>
         </div>
 
         <button id="viewer-prev" class="absolute left-4 top-1/2 -translate-y-1/2 z-[105] p-2 bg-black/30 text-white text-3xl rounded-full hover:bg-black/60 transition-colors" onclick="prevImage(event)">&#10094;</button>
@@ -144,7 +154,6 @@
       <p class="text-xs text-gray-500 mb-5">Equirectangular .mp4 videos only</p>
       <form id="cardForm">
         <textarea id="modelUrl" rows="4" class="w-full p-3 bg-gray-900 border border-gray-800 rounded-lg text-white placeholder-gray-600 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 text-sm" placeholder="Enter VR video URLs separated by commas" required></textarea>
-
         <div class="mt-4">
           <label class="text-sm text-gray-400 mb-2 block">Tags (optional)</label>
           <div id="selectedTagsContainer" class="flex flex-wrap gap-2 p-2 bg-gray-900 border border-gray-800 rounded-lg min-h-[40px] mb-2"></div>
@@ -159,7 +168,6 @@
             <button type="button" onclick="createAndAddTag()" class="px-4 py-2 bg-green-700 hover:bg-green-600 text-white text-sm rounded-lg">Create</button>
           </div>
         </div>
-
         <div id="errorMessage" class="text-sm mt-4 hidden"></div>
         <div class="mt-6 flex justify-end space-x-3">
           <button type="button" onclick="closePopup()" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-sm rounded-lg">Cancel</button>
@@ -197,6 +205,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js"></script>
   <script>
+    /* ─────────────────────────────────────────────
+       CONFIG & STATE
+    ───────────────────────────────────────────── */
     let supabase;
     const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
@@ -212,40 +223,203 @@
     let currentViewerIndex = 0;
     let msnry;
 
+    // Concurrency limiter: max simultaneous playing preview videos
+    const MAX_CONCURRENT_PLAYING = 3;
+    // Track all active video elements: { video, isPlaying }
+    const activeVideoRegistry = new Map(); // element → { card, playing }
+
+    // A-Frame loaded flag
+    let aframeLoaded = false;
+    let aframeLoading = false;
+    let aframeCallbacks = [];
+
+    // Current VR viewer state
+    let vrScene = null;
+    let vrVideoEl = null;
+
+    // Visibility-change pause/resume
+    let visibilityPausedVideos = new Set();
+
+    /* ─────────────────────────────────────────────
+       DOM REFS
+    ───────────────────────────────────────────── */
     let gallery, loader, noResults, scrollLoader;
     const imageViewer = document.getElementById('image-viewer');
-    const viewerVideo = document.getElementById('viewer-video');
-    const viewerVRContainer = document.getElementById('viewer-vr-container');
-    const vrVideoTexture = document.getElementById('vr-video-texture');
     const viewerLoader = document.getElementById('viewer-loader');
     const viewerTags = document.getElementById('viewer-tags');
+    const viewerVRContainer = document.getElementById('viewer-vr-container');
 
-    // Video observer for lazy loading + autoplay
+    /* ─────────────────────────────────────────────
+       A-FRAME LAZY LOADER
+       Load A-Frame only when the viewer is first opened,
+       so it doesn't block initial page paint or compete
+       for bandwidth with gallery thumbnails.
+    ───────────────────────────────────────────── */
+    function loadAFrame() {
+      return new Promise(resolve => {
+        if (aframeLoaded) { resolve(); return; }
+        aframeCallbacks.push(resolve);
+        if (aframeLoading) return;
+        aframeLoading = true;
+        const s = document.createElement('script');
+        s.src = 'https://aframe.io/releases/1.5.0/aframe.min.js';
+        s.onload = () => {
+          aframeLoaded = true;
+          aframeCallbacks.forEach(cb => cb());
+          aframeCallbacks = [];
+        };
+        document.head.appendChild(s);
+      });
+    }
+
+    /* ─────────────────────────────────────────────
+       INTERSECTION OBSERVER — lazy load + play cap
+       Uses two thresholds:
+         0.1 → start loading src / stop playback when near out
+         0.5 → start playing when well visible
+    ───────────────────────────────────────────── */
     const videoObserver = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         const video = entry.target;
-        const spinnerEl = video.parentElement?.querySelector('.video-loader');
-        if (entry.isIntersecting) {
-          if (!video.src && video.dataset.src) {
-            if (spinnerEl) spinnerEl.style.display = 'block';
-            video.src = video.dataset.src;
-            video.preload = 'auto';
-            video.addEventListener('loadeddata', function() {
-              if (this.currentTime === 0) this.currentTime = 0.1;
-            }, { once: true });
-            video.load();
-          }
-          video.play().then(() => {
-            if (spinnerEl) spinnerEl.style.display = 'none';
-          }).catch(() => {
-            if (spinnerEl) spinnerEl.style.display = 'none';
-          });
+        const info = activeVideoRegistry.get(video);
+        if (!info) return;
+
+        const ratio = entry.intersectionRatio;
+
+        // Load src when first approaching viewport
+        if (ratio > 0 && !video.src && video.dataset.src) {
+          assignVideoSrc(video);
+        }
+
+        if (ratio >= 0.4) {
+          // Visible enough — try to play (subject to concurrency cap)
+          tryPlayVideo(video);
         } else {
-          video.pause();
+          // Off-screen — pause and free decoder slot
+          if (!video.paused) {
+            video.pause();
+            info.playing = false;
+          }
+          // Unload src entirely when well off-screen to free memory/decoder
+          if (ratio === 0 && video.src) {
+            releaseVideoSrc(video);
+          }
         }
       });
-    }, { threshold: 0.25, rootMargin: '50% 0px' });
+    }, { threshold: [0, 0.1, 0.4, 1.0], rootMargin: '20% 0px' });
 
+    /* Assign src without triggering eager decode of full video */
+    function assignVideoSrc(video) {
+      const src = video.dataset.src;
+      if (!src || video.src) return;
+      const spinnerEl = video.closest('.video-wrapper')?.querySelector('.video-loader');
+
+      // Use fetch-based preload hint for range requests (helps CDN/servers)
+      // Then set src and use preload=metadata to get first frame quickly
+      video.preload = 'metadata';
+      video.src = src;
+      video.load();
+
+      // Seek to 0.001 on metadata load to get a visible first frame
+      video.addEventListener('loadedmetadata', function onMeta() {
+        video.removeEventListener('loadedmetadata', onMeta);
+        if (video.currentTime === 0) {
+          video.currentTime = 0.001;
+        }
+        if (spinnerEl) spinnerEl.style.display = 'none';
+      }, { once: true });
+
+      video.addEventListener('playing', function onPlay() {
+        video.removeEventListener('playing', onPlay);
+        if (spinnerEl) spinnerEl.style.display = 'none';
+        // Remove placeholder shimmer
+        const placeholder = video.closest('.video-wrapper')?.querySelector('.video-placeholder');
+        if (placeholder) placeholder.style.opacity = '0';
+      }, { once: true });
+
+      video.onerror = () => {
+        if (spinnerEl) spinnerEl.style.display = 'none';
+      };
+    }
+
+    /* Release src to free decoder + memory when scrolled away */
+    function releaseVideoSrc(video) {
+      const info = activeVideoRegistry.get(video);
+      if (!info) return;
+      if (!video.paused) video.pause();
+      // Save position so we can restore if needed (optional UX nicety)
+      video.dataset.savedTime = video.currentTime;
+      // Detach src — browser will release decoder
+      video.removeAttribute('src');
+      video.load(); // flush buffers
+      info.playing = false;
+    }
+
+    /* Count how many videos are actively playing */
+    function playingCount() {
+      let n = 0;
+      activeVideoRegistry.forEach(info => { if (info.playing) n++; });
+      return n;
+    }
+
+    /* Play a video, enforcing the concurrency cap */
+    function tryPlayVideo(video) {
+      const info = activeVideoRegistry.get(video);
+      if (!info || info.playing) return;
+
+      // If under cap, play immediately
+      if (playingCount() < MAX_CONCURRENT_PLAYING) {
+        doPlay(video, info);
+        return;
+      }
+
+      // Over cap: pause the oldest playing video that is furthest from viewport
+      // Simple heuristic: just pause the first playing entry found
+      for (const [v, i] of activeVideoRegistry) {
+        if (i.playing && v !== video) {
+          v.pause();
+          i.playing = false;
+          break;
+        }
+      }
+      doPlay(video, info);
+    }
+
+    function doPlay(video, info) {
+      if (!video.src && video.dataset.src) assignVideoSrc(video);
+      const promise = video.play();
+      if (promise) {
+        promise.then(() => { info.playing = true; }).catch(() => {});
+      }
+    }
+
+    /* ─────────────────────────────────────────────
+       PAGE VISIBILITY — pause all on tab hide
+    ───────────────────────────────────────────── */
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        activeVideoRegistry.forEach((info, video) => {
+          if (!video.paused) {
+            video.pause();
+            visibilityPausedVideos.add(video);
+          }
+        });
+        // Also pause VR video if open
+        if (vrVideoEl && !vrVideoEl.paused) {
+          vrVideoEl.pause();
+          visibilityPausedVideos.add(vrVideoEl);
+        }
+      } else {
+        visibilityPausedVideos.forEach(video => {
+          video.play().catch(() => {});
+        });
+        visibilityPausedVideos.clear();
+      }
+    });
+
+    /* ─────────────────────────────────────────────
+       INIT
+    ───────────────────────────────────────────── */
     window.onload = async function () {
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
       gallery = document.getElementById('gallery');
@@ -271,12 +445,15 @@
         }
       });
 
-      window.addEventListener('scroll', handleScroll);
+      window.addEventListener('scroll', handleScroll, { passive: true });
 
       document.getElementById('quickEditForm').addEventListener('submit', async e => { e.preventDefault(); await handleQuickUpdate(); });
       document.getElementById('cardForm').addEventListener('submit', async e => { e.preventDefault(); await addCard(); });
     };
 
+    /* ─────────────────────────────────────────────
+       DATA LOADING
+    ───────────────────────────────────────────── */
     async function loadTags() {
       try {
         const { data: tags } = await supabase.from('tags').select('name').order('name', { ascending: true });
@@ -302,6 +479,8 @@
 
       if (isNewQuery) {
         currentPage = 0; noMoreResults = false;
+        // Cleanup all tracked videos before clearing DOM
+        cleanupAllVideos();
         gallery.innerHTML = ''; displayedCards = [];
         noResults.style.display = 'none';
         loader.style.display = 'flex';
@@ -356,27 +535,59 @@
       isLoadingMore = false;
     }
 
+    /* ─────────────────────────────────────────────
+       CLEANUP — unregister + release all videos
+    ───────────────────────────────────────────── */
+    function cleanupAllVideos() {
+      activeVideoRegistry.forEach((info, video) => {
+        videoObserver.unobserve(video);
+        if (!video.paused) video.pause();
+        video.removeAttribute('src');
+        video.load();
+      });
+      activeVideoRegistry.clear();
+    }
+
+    /* ─────────────────────────────────────────────
+       CARD ELEMENT
+    ───────────────────────────────────────────── */
     function createCardElement(card, index) {
       const cardElem = document.createElement('div');
       cardElem.className = 'masonry-item bg-gray-950 rounded-lg overflow-hidden relative group cursor-pointer border border-gray-900 hover:border-green-900 transition-colors';
       cardElem.id = `card-dom-${card.id}`;
 
-      // Video element
+      // 16:9 wrapper to avoid layout shift
+      const wrapper = document.createElement('div');
+      wrapper.className = 'video-wrapper';
+
+      // Shimmer placeholder (shown until video plays)
+      const placeholder = document.createElement('div');
+      placeholder.className = 'video-placeholder';
+      placeholder.style.transition = 'opacity 0.3s';
+      wrapper.appendChild(placeholder);
+
+      // Video element — src is NOT set here; observer handles it
       const video = document.createElement('video');
-      const videoSrc = card.main_model_url.includes('#') ? card.main_model_url : `${card.main_model_url}#t=0.001`;
-      video.dataset.src = videoSrc;
-      video.muted = true; video.loop = true; video.playsInline = true; video.preload = 'metadata';
-      video.setAttribute('playsinline', ''); video.setAttribute('webkit-playsinline', ''); video.setAttribute('muted', ''); video.setAttribute('loop', '');
-      video.style.width = '100%'; video.style.display = 'block';
+      const cleanSrc = card.main_model_url.split('#')[0]; // strip fragment
+      video.dataset.src = cleanSrc;
+      video.muted = true;
+      video.loop = true;
+      video.playsInline = true;
+      video.preload = 'none'; // important: don't preload until visible
+      video.setAttribute('playsinline', '');
+      video.setAttribute('webkit-playsinline', '');
+      video.setAttribute('muted', '');
+      video.setAttribute('loop', '');
+
+      // Register before observing
+      activeVideoRegistry.set(video, { card, playing: false });
+      videoObserver.observe(video);
 
       const vidLoader = document.createElement('div');
       vidLoader.className = 'video-loader';
-      video.onplaying = () => { vidLoader.style.display = 'none'; };
-      video.oncanplay = () => { vidLoader.style.display = 'none'; };
-      video.onwaiting = () => { vidLoader.style.display = 'block'; };
-
-      videoObserver.observe(video);
-      cardElem.appendChild(vidLoader);
+      wrapper.appendChild(vidLoader);
+      wrapper.appendChild(video);
+      cardElem.appendChild(wrapper);
 
       // Sound toggle
       const soundBtn = document.createElement('button');
@@ -420,12 +631,16 @@
       delBtn.onclick = e => { e.stopPropagation(); deleteCard(card.id); };
       cardElem.appendChild(delBtn);
 
-      cardElem.appendChild(video);
-
       // Click: toggle play/pause on grid
       cardElem.addEventListener('click', () => {
-        if (video.paused) video.play().catch(() => {});
-        else video.pause();
+        const info = activeVideoRegistry.get(video);
+        if (!info) return;
+        if (video.paused) {
+          tryPlayVideo(video);
+        } else {
+          video.pause();
+          if (info) info.playing = false;
+        }
       });
 
       return cardElem;
@@ -436,11 +651,74 @@
       if (scrollTop + clientHeight >= scrollHeight - 400 && !isLoadingMore && !noMoreResults) loadCards();
     }
 
-    // --- Viewer ---
-    function openImageViewer(index) {
+    /* ─────────────────────────────────────────────
+       VR VIEWER
+       Build the A-Frame scene once, reuse it across
+       cards by just swapping the video src.
+    ───────────────────────────────────────────── */
+    async function openImageViewer(index) {
       imageViewer.style.display = 'flex';
       currentViewerIndex = index;
+
+      // Lazy-load A-Frame before first open
+      viewerLoader.style.display = 'flex';
+      await loadAFrame();
+      viewerLoader.style.display = 'none';
+
+      // Build scene once
+      if (!vrScene) buildVRScene();
+
       displayCardInViewer(displayedCards[index]);
+    }
+
+    function buildVRScene() {
+      viewerVRContainer.innerHTML = '';
+
+      // Create the video element for VR texture
+      vrVideoEl = document.createElement('video');
+      vrVideoEl.id = 'vr-video-texture';
+      vrVideoEl.loop = true;
+      vrVideoEl.crossOrigin = 'anonymous';
+      vrVideoEl.playsInline = true;
+      vrVideoEl.setAttribute('playsinline', '');
+      vrVideoEl.setAttribute('webkit-playsinline', '');
+      vrVideoEl.preload = 'auto'; // viewer always wants to play immediately
+      // Hardware decode hint
+      vrVideoEl.setAttribute('x-webkit-airplay', 'allow');
+      vrVideoEl.style.display = 'none';
+      viewerVRContainer.appendChild(vrVideoEl);
+
+      // A-Frame scene
+      vrScene = document.createElement('a-scene');
+      vrScene.setAttribute('embedded', '');
+      vrScene.setAttribute('vr-mode-ui', 'enabled:false');
+      vrScene.setAttribute('loading-screen', 'enabled:false');
+      vrScene.setAttribute('renderer', 'antialias:false; colorManagement:true; highRefreshRate:true');
+      vrScene.style.cssText = 'width:100%;height:100%;position:absolute;inset:0;';
+
+      const assets = document.createElement('a-assets');
+      assets.appendChild(vrVideoEl);
+      vrScene.appendChild(assets);
+
+      const videosphere = document.createElement('a-videosphere');
+      videosphere.setAttribute('src', '#vr-video-texture');
+      videosphere.setAttribute('rotation', '0 -90 0');
+      vrScene.appendChild(videosphere);
+
+      const camera = document.createElement('a-entity');
+      camera.setAttribute('camera', '');
+      camera.setAttribute('look-controls', 'reverseMouseDrag:true; touchEnabled:true; magicWindowTrackingEnabled:false');
+      vrScene.appendChild(camera);
+
+      viewerVRContainer.appendChild(vrScene);
+
+      // Play/pause button
+      const btn = document.createElement('button');
+      btn.id = 'vr-play-pause-btn';
+      btn.className = 'absolute bottom-4 left-1/2 -translate-x-1/2 px-5 py-2 bg-black/60 border border-green-500/40 text-white rounded-full hover:bg-green-600 transition z-[105] text-sm';
+      btn.textContent = '⏸ Pause';
+      btn.onclick = toggleVRPlay;
+      viewerVRContainer.appendChild(btn);
     }
 
     function closeImageViewer(e) {
@@ -448,16 +726,18 @@
         if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
       }
       imageViewer.style.display = 'none';
-      viewerVideo.pause(); viewerVideo.src = '';
-      vrVideoTexture.pause(); vrVideoTexture.src = '';
+      // Pause and detach VR video src to free decoder
+      if (vrVideoEl) {
+        vrVideoEl.pause();
+        vrVideoEl.removeAttribute('src');
+        vrVideoEl.load();
+      }
       viewerVRContainer.style.display = 'none';
-      viewerVideo.style.display = 'none';
     }
 
     function displayCardInViewer(card) {
       viewerLoader.style.display = 'flex';
-      viewerVideo.style.display = 'none'; viewerVideo.pause();
-      viewerVRContainer.style.display = 'none'; vrVideoTexture.pause();
+      viewerVRContainer.style.display = 'none';
       viewerTags.innerHTML = '';
 
       // Build action buttons
@@ -482,36 +762,69 @@
         viewerTags.appendChild(b);
       });
 
-      // VR Mode
-      viewerVRContainer.style.display = 'block';
-      vrVideoTexture.src = card.main_model_url;
-      vrVideoTexture.load();
-      vrVideoTexture.play().catch(() => {});
-      viewerLoader.style.display = 'none';
+      // Load video into VR texture
+      const cleanSrc = card.main_model_url.split('#')[0];
+      vrVideoEl.src = cleanSrc;
+      vrVideoEl.load();
 
-      const playPauseBtn = document.getElementById('vr-play-pause-btn');
-      if (playPauseBtn) playPauseBtn.innerHTML = '⏸ Pause';
+      vrVideoEl.addEventListener('loadedmetadata', function onMeta() {
+        vrVideoEl.removeEventListener('loadedmetadata', onMeta);
+        vrVideoEl.play().then(() => {
+          viewerLoader.style.display = 'none';
+          viewerVRContainer.style.display = 'block';
+          const btn = document.getElementById('vr-play-pause-btn');
+          if (btn) btn.textContent = '⏸ Pause';
+        }).catch(() => {
+          viewerLoader.style.display = 'none';
+          viewerVRContainer.style.display = 'block';
+        });
+      }, { once: true });
+
+      // Fallback if metadata loads fast
+      if (vrVideoEl.readyState >= 1) {
+        vrVideoEl.play().then(() => {
+          viewerLoader.style.display = 'none';
+          viewerVRContainer.style.display = 'block';
+        }).catch(() => {
+          viewerLoader.style.display = 'none';
+          viewerVRContainer.style.display = 'block';
+        });
+      }
     }
 
     function toggleVRPlay() {
-      const vid = document.getElementById('vr-video-texture');
+      if (!vrVideoEl) return;
       const btn = document.getElementById('vr-play-pause-btn');
-      if (vid.paused) { vid.play().catch(() => {}); if(btn) btn.innerHTML = '⏸ Pause'; }
-      else { vid.pause(); if(btn) btn.innerHTML = '▶ Play'; }
+      if (vrVideoEl.paused) {
+        vrVideoEl.play().catch(() => {});
+        if (btn) btn.textContent = '⏸ Pause';
+      } else {
+        vrVideoEl.pause();
+        if (btn) btn.textContent = '▶ Play';
+      }
     }
 
-    function prevImage() {
+    function prevImage(e) {
+      if (e) e.stopPropagation();
       currentViewerIndex = (currentViewerIndex - 1 + displayedCards.length) % displayedCards.length;
       displayCardInViewer(displayedCards[currentViewerIndex]);
     }
-    function nextImage() {
+    function nextImage(e) {
+      if (e) e.stopPropagation();
       currentViewerIndex = (currentViewerIndex + 1) % displayedCards.length;
       displayCardInViewer(displayedCards[currentViewerIndex]);
     }
 
-    // --- Upload ---
+    /* ─────────────────────────────────────────────
+       UPLOAD
+    ───────────────────────────────────────────── */
     function openPopup() { document.getElementById('popup').style.display = 'flex'; updateTagDropdowns(); }
-    function closePopup() { document.getElementById('popup').style.display = 'none'; document.getElementById('cardForm').reset(); selectedTags = []; updateSelectedTagsDisplay(); document.getElementById('errorMessage').classList.add('hidden'); }
+    function closePopup() {
+      document.getElementById('popup').style.display = 'none';
+      document.getElementById('cardForm').reset();
+      selectedTags = []; updateSelectedTagsDisplay();
+      document.getElementById('errorMessage').classList.add('hidden');
+    }
 
     async function addCard() {
       const errorMsg = document.getElementById('errorMessage');
@@ -519,24 +832,18 @@
       try {
         submitBtn.disabled = true;
         errorMsg.textContent = 'Uploading...'; errorMsg.className = 'text-blue-400 text-sm mt-4'; errorMsg.classList.remove('hidden');
-
         const urls = document.getElementById('modelUrl').value.split(',').map(u => u.trim()).filter(u => u);
         if (urls.length === 0) throw new Error('Please provide at least one URL.');
-
         const tagsToAdd = [...selectedTags];
         if (!tagsToAdd.includes('vr')) tagsToAdd.push('vr');
         const tagsString = tagsToAdd.join(', ');
-
         const { data: existing } = await supabase.from('models').select('main_model_url').in('main_model_url', urls);
         const existingUrls = (existing || []).map(m => m.main_model_url);
         const newUrls = urls.filter(u => !existingUrls.includes(u));
-
         if (newUrls.length === 0) { errorMsg.textContent = 'All URLs already exist.'; errorMsg.className = 'text-yellow-400 text-sm mt-4'; submitBtn.disabled = false; return; }
-
         const newCards = newUrls.map(url => ({ tags: tagsString, main_model_url: url, favorited: false, nsfw: false }));
         const { error } = await supabase.from('models').insert(newCards);
         if (error) throw error;
-
         errorMsg.textContent = `Added ${newUrls.length} video(s)!`;
         errorMsg.className = 'text-green-400 text-sm mt-4';
         await loadTotalCount();
@@ -556,7 +863,9 @@
       } catch (err) { alert('Delete failed: ' + err.message); }
     }
 
-    // --- Quick Edit ---
+    /* ─────────────────────────────────────────────
+       QUICK EDIT
+    ───────────────────────────────────────────── */
     async function openQuickEditModal(cardId) {
       try {
         const { data: card, error } = await supabase.from('models').select('*').eq('id', cardId).single();
@@ -569,9 +878,7 @@
         document.getElementById('quick-edit-modal').style.display = 'flex';
       } catch (err) { alert('Error loading card.'); }
     }
-
     function closeQuickEditModal() { document.getElementById('quick-edit-modal').style.display = 'none'; quickEditSelectedTags = []; }
-
     async function handleQuickUpdate() {
       const cardId = document.getElementById('quickEditCardId').value;
       const newUrl = document.getElementById('quickEditModelUrl').value.trim();
@@ -584,7 +891,6 @@
         closeQuickEditModal(); loadCards(true);
       } catch (err) { errorMsg.textContent = err.message; errorMsg.classList.remove('hidden'); }
     }
-
     function updateQuickEditAvailableTags() {
       const select = document.getElementById('quickEditAvailableTags');
       select.innerHTML = '<option value="">Select tags to add</option>';
@@ -611,7 +917,9 @@
     }
     function removeQuickEditSelectedTag(t) { quickEditSelectedTags = quickEditSelectedTags.filter(tag => tag !== t); updateQuickEditSelectedTagsDisplay(); updateQuickEditAvailableTags(); }
 
-    // --- Tag helpers for upload form ---
+    /* ─────────────────────────────────────────────
+       TAG HELPERS (upload form)
+    ───────────────────────────────────────────── */
     function updateTagDropdowns() {
       const select = document.getElementById('availableTags');
       select.innerHTML = '<option value="">Select tag to add</option>';
