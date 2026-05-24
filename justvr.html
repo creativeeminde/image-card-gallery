@@ -659,34 +659,39 @@
     async function openImageViewer(index) {
       imageViewer.style.display = 'flex';
       currentViewerIndex = index;
+      console.log('[VR] Viewer opened, loading A-Frame...');
 
-      // Lazy-load A-Frame before first open
+      // Keep loader visible while A-Frame loads
       viewerLoader.style.display = 'flex';
       await loadAFrame();
-      viewerLoader.style.display = 'none';
+      console.log('[VR] A-Frame ready');
 
-      // Build scene once
-      if (!vrScene) buildVRScene();
+      // Build scene once; rebuild if container was cleared (e.g. after full reset)
+      if (!vrScene || !viewerVRContainer.contains(vrScene)) {
+        buildVRScene();
+      }
 
       displayCardInViewer(displayedCards[index]);
     }
 
     function buildVRScene() {
       viewerVRContainer.innerHTML = '';
+      vrScene = null;
+      vrVideoEl = null;
 
       // Create the video element for VR texture
       vrVideoEl = document.createElement('video');
       vrVideoEl.id = 'vr-video-texture';
       vrVideoEl.loop = true;
+      vrVideoEl.muted = true;                          // REQUIRED for autoplay
       vrVideoEl.crossOrigin = 'anonymous';
       vrVideoEl.playsInline = true;
       vrVideoEl.setAttribute('playsinline', '');
       vrVideoEl.setAttribute('webkit-playsinline', '');
-      vrVideoEl.preload = 'auto'; // viewer always wants to play immediately
-      // Hardware decode hint
+      vrVideoEl.setAttribute('muted', '');             // HTML attr needed too
       vrVideoEl.setAttribute('x-webkit-airplay', 'allow');
+      vrVideoEl.preload = 'auto';
       vrVideoEl.style.display = 'none';
-      viewerVRContainer.appendChild(vrVideoEl);
 
       // A-Frame scene
       vrScene = document.createElement('a-scene');
@@ -697,10 +702,12 @@
       vrScene.style.cssText = 'width:100%;height:100%;position:absolute;inset:0;';
 
       const assets = document.createElement('a-assets');
+      assets.setAttribute('timeout', '10000');
       assets.appendChild(vrVideoEl);
       vrScene.appendChild(assets);
 
       const videosphere = document.createElement('a-videosphere');
+      videosphere.id = 'vr-videosphere';
       videosphere.setAttribute('src', '#vr-video-texture');
       videosphere.setAttribute('rotation', '0 -90 0');
       vrScene.appendChild(videosphere);
@@ -719,12 +726,42 @@
       btn.textContent = '⏸ Pause';
       btn.onclick = toggleVRPlay;
       viewerVRContainer.appendChild(btn);
+
+      console.log('[VR] Scene built');
+    }
+
+    /* Safe async play with fallback */
+    async function safePlay(video) {
+      try {
+        await video.play();
+        console.log('[VR] play() succeeded');
+      } catch (err) {
+        console.error('[VR] play() failed:', err);
+        const playBtn = document.getElementById('vr-play-pause-btn');
+        if (playBtn) {
+          playBtn.style.display = 'block';
+          playBtn.textContent = '▶ Tap to Play';
+        }
+      }
+    }
+
+    /* Force texture refresh on the videosphere after playback starts */
+    function refreshVRTexture() {
+      if (!vrScene) return;
+      const sphere = vrScene.querySelector('#vr-videosphere');
+      if (!sphere) return;
+      console.log('[VR] Refreshing texture');
+      sphere.setAttribute('src', '');
+      requestAnimationFrame(() => {
+        sphere.setAttribute('src', '#vr-video-texture');
+      });
     }
 
     function closeImageViewer(e) {
       if (e && e.target !== imageViewer && e.target.id !== 'image-viewer') {
         if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
       }
+      console.log('[VR] Viewer closed');
       imageViewer.style.display = 'none';
       // Pause and detach VR video src to free decoder
       if (vrVideoEl) {
@@ -733,12 +770,20 @@
         vrVideoEl.load();
       }
       viewerVRContainer.style.display = 'none';
+      // Remove any error overlay
+      const errEl = document.getElementById('vr-error-msg');
+      if (errEl) errEl.remove();
     }
 
     function displayCardInViewer(card) {
+      console.log('[VR] Viewer opening for card:', card.id);
       viewerLoader.style.display = 'flex';
       viewerVRContainer.style.display = 'none';
       viewerTags.innerHTML = '';
+
+      // Remove any existing error message
+      const existingErr = document.getElementById('vr-error-msg');
+      if (existingErr) existingErr.remove();
 
       // Build action buttons
       const actionsContainer = document.getElementById('viewer-actions');
@@ -762,34 +807,63 @@
         viewerTags.appendChild(b);
       });
 
-      // Load video into VR texture
-      const cleanSrc = card.main_model_url.split('#')[0];
-      vrVideoEl.src = cleanSrc;
+      // ── Step 1: Fully reset the old video before loading new src ──
+      vrVideoEl.pause();
+      vrVideoEl.removeAttribute('src');
       vrVideoEl.load();
+      vrVideoEl.muted = true;     // ensure muted survives src swap
 
-      vrVideoEl.addEventListener('loadedmetadata', function onMeta() {
-        vrVideoEl.removeEventListener('loadedmetadata', onMeta);
-        vrVideoEl.play().then(() => {
-          viewerLoader.style.display = 'none';
-          viewerVRContainer.style.display = 'block';
+      const cleanSrc = card.main_model_url.split('#')[0];
+      console.log('[VR] Loading src:', cleanSrc);
+
+      // ── Step 2: Timeout fallback — 10 s ──
+      let resolved = false;
+      const timeoutId = setTimeout(() => {
+        if (resolved) return;
+        resolved = true;
+        console.warn('[VR] Load timeout — showing error');
+        viewerLoader.style.display = 'none';
+        viewerVRContainer.style.display = 'block';
+        const errEl = document.createElement('div');
+        errEl.id = 'vr-error-msg';
+        errEl.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#ef4444;font-size:1rem;text-align:center;z-index:200;pointer-events:none;';
+        errEl.textContent = 'Unable to load VR video';
+        viewerVRContainer.appendChild(errEl);
+      }, 10000);
+
+      // ── Step 3: Show viewer & play once canplay fires ──
+      function onCanPlay() {
+        if (resolved) return;
+        console.log('[VR] canplay fired, readyState:', vrVideoEl.readyState);
+        if (vrVideoEl.readyState < 3) return; // wait for HAVE_FUTURE_DATA
+        resolved = true;
+        clearTimeout(timeoutId);
+
+        viewerLoader.style.display = 'none';
+        viewerVRContainer.style.display = 'block';
+
+        safePlay(vrVideoEl).then(() => {
           const btn = document.getElementById('vr-play-pause-btn');
-          if (btn) btn.textContent = '⏸ Pause';
-        }).catch(() => {
-          viewerLoader.style.display = 'none';
-          viewerVRContainer.style.display = 'block';
-        });
-      }, { once: true });
-
-      // Fallback if metadata loads fast
-      if (vrVideoEl.readyState >= 1) {
-        vrVideoEl.play().then(() => {
-          viewerLoader.style.display = 'none';
-          viewerVRContainer.style.display = 'block';
-        }).catch(() => {
-          viewerLoader.style.display = 'none';
-          viewerVRContainer.style.display = 'block';
+          if (btn) { btn.style.display = 'block'; btn.textContent = '⏸ Pause'; }
+          // Force texture refresh so A-Frame picks up the live video frame
+          setTimeout(refreshVRTexture, 100);
+          console.log('[VR] Playback started, texture refreshed');
         });
       }
+
+      function onLoadedMetadata() {
+        console.log('[VR] loadedmetadata fired, readyState:', vrVideoEl.readyState);
+        // If readyState already sufficient, act immediately
+        if (vrVideoEl.readyState >= 3) { onCanPlay(); }
+      }
+
+      vrVideoEl.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
+      vrVideoEl.addEventListener('canplay', onCanPlay, { once: true });
+      vrVideoEl.addEventListener('canplaythrough', onCanPlay, { once: true });
+
+      // ── Step 4: Assign src and start loading ──
+      vrVideoEl.src = cleanSrc;
+      vrVideoEl.load();
     }
 
     function toggleVRPlay() {
