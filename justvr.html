@@ -574,7 +574,6 @@
       video.loop = true;
       video.playsInline = true;
       video.preload = 'none'; // important: don't preload until visible
-      video.crossOrigin = 'anonymous'; // Ensure consistent CORS caching for the viewer modal
       video.setAttribute('playsinline', '');
       video.setAttribute('webkit-playsinline', '');
       video.setAttribute('muted', '');
@@ -676,7 +675,6 @@
     }
 
     function buildVRScene() {
-      cleanupVRVideoListeners();
       viewerVRContainer.innerHTML = '';
       vrScene = null;
       vrVideoEl = null;
@@ -775,38 +773,16 @@
       }
       console.log('[VR] Viewer closing, releasing resources');
       imageViewer.style.display = 'none';
-      
-      // Clean up listeners first to prevent background abort events from triggering legacy handlers
-      cleanupVRVideoListeners();
-
       // Pause and detach VR video src to free browser decoder completely
       if (vrVideoEl) {
         vrVideoEl.pause();
         vrVideoEl.removeAttribute('src');
-        try {
-          vrVideoEl.load();
-        } catch (err) {
-          console.warn('[VR] Error during close reset:', err);
-        }
+        vrVideoEl.load();
       }
       viewerVRContainer.style.display = 'none';
       // Remove any leftover error overlay
       const errEl = document.getElementById('vr-error-msg');
       if (errEl) errEl.remove();
-    }
-
-    // Listener tracker registry to avoid overlapping callbacks
-    let vrActiveListeners = null;
-
-    function cleanupVRVideoListeners() {
-      if (vrVideoEl && vrActiveListeners) {
-        console.log('[VR] Cleaning up active video loading listeners.');
-        vrVideoEl.removeEventListener('loadedmetadata', vrActiveListeners.onLoadedMetadata);
-        vrVideoEl.removeEventListener('canplay', vrActiveListeners.onCanPlay);
-        vrVideoEl.removeEventListener('canplaythrough', vrActiveListeners.onCanPlay);
-        vrVideoEl.removeEventListener('error', vrActiveListeners.onError);
-        vrActiveListeners = null;
-      }
     }
 
     function displayCardInViewer(card) {
@@ -841,17 +817,10 @@
         viewerTags.appendChild(b);
       });
 
-      // Clear previous listeners to block cancelled request errors from firing abort warnings
-      cleanupVRVideoListeners();
-
       // ── Step 1: Fully reset and unbind the old video before applying new source ──
       vrVideoEl.pause();
       vrVideoEl.removeAttribute('src');
-      try {
-        vrVideoEl.load();
-      } catch (err) {
-        console.warn('[VR] Non-fatal error resetting stream source:', err);
-      }
+      vrVideoEl.load();
 
       // Set all video attributes prior to loading (strictly matching thumbnail architecture)
       vrVideoEl.muted = true;
@@ -863,10 +832,7 @@
       vrVideoEl.preload = 'metadata'; // Load metadata only to avoid massive chunk locks
 
       const cleanSrc = card.main_model_url.split('#')[0];
-      // Use cleanSrc directly. Since both elements use crossOrigin = 'anonymous',
-      // cache-busting is no longer required and won't break server configurations.
-      const viewerSrc = cleanSrc;
-      console.log('[VR] Initializing stream swap for:', viewerSrc);
+      console.log('[VR] Initializing stream swap for:', cleanSrc);
 
       let resolved = false;
 
@@ -875,7 +841,6 @@
         if (resolved) return;
         resolved = true;
         clearTimeout(timeoutId);
-        cleanupVRVideoListeners();
         console.log('[VR] Stream connection successful. State readyState:', vrVideoEl.readyState);
 
         viewerLoader.style.display = 'none';
@@ -916,7 +881,6 @@
         }
 
         resolved = true;
-        cleanupVRVideoListeners();
         console.warn('[VR] Server connection timed out during initialization.');
         showVRError();
       }, 30000);
@@ -936,28 +900,18 @@
         }
       };
 
-      const onError = (e) => {
+      const onError = () => {
         if (resolved) return;
-        
-        // Guard against cancel/abort stream errors triggered when unbinding old assets
-        if (vrVideoEl.error) {
-          console.error('[VR] Native video streaming error received. Code:', vrVideoEl.error.code, 'Message:', vrVideoEl.error.message);
-          resolved = true;
-          clearTimeout(timeoutId);
-          cleanupVRVideoListeners();
-          showVRError();
-        } else {
-          console.warn('[VR] Video event error fired without a native error object, ignoring (might be abort):', e);
-        }
+        console.error('[VR] Native video streaming error received:', vrVideoEl.error);
+        resolved = true;
+        clearTimeout(timeoutId);
+        showVRError();
       };
 
-      // Store references for cleanup
-      vrActiveListeners = { onLoadedMetadata, onCanPlay, onError };
-
-      vrVideoEl.addEventListener('loadedmetadata', onLoadedMetadata);
-      vrVideoEl.addEventListener('canplay', onCanPlay);
-      vrVideoEl.addEventListener('canplaythrough', onCanPlay);
-      vrVideoEl.addEventListener('error', onError);
+      vrVideoEl.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
+      vrVideoEl.addEventListener('canplay', onCanPlay, { once: true });
+      vrVideoEl.addEventListener('canplaythrough', onCanPlay, { once: true });
+      vrVideoEl.addEventListener('error', onError, { once: true });
 
       // Check current cache state immediately
       if (vrVideoEl.readyState >= 3) {
@@ -965,7 +919,7 @@
       }
 
       // ── Step 3: Assign Source & Begin stream load ──
-      vrVideoEl.src = viewerSrc;
+      vrVideoEl.src = cleanSrc;
       vrVideoEl.load();
     }
 
