@@ -81,6 +81,135 @@
 
     /* Smooth viewer transitions */
     #viewer-vr-container { transition: none; }
+
+    /* ── VR Controls Bar ── */
+    #vr-controls-bar {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      z-index: 110;
+      padding: 12px 16px 14px;
+      background: linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.4) 70%, transparent 100%);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: opacity 0.35s ease;
+      pointer-events: auto;
+    }
+    #vr-controls-bar.hidden-controls {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* seek track */
+    #vr-seek-track {
+      position: relative;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.18);
+      cursor: pointer;
+      flex: 1;
+      /* bigger hit area */
+      padding: 8px 0;
+      margin: -8px 0;
+      box-sizing: content-box;
+    }
+    #vr-seek-track:hover #vr-seek-progress { height: 5px; }
+    #vr-seek-track:hover #vr-seek-buffered { height: 5px; }
+    #vr-seek-track:hover #vr-seek-rail { height: 5px; }
+    #vr-seek-track:hover #vr-seek-handle { transform: translateX(-50%) scale(1.3); }
+
+    #vr-seek-rail {
+      position: absolute;
+      top: 50%; left: 0; right: 0;
+      height: 4px;
+      margin-top: -2px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.18);
+      transition: height 0.12s;
+    }
+    #vr-seek-buffered {
+      position: absolute;
+      top: 50%; left: 0;
+      height: 4px;
+      margin-top: -2px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.35);
+      transition: width 0.4s linear, height 0.12s;
+      width: 0%;
+    }
+    #vr-seek-progress {
+      position: absolute;
+      top: 50%; left: 0;
+      height: 4px;
+      margin-top: -2px;
+      border-radius: 2px;
+      background: #22c55e;
+      transition: height 0.12s;
+      width: 0%;
+      pointer-events: none;
+    }
+    #vr-seek-handle {
+      position: absolute;
+      top: 50%;
+      width: 13px; height: 13px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 6px rgba(34,197,94,0.6);
+      transform: translateX(-50%) translateY(-50%);
+      left: 0%;
+      transition: transform 0.12s, box-shadow 0.12s;
+      pointer-events: none;
+    }
+    #vr-seek-handle.dragging {
+      transform: translateX(-50%) translateY(-50%) scale(1.4);
+      box-shadow: 0 0 12px rgba(34,197,94,0.8);
+    }
+
+    /* bottom row: play btn + time + mute */
+    #vr-controls-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    #vr-play-pause-btn {
+      flex-shrink: 0;
+      width: 32px; height: 32px;
+      padding: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.55);
+      border: 1px solid rgba(34,197,94,0.4);
+      border-radius: 50%;
+      color: #fff;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #vr-play-pause-btn:hover { background: #16a34a; }
+    #vr-play-pause-btn svg { width: 16px; height: 16px; }
+
+    #vr-mute-btn {
+      flex-shrink: 0;
+      width: 32px; height: 32px;
+      padding: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.55);
+      border: 1px solid rgba(34,197,94,0.4);
+      border-radius: 50%;
+      color: #fff;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #vr-mute-btn:hover { background: #16a34a; }
+    #vr-mute-btn svg { width: 16px; height: 16px; }
+
+    #vr-time-display {
+      font-size: 12px;
+      color: rgba(255,255,255,0.75);
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+    }
+    #vr-time-display span { color: rgba(255,255,255,0.4); margin: 0 2px; }
   </style>
 </head>
 <body class="bg-black text-gray-300 font-sans antialiased">
@@ -779,26 +908,41 @@
         }
       }, { once: true });
 
-      // Controls: play/pause + mute, grouped at bottom-center
-      const controls = document.createElement('div');
-      controls.className = 'absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-[105]';
+      // ── Controls bar with seek ──
+      const controlsBar = document.createElement('div');
+      controlsBar.id = 'vr-controls-bar';
+      controlsBar.innerHTML = `
+        <!-- Seek track -->
+        <div id="vr-seek-track">
+          <div id="vr-seek-rail"></div>
+          <div id="vr-seek-buffered"></div>
+          <div id="vr-seek-progress"></div>
+          <div id="vr-seek-handle"></div>
+        </div>
+        <!-- Bottom row -->
+        <div id="vr-controls-row">
+          <button id="vr-play-pause-btn" title="Play / Pause">
+            <svg id="vr-pause-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6"/></svg>
+            <svg id="vr-play-icon" class="hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3l14 9-14 9V3z"/></svg>
+          </button>
+          <div id="vr-time-display"><span id="vr-cur-time">0:00</span><span>/</span><span id="vr-dur-time">0:00</span></div>
+          <div style="flex:1"></div>
+          <button id="vr-mute-btn" title="Mute / Unmute">
+            <svg id="vr-unmuted-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
+            <svg id="vr-muted-icon" class="hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/></svg>
+          </button>
+        </div>`;
+      viewerVRContainer.appendChild(controlsBar);
 
-      const btn = document.createElement('button');
-      btn.id = 'vr-play-pause-btn';
-      btn.className = 'px-5 py-2 bg-black/60 border border-green-500/40 text-white rounded-full hover:bg-green-600 transition text-sm';
-      btn.textContent = '⏸ Pause';
-      btn.onclick = toggleVRPlay;
+      // Wire up buttons
+      controlsBar.querySelector('#vr-play-pause-btn').onclick = toggleVRPlay;
+      controlsBar.querySelector('#vr-mute-btn').onclick = toggleVRMute;
 
-      const muteBtn = document.createElement('button');
-      muteBtn.id = 'vr-mute-btn';
-      muteBtn.className = 'p-2 bg-black/60 border border-green-500/40 text-white rounded-full hover:bg-green-600 transition';
-      muteBtn.title = 'Mute / Unmute';
-      muteBtn.innerHTML = `<svg id="vr-unmuted-icon" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg><svg id="vr-muted-icon" class="w-4 h-4 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/></svg>`;
-      muteBtn.onclick = toggleVRMute;
+      // Init seek bar interactions
+      initSeekBar();
 
-      controls.appendChild(btn);
-      controls.appendChild(muteBtn);
-      viewerVRContainer.appendChild(controls);
+      // Init auto-hide
+      initControlsAutoHide();
     }
 
     /*
@@ -824,6 +968,10 @@
       }
       console.log('[VR] closeImageViewer');
       imageViewer.style.display = 'none';
+
+      // Stop seek bar animation
+      stopSeekTick();
+      clearTimeout(autoHideTimer);
 
       if (vrVideoEl) {
         vrVideoEl.pause();
@@ -855,6 +1003,11 @@
       vrTextureBound = false; // reset so bindVRTexture fires for this src
       const errEl = document.getElementById('vr-error-msg');
       if (errEl) errEl.remove();
+
+      // Reset seek bar for the new video
+      stopSeekTick();
+      updateSeekUI(0, 0);
+      updateTimeDisplay(0, 0);
 
       // ── Action buttons ──
       const actionsContainer = document.getElementById('viewer-actions');
@@ -903,11 +1056,17 @@
         console.log('[VR] playing event');
         showViewer();
         bindVRTexture(); // bind once — guarded by vrTextureBound flag
-        const btn = document.getElementById('vr-play-pause-btn');
-        if (btn) btn.textContent = '⏸ Pause';
+        syncVRPlayIcon();
         // Unmute now that autoplay succeeded — user expects audio
         vrVideoEl.muted = false;
         syncVRMuteIcon();
+        // Start seek bar tick
+        stopSeekTick();
+        startSeekTick();
+        // Reset seek bar to 0 for new video
+        updateSeekUI(0, 0);
+        updateTimeDisplay(0, vrVideoEl.duration || 0);
+        showControls();
       }
 
       // ── 10 s timeout fallback ──
@@ -935,8 +1094,8 @@
             console.warn('[VR] play() rejected:', err);
             showViewer();
             bindVRTexture();
-            const btn = document.getElementById('vr-play-pause-btn');
-            if (btn) btn.textContent = '▶ Tap to Play';
+            syncVRPlayIcon();
+            showControls();
           });
       }
 
@@ -955,19 +1114,218 @@
       vrVideoEl.load();
     }
 
+    /* ─────────────────────────────────────────────
+       SEEK BAR
+    ───────────────────────────────────────────── */
+    let seekRAF = null;
+    let seekDragging = false;
+    let seekDragPct = 0;
+
+    function fmtTime(s) {
+      if (!isFinite(s) || s < 0) return '0:00';
+      const m = Math.floor(s / 60);
+      const sec = Math.floor(s % 60);
+      return `${m}:${sec.toString().padStart(2, '0')}`;
+    }
+
+    function updateSeekUI(pct, buffPct) {
+      const progress = document.getElementById('vr-seek-progress');
+      const handle   = document.getElementById('vr-seek-handle');
+      const buffered = document.getElementById('vr-seek-buffered');
+      if (!progress || !handle) return;
+      const p = Math.max(0, Math.min(100, pct * 100));
+      progress.style.width = p + '%';
+      handle.style.left    = p + '%';
+      if (buffered && buffPct !== undefined) {
+        buffered.style.width = Math.max(0, Math.min(100, buffPct * 100)) + '%';
+      }
+    }
+
+    function updateTimeDisplay(cur, dur) {
+      const c = document.getElementById('vr-cur-time');
+      const d = document.getElementById('vr-dur-time');
+      if (c) c.textContent = fmtTime(cur);
+      if (d) d.textContent = fmtTime(dur);
+    }
+
+    function tickSeekBar() {
+      if (!vrVideoEl) return;
+      const dur = vrVideoEl.duration;
+      const cur = vrVideoEl.currentTime;
+
+      if (!seekDragging) {
+        const pct = (dur && isFinite(dur)) ? cur / dur : 0;
+        // buffered
+        let buffPct = 0;
+        if (vrVideoEl.buffered.length > 0 && dur) {
+          buffPct = vrVideoEl.buffered.end(vrVideoEl.buffered.length - 1) / dur;
+        }
+        updateSeekUI(pct, buffPct);
+        updateTimeDisplay(cur, dur);
+      }
+
+      seekRAF = requestAnimationFrame(tickSeekBar);
+    }
+
+    function startSeekTick() {
+      if (seekRAF) return;
+      tickSeekBar();
+    }
+    function stopSeekTick() {
+      if (seekRAF) { cancelAnimationFrame(seekRAF); seekRAF = null; }
+    }
+
+    /* Perform the actual seek on the video + force texture update */
+    function seekToFraction(frac) {
+      if (!vrVideoEl) return;
+      const dur = vrVideoEl.duration;
+      if (!dur || !isFinite(dur)) return;
+
+      const wasPaused = vrVideoEl.paused;
+      vrVideoEl.currentTime = frac * dur;
+      updateSeekUI(frac);
+      updateTimeDisplay(frac * dur, dur);
+
+      // After seek, A-Frame texture can go stale — nudge it back alive
+      if (!wasPaused) {
+        // Video is playing: seek will fire 'seeked'; render loop already running
+        vrVideoEl.addEventListener('seeked', () => {
+          resumeVRRender();
+        }, { once: true });
+      }
+    }
+
+    /* Translate pointer position on the track to 0-1 fraction */
+    function pctFromPointer(e, trackEl) {
+      const rect = trackEl.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    }
+
+    function initSeekBar() {
+      const track = document.getElementById('vr-seek-track');
+      if (!track) return;
+      const handle = document.getElementById('vr-seek-handle');
+
+      // Click on track
+      track.addEventListener('click', e => {
+        e.stopPropagation();
+        const frac = pctFromPointer(e, track);
+        seekToFraction(frac);
+      });
+
+      // ── Mouse drag ──
+      track.addEventListener('mousedown', e => {
+        e.preventDefault(); e.stopPropagation();
+        seekDragging = true;
+        handle && handle.classList.add('dragging');
+        const onMove = ev => {
+          const frac = pctFromPointer(ev, track);
+          seekDragPct = frac;
+          updateSeekUI(frac);
+          updateTimeDisplay(frac * (vrVideoEl ? vrVideoEl.duration : 0), vrVideoEl ? vrVideoEl.duration : 0);
+        };
+        const onUp = ev => {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          seekDragging = false;
+          handle && handle.classList.remove('dragging');
+          const frac = pctFromPointer(ev, track);
+          seekToFraction(frac);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+
+      // ── Touch drag ──
+      track.addEventListener('touchstart', e => {
+        e.stopPropagation();
+        seekDragging = true;
+        handle && handle.classList.add('dragging');
+        const onMove = ev => {
+          ev.preventDefault();
+          const frac = pctFromPointer(ev, track);
+          seekDragPct = frac;
+          updateSeekUI(frac);
+          updateTimeDisplay(frac * (vrVideoEl ? vrVideoEl.duration : 0), vrVideoEl ? vrVideoEl.duration : 0);
+        };
+        const onEnd = ev => {
+          track.removeEventListener('touchmove', onMove);
+          track.removeEventListener('touchend', onEnd);
+          seekDragging = false;
+          handle && handle.classList.remove('dragging');
+          const frac = seekDragPct;
+          seekToFraction(frac);
+        };
+        track.addEventListener('touchmove', onMove, { passive: false });
+        track.addEventListener('touchend', onEnd);
+      }, { passive: true });
+    }
+
+    /* ─────────────────────────────────────────────
+       AUTO-HIDE CONTROLS
+    ───────────────────────────────────────────── */
+    let autoHideTimer = null;
+
+    function showControls() {
+      const bar = document.getElementById('vr-controls-bar');
+      if (!bar) return;
+      bar.classList.remove('hidden-controls');
+      resetAutoHide();
+    }
+    function hideControls() {
+      const bar = document.getElementById('vr-controls-bar');
+      if (!bar) return;
+      // Don't hide while dragging
+      if (seekDragging) { resetAutoHide(); return; }
+      bar.classList.add('hidden-controls');
+    }
+    function resetAutoHide() {
+      clearTimeout(autoHideTimer);
+      autoHideTimer = setTimeout(hideControls, 3000);
+    }
+
+    function initControlsAutoHide() {
+      const container = viewerVRContainer;
+      if (!container) return;
+
+      const show = () => showControls();
+      container.addEventListener('mousemove', show, { passive: true });
+      container.addEventListener('touchstart', show, { passive: true });
+
+      // Start hidden after initial 3s
+      resetAutoHide();
+    }
+
+    /* ─────────────────────────────────────────────
+       PLAY / MUTE CONTROLS
+    ───────────────────────────────────────────── */
+    function syncVRPlayIcon() {
+      const pauseIcon = document.getElementById('vr-pause-icon');
+      const playIcon  = document.getElementById('vr-play-icon');
+      if (!pauseIcon || !playIcon || !vrVideoEl) return;
+      if (vrVideoEl.paused) {
+        pauseIcon.classList.add('hidden');
+        playIcon.classList.remove('hidden');
+      } else {
+        pauseIcon.classList.remove('hidden');
+        playIcon.classList.add('hidden');
+      }
+    }
+
     function toggleVRPlay() {
       if (!vrVideoEl) return;
-      const btn = document.getElementById('vr-play-pause-btn');
+      showControls();
       if (vrVideoEl.paused) {
         vrVideoEl.play()
-          .then(() => { resumeVRRender(); })
+          .then(() => { resumeVRRender(); startSeekTick(); })
           .catch(() => {});
-        if (btn) btn.textContent = '⏸ Pause';
       } else {
         vrVideoEl.pause();
         pauseVRRender();
-        if (btn) btn.textContent = '▶ Play';
+        stopSeekTick();
       }
+      syncVRPlayIcon();
     }
 
     function toggleVRMute() {
