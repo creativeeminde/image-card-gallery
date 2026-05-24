@@ -143,6 +143,7 @@
 
         <button id="viewer-prev" class="absolute left-4 top-1/2 -translate-y-1/2 z-[105] p-2 bg-black/30 text-white text-3xl rounded-full hover:bg-black/60 transition-colors" onclick="prevImage(event)">&#10094;</button>
         <button id="viewer-next" class="absolute right-4 top-1/2 -translate-y-1/2 z-[105] p-2 bg-black/30 text-white text-3xl rounded-full hover:bg-black/60 transition-colors" onclick="nextImage(event)">&#10095;</button>
+        <button id="viewer-fullscreen-btn" onclick="toggleViewerFullscreen()" title="Fullscreen" class="absolute bottom-4 right-4 z-[105] p-2 bg-black/50 hover:bg-green-600 text-white rounded-full transition-colors backdrop-blur-sm"><svg id="fs-expand-icon" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg><svg id="fs-shrink-icon" class="w-5 h-5 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9V4m0 5H4m5 0L3 3m12 6h5m-5 0V4m0 5l6-6M9 15v5m0-5H4m5 0l-6 6m12-6h5m-5 0v5m0-5l6 6"/></svg></button>
       </div>
     </div>
   </div>
@@ -661,6 +662,18 @@
       currentViewerIndex = index;
       console.log('[VR] openImageViewer', index);
 
+      // Pause ALL gallery thumbnails so the VR video gets full decoder priority
+      activeVideoRegistry.forEach((info, video) => {
+        if (!video.paused) video.pause();
+        info.playing = false;
+        // Save src, then fully release the decoder slot
+        if (video.src) {
+          video.dataset.src = video.dataset.src || video.src;
+          video.removeAttribute('src');
+          video.load();
+        }
+      });
+
       viewerLoader.style.display = 'flex';
       await loadAFrame();
       console.log('[VR] A-Frame ready');
@@ -672,7 +685,6 @@
 
       displayCardInViewer(displayedCards[index]);
     }
-
     function buildVRScene() {
       console.log('[VR] buildVRScene');
       viewerVRContainer.innerHTML = '';
@@ -758,6 +770,12 @@
       viewerVRContainer.style.display = 'none';
       const errEl = document.getElementById('vr-error-msg');
       if (errEl) errEl.remove();
+
+      // Re-observe gallery videos so IntersectionObserver re-assigns src + resumes playback
+      activeVideoRegistry.forEach((info, video) => {
+        videoObserver.unobserve(video);
+        videoObserver.observe(video);
+      });
     }
 
     function displayCardInViewer(card) {
@@ -1038,6 +1056,34 @@
       });
     }
     function removeSelectedTag(t) { selectedTags = selectedTags.filter(tag => tag !== t); updateSelectedTagsDisplay(); updateTagDropdowns(); }
+
+    /* ── Fullscreen toggle for VR viewer ── */
+    function toggleViewerFullscreen() {
+      const container = document.querySelector("#image-viewer .relative.w-full.h-\\[80vh\\]");
+      const expandIcon = document.getElementById("fs-expand-icon");
+      const shrinkIcon = document.getElementById("fs-shrink-icon");
+      const el = document.getElementById("viewer-image-container").parentElement;
+
+      if (!document.fullscreenElement) {
+        (el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen).call(el)
+          .then(() => { expandIcon.classList.add("hidden"); shrinkIcon.classList.remove("hidden"); })
+          .catch(() => {});
+      } else {
+        (document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen).call(document)
+          .then(() => { expandIcon.classList.remove("hidden"); shrinkIcon.classList.add("hidden"); })
+          .catch(() => {});
+      }
+    }
+
+    document.addEventListener("fullscreenchange", () => {
+      const expandIcon = document.getElementById("fs-expand-icon");
+      const shrinkIcon = document.getElementById("fs-shrink-icon");
+      if (!expandIcon || !shrinkIcon) return;
+      if (!document.fullscreenElement) {
+        expandIcon.classList.remove("hidden");
+        shrinkIcon.classList.add("hidden");
+      }
+    });
   </script>
 </body>
 </html>
