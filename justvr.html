@@ -574,6 +574,7 @@
       video.loop = true;
       video.playsInline = true;
       video.preload = 'none'; // important: don't preload until visible
+      video.crossOrigin = 'anonymous'; // Ensure consistent CORS caching for the viewer modal
       video.setAttribute('playsinline', '');
       video.setAttribute('webkit-playsinline', '');
       video.setAttribute('muted', '');
@@ -627,7 +628,7 @@
       // Delete button
       const delBtn = document.createElement('button');
       delBtn.className = 'absolute top-10 right-2 z-20 p-1.5 bg-black/50 rounded-full text-white hover:bg-red-600 transition-all duration-200 hidden lg:block lg:opacity-0 lg:group-hover:opacity-100 backdrop-blur-sm';
-      delBtn.innerHTML = `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>`;
+      delBtn.innerHTML = `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>`;
       delBtn.onclick = e => { e.stopPropagation(); deleteCard(card.id); };
       cardElem.appendChild(delBtn);
 
@@ -675,6 +676,7 @@
     }
 
     function buildVRScene() {
+      cleanupVRVideoListeners();
       viewerVRContainer.innerHTML = '';
       vrScene = null;
       vrVideoEl = null;
@@ -690,7 +692,7 @@
       vrVideoEl.setAttribute('webkit-playsinline', '');
       vrVideoEl.setAttribute('muted', '');             // HTML attr needed too
       vrVideoEl.setAttribute('x-webkit-airplay', 'allow');
-      vrVideoEl.preload = 'auto';
+      vrVideoEl.preload = 'metadata';                  // Use metadata matching thumbnails
       vrVideoEl.style.display = 'none';
 
       // A-Frame scene
@@ -702,7 +704,7 @@
       vrScene.style.cssText = 'width:100%;height:100%;position:absolute;inset:0;';
 
       const assets = document.createElement('a-assets');
-      assets.setAttribute('timeout', '10000');
+      assets.setAttribute('timeout', '30000');         // Increase assets load timeout
       assets.appendChild(vrVideoEl);
       vrScene.appendChild(assets);
 
@@ -727,16 +729,26 @@
       btn.onclick = toggleVRPlay;
       viewerVRContainer.appendChild(btn);
 
-      console.log('[VR] Scene built');
+      console.log('[VR] Scene built successfully');
     }
 
     /* Safe async play with fallback */
     async function safePlay(video) {
+      console.log('[VR] Attempting safePlay(). Current video state:', {
+        paused: video.paused,
+        readyState: video.readyState,
+        src: video.src
+      });
       try {
         await video.play();
         console.log('[VR] play() succeeded');
+        const playBtn = document.getElementById('vr-play-pause-btn');
+        if (playBtn) {
+          playBtn.style.display = 'block';
+          playBtn.textContent = '⏸ Pause';
+        }
       } catch (err) {
-        console.error('[VR] play() failed:', err);
+        console.warn('[VR] Autoplay failed or was blocked:', err);
         const playBtn = document.getElementById('vr-play-pause-btn');
         if (playBtn) {
           playBtn.style.display = 'block';
@@ -750,7 +762,7 @@
       if (!vrScene) return;
       const sphere = vrScene.querySelector('#vr-videosphere');
       if (!sphere) return;
-      console.log('[VR] Refreshing texture');
+      console.log('[VR] Refreshing video texture');
       sphere.setAttribute('src', '');
       requestAnimationFrame(() => {
         sphere.setAttribute('src', '#vr-video-texture');
@@ -761,22 +773,44 @@
       if (e && e.target !== imageViewer && e.target.id !== 'image-viewer') {
         if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
       }
-      console.log('[VR] Viewer closed');
+      console.log('[VR] Viewer closing, releasing resources');
       imageViewer.style.display = 'none';
-      // Pause and detach VR video src to free decoder
+      
+      // Clean up listeners first to prevent background abort events from triggering legacy handlers
+      cleanupVRVideoListeners();
+
+      // Pause and detach VR video src to free browser decoder completely
       if (vrVideoEl) {
         vrVideoEl.pause();
         vrVideoEl.removeAttribute('src');
-        vrVideoEl.load();
+        try {
+          vrVideoEl.load();
+        } catch (err) {
+          console.warn('[VR] Error during close reset:', err);
+        }
       }
       viewerVRContainer.style.display = 'none';
-      // Remove any error overlay
+      // Remove any leftover error overlay
       const errEl = document.getElementById('vr-error-msg');
       if (errEl) errEl.remove();
     }
 
+    // Listener tracker registry to avoid overlapping callbacks
+    let vrActiveListeners = null;
+
+    function cleanupVRVideoListeners() {
+      if (vrVideoEl && vrActiveListeners) {
+        console.log('[VR] Cleaning up active video loading listeners.');
+        vrVideoEl.removeEventListener('loadedmetadata', vrActiveListeners.onLoadedMetadata);
+        vrVideoEl.removeEventListener('canplay', vrActiveListeners.onCanPlay);
+        vrVideoEl.removeEventListener('canplaythrough', vrActiveListeners.onCanPlay);
+        vrVideoEl.removeEventListener('error', vrActiveListeners.onError);
+        vrActiveListeners = null;
+      }
+    }
+
     function displayCardInViewer(card) {
-      console.log('[VR] Viewer opening for card:', card.id);
+      console.log('[VR] Viewer loading new source for card ID:', card.id);
       viewerLoader.style.display = 'flex';
       viewerVRContainer.style.display = 'none';
       viewerTags.innerHTML = '';
@@ -807,62 +841,131 @@
         viewerTags.appendChild(b);
       });
 
-      // ── Step 1: Fully reset the old video before loading new src ──
+      // Clear previous listeners to block cancelled request errors from firing abort warnings
+      cleanupVRVideoListeners();
+
+      // ── Step 1: Fully reset and unbind the old video before applying new source ──
       vrVideoEl.pause();
       vrVideoEl.removeAttribute('src');
-      vrVideoEl.load();
-      vrVideoEl.muted = true;     // ensure muted survives src swap
+      try {
+        vrVideoEl.load();
+      } catch (err) {
+        console.warn('[VR] Non-fatal error resetting stream source:', err);
+      }
+
+      // Set all video attributes prior to loading (strictly matching thumbnail architecture)
+      vrVideoEl.muted = true;
+      vrVideoEl.loop = true;
+      vrVideoEl.playsInline = true;
+      vrVideoEl.setAttribute('playsinline', '');
+      vrVideoEl.setAttribute('webkit-playsinline', '');
+      vrVideoEl.setAttribute('muted', '');
+      vrVideoEl.preload = 'metadata'; // Load metadata only to avoid massive chunk locks
 
       const cleanSrc = card.main_model_url.split('#')[0];
-      console.log('[VR] Loading src:', cleanSrc);
+      // Use cleanSrc directly. Since both elements use crossOrigin = 'anonymous',
+      // cache-busting is no longer required and won't break server configurations.
+      const viewerSrc = cleanSrc;
+      console.log('[VR] Initializing stream swap for:', viewerSrc);
 
-      // ── Step 2: Timeout fallback — 10 s ──
       let resolved = false;
-      const timeoutId = setTimeout(() => {
-        if (resolved) return;
-        resolved = true;
-        console.warn('[VR] Load timeout — showing error');
-        viewerLoader.style.display = 'none';
-        viewerVRContainer.style.display = 'block';
-        const errEl = document.createElement('div');
-        errEl.id = 'vr-error-msg';
-        errEl.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#ef4444;font-size:1rem;text-align:center;z-index:200;pointer-events:none;';
-        errEl.textContent = 'Unable to load VR video';
-        viewerVRContainer.appendChild(errEl);
-      }, 10000);
 
-      // ── Step 3: Show viewer & play once canplay fires ──
-      function onCanPlay() {
+      // Primary success handler
+      function handleVideoReady() {
         if (resolved) return;
-        console.log('[VR] canplay fired, readyState:', vrVideoEl.readyState);
-        if (vrVideoEl.readyState < 3) return; // wait for HAVE_FUTURE_DATA
         resolved = true;
         clearTimeout(timeoutId);
+        cleanupVRVideoListeners();
+        console.log('[VR] Stream connection successful. State readyState:', vrVideoEl.readyState);
 
         viewerLoader.style.display = 'none';
         viewerVRContainer.style.display = 'block';
 
         safePlay(vrVideoEl).then(() => {
           const btn = document.getElementById('vr-play-pause-btn');
-          if (btn) { btn.style.display = 'block'; btn.textContent = '⏸ Pause'; }
-          // Force texture refresh so A-Frame picks up the live video frame
-          setTimeout(refreshVRTexture, 100);
-          console.log('[VR] Playback started, texture refreshed');
+          if (btn) {
+            btn.style.display = 'block';
+            btn.textContent = vrVideoEl.paused ? '▶ Tap to Play' : '⏸ Pause';
+          }
+          // Force texture updates
+          setTimeout(refreshVRTexture, 150);
+          console.log('[VR] Active render textures refreshed.');
         });
       }
 
-      function onLoadedMetadata() {
-        console.log('[VR] loadedmetadata fired, readyState:', vrVideoEl.readyState);
-        // If readyState already sufficient, act immediately
-        if (vrVideoEl.readyState >= 3) { onCanPlay(); }
+      // Show VR Error overlay helper
+      function showVRError() {
+        viewerLoader.style.display = 'none';
+        viewerVRContainer.style.display = 'block';
+        const errEl = document.createElement('div');
+        errEl.id = 'vr-error-msg';
+        errEl.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#ef4444;font-size:1rem;text-align:center;z-index:200;pointer-events:none;background:rgba(0,0,0,0.85);padding:12px 24px;border-radius:8px;border:1px solid #ef444433;';
+        errEl.textContent = 'Unable to load VR video';
+        viewerVRContainer.appendChild(errEl);
       }
 
-      vrVideoEl.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
-      vrVideoEl.addEventListener('canplay', onCanPlay, { once: true });
-      vrVideoEl.addEventListener('canplaythrough', onCanPlay, { once: true });
+      // ── Step 2: Extended loading timeout (30 seconds) ──
+      // VR media files are large. Do not dispatch early timeouts if metadata is ready.
+      const timeoutId = setTimeout(() => {
+        if (resolved) return;
+        
+        // If metadata is fetched, the URL is valid, and the video is merely buffering. Don't throw error.
+        if (vrVideoEl.readyState >= 1) {
+          console.log('[VR] Large buffer streaming slowly, but metadata is verified. Keeping loader active.');
+          return;
+        }
 
-      // ── Step 4: Assign src and start loading ──
-      vrVideoEl.src = cleanSrc;
+        resolved = true;
+        cleanupVRVideoListeners();
+        console.warn('[VR] Server connection timed out during initialization.');
+        showVRError();
+      }, 30000);
+
+      // Event Listeners (Once configuration ensures clean execution cycles)
+      const onLoadedMetadata = () => {
+        console.log('[VR] Video Event: loadedmetadata. ReadyState:', vrVideoEl.readyState);
+        if (vrVideoEl.readyState >= 3) {
+          handleVideoReady();
+        }
+      };
+
+      const onCanPlay = () => {
+        console.log('[VR] Video Event: canplay. ReadyState:', vrVideoEl.readyState);
+        if (vrVideoEl.readyState >= 3) {
+          handleVideoReady();
+        }
+      };
+
+      const onError = (e) => {
+        if (resolved) return;
+        
+        // Guard against cancel/abort stream errors triggered when unbinding old assets
+        if (vrVideoEl.error) {
+          console.error('[VR] Native video streaming error received. Code:', vrVideoEl.error.code, 'Message:', vrVideoEl.error.message);
+          resolved = true;
+          clearTimeout(timeoutId);
+          cleanupVRVideoListeners();
+          showVRError();
+        } else {
+          console.warn('[VR] Video event error fired without a native error object, ignoring (might be abort):', e);
+        }
+      };
+
+      // Store references for cleanup
+      vrActiveListeners = { onLoadedMetadata, onCanPlay, onError };
+
+      vrVideoEl.addEventListener('loadedmetadata', onLoadedMetadata);
+      vrVideoEl.addEventListener('canplay', onCanPlay);
+      vrVideoEl.addEventListener('canplaythrough', onCanPlay);
+      vrVideoEl.addEventListener('error', onError);
+
+      // Check current cache state immediately
+      if (vrVideoEl.readyState >= 3) {
+        handleVideoReady();
+      }
+
+      // ── Step 3: Assign Source & Begin stream load ──
+      vrVideoEl.src = viewerSrc;
       vrVideoEl.load();
     }
 
@@ -870,9 +973,14 @@
       if (!vrVideoEl) return;
       const btn = document.getElementById('vr-play-pause-btn');
       if (vrVideoEl.paused) {
-        vrVideoEl.play().catch(() => {});
-        if (btn) btn.textContent = '⏸ Pause';
+        console.log('[VR] User triggered playback resume');
+        vrVideoEl.play().then(() => {
+          if (btn) btn.textContent = '⏸ Pause';
+        }).catch(err => {
+          console.error('[VR] Playback attempt blocked:', err);
+        });
       } else {
+        console.log('[VR] User triggered playback pause');
         vrVideoEl.pause();
         if (btn) btn.textContent = '▶ Play';
       }
