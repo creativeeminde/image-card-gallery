@@ -659,14 +659,13 @@
     async function openImageViewer(index) {
       imageViewer.style.display = 'flex';
       currentViewerIndex = index;
-      console.log('[VR] Viewer opened, loading A-Frame...');
+      console.log('[VR] openImageViewer', index);
 
-      // Keep loader visible while A-Frame loads
       viewerLoader.style.display = 'flex';
       await loadAFrame();
       console.log('[VR] A-Frame ready');
 
-      // Build scene once; rebuild if container was cleared (e.g. after full reset)
+      // Build scene once; rebuild if the DOM was cleared
       if (!vrScene || !viewerVRContainer.contains(vrScene)) {
         buildVRScene();
       }
@@ -675,25 +674,25 @@
     }
 
     function buildVRScene() {
+      console.log('[VR] buildVRScene');
       viewerVRContainer.innerHTML = '';
       vrScene = null;
       vrVideoEl = null;
 
-      // Create the video element for VR texture
+      // ── Video element ──
       vrVideoEl = document.createElement('video');
       vrVideoEl.id = 'vr-video-texture';
       vrVideoEl.loop = true;
-      vrVideoEl.muted = true;                          // REQUIRED for autoplay
-      vrVideoEl.crossOrigin = 'anonymous';
+      vrVideoEl.muted = true;
+      vrVideoEl.setAttribute('muted', '');           // required HTML attr for autoplay
       vrVideoEl.playsInline = true;
       vrVideoEl.setAttribute('playsinline', '');
       vrVideoEl.setAttribute('webkit-playsinline', '');
-      vrVideoEl.setAttribute('muted', '');             // HTML attr needed too
-      vrVideoEl.setAttribute('x-webkit-airplay', 'allow');
+      vrVideoEl.crossOrigin = 'anonymous';
       vrVideoEl.preload = 'auto';
       vrVideoEl.style.display = 'none';
 
-      // A-Frame scene
+      // ── A-Frame scene ──
       vrScene = document.createElement('a-scene');
       vrScene.setAttribute('embedded', '');
       vrScene.setAttribute('vr-mode-ui', 'enabled:false');
@@ -701,14 +700,15 @@
       vrScene.setAttribute('renderer', 'antialias:false; colorManagement:true; highRefreshRate:true');
       vrScene.style.cssText = 'width:100%;height:100%;position:absolute;inset:0;';
 
+      // Assets — video lives here so A-Frame tracks it
       const assets = document.createElement('a-assets');
-      assets.setAttribute('timeout', '10000');
+      assets.setAttribute('timeout', '30000');
       assets.appendChild(vrVideoEl);
       vrScene.appendChild(assets);
 
+      // Videosphere — deliberately NO src yet; set after play starts
       const videosphere = document.createElement('a-videosphere');
       videosphere.id = 'vr-videosphere';
-      videosphere.setAttribute('src', '#vr-video-texture');
       videosphere.setAttribute('rotation', '0 -90 0');
       vrScene.appendChild(videosphere);
 
@@ -726,31 +726,15 @@
       btn.textContent = '⏸ Pause';
       btn.onclick = toggleVRPlay;
       viewerVRContainer.appendChild(btn);
-
-      console.log('[VR] Scene built');
     }
 
-    /* Safe async play with fallback */
-    async function safePlay(video) {
-      try {
-        await video.play();
-        console.log('[VR] play() succeeded');
-      } catch (err) {
-        console.error('[VR] play() failed:', err);
-        const playBtn = document.getElementById('vr-play-pause-btn');
-        if (playBtn) {
-          playBtn.style.display = 'block';
-          playBtn.textContent = '▶ Tap to Play';
-        }
-      }
-    }
-
-    /* Force texture refresh on the videosphere after playback starts */
-    function refreshVRTexture() {
+    /* Force A-Frame to pick up the live video as a texture */
+    function bindVRTexture() {
       if (!vrScene) return;
       const sphere = vrScene.querySelector('#vr-videosphere');
       if (!sphere) return;
-      console.log('[VR] Refreshing texture');
+      console.log('[VR] bindVRTexture');
+      // Clear first so A-Frame registers the change
       sphere.setAttribute('src', '');
       requestAnimationFrame(() => {
         sphere.setAttribute('src', '#vr-video-texture');
@@ -761,31 +745,30 @@
       if (e && e.target !== imageViewer && e.target.id !== 'image-viewer') {
         if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
       }
-      console.log('[VR] Viewer closed');
+      console.log('[VR] closeImageViewer');
       imageViewer.style.display = 'none';
-      // Pause and detach VR video src to free decoder
       if (vrVideoEl) {
         vrVideoEl.pause();
         vrVideoEl.removeAttribute('src');
         vrVideoEl.load();
+        // Unbind sphere so it doesn't show stale frame on next open
+        const sphere = vrScene && vrScene.querySelector('#vr-videosphere');
+        if (sphere) sphere.setAttribute('src', '');
       }
       viewerVRContainer.style.display = 'none';
-      // Remove any error overlay
       const errEl = document.getElementById('vr-error-msg');
       if (errEl) errEl.remove();
     }
 
     function displayCardInViewer(card) {
-      console.log('[VR] Viewer opening for card:', card.id);
+      console.log('[VR] displayCardInViewer', card.id);
       viewerLoader.style.display = 'flex';
       viewerVRContainer.style.display = 'none';
       viewerTags.innerHTML = '';
+      const errEl = document.getElementById('vr-error-msg');
+      if (errEl) errEl.remove();
 
-      // Remove any existing error message
-      const existingErr = document.getElementById('vr-error-msg');
-      if (existingErr) existingErr.remove();
-
-      // Build action buttons
+      // ── Action buttons ──
       const actionsContainer = document.getElementById('viewer-actions');
       actionsContainer.innerHTML = '';
       const editBtn = document.createElement('button');
@@ -798,7 +781,7 @@
       delBtn.onclick = () => { deleteCard(card.id); closeImageViewer(); };
       actionsContainer.append(editBtn, delBtn);
 
-      // Tags
+      // ── Tags ──
       const tags = card.tags ? card.tags.split(',').map(t => t.trim()).filter(t => t) : [];
       tags.forEach(tag => {
         const b = document.createElement('span');
@@ -807,61 +790,82 @@
         viewerTags.appendChild(b);
       });
 
-      // ── Step 1: Fully reset the old video before loading new src ──
+      // ── Reset video completely before new load ──
       vrVideoEl.pause();
       vrVideoEl.removeAttribute('src');
       vrVideoEl.load();
-      vrVideoEl.muted = true;     // ensure muted survives src swap
+      vrVideoEl.muted = true; // keep muted across src swaps
 
       const cleanSrc = card.main_model_url.split('#')[0];
-      console.log('[VR] Loading src:', cleanSrc);
+      console.log('[VR] Loading:', cleanSrc);
 
-      // ── Step 2: Timeout fallback — 10 s ──
+      // ── Single resolved flag prevents double-fire ──
       let resolved = false;
-      const timeoutId = setTimeout(() => {
+
+      function showViewer() {
         if (resolved) return;
         resolved = true;
-        console.warn('[VR] Load timeout — showing error');
+        console.log('[VR] showViewer — readyState:', vrVideoEl.readyState);
+        clearTimeout(loadTimeout);
         viewerLoader.style.display = 'none';
         viewerVRContainer.style.display = 'block';
-        const errEl = document.createElement('div');
-        errEl.id = 'vr-error-msg';
-        errEl.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#ef4444;font-size:1rem;text-align:center;z-index:200;pointer-events:none;';
-        errEl.textContent = 'Unable to load VR video';
-        viewerVRContainer.appendChild(errEl);
+      }
+
+      function onPlaybackStarted() {
+        console.log('[VR] playing event fired');
+        showViewer();
+        // Bind texture AFTER the video is provably playing — this is the key fix
+        bindVRTexture();
+        const btn = document.getElementById('vr-play-pause-btn');
+        if (btn) btn.textContent = '⏸ Pause';
+      }
+
+      // ── 10 s timeout fallback ──
+      const loadTimeout = setTimeout(() => {
+        if (resolved) return;
+        resolved = true;
+        console.warn('[VR] timeout — video never played');
+        viewerLoader.style.display = 'none';
+        viewerVRContainer.style.display = 'block';
+        const err = document.createElement('div');
+        err.id = 'vr-error-msg';
+        err.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#ef4444;font-size:1rem;text-align:center;z-index:200;pointer-events:none;background:rgba(0,0,0,.6);padding:12px 20px;border-radius:8px;';
+        err.textContent = 'Unable to load VR video';
+        viewerVRContainer.appendChild(err);
       }, 10000);
 
-      // ── Step 3: Show viewer & play once canplay fires ──
-      function onCanPlay() {
-        if (resolved) return;
-        console.log('[VR] canplay fired, readyState:', vrVideoEl.readyState);
-        if (vrVideoEl.readyState < 3) return; // wait for HAVE_FUTURE_DATA
-        resolved = true;
-        clearTimeout(timeoutId);
+      // ── Listen for actual playback — most reliable signal ──
+      vrVideoEl.addEventListener('playing', onPlaybackStarted, { once: true });
 
-        viewerLoader.style.display = 'none';
-        viewerVRContainer.style.display = 'block';
-
-        safePlay(vrVideoEl).then(() => {
+      // ── Once metadata is ready, try to play ──
+      function tryAutoplay() {
+        console.log('[VR] tryAutoplay readyState:', vrVideoEl.readyState);
+        vrVideoEl.muted = true;
+        vrVideoEl.play().then(() => {
+          console.log('[VR] play() resolved');
+          // "playing" event will fire next and call onPlaybackStarted
+        }).catch(err => {
+          console.warn('[VR] play() rejected:', err);
+          // Show viewer anyway so user can tap play
+          showViewer();
+          bindVRTexture();
           const btn = document.getElementById('vr-play-pause-btn');
-          if (btn) { btn.style.display = 'block'; btn.textContent = '⏸ Pause'; }
-          // Force texture refresh so A-Frame picks up the live video frame
-          setTimeout(refreshVRTexture, 100);
-          console.log('[VR] Playback started, texture refreshed');
+          if (btn) btn.textContent = '▶ Tap to Play';
         });
       }
 
-      function onLoadedMetadata() {
-        console.log('[VR] loadedmetadata fired, readyState:', vrVideoEl.readyState);
-        // If readyState already sufficient, act immediately
-        if (vrVideoEl.readyState >= 3) { onCanPlay(); }
+      vrVideoEl.addEventListener('loadedmetadata', () => {
+        console.log('[VR] loadedmetadata');
+        tryAutoplay();
+      }, { once: true });
+
+      // If already has metadata (cached / fast CDN), go straight to play
+      if (vrVideoEl.readyState >= 1) {
+        console.log('[VR] already has metadata, playing immediately');
+        tryAutoplay();
       }
 
-      vrVideoEl.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
-      vrVideoEl.addEventListener('canplay', onCanPlay, { once: true });
-      vrVideoEl.addEventListener('canplaythrough', onCanPlay, { once: true });
-
-      // ── Step 4: Assign src and start loading ──
+      // ── Assign src last so events are attached first ──
       vrVideoEl.src = cleanSrc;
       vrVideoEl.load();
     }
@@ -870,7 +874,10 @@
       if (!vrVideoEl) return;
       const btn = document.getElementById('vr-play-pause-btn');
       if (vrVideoEl.paused) {
-        vrVideoEl.play().catch(() => {});
+        vrVideoEl.muted = true;
+        vrVideoEl.play().then(() => {
+          bindVRTexture();
+        }).catch(() => {});
         if (btn) btn.textContent = '⏸ Pause';
       } else {
         vrVideoEl.pause();
