@@ -1654,17 +1654,37 @@
 
             if (error || !overdueTasks || overdueTasks.length === 0) return 0;
 
-            // Fetch today's tasks to avoid duplicates (only need titles)
+            // Fetch today's tasks to build a dedup index.
+            // We check by source_id (the original task's ID stored on the carried-over row)
+            // so the check is exact and immune to title collisions or partial runs.
             const { data: todayTasks } = await db
                 .from('todos')
-                .select('title')
+                .select('id, source_id')
                 .eq('due_date', todayStr);
 
-            const todayTitles = new Set((todayTasks || []).map(t => t.title.trim().toLowerCase()));
+            // Build a set of source_ids already carried over to today.
+            // Fall back to checking by the task's own id in case source_id column doesn't exist yet.
+            const todaySourceIds = new Set(
+                (todayTasks || [])
+                    .map(t => t.source_id)
+                    .filter(Boolean)
+            );
+            // Also track ids we insert during this run to avoid double-processing
+            const processedOriginalIds = new Set();
 
             let rolledCount = 0;
 
             for (const task of overdueTasks) {
+                // Determine the "root" source id for this task
+                // (if the task itself was a carried-over copy, use its own source_id, otherwise use its id)
+                const rootSourceId = task.source_id || task.id;
+
+                // IDEMPOTENCY CHECK: if a task with this source_id already exists today, skip entirely.
+                // This prevents duplicates on refresh, multiple page loads, or repeated runs.
+                if (todaySourceIds.has(rootSourceId) || processedOriginalIds.has(task.id)) {
+                    continue;
+                }
+
                 // Read rollover count: prefer DB column if it exists, fall back to localStorage
                 const localKey = `rollover_count_${task.id}`;
                 const dbCount = (typeof task.rollover_count === 'number') ? task.rollover_count : null;
@@ -1677,28 +1697,22 @@
                     continue;
                 }
 
-                // If same title already exists today (e.g. from a previous partial run),
-                // just clean up the old copy without creating a duplicate
-                if (todayTitles.has(task.title.trim().toLowerCase())) {
-                    await db.from('todos').delete().eq('id', task.id);
-                    localStorage.removeItem(localKey);
-                    continue;
-                }
-
                 // --- INSERT first, then DELETE only on success ---
+                // Store source_id so future runs can identify this carried-over task by origin.
 
-                // Try inserting with rollover_count (requires DB column)
+                // Try inserting with source_id and rollover_count (requires DB columns)
                 let insertResult = await db.from('todos')
                     .insert([{
                         title: task.title,
                         due_date: todayStr,
                         category: task.category || 'Personal',
                         status: 'Pending',
+                        source_id: rootSourceId,
                         rollover_count: currentRolloverCount
                     }])
                     .select('id');
 
-                // If the column doesn't exist in the DB, retry without it
+                // If source_id or rollover_count columns don't exist, retry without them
                 if (insertResult.error) {
                     insertResult = await db.from('todos')
                         .insert([{
@@ -1720,7 +1734,10 @@
                         localStorage.setItem(`rollover_count_${newId}`, String(currentRolloverCount));
                     }
                     localStorage.removeItem(localKey);
-                    todayTitles.add(task.title.trim().toLowerCase());
+
+                    // Mark this source as already carried to today so this run stays idempotent
+                    todaySourceIds.add(rootSourceId);
+                    processedOriginalIds.add(task.id);
                     rolledCount++;
                 } else {
                     // Both inserts failed — leave the original task untouched
