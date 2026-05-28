@@ -1636,6 +1636,41 @@
         }
 
         // Core rollover logic
+        // -------------------------------------------------------
+        // Dedup helper: removes same-day duplicate tasks.
+        // Keeps the row with the lowest id and deletes the rest
+        // that share the same due_date + title. Cleans up doubles
+        // that accumulated before source_id was introduced.
+        // -------------------------------------------------------
+        async function deduplicateTodayTasks(todayStr) {
+            const { data: allTodayTasks } = await db
+                .from('todos')
+                .select('id, title')
+                .eq('due_date', todayStr)
+                .order('id', { ascending: true }); // lowest id = keep
+
+            if (!allTodayTasks || allTodayTasks.length === 0) return;
+
+            const seen = new Set();
+            const idsToDelete = [];
+
+            for (const task of allTodayTasks) {
+                const key = task.title.trim().toLowerCase();
+                if (!seen.has(key)) {
+                    seen.add(key);
+                } else {
+                    idsToDelete.push(task.id);
+                }
+            }
+
+            if (idsToDelete.length > 0) {
+                console.log(`[TaskMaster] Dedup: removing ${idsToDelete.length} duplicate task(s) for ${todayStr}`);
+                for (const id of idsToDelete) {
+                    await db.from('todos').delete().eq('id', id);
+                }
+            }
+        }
+
         async function performRollover() {
             if (!navigator.onLine) return 0;
 
@@ -1645,7 +1680,11 @@
             const today = new Date();
             const todayStr = toYMD(today);
 
-            // Fetch all pending (non-completed) tasks from past days
+            // Step 1: wipe any existing same-day duplicates before proceeding.
+            // This handles rows doubled before source_id was added.
+            await deduplicateTodayTasks(todayStr);
+
+            // Step 2: fetch all pending tasks from past days
             const { data: overdueTasks, error } = await db
                 .from('todos')
                 .select('*')
@@ -1654,53 +1693,45 @@
 
             if (error || !overdueTasks || overdueTasks.length === 0) return 0;
 
-            // Fetch today's tasks to build a dedup index.
-            // We check by source_id (the original task's ID stored on the carried-over row)
-            // so the check is exact and immune to title collisions or partial runs.
+            // Step 3: build dedup indexes from today's tasks (post-cleanup)
             const { data: todayTasks } = await db
                 .from('todos')
-                .select('id, source_id')
+                .select('id, title, source_id')
                 .eq('due_date', todayStr);
 
-            // Build a set of source_ids already carried over to today.
-            // Fall back to checking by the task's own id in case source_id column doesn't exist yet.
+            // Primary guard: source_id match (precise, works for all new rows)
             const todaySourceIds = new Set(
-                (todayTasks || [])
-                    .map(t => t.source_id)
-                    .filter(Boolean)
+                (todayTasks || []).map(t => t.source_id).filter(Boolean)
             );
-            // Also track ids we insert during this run to avoid double-processing
+            // Fallback guard: title match (covers legacy rows where source_id is NULL)
+            const todayTitles = new Set(
+                (todayTasks || []).map(t => t.title.trim().toLowerCase())
+            );
+            // In-run guard: prevents double-processing within a single execution
             const processedOriginalIds = new Set();
 
             let rolledCount = 0;
 
             for (const task of overdueTasks) {
-                // Determine the "root" source id for this task
-                // (if the task itself was a carried-over copy, use its own source_id, otherwise use its id)
                 const rootSourceId = task.source_id || task.id;
+                const normTitle = task.title.trim().toLowerCase();
 
-                // IDEMPOTENCY CHECK: if a task with this source_id already exists today, skip entirely.
-                // This prevents duplicates on refresh, multiple page loads, or repeated runs.
-                if (todaySourceIds.has(rootSourceId) || processedOriginalIds.has(task.id)) {
-                    continue;
-                }
+                // Skip if already carried over (by source_id, title fallback, or this run)
+                if (
+                    todaySourceIds.has(rootSourceId) ||
+                    todayTitles.has(normTitle) ||
+                    processedOriginalIds.has(task.id)
+                ) continue;
 
-                // Read rollover count: prefer DB column if it exists, fall back to localStorage
+                // Read rollover count
                 const localKey = `rollover_count_${task.id}`;
                 const dbCount = (typeof task.rollover_count === 'number') ? task.rollover_count : null;
                 const localCount = parseInt(localStorage.getItem(localKey) || '0');
                 const currentRolloverCount = (dbCount !== null ? dbCount : localCount) + 1;
 
-                // Check max days limit
-                if (settings.maxDays > 0 && currentRolloverCount > settings.maxDays) {
-                    // Exceeded limit — leave in place, do not move or delete
-                    continue;
-                }
+                if (settings.maxDays > 0 && currentRolloverCount > settings.maxDays) continue;
 
-                // --- INSERT first, then DELETE only on success ---
-                // Store source_id so future runs can identify this carried-over task by origin.
-
-                // Try inserting with source_id and rollover_count (requires DB columns)
+                // INSERT first (with source_id + rollover_count), DELETE original only on success
                 let insertResult = await db.from('todos')
                     .insert([{
                         title: task.title,
@@ -1712,7 +1743,7 @@
                     }])
                     .select('id');
 
-                // If source_id or rollover_count columns don't exist, retry without them
+                // Retry without new columns if they don't exist in the schema yet
                 if (insertResult.error) {
                     insertResult = await db.from('todos')
                         .insert([{
@@ -1725,22 +1756,18 @@
                 }
 
                 if (!insertResult.error) {
-                    // Insert succeeded — now it's safe to delete the original
                     await db.from('todos').delete().eq('id', task.id);
 
-                    // Track rollover count in localStorage as a fallback
-                    const newId = insertResult.data && insertResult.data[0] && insertResult.data[0].id;
-                    if (newId) {
-                        localStorage.setItem(`rollover_count_${newId}`, String(currentRolloverCount));
-                    }
+                    const newId = insertResult.data?.[0]?.id;
+                    if (newId) localStorage.setItem(`rollover_count_${newId}`, String(currentRolloverCount));
                     localStorage.removeItem(localKey);
 
-                    // Mark this source as already carried to today so this run stays idempotent
+                    // Update both indexes so the rest of this loop stays correct
                     todaySourceIds.add(rootSourceId);
+                    todayTitles.add(normTitle);
                     processedOriginalIds.add(task.id);
                     rolledCount++;
                 } else {
-                    // Both inserts failed — leave the original task untouched
                     console.error('[TaskMaster] Rollover insert failed for task:', task.title, insertResult.error);
                 }
             }
