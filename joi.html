@@ -6845,7 +6845,25 @@ function filterClipsByModel(modelId) {
                     // Match clips where the legacy category_id matches OR the category_ids array contains the selected category
                     query = query.or(`category_id.eq.${currentCategoryFilter},category_ids.cs.{${currentCategoryFilter}}`);
                 }
-                if (searchVal) query = query.ilike('title', `%${searchVal}%`);
+                if (searchVal) {
+                    // Find all model IDs whose name matches the search term
+                    const matchingModelIds = (allLoadedCards || [])
+                        .filter(c => c.title && c.title.toLowerCase().includes(searchVal))
+                        .map(c => c.id);
+
+                    if (matchingModelIds.length > 0) {
+                        // Build an OR filter: title matches OR card_id/card_ids matches any of the model IDs
+                        const modelOrParts = matchingModelIds.flatMap(id => [
+                            `card_id.eq.${id}`,
+                            `card_ids.cs.{${id}}`
+                        ]);
+                        const orString = [`title.ilike.%${searchVal}%`, ...modelOrParts].join(',');
+                        query = query.or(orString);
+                    } else {
+                        // No model name matches — fall back to title-only search
+                        query = query.ilike('title', `%${searchVal}%`);
+                    }
+                }
                 // FIX: filter by card_id OR card_ids array contains the selected model
                 if (currentModelClipFilter) query = query.or(`card_id.eq.${currentModelClipFilter},card_ids.cs.{${currentModelClipFilter}}`);
                 if (currentClipSiteFilter) query = query.eq('site_name', currentClipSiteFilter);
