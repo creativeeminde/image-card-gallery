@@ -106,6 +106,29 @@
             background: #7fe826; flex-shrink: 0; margin-right: 6px;
         }
 
+        /* ===== RUNWAY SITE FILTER BAR COLLAPSE ===== */
+        #runwaySiteFilterBar {
+            transform-origin: left center;
+            transition: opacity 0.25s ease, transform 0.25s ease, max-width 0.3s ease, padding 0.25s ease, border-width 0.25s ease;
+        }
+        #runwaySiteFilterBar.filter-collapsed {
+            opacity: 0;
+            transform: scaleX(0.6);
+            max-width: 0 !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            border-left-width: 0 !important;
+            border-right-width: 0 !important;
+            overflow: hidden !important;
+            pointer-events: none;
+        }
+        #runwaySiteFilterToggle.filter-active {
+            color: #7fe826;
+            border-color: rgba(127,232,38,0.5);
+            background: rgba(127,232,38,0.1);
+        }
+        /* ===== /RUNWAY SITE FILTER BAR COLLAPSE ===== */
+
         .lazy-media { opacity: 0; transition: opacity 0.5s ease-in-out; will-change: opacity; }
         .lazy-media.loaded { opacity: 1; }
         .break-inside-avoid { break-inside: avoid; }
@@ -3287,8 +3310,17 @@
             <div class="w-full h-full flex flex-col lg:flex-row overflow-hidden bg-[#f1f5f0] dark:bg-slate-900 pt-[85px]">
                 <div class="flex-1 relative flex items-center justify-center h-[50vh] lg:h-full overflow-hidden shrink-0">
                     <div id="runwayAlphabetBar" class="absolute top-2 sm:top-4 left-1/2 -translate-x-1/2 z-50 flex items-center justify-center gap-1 sm:gap-1.5 px-4 py-3 dark:border-slate-700/50 overflow-x-auto no-scrollbar transition-colors duration-300 w-max max-w-[95vw]"></div>
-                    <!-- Runway Site Filter Bar -->
-                    <div id="runwaySiteFilterBar" class="absolute top-20 left-4 z-50 flex-wrap items-center justify-center gap-1.5 px-3 py-1.5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md rounded-full shadow-md border border-slate-200/50 dark:border-slate-700/50 max-w-[90vw] overflow-x-auto no-scrollbar flex"></div>
+                    <!-- Runway Site Filter Bar (collapsible) -->
+                    <div id="runwaySiteFilterWrapper" class="absolute top-20 left-4 z-50 flex items-center gap-2">
+                        <!-- Toggle button -->
+                        <button id="runwaySiteFilterToggle" onclick="toggleRunwaySiteFilter()" title="Toggle site filter" class="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-white/80 dark:bg-slate-800/80 backdrop-blur-md rounded-full shadow-md border border-slate-200/50 dark:border-slate-700/50 text-slate-500 dark:text-slate-400 hover:text-[#7fe826] dark:hover:text-[#7fe826] transition-all duration-200" aria-label="Toggle filter bar" aria-expanded="true">
+                            <svg id="runwaySiteFilterToggleIcon" class="w-4 h-4 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M3 6h18M7 12h10M11 18h2"/>
+                            </svg>
+                        </button>
+                        <!-- Filter bar -->
+                        <div id="runwaySiteFilterBar" class="flex-wrap items-center justify-center gap-1.5 px-3 py-1.5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md rounded-full shadow-md border border-slate-200/50 dark:border-slate-700/50 max-w-[80vw] overflow-x-auto no-scrollbar flex transition-all duration-300 origin-left" style="max-width:80vw;"></div>
+                    </div>
 
                     <div class="absolute top-32 left-4 lg:top-32 z-50 flex items-center bg-white/80 dark:bg-slate-800/80 backdrop-blur-md p-1 rounded-full shadow-md border border-slate-200/50 dark:border-slate-700/50 transition-colors duration-300 gap-1">
                         <button id="runwayModeMain" onclick="setRunwayMode('main')" class="px-3 py-1.5 text-[10px] font-bold rounded-full bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm transition-all uppercase tracking-wider">Main</button>
@@ -8489,7 +8521,8 @@ let editingClipId = null; // Track if we are editing
         }
 
         function buildRunwaySiteBar() {
-            const bar = document.getElementById('runwaySiteFilterBar');
+            const bar     = document.getElementById('runwaySiteFilterBar');
+            const wrapper = document.getElementById('runwaySiteFilterWrapper');
             if (!bar) return;
 
             // Collect unique site names across all cards
@@ -8499,12 +8532,14 @@ let editingClipId = null; // Track if we are editing
                 if (s) siteSet.add(s);
             });
 
-            // Hide bar entirely when no sites exist
+            // Hide entire wrapper when no sites exist
             if (siteSet.size === 0) {
+                if (wrapper) { wrapper.classList.add('hidden'); wrapper.classList.remove('flex'); }
                 bar.classList.add('hidden');
                 bar.classList.remove('flex');
                 return;
             }
+            if (wrapper) { wrapper.classList.remove('hidden'); wrapper.classList.add('flex'); }
             bar.classList.remove('hidden');
             bar.classList.add('flex');
 
@@ -8531,6 +8566,27 @@ let editingClipId = null; // Track if we are editing
 
             bar.appendChild(makeBtn('All', null));
             sites.forEach(s => bar.appendChild(makeBtn(s, s)));
+        }
+
+        // ── Runway site filter bar toggle ──────────────────────────────────────
+        var _runwaySiteFilterVisible = true;
+        function toggleRunwaySiteFilter() {
+            const bar  = document.getElementById('runwaySiteFilterBar');
+            const btn  = document.getElementById('runwaySiteFilterToggle');
+            const icon = document.getElementById('runwaySiteFilterToggleIcon');
+            if (!bar || !btn) return;
+            _runwaySiteFilterVisible = !_runwaySiteFilterVisible;
+            if (_runwaySiteFilterVisible) {
+                bar.classList.remove('filter-collapsed');
+                btn.classList.remove('filter-active');
+                btn.setAttribute('aria-expanded', 'true');
+                if (icon) icon.style.transform = 'rotate(0deg)';
+            } else {
+                bar.classList.add('filter-collapsed');
+                btn.classList.add('filter-active');
+                btn.setAttribute('aria-expanded', 'false');
+                if (icon) icon.style.transform = 'rotate(90deg)';
+            }
         }
 
         function setRunwayPanelMode(mode) { 
