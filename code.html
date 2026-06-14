@@ -2164,7 +2164,7 @@
             
             html += `
                 <div id="timeline-events-container" class="absolute left-12 right-0" style="top: 0; bottom: 0;"></div>
-                <div id="timeline-current-time-line" class="absolute left-12 right-0 flex items-center z-20 pointer-events-none hidden" style="top: 0px; height: 1px;">
+                <div id="timeline-current-time-line" class="absolute left-12 right-0 flex items-center pointer-events-none hidden" style="top: 0px; height: 1px; z-index: 50;">
                     <div class="absolute -left-12 bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-md shadow-sm" id="timeline-current-time-label">12:00</div>
                     <div class="flex-grow border-t-2 border-red-500"></div>
                     <div class="size-2 rounded-full bg-red-500 -mr-1"></div>
@@ -2194,6 +2194,8 @@
             
             let totalFocusMinutes = 0;
             
+            // Collect all visible scheduled tasks
+            const scheduledTasks = [];
             if (todos && todos.length > 0) {
                 todos.forEach(task => {
                     const parsed = parseTaskCategory(task.category);
@@ -2207,39 +2209,102 @@
                         }
                         
                         if (startDec >= startHour && startDec <= 23) {
-                            const top = (startDec - startHour) * 64;
-                            const height = (endDec - startDec) * 64;
-                            
-                            const block = document.createElement('div');
-                            const isCompleted = task.status === 'Completed';
-                            block.className = `absolute left-2 right-2 rounded-xl p-3 shadow-sm border transition-all hover:shadow-md flex flex-col justify-between overflow-hidden cursor-pointer select-none animate-fade-in ${isCompleted ? 'opacity-65' : ''}`;
-                            
-                            if (isFocus) {
-                                block.className += ` bg-red-500/10 dark:bg-red-500/5 border-red-500/30 text-red-600 dark:text-red-400 bg-hatched`;
-                            } else {
-                                const style = getCategoryClasses(parsed.category);
-                                block.className += ` ${style} border-slate-200/50 dark:border-slate-800`;
-                            }
-                            
-                            block.style.cssText += `top: ${top}px; height: ${height}px;`;
-                            
-                            const timeRange = formatTimeRange(parsed.start_time, parsed.end_time);
-                            block.innerHTML = `
-                                <div class="flex flex-col min-w-0">
-                                    <span class="font-bold text-xs truncate leading-none mb-1 ${isCompleted ? 'line-through' : ''}">${isCompleted ? '✓ ' : ''}${task.title}</span>
-                                    <span class="text-[10px] opacity-75 font-medium tracking-tight">${timeRange}</span>
-                                </div>
-                            `;
-                            
-                            block.addEventListener('click', () => {
-                                editEvent(task);
-                            });
-                            
-                            eventsContainer.appendChild(block);
+                            scheduledTasks.push({ task, parsed, startDec, endDec, isFocus });
                         }
                     }
                 });
             }
+
+            // --- Overlap Layout Algorithm (Google Calendar style) ---
+            // Sort by start time, then by end time (longer events first)
+            scheduledTasks.sort((a, b) => a.startDec - b.startDec || b.endDec - a.endDec);
+
+            // Assign each event to a "column" within its overlap group
+            // A group is a maximal set of events that all mutually overlap in time
+            const layoutEvents = scheduledTasks.map(e => ({ ...e, col: 0, totalCols: 1 }));
+            
+            // Process events in groups of overlapping events
+            let i = 0;
+            while (i < layoutEvents.length) {
+                // Find all events that overlap with event i (form a cluster)
+                let groupEnd = layoutEvents[i].endDec;
+                let j = i + 1;
+                while (j < layoutEvents.length && layoutEvents[j].startDec < groupEnd) {
+                    groupEnd = Math.max(groupEnd, layoutEvents[j].endDec);
+                    j++;
+                }
+                const group = layoutEvents.slice(i, j);
+                const groupSize = group.length;
+
+                // Assign columns using a greedy column-fill approach
+                // columns tracks the end time of the last event placed in that column
+                const columns = [];
+                group.forEach(ev => {
+                    let placed = false;
+                    for (let c = 0; c < columns.length; c++) {
+                        // Can place here if this column's last event ended before this event starts
+                        if (columns[c] <= ev.startDec + 0.001) {
+                            ev.col = c;
+                            columns[c] = ev.endDec;
+                            placed = true;
+                            break;
+                        }
+                    }
+                    if (!placed) {
+                        ev.col = columns.length;
+                        columns.push(ev.endDec);
+                    }
+                });
+
+                // totalCols for this group = number of columns used
+                const numCols = columns.length;
+                group.forEach(ev => { ev.totalCols = numCols; });
+
+                i = j;
+            }
+
+            // Now render each event with computed column layout
+            const GAP = 4; // px gap between events
+            layoutEvents.forEach(({ task, parsed, startDec, endDec, isFocus, col, totalCols }) => {
+                const top = (startDec - startHour) * 64;
+                const height = Math.max((endDec - startDec) * 64, 28); // min height 28px so title is always readable
+
+                const block = document.createElement('div');
+                const isCompleted = task.status === 'Completed';
+                block.className = `absolute rounded-xl p-2 shadow-sm border transition-all hover:shadow-md flex flex-col justify-between overflow-hidden cursor-pointer select-none animate-fade-in ${isCompleted ? 'opacity-65' : ''}`;
+
+                if (isFocus) {
+                    block.className += ` bg-red-500/10 dark:bg-red-500/5 border-red-500/30 text-red-600 dark:text-red-400 bg-hatched`;
+                } else {
+                    const style = getCategoryClasses(parsed.category);
+                    block.className += ` ${style} border-slate-200/50 dark:border-slate-800`;
+                }
+
+                // Calculate left/width based on column assignment
+                const colWidth = 100 / totalCols;
+                const leftPct = col * colWidth;
+                const widthPct = colWidth;
+
+                // Use percentage for responsive layout, with gap between siblings
+                const leftPx = `calc(${leftPct}% + ${col === 0 ? GAP : Math.ceil(GAP / 2)}px)`;
+                const rightPx = `calc(${100 - leftPct - widthPct}% + ${col === totalCols - 1 ? GAP : Math.ceil(GAP / 2)}px)`;
+
+                block.style.cssText = `top: ${top}px; height: ${height}px; left: ${leftPx}; right: ${rightPx}; z-index: ${10 + col};`;
+
+                const timeRange = formatTimeRange(parsed.start_time, parsed.end_time);
+                block.innerHTML = `
+                    <div class="flex flex-col min-w-0">
+                        <span class="font-bold text-xs leading-tight mb-0.5 ${isCompleted ? 'line-through' : ''}" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${isCompleted ? '✓ ' : ''}${task.title}</span>
+                        <span class="text-[10px] opacity-75 font-medium tracking-tight whitespace-nowrap">${timeRange}</span>
+                    </div>
+                `;
+
+                block.addEventListener('click', () => {
+                    editEvent(task);
+                });
+
+                eventsContainer.appendChild(block);
+            });
             
             const hours = Math.floor(totalFocusMinutes / 60);
             const minutes = totalFocusMinutes % 60;
