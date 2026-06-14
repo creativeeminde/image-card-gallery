@@ -606,6 +606,29 @@
                             <div class="mt-3 px-4 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-full">
                                 <span id="focus-time-range-display" class="text-xs font-bold text-slate-500 dark:text-slate-300">11:45 → 12:15</span>
                             </div>
+
+                            <!-- Duration Editor (shown when not running) -->
+                            <div id="duration-editor" class="w-full mt-5 pt-4 border-t border-slate-100 dark:border-slate-700">
+                                <!-- Quick Presets -->
+                                <p class="text-[10px] font-bold tracking-widest text-slate-400 uppercase text-center mb-3">Quick Presets</p>
+                                <div class="flex flex-wrap justify-center gap-2 mb-4" id="preset-btns">
+                                    <button class="preset-btn px-3 py-1.5 rounded-full text-xs font-bold border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all" data-mins="15">15 min</button>
+                                    <button class="preset-btn px-3 py-1.5 rounded-full text-xs font-bold border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all" data-mins="25">25 min</button>
+                                    <button class="preset-btn px-3 py-1.5 rounded-full text-xs font-bold border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all active-preset bg-red-500 text-white border-red-500" data-mins="30">30 min</button>
+                                    <button class="preset-btn px-3 py-1.5 rounded-full text-xs font-bold border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all" data-mins="45">45 min</button>
+                                    <button class="preset-btn px-3 py-1.5 rounded-full text-xs font-bold border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all" data-mins="60">60 min</button>
+                                </div>
+                                <!-- Custom Input Row -->
+                                <div class="flex items-center justify-center gap-3">
+                                    <button id="dur-dec-btn" class="size-8 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-lg transition-colors select-none">−</button>
+                                    <div class="flex items-center gap-1">
+                                        <input id="custom-dur-input" type="number" min="1" max="180" value="30"
+                                            class="w-14 text-center text-sm font-bold bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl py-1.5 focus:ring-2 focus:ring-red-400 outline-none text-slate-800 dark:text-slate-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none">
+                                        <span class="text-xs font-semibold text-slate-400">min</span>
+                                    </div>
+                                    <button id="dur-inc-btn" class="size-8 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-lg transition-colors select-none">+</button>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Focus Task Selector Dropdown Card -->
@@ -1640,6 +1663,10 @@
             document.getElementById('timer-dial-svg').style.pointerEvents = 'auto';
             document.getElementById('focus-task-selector').disabled = false;
             document.title = originalTitle;
+
+            // Show duration editor when timer is not running
+            const editor = document.getElementById('duration-editor');
+            if (editor) editor.classList.remove('hidden');
         }
 
         function toggleFocusTimer() {
@@ -1652,6 +1679,9 @@
                 if (focusSecondsLeft === 0) {
                     focusSecondsLeft = focusDurationMinutes * 60;
                     focusSessionStartTimestamp = new Date();
+                    // Hide duration editor once session starts
+                    const editor = document.getElementById('duration-editor');
+                    if (editor) editor.classList.add('hidden');
                 }
                 
                 // Show dual Controls (Pause and Stop side-by-side)
@@ -2108,6 +2138,16 @@
             if (minutes > 60) minutes = 60;
             
             setCustomFocusDuration(minutes);
+            // Keep custom input and preset buttons in sync with dial
+            const inp = document.getElementById('custom-dur-input');
+            if (inp) inp.value = minutes;
+            document.querySelectorAll('.preset-btn').forEach(b => {
+                const match = parseInt(b.dataset.mins) === minutes;
+                b.classList.toggle('active-preset', match);
+                b.classList.toggle('bg-red-500', match);
+                b.classList.toggle('text-white', match);
+                b.classList.toggle('border-red-500', match);
+            });
         }
 
         function setupTimerDialEvents() {
@@ -2141,6 +2181,64 @@
             window.addEventListener('touchend', () => {
                 isDialDragging = false;
             });
+        }
+
+        function setupDurationEditor() {
+            // Preset buttons
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (focusIsRunning) return;
+                    const mins = parseInt(btn.dataset.mins);
+                    // Update active state
+                    document.querySelectorAll('.preset-btn').forEach(b => {
+                        b.classList.remove('active-preset', 'bg-red-500', 'text-white', 'border-red-500');
+                    });
+                    btn.classList.add('active-preset', 'bg-red-500', 'text-white', 'border-red-500');
+                    // Sync custom input
+                    const inp = document.getElementById('custom-dur-input');
+                    if (inp) inp.value = mins;
+                    setCustomFocusDuration(mins);
+                });
+            });
+
+            // +/- stepper buttons
+            document.getElementById('dur-dec-btn')?.addEventListener('click', () => {
+                if (focusIsRunning) return;
+                const inp = document.getElementById('custom-dur-input');
+                let val = Math.max(1, parseInt(inp.value || '30') - 5);
+                inp.value = val;
+                syncDurationFromInput(val);
+            });
+            document.getElementById('dur-inc-btn')?.addEventListener('click', () => {
+                if (focusIsRunning) return;
+                const inp = document.getElementById('custom-dur-input');
+                let val = Math.min(180, parseInt(inp.value || '30') + 5);
+                inp.value = val;
+                syncDurationFromInput(val);
+            });
+
+            // Free-type custom input
+            document.getElementById('custom-dur-input')?.addEventListener('input', (e) => {
+                if (focusIsRunning) return;
+                const val = parseInt(e.target.value);
+                if (!isNaN(val) && val >= 1 && val <= 180) {
+                    syncDurationFromInput(val);
+                }
+            });
+        }
+
+        function syncDurationFromInput(mins) {
+            // Deactivate all presets
+            document.querySelectorAll('.preset-btn').forEach(b => {
+                b.classList.remove('active-preset', 'bg-red-500', 'text-white', 'border-red-500');
+            });
+            // Re-activate preset if it matches
+            document.querySelectorAll('.preset-btn').forEach(b => {
+                if (parseInt(b.dataset.mins) === mins) {
+                    b.classList.add('active-preset', 'bg-red-500', 'text-white', 'border-red-500');
+                }
+            });
+            setCustomFocusDuration(mins);
         }
 
         function renderTimelineGrid() {
@@ -3399,6 +3497,7 @@
             generateTicks();
             setCustomFocusDuration(focusDurationMinutes);
             setupTimerDialEvents();
+            setupDurationEditor();
 
             // Register for permissions if supported
             if ('Notification' in window && Notification.permission === 'default') {
