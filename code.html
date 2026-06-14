@@ -693,8 +693,8 @@
                         </div>
 
                         <!-- Hourly Schedule Area -->
-                        <div class="relative h-[480px] overflow-y-auto custom-scrollbar border border-slate-100 dark:border-slate-700 rounded-2xl p-4 bg-slate-50/50 dark:bg-slate-900/30">
-                            <div id="timeline-hours-container" class="relative min-h-[1024px]">
+                        <div class="relative h-[560px] overflow-y-auto custom-scrollbar border border-slate-100 dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-900/50" style="padding: 0;">
+                            <div id="timeline-hours-container" class="relative" style="min-height: 1536px; padding: 8px 8px 8px 0;">
                                 <!-- Dynamically generated timeline segments -->
                             </div>
                         </div>
@@ -2248,27 +2248,40 @@
             let html = '';
             const startHour = 7;
             const endHour = 23;
+            const PX_PER_HOUR = 96; // increased from 64 for more visual breathing room
             
             for (let h = startHour; h <= endHour; h++) {
-                const top = (h - startHour) * 64;
-                const displayTime = `${h.toString().padStart(2, '0')}:00`;
+                const top = (h - startHour) * PX_PER_HOUR;
+                const displayTime = h < 12 ? `${h}:00` : h === 12 ? '12:00' : `${h}:00`;
+                // Full hour line
                 html += `
-                    <div class="absolute w-full flex items-center" style="top: ${top}px; height: 1px;">
-                        <span class="absolute left-0 text-xs font-semibold text-slate-400 dark:text-slate-500 w-12 text-right pr-3 select-none">${displayTime}</span>
-                        <div class="flex-grow border-b border-dashed border-slate-200 dark:border-slate-800 ml-12"></div>
+                    <div class="absolute w-full flex items-start" style="top: ${top}px;">
+                        <span class="absolute left-0 text-[11px] font-bold text-slate-400 dark:text-slate-500 w-12 text-right pr-3 leading-none select-none -translate-y-1/2">${displayTime}</span>
+                        <div class="flex-grow border-t border-slate-200 dark:border-slate-700/60 ml-12"></div>
                     </div>
                 `;
+                // Half-hour dashed line
+                if (h < endHour) {
+                    const halfTop = top + PX_PER_HOUR / 2;
+                    html += `
+                        <div class="absolute w-full flex items-start" style="top: ${halfTop}px;">
+                            <div class="flex-grow border-t border-dashed border-slate-100 dark:border-slate-800 ml-12"></div>
+                        </div>
+                    `;
+                }
             }
             
             html += `
-                <div id="timeline-events-container" class="absolute left-12 right-0" style="top: 0; bottom: 0;"></div>
-                <div id="timeline-current-time-line" class="absolute left-12 right-0 flex items-center pointer-events-none hidden" style="top: 0px; height: 1px; z-index: 50;">
-                    <div class="absolute -left-12 bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-md shadow-sm" id="timeline-current-time-label">12:00</div>
-                    <div class="flex-grow border-t-2 border-red-500"></div>
-                    <div class="size-2 rounded-full bg-red-500 -mr-1"></div>
+                <div id="timeline-events-container" class="absolute left-14 right-0" style="top: 0; bottom: 0;"></div>
+                <div id="timeline-current-time-line" class="absolute left-14 right-0 flex items-center pointer-events-none hidden" style="top: 0px; height: 2px; z-index: 50;">
+                    <div class="absolute bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-md leading-tight" style="left: -56px;" id="timeline-current-time-label">12:00</div>
+                    <div class="size-2.5 rounded-full bg-red-500 flex-shrink-0 shadow-sm -ml-1.5"></div>
+                    <div class="flex-grow h-0.5 bg-red-500 opacity-80"></div>
                 </div>
             `;
             
+            // Store px-per-hour for use in displayTimelineEvents
+            container.dataset.pxPerHour = PX_PER_HOUR;
             container.innerHTML = html;
         }
 
@@ -2360,55 +2373,96 @@
                 i = j;
             }
 
-            // Now render each event with computed column layout
-            // OUTER_GAP: space between container edge and first/last column
-            // INNER_GAP: space between adjacent sibling columns
-            const OUTER_GAP = 6;
-            const INNER_GAP = 5;
+            // ── Card Style Map ──────────────────────────────────────────────
+            // Each category gets: bg, accent stripe, text color, time color, meta color
+            const CARD_STYLES = {
+                'Work':          { bg: '#1a7a5e', accent: '#0d5c44', text: '#ffffff', sub: 'rgba(255,255,255,0.75)', badge: '#0d5c44' },
+                'Personal':      { bg: '#c84a42', accent: '#9e3830', text: '#ffffff', sub: 'rgba(255,255,255,0.75)', badge: '#9e3830' },
+                'Education':     { bg: '#5b4fcf', accent: '#3d348b', text: '#ffffff', sub: 'rgba(255,255,255,0.75)', badge: '#3d348b' },
+                'Entertainment': { bg: '#1a6fcf', accent: '#0d4fa3', text: '#ffffff', sub: 'rgba(255,255,255,0.75)', badge: '#0d4fa3' },
+                'Spiritual':     { bg: '#b45309', accent: '#92400e', text: '#ffffff', sub: 'rgba(255,255,255,0.75)', badge: '#92400e' },
+                'default':       { bg: '#4a5568', accent: '#2d3748', text: '#ffffff', sub: 'rgba(255,255,255,0.75)', badge: '#2d3748' },
+                'focus':         { bg: '#991b1b', accent: '#7f1d1d', text: '#ffffff', sub: 'rgba(255,255,255,0.70)', badge: '#7f1d1d' },
+            };
+
+            // ── Layout constants ────────────────────────────────────────────
+            const PX_PER_HOUR = 96;
+            const OUTER_GAP   = 4;   // px from container left/right edge
+            const INNER_GAP   = 3;   // px between sibling columns
 
             layoutEvents.forEach(({ task, parsed, startDec, endDec, isFocus, col, totalCols }) => {
-                const top = (startDec - startHour) * 64;
-                const height = Math.max((endDec - startDec) * 64, 30);
+                const top    = (startDec - startHour) * PX_PER_HOUR;
+                const height = Math.max((endDec - startDec) * PX_PER_HOUR, 36);
 
-                const block = document.createElement('div');
+                // ── Style resolution ────────────────────────────────────────
+                const styleKey = isFocus ? 'focus' : (CARD_STYLES[parsed.category] ? parsed.category : 'default');
+                const S = CARD_STYLES[styleKey];
                 const isCompleted = task.status === 'Completed';
-                block.className = `absolute rounded-xl p-2 shadow-sm border transition-all hover:shadow-md flex flex-col justify-start overflow-hidden cursor-pointer select-none animate-fade-in ${isCompleted ? 'opacity-65' : ''}`;
+                const cardBg = isCompleted ? '#94a3b8' : S.bg;
+                const accentBg = isCompleted ? '#64748b' : S.accent;
 
-                if (isFocus) {
-                    block.className += ` bg-red-500/10 dark:bg-red-500/5 border-red-500/30 text-red-600 dark:text-red-400 bg-hatched`;
-                } else {
-                    const style = getCategoryClasses(parsed.category);
-                    block.className += ` ${style} border-slate-200/50 dark:border-slate-800`;
-                }
+                // ── Column geometry ─────────────────────────────────────────
+                const colWidthPct  = 100 / totalCols;
+                const leftPct      = col * colWidthPct;
+                const rightPct     = (totalCols - col - 1) * colWidthPct;
+                const leftOffset   = col === 0              ? OUTER_GAP : Math.ceil(INNER_GAP / 2);
+                const rightOffset  = col === totalCols - 1  ? OUTER_GAP : Math.ceil(INNER_GAP / 2);
 
-                // Divide 100% width into totalCols equal bands.
-                // left  = col/totalCols * 100%  + outer gap (if col=0) or inner half-gap
-                // right = (totalCols-col-1)/totalCols * 100%  + outer gap (if last col) or inner half-gap
-                const colWidthPct = 100 / totalCols;
-                const leftPct    = col * colWidthPct;
-                const rightPct   = (totalCols - col - 1) * colWidthPct;
-                const leftOffset  = col === 0 ? OUTER_GAP : Math.ceil(INNER_GAP / 2);
-                const rightOffset = col === totalCols - 1 ? OUTER_GAP : Math.ceil(INNER_GAP / 2);
+                // ── Duration label ──────────────────────────────────────────
+                const durationMins  = Math.round((endDec - startDec) * 60);
+                const durationLabel = durationMins >= 60
+                    ? `${Math.floor(durationMins / 60)}h${durationMins % 60 > 0 ? ` ${durationMins % 60}min` : ''}`
+                    : `${durationMins}min`;
 
+                // ── Start time label ────────────────────────────────────────
+                const [sh, sm] = parsed.start_time.split(':');
+                const startLabel = `${sh}:${sm}`;
+
+                // ── Decide what to show based on height ─────────────────────
+                const showDuration   = height >= 52;
+                const showStartTime  = height >= 36;
+                const multiLineTitle = height >= 58;
+
+                // ── Build card HTML ─────────────────────────────────────────
+                const block = document.createElement('div');
+                block.className = `absolute cursor-pointer select-none animate-fade-in`;
                 block.style.cssText = [
                     `top: ${top}px`,
                     `height: ${height}px`,
                     `left: calc(${leftPct}% + ${leftOffset}px)`,
                     `right: calc(${rightPct}% + ${rightOffset}px)`,
                     `z-index: ${10 + col}`,
+                    `border-radius: 10px`,
+                    `overflow: hidden`,
+                    `background: ${cardBg}`,
+                    `box-shadow: 0 2px 8px rgba(0,0,0,0.18), 0 1px 2px rgba(0,0,0,0.12)`,
+                    `transition: box-shadow 0.15s, transform 0.15s`,
+                    `display: flex`,
+                    `flex-direction: row`,
+                    `opacity: ${isCompleted ? '0.6' : '1'}`,
                 ].join('; ');
 
-                const timeRange = formatTimeRange(parsed.start_time, parsed.end_time);
                 block.innerHTML = `
-                    <div class="flex flex-col min-w-0 w-full">
-                        <span class="font-bold text-xs leading-tight mb-0.5 ${isCompleted ? 'line-through' : ''}" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">${isCompleted ? '✓ ' : ''}${task.title}</span>
-                        <span class="text-[10px] opacity-75 font-medium tracking-tight" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${timeRange}</span>
+                    <div style="width:5px;min-width:5px;background:${accentBg};border-radius:10px 0 0 10px;flex-shrink:0;"></div>
+                    <div style="flex:1;min-width:0;padding:${height < 48 ? '4px 8px' : '7px 10px'};display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;">
+                        <div style="min-width:0;">
+                            ${showStartTime ? `<div style="font-size:10px;font-weight:700;color:${S.sub};letter-spacing:0.04em;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${startLabel}</div>` : ''}
+                            <div style="font-size:${height < 48 ? '11' : '13'}px;font-weight:800;color:${S.text};line-height:1.2;${multiLineTitle ? 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;' : 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'}${isCompleted ? 'text-decoration:line-through;opacity:0.75;' : ''}">${task.title}</div>
+                        </div>
+                        ${showDuration ? `<div style="font-size:10px;font-weight:600;color:${S.sub};margin-top:3px;white-space:nowrap;">${durationLabel}</div>` : ''}
                     </div>
                 `;
 
-                block.addEventListener('click', () => {
-                    editEvent(task);
+                // Hover glow
+                block.addEventListener('mouseenter', () => {
+                    block.style.boxShadow = `0 4px 16px rgba(0,0,0,0.28), 0 2px 4px rgba(0,0,0,0.16)`;
+                    block.style.transform = 'translateY(-1px)';
                 });
+                block.addEventListener('mouseleave', () => {
+                    block.style.boxShadow = `0 2px 8px rgba(0,0,0,0.18), 0 1px 2px rgba(0,0,0,0.12)`;
+                    block.style.transform = '';
+                });
+                block.addEventListener('click', () => editEvent(task));
 
                 eventsContainer.appendChild(block);
             });
@@ -2473,7 +2527,7 @@
             
             if (currentDecimal >= startHour && currentDecimal <= endHour) {
                 line.classList.remove('hidden');
-                const top = (currentDecimal - startHour) * 64;
+                const top = (currentDecimal - startHour) * 96;
                 line.style.top = `${top}px`;
                 
                 if (label) {
@@ -3196,6 +3250,19 @@
             displayTimelineEvents();
             updateTimelineCurrentTimeLine();
             
+            // Scroll the timeline to show current time (or 8am fallback)
+            setTimeout(() => {
+                const scrollEl = document.querySelector('#timeline-hours-container')?.parentElement;
+                if (scrollEl) {
+                    const now = new Date();
+                    const startHour = 7;
+                    const currentHour = now.getHours() + now.getMinutes() / 60;
+                    const targetHour = Math.max(startHour, currentHour - 1.5); // show 1.5h before current
+                    const scrollTop = (targetHour - startHour) * 96;
+                    scrollEl.scrollTop = Math.max(0, scrollTop);
+                }
+            }, 80);
+
             if (timelineTickingInterval) clearInterval(timelineTickingInterval);
             timelineTickingInterval = setInterval(() => {
                 updateTimelineCurrentTimeLine();
