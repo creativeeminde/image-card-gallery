@@ -617,6 +617,14 @@
                             </div>
                         </div>
 
+                        <!-- Focus Task Selector Dropdown Card -->
+                        <div class="w-full bg-white dark:bg-slate-800 rounded-[28px] p-5 shadow-sm border border-slate-100 dark:border-slate-700/60 flex flex-col gap-2">
+                            <label class="text-[11px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase ml-1">Select Task to Focus On</label>
+                            <select id="focus-task-selector" class="w-full bg-slate-50 dark:bg-slate-700 border-none rounded-2xl py-3 px-4 text-sm font-semibold text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-red-500 cursor-pointer">
+                                <option value="">General Focus Session</option>
+                            </select>
+                        </div>
+
                         <!-- Radial Dial Container -->
                         <div class="relative w-72 h-72 flex items-center justify-center bg-white dark:bg-slate-800 rounded-full shadow-md border border-slate-100 dark:border-slate-700/60">
                             <svg id="timer-dial-svg" class="w-64 h-64 select-none cursor-grab active:cursor-grabbing" viewBox="0 0 200 200">
@@ -904,6 +912,29 @@
         const timeToDecimal = (t) => { const [h, m] = t.split(':'); return parseInt(h, 10) + parseInt(m, 10) / 60; };
         const formatTime = (t) => new Date(`1970-01-01T${t}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
+        // UNIFIED TASK SERIALIZERS / PARSERS
+        function parseTaskCategory(categoryStr) {
+            if (categoryStr && categoryStr.includes('|')) {
+                const [category, start_time, end_time] = categoryStr.split('|');
+                return {
+                    category: category || 'Personal',
+                    start_time: start_time || '09:00:00',
+                    end_time: end_time || '10:00:00'
+                };
+            }
+            return {
+                category: categoryStr || 'Personal',
+                start_time: '09:00:00',
+                end_time: '10:00:00'
+            };
+        }
+
+        function serializeTaskCategory(category, startTime, endTime) {
+            const start = startTime ? (startTime.length === 5 ? startTime + ':00' : startTime) : '09:00:00';
+            const end = endTime ? (endTime.length === 5 ? endTime + ':00' : endTime) : '10:00:00';
+            return `${category}|${start}|${end}`;
+        }
+
         const getCategoryClasses = (category) => {
             switch (category) {
                 case 'Work':
@@ -914,8 +945,8 @@
                     return 'bg-purple-300 dark:bg-purple-900/50 text-slate-800 dark:text-slate-200';
                 case 'Entertainment':
                     return 'bg-blue-300 dark:bg-blue-900/50 text-slate-800 dark:text-slate-200';
-                case 'spiritual': 
-                    return 'bg-orange-700 dark:bg-orange-900/50 text-slate-800 dark:text-slate-200';
+                case 'Spiritual': 
+                    return 'bg-amber-700 text-white dark:bg-orange-900/50 dark:text-slate-200';
                 default:
                     return 'bg-slate-100 dark:bg-slate-900/50 text-slate-700 dark:text-slate-300';
             }
@@ -1034,6 +1065,7 @@
             }
         }
         
+        // DISPLAY EVENTS (Now pulls from the unified 'todos' table)
         async function displayEvents(date) {
             const eventsContainer = document.getElementById('timeline-container'); 
             const scheduleTitle = document.getElementById('schedule-title');
@@ -1056,25 +1088,33 @@
             scheduleTitle.textContent = isToday ? "Today" : date.toLocaleDateString('en-US', { weekday: 'long' });
             currentDateEl.textContent = date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
             
-            eventsContainer.innerHTML = `<p class="text-center text-slate-500 pt-4">Loading events...</p>`;
+            eventsContainer.innerHTML = `<p class="text-center text-slate-500 pt-4">Loading tasks...</p>`;
 
-            const { data: events, error } = await db
-                .from('events')
+            const { data: todos, error } = await db
+                .from('todos')
                 .select('*')
-                .eq('date', dateString)
-                .order('start_time'); 
+                .eq('due_date', dateString);
             
             if (error) { 
-                console.error('Error fetching events:', error); 
-                eventsContainer.innerHTML = `<p class="text-center text-red-500 pt-4">Could not load events. Check your connection.</p>`;
-                document.getElementById('event-count').textContent = `0 Events`;
+                console.error('Error fetching unified tasks:', error); 
+                eventsContainer.innerHTML = `<p class="text-center text-red-500 pt-4">Could not load tasks. Check your connection.</p>`;
+                document.getElementById('event-count').textContent = `0 Tasks`;
                 return;
             }
 
-            document.getElementById('event-count').textContent = `${events.length} Events`;
+            // Local In-Memory Sort to adhere to Rule 2 (No complex DB index queries)
+            if (todos) {
+                todos.sort((a, b) => {
+                    const timeA = parseTaskCategory(a.category).start_time;
+                    const timeB = parseTaskCategory(b.category).start_time;
+                    return timeA.localeCompare(timeB);
+                });
+            }
 
-            if (!events || events.length === 0) { 
-                eventsContainer.innerHTML = `<p class="text-slate-500 text-[15px] pt-2">No events scheduled.</p>`; 
+            document.getElementById('event-count').textContent = `${todos.length} Tasks`;
+
+            if (!todos || todos.length === 0) { 
+                eventsContainer.innerHTML = `<p class="text-slate-500 text-[15px] pt-2">No tasks scheduled.</p>`; 
                 
                 if (isToday) {
                     if (progressInterval) clearInterval(progressInterval);
@@ -1083,13 +1123,19 @@
                 return;
             }
             
-            eventsContainer.innerHTML = events.map((event, index) => {
+            eventsContainer.innerHTML = todos.map((task) => {
+                const parsed = parseTaskCategory(task.category);
+                const isCompleted = task.status === 'Completed';
                 return `
-                <div class="flex gap-4 items-start event-card group animate-fade-in" data-event-id="${event.id}">
-                    <div class="w-[3px] bg-slate-900 dark:bg-white rounded-full h-[40px] mt-1.5 flex-shrink-0"></div>
+                <div class="flex gap-4 items-start event-card group animate-fade-in" data-event-id="${task.id}">
+                    <div class="w-[3px] ${isCompleted ? 'bg-green-500' : 'bg-slate-900 dark:bg-white'} rounded-full h-[40px] mt-1.5 flex-shrink-0"></div>
                     <div class="flex flex-col flex-grow min-w-0 pt-0.5">
-                        <span class="font-[800] text-slate-900 dark:text-white text-[16px] leading-tight mb-0.5 truncate tracking-tight">${event.title}</span>
-                        <span class="text-[12px] text-slate-500 dark:text-slate-400 font-medium tracking-tight">${formatTimeRange(event.start_time, event.end_time)}</span>
+                        <span class="font-[800] text-slate-900 dark:text-white text-[16px] leading-tight mb-0.5 truncate tracking-tight ${isCompleted ? 'line-through text-slate-400 dark:text-slate-500' : ''}">${task.title}</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-[12px] text-slate-500 dark:text-slate-400 font-medium tracking-tight">${formatTimeRange(parsed.start_time, parsed.end_time)}</span>
+                            <span class="text-[10px] font-bold uppercase tracking-widest text-slate-400">・ ${parsed.category}</span>
+                            ${isCompleted ? `<span class="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded-full font-bold">Done</span>` : ''}
+                        </div>
                     </div>
                 </div>
                 `;
@@ -1098,7 +1144,7 @@
             eventsContainer.querySelectorAll('.event-card').forEach(card => {
                 card.addEventListener('click', () => {
                     const eventId = card.dataset.eventId;
-                    const eventData = events.find(e => e.id.toString() === eventId);
+                    const eventData = todos.find(e => e.id.toString() === eventId);
                     if (eventData) {
                         editEvent(eventData);
                     }
@@ -1116,69 +1162,90 @@
         
         function editEvent(event) {
             editingEventId = event.id;
+            const parsed = parseTaskCategory(event.category);
             document.getElementById('title').value = event.title;
-            document.getElementById('category').value = event.category;
-            document.getElementById('date')._flatpickr.setDate(event.date);
-            document.getElementById('start-time').value = event.start_time;
-            document.getElementById('end-time').value = event.end_time;
+            document.getElementById('category').value = parsed.category;
+            document.getElementById('date')._flatpickr.setDate(event.due_date);
+            document.getElementById('start-time').value = parsed.start_time;
+            document.getElementById('end-time').value = parsed.end_time;
             
-            document.querySelector('#form-view h2').textContent = 'Edit Event';
-            document.querySelector('#event-form button[type="submit"]').textContent = 'Update Event';
+            document.querySelector('#form-view h2').textContent = 'Edit Event / Task';
+            document.querySelector('#event-form button[type="submit"]').textContent = 'Update Task';
             document.getElementById('delete-event-btn').classList.remove('hidden');
             
             showView('#form-view');
         }
+
         async function deleteEvent() {
-            if (!editingEventId || !confirm('Are you sure you want to delete this event?')) {
+            if (!editingEventId || !confirm('Are you sure you want to delete this task?')) {
                 return;
             }
             if (!navigator.onLine) {
-                alert("You are offline. Please reconnect to delete the event.");
+                alert("You are offline. Please reconnect to delete.");
                 return;
             }
-            const { error } = await db.from('events').delete().eq('id', editingEventId);
+            const { error } = await db.from('todos').delete().eq('id', editingEventId);
             if (error) {
-                alert('Error deleting event: ' + error.message);
+                alert('Error deleting task: ' + error.message);
             } else {
                 showView('#schedule-view');
             }
         }
+
+        // Handles both Event Form insertions & updates (writes directly to master 'todos')
         async function handleEventFormSubmit(e) {
             e.preventDefault();
             if (!navigator.onLine) {
-                alert("You are offline. Please reconnect to save changes.");
+                alert("You are offline. Please reconnect to save.");
                 return;
             }
             const form = e.target;
             const formData = new FormData(form);
-            const eventData = Object.fromEntries(formData.entries());
-            if (eventData.start_time.length === 5) eventData.start_time += ':00';
-            if (eventData.end_time.length === 5) eventData.end_time += ':00';
+            const rawData = Object.fromEntries(formData.entries());
+            
+            const categorySerialized = serializeTaskCategory(rawData.category, rawData.start_time, rawData.end_time);
+            
+            const taskPayload = {
+                title: rawData.title,
+                due_date: rawData.date,
+                category: categorySerialized,
+                status: 'Pending'
+            };
             
             let response;
             if (editingEventId) {
-                response = await db.from('events').update(eventData).eq('id', editingEventId);
+                // Keep the current status if updating
+                const { data: existing } = await db.from('todos').select('status').eq('id', editingEventId).single();
+                if (existing) taskPayload.status = existing.status;
+                response = await db.from('todos').update(taskPayload).eq('id', editingEventId);
             } else {
-                response = await db.from('events').insert([eventData]);
+                response = await db.from('todos').insert([taskPayload]);
             }
+
             if (response.error) {
                 alert('Error: ' + response.error.message);
             } else {
-                const [year, month, day] = eventData.date.split('-').map(Number);
+                const [year, month, day] = rawData.date.split('-').map(Number);
                 selectedDate = new Date(year, month - 1, day); 
-            
                 showView('#schedule-view');
             }
         }
+
         async function handleTaskFormSubmit(e) {
             e.preventDefault();
              if (!navigator.onLine) {
-                alert("You are offline. Please reconnect to save changes.");
+                alert("You are offline.");
                 return;
             }
             const form = e.target;
             const formData = new FormData(form);
             const taskData = Object.fromEntries(formData.entries());
+            
+            // Standardize categories from standard Todo form using defaults
+            if (!taskData.category.includes('|')) {
+                taskData.category = serializeTaskCategory(taskData.category || 'Personal', '09:00:00', '10:00:00');
+            }
+            
             let response;
             if (editingTodoId) {
                 response = await db.from('todos').update(taskData).eq('id', editingTodoId);
@@ -1257,13 +1324,13 @@
         async function handleBulkFormSubmit(e) {
             e.preventDefault();
             if (!navigator.onLine) {
-                alert("You are offline. Please reconnect to save.");
+                alert("You are offline.");
                 return;
             }
             
             const dateStr = document.getElementById('bulk-date').value;
             const rows = document.querySelectorAll('.bulk-row');
-            const eventsToInsert = [];
+            const tasksToInsert = [];
             
             rows.forEach(row => {
                 const startTime = row.querySelector('input[name="start_time"]').value;
@@ -1272,25 +1339,24 @@
                 const category = row.querySelector('select[name="category"]').value;
                 
                 if (title && startTime && endTime) {
-                    eventsToInsert.push({
-                        date: dateStr,
-                        start_time: startTime + ':00', 
-                        end_time: endTime + ':00',
+                    tasksToInsert.push({
+                        due_date: dateStr,
                         title: title,
-                        category: category
+                        category: serializeTaskCategory(category, startTime, endTime),
+                        status: 'Pending'
                     });
                 }
             });
             
-            if (eventsToInsert.length === 0) {
+            if (tasksToInsert.length === 0) {
                 alert("Please add at least one valid event.");
                 return;
             }
             
-            const { error } = await db.from('events').insert(eventsToInsert);
+            const { error } = await db.from('todos').insert(tasksToInsert);
             
             if (error) {
-                alert('Error saving events: ' + error.message);
+                alert('Error saving tasks: ' + error.message);
             } else {
                 const [year, month, day] = dateStr.split('-').map(Number);
                 selectedDate = new Date(year, month - 1, day);
@@ -1312,15 +1378,16 @@
             const firstDay = toYMD(new Date(year, month, 1));
             const lastDay = toYMD(new Date(year, month + 1, 0));
 
-            const { data: events, error } = await db.from('events')
+            // Pull tasks directly from unified todos table
+            const { data: todos, error } = await db.from('todos')
                 .select('*')
-                .gte('date', firstDay)
-                .lte('date', lastDay);
+                .gte('due_date', firstDay)
+                .lte('due_date', lastDay);
 
-            renderNewMonth(year, month, events || []);
+            renderNewMonth(year, month, todos || []);
         }
 
-        function renderNewMonth(year, month, events) {
+        function renderNewMonth(year, month, todos) {
             const bodyEl = document.getElementById('cal-body');
             const titleEl = document.getElementById('cal-month-year');
             bodyEl.innerHTML = '';
@@ -1344,7 +1411,7 @@
                 const date = new Date(year, month, day);
                 const dateString = toYMD(date);
                 const isSelected = toYMD(selectedDate) === dateString;
-                const dayEvents = events.filter(e => e.date === dateString);
+                const dayTasks = todos.filter(e => e.due_date === dateString);
 
                 const dayOfWeek = date.getDay();
                 const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
@@ -1360,16 +1427,18 @@
                 if (!isSelected && isWeekend) textClass += 'text-red-400 dark:text-red-400';
 
                 let eventsHtml = '';
-                if (dayEvents.length > 0) {
-                    eventsHtml = `<div class="space-y-1.5 mt-auto pt-2 relative z-10 w-full">` + dayEvents.slice(0, 3).map(e => {
-                        const style = getCategoryStyle(e.category);
+                if (dayTasks.length > 0) {
+                    eventsHtml = `<div class="space-y-1.5 mt-auto pt-2 relative z-10 w-full">` + dayTasks.slice(0, 3).map(task => {
+                        const parsed = parseTaskCategory(task.category);
+                        const style = getCategoryStyle(parsed.category);
+                        const isCompleted = task.status === 'Completed';
                         if (isSelected) {
-                             return `<div class="text-[11px] md:text-[12px] leading-tight font-bold opacity-80 truncate">${e.title}</div>`;
+                             return `<div class="text-[11px] md:text-[12px] leading-tight font-bold opacity-80 truncate ${isCompleted ? 'line-through text-black/50' : ''}">${task.title}</div>`;
                         } else {
                              return `
-                                <div class="bg-white/90 dark:bg-slate-900/90 rounded-full px-2.5 py-1 text-[10px] md:text-[11px] font-semibold flex items-center gap-1.5 shadow-sm truncate border border-slate-200/50 dark:border-slate-700/50">
+                                <div class="bg-white/90 dark:bg-slate-900/90 rounded-full px-2.5 py-1 text-[10px] md:text-[11px] font-semibold flex items-center gap-1.5 shadow-sm truncate border border-slate-200/50 dark:border-slate-700/50 ${isCompleted ? 'opacity-55' : ''}">
                                     <div class="size-1.5 rounded-full ${style.color.split(' ')[0]} flex-shrink-0"></div>
-                                    <span class="truncate">${e.title}</span>
+                                    <span class="truncate ${isCompleted ? 'line-through' : ''}">${task.title}</span>
                                 </div>`;
                         }
                     }).join('') + `</div>`;
@@ -1468,21 +1537,23 @@
                 // Clear the input immediately
                 inputEl.value = '';
 
-                const taskData = {
+                // Serialize default focus/schedule hours (9:00 AM to 10:00 AM) so it shows up in calendar and timer views instantly!
+                const categorySerialized = serializeTaskCategory('Personal', '09:00:00', '10:00:00');
+
+                const taskPayload = {
                     title: title,
                     due_date: dateStr,
-                    category: 'Personal',
+                    category: categorySerialized,
                     status: 'Pending'
                 };
 
-                const { data: inserted, error } = await db.from('todos').insert([taskData]).select();
+                const { data: inserted, error } = await db.from('todos').insert([taskPayload]).select();
                 const tempRow = document.querySelector(`.todo-row[data-task-id="${tempId}"]`);
 
                 if (error) {
                     console.error('Error creating task:', error);
                     if (tempRow) tempRow.remove();
                 } else {
-                    // Upgrade the temp row with the real DB id
                     const realId = inserted && inserted[0] && inserted[0].id;
                     if (tempRow && realId) {
                         tempRow.dataset.taskId = realId;
@@ -1494,6 +1565,7 @@
                         const delBtn = tempRow.querySelector('.delete-inline-btn');
                         if (delBtn) { delBtn.setAttribute('onclick', `deleteTodoInline(${realId})`); delBtn.disabled = false; }
                     }
+                    displayTodos();
                 }
             }
         }
@@ -1521,20 +1593,17 @@
 
             const currentTitle = spanEl.textContent.trim();
 
-            // Build the inline input
             const input = document.createElement('input');
             input.type = 'text';
             input.value = currentTitle;
             input.className = 'todo-edit-input flex-1 min-w-0 bg-transparent border-b-2 border-primary text-[15px] font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-0 px-0 py-0';
             input.style.cssText = 'background:transparent;box-shadow:none;border-radius:0;border-top:none;border-left:none;border-right:none;';
 
-            // Hide the span, insert input after it
             spanEl.classList.add('hidden');
             spanEl.parentNode.insertBefore(input, spanEl.nextSibling);
             input.focus();
             input.select();
 
-            // Hide the edit/delete buttons while editing
             const btnGroup = spanEl.closest('.todo-row').querySelector('.ml-auto');
             if (btnGroup) btnGroup.style.visibility = 'hidden';
 
@@ -1571,8 +1640,6 @@
         // =============================================
         // === TASK ROLLOVER SYSTEM =====================
         // =============================================
-
-        // Settings helpers
         function getRolloverSettings() {
             return {
                 enabled: localStorage.getItem('rollover_enabled') !== 'false', 
@@ -1859,11 +1926,12 @@
                             
                             <div class="space-y-3 mb-6" id="tasks-${dateStr}">
                                 ${dayTasks.map(task => {
+                                    const parsed = parseTaskCategory(task.category);
                                     const isCompleted = task.status === 'Completed';
                                     const localRolloverCount = parseInt(localStorage.getItem(`rollover_count_${task.id}`) || '0');
                                     const effectiveRolloverCount = (typeof task.rollover_count === 'number' && task.rollover_count > 0) ? task.rollover_count : localRolloverCount;
                                     const isCarriedOver = rolloverSettings.showBadge && effectiveRolloverCount > 0;
-                                    const rolloverBadge = isCarriedOver ? `<span class="rollover-badge"><span class="material-symbols-outlined">autorenew</span>Carried over${effectiveRolloverCount > 1 ? ` ﾃ・${effectiveRolloverCount}` : ''}</span>` : '';
+                                    const rolloverBadge = isCarriedOver ? `<span class="rollover-badge"><span class="material-symbols-outlined">autorenew</span>Carried over${effectiveRolloverCount > 1 ? ` ・ ${effectiveRolloverCount}` : ''}</span>` : '';
                                     return `
                                     <div class="flex items-center gap-2 group flex-wrap todo-row animate-fade-in" data-task-id="${task.id}">
                                         <input type="checkbox" data-id="${task.id}" class="todo-cb form-checkbox h-[18px] w-[18px] rounded-[4px] border-2 border-slate-400 dark:border-slate-500 text-[#eb5e28] focus:ring-0 cursor-pointer bg-transparent transition-colors flex-shrink-0" ${isCompleted ? 'checked' : ''}>
@@ -2107,14 +2175,24 @@
             const templateName = prompt("Please enter a name for this template:");
             if (!templateName) return;
             const dateString = toYMD(selectedDate);
-            const { data: events, error: fetchError } = await db.from('events').select('title, start_time, end_time, category').eq('date', dateString);
+            const { data: todos, error: fetchError } = await db.from('todos').select('title, category').eq('due_date', dateString);
             if (fetchError) { alert('Error fetching events to save: ' + fetchError.message); return; }
-            if (!events || events.length === 0) { alert('There are no events on this day to save.'); return; }
+            if (!todos || todos.length === 0) { alert('There are no events on this day to save.'); return; }
             
             const { data: template, error: templateError } = await db.from('schedule_templates').insert({ name: templateName }).select().single();
             if (templateError) { alert('Error creating template: ' + templateError.message); return; }
             
-            const templateEvents = events.map(event => ({ template_id: template.id, title: event.title, start_time: event.start_time, end_time: event.end_time, category: event.category }));
+            const templateEvents = todos.map(task => {
+                const parsed = parseTaskCategory(task.category);
+                return {
+                    template_id: template.id,
+                    title: task.title,
+                    start_time: parsed.start_time,
+                    end_time: parsed.end_time,
+                    category: parsed.category
+                };
+            });
+            
             const { error: eventsError } = await db.from('template_events').insert(templateEvents);
             if (eventsError) alert('Error saving template events: ' + eventsError.message); else alert(`Template "${templateName}" saved successfully!`);
         }
@@ -2149,8 +2227,13 @@
             if (error) { alert('Error fetching template events: ' + error.message); return; }
             
             const dateString = toYMD(selectedDate);
-            const newEvents = templateEvents.map(event => ({ date: dateString, title: event.title, start_time: event.start_time, end_time: event.end_time, category: event.category }));
-            const { error: insertError } = await db.from('events').insert(newEvents);
+            const newEvents = templateEvents.map(event => ({
+                due_date: dateString,
+                title: event.title,
+                category: serializeTaskCategory(event.category, event.start_time, event.end_time),
+                status: 'Pending'
+            }));
+            const { error: insertError } = await db.from('todos').insert(newEvents);
             if (insertError) {
                 alert('Error loading template: ' + insertError.message);
             } else {
@@ -2396,6 +2479,7 @@
             container.innerHTML = html;
         }
 
+        // Pulls unified tasks to overlay timeline schedule dynamically
         async function displayTimelineEvents() {
             const eventsContainer = document.getElementById('timeline-events-container');
             if (!eventsContainer) return;
@@ -2404,24 +2488,25 @@
             const startHour = 7;
             const dateStr = toYMD(selectedDate);
             
-            const { data: events, error } = await db
-                .from('events')
+            const { data: todos, error } = await db
+                .from('todos')
                 .select('*')
-                .eq('date', dateStr);
+                .eq('due_date', dateStr);
                 
             if (error) {
-                console.error("Error loading timeline events:", error);
+                console.error("Error loading timeline tasks:", error);
                 return;
             }
             
             let totalFocusMinutes = 0;
             
-            if (events && events.length > 0) {
-                events.forEach(event => {
-                    const startDec = timeToDecimal(event.start_time);
-                    const endDec = timeToDecimal(event.end_time);
+            if (todos && todos.length > 0) {
+                todos.forEach(task => {
+                    const parsed = parseTaskCategory(task.category);
+                    const startDec = timeToDecimal(parsed.start_time);
+                    const endDec = timeToDecimal(parsed.end_time);
                     
-                    const isFocus = event.category === 'Work' && (event.title.toLowerCase().includes('focus') || event.title.toLowerCase().includes('timer'));
+                    const isFocus = parsed.category === 'Work' && (task.title.toLowerCase().includes('focus') || task.title.toLowerCase().includes('timer'));
                     if (isFocus) {
                         totalFocusMinutes += Math.round((endDec - startDec) * 60);
                     }
@@ -2431,27 +2516,28 @@
                         const height = (endDec - startDec) * 64;
                         
                         const block = document.createElement('div');
-                        block.className = `absolute left-2 right-2 rounded-xl p-3 shadow-sm border transition-all hover:shadow-md flex flex-col justify-between overflow-hidden cursor-pointer select-none animate-fade-in `;
+                        const isCompleted = task.status === 'Completed';
+                        block.className = `absolute left-2 right-2 rounded-xl p-3 shadow-sm border transition-all hover:shadow-md flex flex-col justify-between overflow-hidden cursor-pointer select-none animate-fade-in ${isCompleted ? 'opacity-65' : ''}`;
                         
                         if (isFocus) {
-                            block.className += `bg-red-500/10 dark:bg-red-500/5 border-red-500/30 text-red-600 dark:text-red-400 bg-hatched`;
+                            block.className += ` bg-red-500/10 dark:bg-red-500/5 border-red-500/30 text-red-600 dark:text-red-400 bg-hatched`;
                         } else {
-                            const style = getCategoryClasses(event.category);
-                            block.className += `${style} border-slate-200/50 dark:border-slate-800`;
+                            const style = getCategoryClasses(parsed.category);
+                            block.className += ` ${style} border-slate-200/50 dark:border-slate-800`;
                         }
                         
                         block.style.cssText += `top: ${top}px; height: ${height}px;`;
                         
-                        const timeRange = formatTimeRange(event.start_time, event.end_time);
+                        const timeRange = formatTimeRange(parsed.start_time, parsed.end_time);
                         block.innerHTML = `
                             <div class="flex flex-col min-w-0">
-                                <span class="font-bold text-xs truncate leading-none mb-1">${event.title}</span>
+                                <span class="font-bold text-xs truncate leading-none mb-1 ${isCompleted ? 'line-through' : ''}">${isCompleted ? '✓ ' : ''}${task.title}</span>
                                 <span class="text-[10px] opacity-75 font-medium tracking-tight">${timeRange}</span>
                             </div>
                         `;
                         
                         block.addEventListener('click', () => {
-                            editEvent(event);
+                            editEvent(task);
                         });
                         
                         eventsContainer.appendChild(block);
@@ -2462,6 +2548,35 @@
             const hours = Math.floor(totalFocusMinutes / 60);
             const minutes = totalFocusMinutes % 60;
             document.getElementById('focus-summary-duration').textContent = `${hours}H ${minutes}M FOCUS`;
+        }
+
+        // Dynamically loads pending daily tasks into focus task dropdown
+        async function populateFocusTaskSelector() {
+            const selector = document.getElementById('focus-task-selector');
+            if (!selector) return;
+            
+            const dateStr = toYMD(selectedDate);
+            const { data: tasks, error } = await db.from('todos')
+                .select('*')
+                .eq('due_date', dateStr)
+                .eq('status', 'Pending');
+                
+            const previousValue = selector.value;
+            selector.innerHTML = '<option value="">General Focus Session</option>';
+            
+            if (!error && tasks) {
+                tasks.forEach(task => {
+                    const parsed = parseTaskCategory(task.category);
+                    const option = document.createElement('option');
+                    option.value = task.id;
+                    option.textContent = `${task.title} (${parsed.category})`;
+                    selector.appendChild(option);
+                });
+            }
+            
+            if (Array.from(selector.options).some(opt => opt.value === previousValue)) {
+                selector.value = previousValue;
+            }
         }
 
         function updateTimelineCurrentTimeLine() {
@@ -2551,6 +2666,7 @@
             }
             
             renderFocusDaySelector();
+            populateFocusTaskSelector();
             displayTimelineEvents();
         }
 
@@ -2559,7 +2675,6 @@
             if (!btn) return;
             
             if (!focusIsRunning) {
-                // START Countdown
                 focusIsRunning = true;
                 if (focusSecondsLeft === 0) {
                     focusSecondsLeft = focusDurationMinutes * 60;
@@ -2569,8 +2684,8 @@
                 btn.innerHTML = `<span class="material-symbols-outlined font-bold">pause</span> PAUSE SESSION`;
                 btn.className = "w-full max-w-sm py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-full font-bold text-lg tracking-wider transition-all duration-200 shadow-md transform hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2";
                 
-                // Disable dial dragging while running
                 document.getElementById('timer-dial-svg').style.pointerEvents = 'none';
+                document.getElementById('focus-task-selector').disabled = true;
                 
                 focusTimerInterval = setInterval(() => {
                     focusSecondsLeft--;
@@ -2582,13 +2697,13 @@
                     }
                 }, 1000);
             } else {
-                // PAUSE Countdown
                 focusIsRunning = false;
                 clearInterval(focusTimerInterval);
                 focusTimerInterval = null;
                 
                 btn.innerHTML = `<span class="material-symbols-outlined font-bold">play_arrow</span> RESUME SESSION`;
                 btn.className = "w-full max-w-sm py-4 bg-[#c84a42] hover:bg-[#b03d35] text-white rounded-full font-bold text-lg tracking-wider transition-all duration-200 shadow-md transform hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2";
+                document.getElementById('focus-task-selector').disabled = false;
             }
         }
 
@@ -2627,7 +2742,6 @@
             
             alarmSound.play();
             
-            // Push Notification
             if ('Notification' in window && Notification.permission === 'granted') {
                 new Notification('Focus Session Complete!', { 
                     body: `Congratulations on completing your ${focusDurationMinutes} minute focus session!`,
@@ -2635,7 +2749,21 @@
                 });
             }
             
-            // Auto log session as event to Supabase
+            let focusedTaskTitle = "Focus Session";
+            const selectedTaskId = document.getElementById('focus-task-selector').value;
+            
+            if (selectedTaskId) {
+                const selector = document.getElementById('focus-task-selector');
+                focusedTaskTitle = selector.options[selector.selectedIndex].text.split(' (')[0];
+                
+                // Automatically mark the focused task as Completed!
+                const { error: markError } = await db.from('todos')
+                    .update({ status: 'Completed' })
+                    .eq('id', selectedTaskId);
+                if (markError) console.error("Error setting task to Completed:", markError);
+            }
+            
+            // Auto-logs focus logs into the master 'todos' table so it fits on Calendar and Schedule views seamlessly
             if (navigator.onLine && focusSessionStartTimestamp) {
                 const startHours = focusSessionStartTimestamp.getHours().toString().padStart(2, '0');
                 const startMins = focusSessionStartTimestamp.getMinutes().toString().padStart(2, '0');
@@ -2646,15 +2774,16 @@
                 const endMins = now.getMinutes().toString().padStart(2, '0');
                 const endTimeStr = `${endHours}:${endMins}:00`;
                 
+                const categorySerialized = serializeTaskCategory('Work', startTimeStr, endTimeStr);
+                
                 const focusEvent = {
-                    title: `Focus Session (${focusDurationMinutes}m)`,
-                    category: 'Work',
-                    date: toYMD(focusSessionStartTimestamp),
-                    start_time: startTimeStr,
-                    end_time: endTimeStr
+                    title: `Focused Effort: ${focusedTaskTitle} (${focusDurationMinutes}m)`,
+                    category: categorySerialized,
+                    due_date: toYMD(focusSessionStartTimestamp),
+                    status: 'Completed'
                 };
                 
-                const { error } = await db.from('events').insert([focusEvent]);
+                const { error } = await db.from('todos').insert([focusEvent]);
                 if (error) {
                     console.error("Error saving completed focus session:", error);
                 } else {
@@ -2665,7 +2794,6 @@
                 }
             }
             
-            // Restore Controls Visual State
             const btn = document.getElementById('focus-start-btn');
             if (btn) {
                 btn.innerHTML = `<span class="material-symbols-outlined font-bold">play_arrow</span> START SESSION`;
@@ -2673,10 +2801,16 @@
             }
             
             document.getElementById('timer-dial-svg').style.pointerEvents = 'auto';
+            document.getElementById('focus-task-selector').disabled = false;
             document.title = originalTitle;
             
             setCustomFocusDuration(focusDurationMinutes);
-            alert(`🎉 Amazing! Your ${focusDurationMinutes} minute focus session is complete and has been logged to your schedule.`);
+            populateFocusTaskSelector();
+            
+            const completionMsg = selectedTaskId 
+                ? `🎉 Incredible effort! Your ${focusDurationMinutes} minute focus session is complete. "${focusedTaskTitle}" has been marked as Completed on all views!`
+                : `🎉 Amazing! Your ${focusDurationMinutes} minute focus session is complete and has been logged to your calendar views.`;
+            alert(completionMsg);
         }
 
         function initializeFocusView() {
@@ -2685,14 +2819,13 @@
             setupTimerDialEvents();
             renderTimelineGrid();
             renderFocusDaySelector();
+            populateFocusTaskSelector();
             displayTimelineEvents();
             
-            // Set Selected date visual text
             const todayStr = toYMD(new Date());
             const selStr = toYMD(selectedDate);
             document.getElementById('focus-selected-date-title').textContent = selStr === todayStr ? 'Today' : selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
             
-            // Start current timeline ticking
             updateTimelineCurrentTimeLine();
             if (timelineTickingInterval) clearInterval(timelineTickingInterval);
             timelineTickingInterval = setInterval(updateTimelineCurrentTimeLine, 30000);
@@ -3006,6 +3139,20 @@
                 selectedDate.setDate(selectedDate.getDate() + 1);
                 selectFocusDay(toYMD(selectedDate));
             });
+
+            // Focus task selection label swap logic
+            const taskSelector = document.getElementById('focus-task-selector');
+            if (taskSelector) {
+                taskSelector.addEventListener('change', () => {
+                    const floatingCardLabel = document.querySelector('#pomodoro-view .uppercase.mb-2');
+                    if (taskSelector.value) {
+                        const selectedOption = taskSelector.options[taskSelector.selectedIndex];
+                        floatingCardLabel.textContent = `Focusing on: ${selectedOption.text.split(' (')[0]}`;
+                    } else {
+                        floatingCardLabel.textContent = "Start Session for";
+                    }
+                });
+            }
             
             document.getElementById('event-form').addEventListener('submit', handleEventFormSubmit);
             document.getElementById('new-project-form').addEventListener('submit', handleProjectFormSubmit);
@@ -3062,8 +3209,8 @@
                 editingEventId = null;
                 document.getElementById('event-form').reset();
                 datePicker.setDate(selectedDate); 
-                document.querySelector('#form-view h2').textContent = 'New Event';
-                document.querySelector('#event-form button[type="submit"]').textContent = 'Create Event';
+                document.querySelector('#form-view h2').textContent = 'New Event / Task';
+                document.querySelector('#event-form button[type="submit"]').textContent = 'Create Task';
                 document.getElementById('delete-event-btn').classList.add('hidden');
                 showView('#form-view');
             });
@@ -3186,7 +3333,7 @@
                         }
                     }
 
-                    // Persist to DB
+                    // Persist to master DB 'todos' table
                     const { error } = await db.from('todos').update({ status: newStatus }).eq('id', taskId);
                     if (error) {
                         console.error('Error updating task:', error);
@@ -3200,6 +3347,9 @@
                                 titleSpan.classList.add('text-slate-800', 'dark:text-slate-200');
                             }
                         }
+                    } else {
+                        // Refresh display lists to maintain cross-tab sync in real time
+                        displayTodos();
                     }
                 }
             });
