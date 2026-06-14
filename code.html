@@ -2234,7 +2234,6 @@
                     j++;
                 }
                 const group = layoutEvents.slice(i, j);
-                const groupSize = group.length;
 
                 // Assign columns using a greedy column-fill approach
                 // columns tracks the end time of the last event placed in that column
@@ -2264,14 +2263,18 @@
             }
 
             // Now render each event with computed column layout
-            const GAP = 4; // px gap between events
+            // OUTER_GAP: space between container edge and first/last column
+            // INNER_GAP: space between adjacent sibling columns
+            const OUTER_GAP = 6;
+            const INNER_GAP = 5;
+
             layoutEvents.forEach(({ task, parsed, startDec, endDec, isFocus, col, totalCols }) => {
                 const top = (startDec - startHour) * 64;
-                const height = Math.max((endDec - startDec) * 64, 28); // min height 28px so title is always readable
+                const height = Math.max((endDec - startDec) * 64, 30);
 
                 const block = document.createElement('div');
                 const isCompleted = task.status === 'Completed';
-                block.className = `absolute rounded-xl p-2 shadow-sm border transition-all hover:shadow-md flex flex-col justify-between overflow-hidden cursor-pointer select-none animate-fade-in ${isCompleted ? 'opacity-65' : ''}`;
+                block.className = `absolute rounded-xl p-2 shadow-sm border transition-all hover:shadow-md flex flex-col justify-start overflow-hidden cursor-pointer select-none animate-fade-in ${isCompleted ? 'opacity-65' : ''}`;
 
                 if (isFocus) {
                     block.className += ` bg-red-500/10 dark:bg-red-500/5 border-red-500/30 text-red-600 dark:text-red-400 bg-hatched`;
@@ -2280,22 +2283,28 @@
                     block.className += ` ${style} border-slate-200/50 dark:border-slate-800`;
                 }
 
-                // Calculate left/width based on column assignment
-                const colWidth = 100 / totalCols;
-                const leftPct = col * colWidth;
-                const widthPct = colWidth;
+                // Divide 100% width into totalCols equal bands.
+                // left  = col/totalCols * 100%  + outer gap (if col=0) or inner half-gap
+                // right = (totalCols-col-1)/totalCols * 100%  + outer gap (if last col) or inner half-gap
+                const colWidthPct = 100 / totalCols;
+                const leftPct    = col * colWidthPct;
+                const rightPct   = (totalCols - col - 1) * colWidthPct;
+                const leftOffset  = col === 0 ? OUTER_GAP : Math.ceil(INNER_GAP / 2);
+                const rightOffset = col === totalCols - 1 ? OUTER_GAP : Math.ceil(INNER_GAP / 2);
 
-                // Use percentage for responsive layout, with gap between siblings
-                const leftPx = `calc(${leftPct}% + ${col === 0 ? GAP : Math.ceil(GAP / 2)}px)`;
-                const rightPx = `calc(${100 - leftPct - widthPct}% + ${col === totalCols - 1 ? GAP : Math.ceil(GAP / 2)}px)`;
-
-                block.style.cssText = `top: ${top}px; height: ${height}px; left: ${leftPx}; right: ${rightPx}; z-index: ${10 + col};`;
+                block.style.cssText = [
+                    `top: ${top}px`,
+                    `height: ${height}px`,
+                    `left: calc(${leftPct}% + ${leftOffset}px)`,
+                    `right: calc(${rightPct}% + ${rightOffset}px)`,
+                    `z-index: ${10 + col}`,
+                ].join('; ');
 
                 const timeRange = formatTimeRange(parsed.start_time, parsed.end_time);
                 block.innerHTML = `
-                    <div class="flex flex-col min-w-0">
-                        <span class="font-bold text-xs leading-tight mb-0.5 ${isCompleted ? 'line-through' : ''}" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${isCompleted ? '✓ ' : ''}${task.title}</span>
-                        <span class="text-[10px] opacity-75 font-medium tracking-tight whitespace-nowrap">${timeRange}</span>
+                    <div class="flex flex-col min-w-0 w-full">
+                        <span class="font-bold text-xs leading-tight mb-0.5 ${isCompleted ? 'line-through' : ''}" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">${isCompleted ? '✓ ' : ''}${task.title}</span>
+                        <span class="text-[10px] opacity-75 font-medium tracking-tight" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${timeRange}</span>
                     </div>
                 `;
 
