@@ -607,6 +607,20 @@
                                 <span id="focus-time-range-display" class="text-xs font-bold text-slate-500 dark:text-slate-300">11:45 → 12:15</span>
                             </div>
 
+                            <!-- Extend bar — shown only while session is running -->
+                            <div id="extend-bar" class="hidden w-full mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                                <p class="text-[10px] font-bold tracking-widest text-slate-400 uppercase text-center mb-2.5">Add time to session</p>
+                                <div class="flex justify-center gap-2 flex-wrap">
+                                    <button class="extend-btn px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-700 hover:bg-red-500 hover:text-white text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:border-red-500 transition-all active:scale-95" data-add="5">+5 min</button>
+                                    <button class="extend-btn px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-700 hover:bg-red-500 hover:text-white text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:border-red-500 transition-all active:scale-95" data-add="10">+10 min</button>
+                                    <button class="extend-btn px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-700 hover:bg-red-500 hover:text-white text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:border-red-500 transition-all active:scale-95" data-add="15">+15 min</button>
+                                    <button class="extend-btn px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-700 hover:bg-red-500 hover:text-white text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:border-red-500 transition-all active:scale-95" data-add="30">+30 min</button>
+                                </div>
+                                <div class="mt-2.5 text-center">
+                                    <span id="extend-total-label" class="text-[10px] font-semibold text-slate-400 dark:text-slate-500"></span>
+                                </div>
+                            </div>
+
                             <!-- Duration Editor (shown when not running) -->
                             <div id="duration-editor" class="w-full mt-5 pt-4 border-t border-slate-100 dark:border-slate-700">
                                 <!-- Quick Presets -->
@@ -902,6 +916,7 @@
         // FOCUS TIMER & DIAL STATE
         let focusTimerInterval = null;
         let focusSecondsLeft = 0;
+        let focusTotalAddedSeconds = 0;   // cumulative seconds added via extend buttons
         let focusIsRunning = false;
         let focusSessionStartTimestamp = null;
         let focusDurationMinutes = 30; // Default Focus Duration
@@ -1557,20 +1572,23 @@
             
             alarmSound.play();
             
+            // Actual elapsed = from session start to now (includes all extensions)
+            const actualElapsedSeconds = Math.round((new Date() - focusSessionStartTimestamp) / 1000);
+            
             if ('Notification' in window && Notification.permission === 'granted') {
+                const mins = Math.round(actualElapsedSeconds / 60);
                 new Notification('Focus Session Complete!', { 
-                    body: `Congratulations on completing your ${focusDurationMinutes} minute focus session!`,
+                    body: `Congratulations on completing your ${mins} minute focus session!`,
                     icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%23ef4444'/%3E%3C/svg%3E" 
                 });
             }
 
-            // Save the complete session block
-            const totalElapsed = focusDurationMinutes * 60;
-            await saveTrackedWorkSession(totalElapsed);
+            await saveTrackedWorkSession(actualElapsedSeconds);
             
             // Clean up controls UI
             resetFocusButtonsToDefault();
             focusSecondsLeft = 0;
+            focusTotalAddedSeconds = 0;
             setCustomFocusDuration(focusDurationMinutes);
             populateFocusTaskSelector();
             displayTimelineEvents();
@@ -1601,6 +1619,7 @@
             focusTimerInterval = null;
             focusIsRunning = false;
             focusSecondsLeft = 0;
+            focusTotalAddedSeconds = 0;
             
             resetFocusButtonsToDefault();
             setCustomFocusDuration(focusDurationMinutes);
@@ -1635,9 +1654,13 @@
             
             const categorySerialized = serializeTaskCategory(focusedTaskCategory, startStr, endStr);
 
+            // Build title: include extension note if user added time during the session
+            const addedMins = Math.round(focusTotalAddedSeconds / 60);
+            const extNote   = addedMins > 0 ? ` +${addedMins}m ext` : '';
+
             // Log session as a completely separate Completed track block in the database
             const focusSessionEvent = {
-                title: `Session: ${focusedTaskTitle} (${mins}m)`,
+                title: `Session: ${focusedTaskTitle} (${mins}m${extNote})`,
                 category: categorySerialized,
                 due_date: toYMD(startTime),
                 status: 'Completed',
@@ -1667,6 +1690,11 @@
             // Show duration editor when timer is not running
             const editor = document.getElementById('duration-editor');
             if (editor) editor.classList.remove('hidden');
+            // Hide extend bar
+            const extBar = document.getElementById('extend-bar');
+            if (extBar) extBar.classList.add('hidden');
+            const extLabel = document.getElementById('extend-total-label');
+            if (extLabel) extLabel.textContent = '';
         }
 
         function toggleFocusTimer() {
@@ -1678,10 +1706,14 @@
                 focusIsRunning = true;
                 if (focusSecondsLeft === 0) {
                     focusSecondsLeft = focusDurationMinutes * 60;
+                    focusTotalAddedSeconds = 0;
                     focusSessionStartTimestamp = new Date();
                     // Hide duration editor once session starts
                     const editor = document.getElementById('duration-editor');
                     if (editor) editor.classList.add('hidden');
+                    // Show extend bar
+                    const extBar = document.getElementById('extend-bar');
+                    if (extBar) extBar.classList.remove('hidden');
                 }
                 
                 // Show dual Controls (Pause and Stop side-by-side)
@@ -2183,7 +2215,41 @@
             });
         }
 
+        function extendFocusSession(addMinutes) {
+            const addSecs = addMinutes * 60;
+            focusSecondsLeft += addSecs;
+            focusTotalAddedSeconds += addSecs;
+
+            // Update the dial's total baseline so the arc fraction stays sensible
+            // (dial now reflects remaining / new total)
+            updateFocusCountdownDisplay();
+
+            // Flash the extend label to confirm
+            const label = document.getElementById('extend-total-label');
+            if (label) {
+                const totalAdded = Math.round(focusTotalAddedSeconds / 60);
+                label.textContent = `+${totalAdded} min added total`;
+                label.style.color = '#ef4444';
+                setTimeout(() => { if (label) label.style.color = ''; }, 1200);
+            }
+
+            // Briefly pulse the big display
+            const disp = document.getElementById('focus-duration-display');
+            if (disp) {
+                disp.style.transition = 'color 0.2s';
+                disp.style.color = '#ef4444';
+                setTimeout(() => { if (disp) disp.style.color = ''; }, 600);
+            }
+        }
+
         function setupDurationEditor() {
+            // Extend buttons (visible while session is running)
+            document.querySelectorAll('.extend-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (!focusIsRunning && focusSecondsLeft === 0) return; // not in a session
+                    extendFocusSession(parseInt(btn.dataset.add));
+                });
+            });
             // Preset buttons
             document.querySelectorAll('.preset-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
@@ -2913,9 +2979,20 @@
             const timeString = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
             disp.textContent = timeString;
             
-            const totalSecs = focusDurationMinutes * 60;
-            const fraction = focusSecondsLeft / totalSecs;
-            let angle = (fraction * focusDurationMinutes) * 6;
+            // Update live end-time pill: now + secondsLeft
+            const timeRangeDisplay = document.getElementById('focus-time-range-display');
+            if (timeRangeDisplay && focusSessionStartTimestamp) {
+                const start = focusSessionStartTimestamp;
+                const endTime = new Date(Date.now() + focusSecondsLeft * 1000);
+                const startStr = `${String(start.getHours()).padStart(2,'0')}:${String(start.getMinutes()).padStart(2,'0')}`;
+                const endStr   = `${String(endTime.getHours()).padStart(2,'0')}:${String(endTime.getMinutes()).padStart(2,'0')}`;
+                timeRangeDisplay.textContent = `${startStr} → ${endStr}`;
+            }
+
+            // Update dial arc based on fraction of remaining / total (original + added)
+            const totalSecs = focusDurationMinutes * 60 + focusTotalAddedSeconds;
+            const fraction = totalSecs > 0 ? focusSecondsLeft / totalSecs : 0;
+            let angle = fraction * 360;
             if (angle <= 0) angle = 0.01;
             if (angle >= 360) angle = 359.99;
             
