@@ -1304,6 +1304,76 @@
                 align-items: center;
                 gap: 5px;
             }
+
+            /* --- Drag-to-Seek Gesture Overlay --- */
+            .seek-gesture-overlay {
+                position: absolute;
+                inset: 0;
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity 0.15s ease;
+                z-index: 5;
+                background: rgba(0, 0, 0, 0.45);
+                backdrop-filter: blur(2px);
+                -webkit-backdrop-filter: blur(2px);
+            }
+
+            .seek-gesture-overlay.visible {
+                opacity: 1;
+            }
+
+            .seek-gesture-content {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 6px;
+                color: white;
+                user-select: none;
+            }
+
+            .seek-arrow-row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .seek-arrow {
+                font-size: 2rem;
+                transition: transform 0.1s ease, opacity 0.1s ease;
+                opacity: 0.4;
+            }
+
+            .seek-arrow.active {
+                opacity: 1;
+                transform: scale(1.3);
+                color: var(--primary-color, #3b82f6);
+                text-shadow: 0 0 12px rgba(59,130,246,0.7);
+            }
+
+            .seek-time-label {
+                font-size: 1.4rem;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+                text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+                min-width: 60px;
+                text-align: center;
+                color: white;
+            }
+
+            .seek-hint-text {
+                font-size: 0.75rem;
+                color: rgba(255,255,255,0.6);
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+
+            .mobile-art-container {
+                position: relative; /* ensure overlay is positioned inside */
+            }
         }
     </style>
 </head>
@@ -1517,8 +1587,19 @@
             <button class="icon-btn" onclick="openRelatedModal()"><i class="fas fa-ellipsis-h"></i></button>
         </div>
         
-        <div class="mobile-art-container">
+        <div class="mobile-art-container" id="mobile-art-container">
             <img id="mobile-cover" src="https://via.placeholder.com/300/1e293b/ffffff?text=Music" alt="Cover">
+            <!-- Drag-to-seek gesture overlay -->
+            <div class="seek-gesture-overlay" id="seek-overlay">
+                <div class="seek-gesture-content">
+                    <div class="seek-arrow-row">
+                        <span class="seek-arrow" id="seek-arrow-left">&#8592;</span>
+                        <span class="seek-time-label" id="seek-time-label">+0s</span>
+                        <span class="seek-arrow" id="seek-arrow-right">&#8594;</span>
+                    </div>
+                    <span class="seek-hint-text" id="seek-hint-text">Hold &amp; drag to seek</span>
+                </div>
+            </div>
         </div>
         
         <div class="mobile-info">
@@ -2586,6 +2667,119 @@
                 fetchSongs();
             }
         }
+
+        // --- DRAG-TO-SEEK GESTURE (Mobile Album Art) ---
+        (function() {
+            // Config
+            const HOLD_DELAY_MS = 180;       // ms to wait before activating drag mode
+            const SEEK_THRESHOLD_PX = 40;    // px per 10-second step
+            const SEEK_STEP_S = 10;          // seconds per threshold crossing
+
+            // State
+            let holdTimer = null;
+            let dragActive = false;
+            let touchStartX = 0;
+            let lastAppliedStep = 0;         // tracks last applied +/- steps
+            let baseTime = 0;                // audio time when drag started
+
+            // Elements (resolved after DOM ready)
+            let artContainer, seekOverlay, seekTimeLabel, seekArrowLeft, seekArrowRight, seekHintText;
+
+            function initSeekGesture() {
+                artContainer    = document.getElementById('mobile-art-container');
+                seekOverlay     = document.getElementById('seek-overlay');
+                seekTimeLabel   = document.getElementById('seek-time-label');
+                seekArrowLeft   = document.getElementById('seek-arrow-left');
+                seekArrowRight  = document.getElementById('seek-arrow-right');
+                seekHintText    = document.getElementById('seek-hint-text');
+
+                if (!artContainer) return;
+
+                artContainer.addEventListener('touchstart', onTouchStart, { passive: true });
+                artContainer.addEventListener('touchmove',  onTouchMove,  { passive: true });
+                artContainer.addEventListener('touchend',   onTouchEnd,   { passive: true });
+                artContainer.addEventListener('touchcancel',onTouchEnd,   { passive: true });
+            }
+
+            function onTouchStart(e) {
+                if (e.touches.length !== 1) return;
+                touchStartX = e.touches[0].clientX;
+                dragActive = false;
+                lastAppliedStep = 0;
+
+                // Start hold timer — activate drag mode after delay
+                holdTimer = setTimeout(() => {
+                    dragActive = true;
+                    baseTime = audio.src ? audio.currentTime : 0;
+                    showOverlay(0);
+                }, HOLD_DELAY_MS);
+            }
+
+            function onTouchMove(e) {
+                if (!dragActive) return;
+
+                const dx = e.touches[0].clientX - touchStartX;
+                const rawSteps = Math.floor(dx / SEEK_THRESHOLD_PX);  // negative = rewind
+                const totalSeconds = rawSteps * SEEK_STEP_S;
+
+                updateOverlay(rawSteps, totalSeconds);
+
+                // Apply incremental seek only when steps change
+                if (rawSteps !== lastAppliedStep) {
+                    lastAppliedStep = rawSteps;
+                    if (audio.src) {
+                        const newTime = Math.max(0, Math.min(baseTime + totalSeconds, audio.duration || 0));
+                        audio.currentTime = newTime;
+                    }
+                }
+            }
+
+            function onTouchEnd() {
+                clearTimeout(holdTimer);
+
+                if (dragActive) {
+                    // Brief flash confirming the seek, then hide
+                    setTimeout(hideOverlay, 350);
+                }
+
+                dragActive = false;
+                lastAppliedStep = 0;
+            }
+
+            function showOverlay(steps) {
+                seekOverlay.classList.add('visible');
+                updateOverlay(steps, steps * SEEK_STEP_S);
+                seekHintText.textContent = 'Drag left / right';
+            }
+
+            function hideOverlay() {
+                seekOverlay.classList.remove('visible');
+            }
+
+            function updateOverlay(steps, totalSeconds) {
+                const sign = totalSeconds >= 0 ? '+' : '';
+                seekTimeLabel.textContent = sign + totalSeconds + 's';
+
+                // Highlight the active arrow
+                if (steps > 0) {
+                    seekArrowRight.classList.add('active');
+                    seekArrowLeft.classList.remove('active');
+                } else if (steps < 0) {
+                    seekArrowLeft.classList.add('active');
+                    seekArrowRight.classList.remove('active');
+                } else {
+                    seekArrowLeft.classList.remove('active');
+                    seekArrowRight.classList.remove('active');
+                }
+            }
+
+            // Init after DOM is ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initSeekGesture);
+            } else {
+                initSeekGesture();
+            }
+        })();
     </script>
 </body>
 </html>
