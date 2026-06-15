@@ -2326,141 +2326,189 @@
                 });
             }
 
-            // --- Overlap Layout Algorithm (Google Calendar style) ---
-            // Sort by start time, then by end time (longer events first)
-            scheduledTasks.sort((a, b) => a.startDec - b.startDec || b.endDec - a.endDec);
+            // ════════════════════════════════════════════════════════════════
+            // OVERLAP LAYOUT ENGINE  (Google-Calendar / Outlook style)
+            // ════════════════════════════════════════════════════════════════
+            //
+            // STEP 1 – sort by start, break ties longest-first
+            scheduledTasks.sort((a, b) =>
+                a.startDec !== b.startDec
+                    ? a.startDec - b.startDec
+                    : b.endDec   - a.endDec
+            );
 
-            // Assign each event to a "column" within its overlap group
-            // A group is a maximal set of events that all mutually overlap in time
-            const layoutEvents = scheduledTasks.map(e => ({ ...e, col: 0, totalCols: 1 }));
-            
-            // Process events in groups of overlapping events
-            let i = 0;
-            while (i < layoutEvents.length) {
-                // Find all events that overlap with event i (form a cluster)
-                let groupEnd = layoutEvents[i].endDec;
-                let j = i + 1;
-                while (j < layoutEvents.length && layoutEvents[j].startDec < groupEnd) {
-                    groupEnd = Math.max(groupEnd, layoutEvents[j].endDec);
-                    j++;
+            // STEP 2 – build "collision clusters"
+            // A cluster is the maximal group of events where every event overlaps
+            // with at least one other event in the group (sweep-line merge).
+            const clusters = [];
+            let clusterBuf = [];
+            let clusterMax = -Infinity;
+
+            for (const ev of scheduledTasks) {
+                if (clusterBuf.length === 0 || ev.startDec >= clusterMax) {
+                    if (clusterBuf.length) clusters.push([...clusterBuf]);
+                    clusterBuf = [ev];
+                    clusterMax = ev.endDec;
+                } else {
+                    clusterBuf.push(ev);
+                    clusterMax = Math.max(clusterMax, ev.endDec);
                 }
-                const group = layoutEvents.slice(i, j);
+            }
+            if (clusterBuf.length) clusters.push(clusterBuf);
 
-                // Assign columns using a greedy column-fill approach
-                // columns tracks the end time of the last event placed in that column
-                const columns = [];
-                group.forEach(ev => {
-                    let placed = false;
-                    for (let c = 0; c < columns.length; c++) {
-                        // Can place here if this column's last event ended before this event starts
-                        if (columns[c] <= ev.startDec + 0.001) {
-                            ev.col = c;
-                            columns[c] = ev.endDec;
-                            placed = true;
-                            break;
-                        }
+            // STEP 3 – inside each cluster assign column slots
+            // "columns" array holds the endDec of the last event placed in that slot.
+            // We pick the first slot whose tail does not overlap the new event.
+            // Then totalCols = number of slots actually used in this cluster.
+            const layoutEvents = [];
+
+            for (const cluster of clusters) {
+                const slots = [];          // slots[c] = endDec of last occupant
+
+                for (const ev of cluster) {
+                    let col = -1;
+                    for (let c = 0; c < slots.length; c++) {
+                        if (slots[c] <= ev.startDec + 0.0001) { col = c; break; }
                     }
-                    if (!placed) {
-                        ev.col = columns.length;
-                        columns.push(ev.endDec);
-                    }
-                });
+                    if (col === -1) { col = slots.length; slots.push(0); }
+                    slots[col] = ev.endDec;
+                    layoutEvents.push({ ...ev, col, totalCols: 0 /* set below */ });
+                }
 
-                // totalCols for this group = number of columns used
-                const numCols = columns.length;
-                group.forEach(ev => { ev.totalCols = numCols; });
-
-                i = j;
+                const numCols = slots.length;
+                // Back-fill totalCols for every event we just pushed
+                for (let k = layoutEvents.length - cluster.length; k < layoutEvents.length; k++) {
+                    layoutEvents[k].totalCols = numCols;
+                }
             }
 
-            // ── Card Style Map ──────────────────────────────────────────────
-            // Each category gets: bg, accent stripe, text color, time color, meta color
+            // ── Card Style Map ───────────────────────────────────────────────
             const CARD_STYLES = {
-                'Work':          { bg: '#1a7a5e', accent: '#0d5c44', text: '#ffffff', sub: 'rgba(255,255,255,0.75)', badge: '#0d5c44' },
-                'Personal':      { bg: '#c84a42', accent: '#9e3830', text: '#ffffff', sub: 'rgba(255,255,255,0.75)', badge: '#9e3830' },
-                'Education':     { bg: '#5b4fcf', accent: '#3d348b', text: '#ffffff', sub: 'rgba(255,255,255,0.75)', badge: '#3d348b' },
-                'Entertainment': { bg: '#1a6fcf', accent: '#0d4fa3', text: '#ffffff', sub: 'rgba(255,255,255,0.75)', badge: '#0d4fa3' },
-                'Spiritual':     { bg: '#b45309', accent: '#92400e', text: '#ffffff', sub: 'rgba(255,255,255,0.75)', badge: '#92400e' },
-                'default':       { bg: '#4a5568', accent: '#2d3748', text: '#ffffff', sub: 'rgba(255,255,255,0.75)', badge: '#2d3748' },
-                'focus':         { bg: '#991b1b', accent: '#7f1d1d', text: '#ffffff', sub: 'rgba(255,255,255,0.70)', badge: '#7f1d1d' },
+                'Work':          { bg: '#1a7a5e', accent: '#0d5c44', text: '#ffffff', sub: 'rgba(255,255,255,0.75)' },
+                'Personal':      { bg: '#c84a42', accent: '#9e3830', text: '#ffffff', sub: 'rgba(255,255,255,0.75)' },
+                'Education':     { bg: '#5b4fcf', accent: '#3d348b', text: '#ffffff', sub: 'rgba(255,255,255,0.75)' },
+                'Entertainment': { bg: '#1a6fcf', accent: '#0d4fa3', text: '#ffffff', sub: 'rgba(255,255,255,0.75)' },
+                'Spiritual':     { bg: '#b45309', accent: '#92400e', text: '#ffffff', sub: 'rgba(255,255,255,0.75)' },
+                'default':       { bg: '#4a5568', accent: '#2d3748', text: '#ffffff', sub: 'rgba(255,255,255,0.75)' },
+                'focus':         { bg: '#991b1b', accent: '#7f1d1d', text: '#ffffff', sub: 'rgba(255,255,255,0.70)' },
             };
 
-            // ── Layout constants ────────────────────────────────────────────
-            const PX_PER_HOUR = 96;
-            const OUTER_GAP   = 4;   // px from container left/right edge
-            const INNER_GAP   = 3;   // px between sibling columns
+            // ── Layout constants ─────────────────────────────────────────────
+            const PX_PER_HOUR  = 96;
+            const EDGE_PAD     = 4;   // px gap at left and right container edges
+            const COL_GAP      = 4;   // px gap between sibling columns
 
+            // ── Measure container width once ─────────────────────────────────
+            // eventsContainer is position:absolute left-14 right-0 inside the
+            // scrollable area; offsetWidth gives the true pixel width.
+            const containerW = eventsContainer.offsetWidth || eventsContainer.getBoundingClientRect().width || 300;
+
+            // ── Render ───────────────────────────────────────────────────────
             layoutEvents.forEach(({ task, parsed, startDec, endDec, isFocus, col, totalCols }) => {
-                const top    = (startDec - startHour) * PX_PER_HOUR;
-                const height = Math.max((endDec - startDec) * PX_PER_HOUR, 36);
 
-                // ── Style resolution ────────────────────────────────────────
-                const styleKey = isFocus ? 'focus' : (CARD_STYLES[parsed.category] ? parsed.category : 'default');
-                const S = CARD_STYLES[styleKey];
+                // ── Pixel geometry ───────────────────────────────────────────
+                // Total usable width after edge padding on both sides
+                const usable   = containerW - EDGE_PAD * 2;
+                // Each column gets an equal share; gaps only live *between* cols
+                const colW     = (usable - COL_GAP * (totalCols - 1)) / totalCols;
+                const leftPx   = EDGE_PAD + col * (colW + COL_GAP);
+
+                const top      = (startDec  - startHour) * PX_PER_HOUR;
+                const height   = Math.max((endDec - startDec) * PX_PER_HOUR, 28);
+
+                // ── Style ────────────────────────────────────────────────────
+                const styleKey  = isFocus ? 'focus' : (CARD_STYLES[parsed.category] ? parsed.category : 'default');
+                const S         = CARD_STYLES[styleKey];
                 const isCompleted = task.status === 'Completed';
-                const cardBg = isCompleted ? '#94a3b8' : S.bg;
-                const accentBg = isCompleted ? '#64748b' : S.accent;
+                const cardBg    = isCompleted ? '#94a3b8' : S.bg;
+                const accentBg  = isCompleted ? '#64748b' : S.accent;
 
-                // ── Column geometry ─────────────────────────────────────────
-                const colWidthPct  = 100 / totalCols;
-                const leftPct      = col * colWidthPct;
-                const rightPct     = (totalCols - col - 1) * colWidthPct;
-                const leftOffset   = col === 0              ? OUTER_GAP : Math.ceil(INNER_GAP / 2);
-                const rightOffset  = col === totalCols - 1  ? OUTER_GAP : Math.ceil(INNER_GAP / 2);
-
-                // ── Duration label ──────────────────────────────────────────
+                // ── Content helpers ──────────────────────────────────────────
                 const durationMins  = Math.round((endDec - startDec) * 60);
                 const durationLabel = durationMins >= 60
-                    ? `${Math.floor(durationMins / 60)}h${durationMins % 60 > 0 ? ` ${durationMins % 60}min` : ''}`
-                    : `${durationMins}min`;
-
-                // ── Start time label ────────────────────────────────────────
-                const [sh, sm] = parsed.start_time.split(':');
+                    ? `${Math.floor(durationMins / 60)}h${durationMins % 60 > 0 ? ` ${durationMins % 60}m` : ''}`
+                    : `${durationMins}m`;
+                const [sh, sm]  = parsed.start_time.split(':');
                 const startLabel = `${sh}:${sm}`;
 
-                // ── Decide what to show based on height ─────────────────────
-                const showDuration   = height >= 52;
-                const showStartTime  = height >= 36;
-                const multiLineTitle = height >= 58;
+                const tinyCard      = height < 36;
+                const showStartTime = height >= 32;
+                const showDuration  = height >= 56 && colW > 48;
+                const twoLineTitle  = height >= 60;
 
-                // ── Build card HTML ─────────────────────────────────────────
+                // ── DOM element ──────────────────────────────────────────────
                 const block = document.createElement('div');
-                block.className = `absolute cursor-pointer select-none animate-fade-in`;
                 block.style.cssText = [
+                    `position: absolute`,
                     `top: ${top}px`,
+                    `left: ${leftPx}px`,
+                    `width: ${colW}px`,
                     `height: ${height}px`,
-                    `left: calc(${leftPct}% + ${leftOffset}px)`,
-                    `right: calc(${rightPct}% + ${rightOffset}px)`,
-                    `z-index: ${10 + col}`,
-                    `border-radius: 10px`,
+                    `border-radius: 8px`,
                     `overflow: hidden`,
-                    `background: ${cardBg}`,
-                    `box-shadow: 0 2px 8px rgba(0,0,0,0.18), 0 1px 2px rgba(0,0,0,0.12)`,
-                    `transition: box-shadow 0.15s, transform 0.15s`,
                     `display: flex`,
                     `flex-direction: row`,
-                    `opacity: ${isCompleted ? '0.6' : '1'}`,
+                    `background: ${cardBg}`,
+                    `box-shadow: 0 1px 4px rgba(0,0,0,0.20), 0 0 0 1px rgba(0,0,0,0.08)`,
+                    `cursor: pointer`,
+                    `user-select: none`,
+                    `transition: box-shadow 0.12s ease, transform 0.12s ease`,
+                    `opacity: ${isCompleted ? '0.55' : '1'}`,
+                    `z-index: ${10 + col}`,
                 ].join('; ');
 
                 block.innerHTML = `
-                    <div style="width:5px;min-width:5px;background:${accentBg};border-radius:10px 0 0 10px;flex-shrink:0;"></div>
-                    <div style="flex:1;min-width:0;padding:${height < 48 ? '4px 8px' : '7px 10px'};display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;">
-                        <div style="min-width:0;">
-                            ${showStartTime ? `<div style="font-size:10px;font-weight:700;color:${S.sub};letter-spacing:0.04em;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${startLabel}</div>` : ''}
-                            <div style="font-size:${height < 48 ? '11' : '13'}px;font-weight:800;color:${S.text};line-height:1.2;${multiLineTitle ? 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;' : 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'}${isCompleted ? 'text-decoration:line-through;opacity:0.75;' : ''}">${task.title}</div>
-                        </div>
-                        ${showDuration ? `<div style="font-size:10px;font-weight:600;color:${S.sub};margin-top:3px;white-space:nowrap;">${durationLabel}</div>` : ''}
+                    <div style="
+                        width: 4px; min-width: 4px; flex-shrink: 0;
+                        background: ${accentBg};
+                        border-radius: 8px 0 0 8px;
+                    "></div>
+                    <div style="
+                        flex: 1; min-width: 0;
+                        padding: ${tinyCard ? '3px 6px' : '5px 8px'};
+                        display: flex; flex-direction: column;
+                        justify-content: ${tinyCard ? 'center' : 'flex-start'};
+                        overflow: hidden;
+                        gap: 1px;
+                    ">
+                        ${showStartTime ? `
+                        <div style="
+                            font-size: 10px; font-weight: 700;
+                            color: ${S.sub};
+                            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                            line-height: 1.2;
+                        ">${startLabel}</div>` : ''}
+
+                        <div style="
+                            font-size: ${tinyCard ? '10' : (colW < 80 ? '11' : '12')}px;
+                            font-weight: 800;
+                            color: ${S.text};
+                            line-height: 1.25;
+                            ${twoLineTitle
+                                ? 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;'
+                                : 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'}
+                            ${isCompleted ? 'text-decoration:line-through;opacity:0.7;' : ''}
+                        ">${task.title}</div>
+
+                        ${showDuration ? `
+                        <div style="
+                            font-size: 10px; font-weight: 600;
+                            color: ${S.sub};
+                            white-space: nowrap;
+                            margin-top: 2px;
+                        ">${durationLabel}</div>` : ''}
                     </div>
                 `;
 
-                // Hover glow
                 block.addEventListener('mouseenter', () => {
-                    block.style.boxShadow = `0 4px 16px rgba(0,0,0,0.28), 0 2px 4px rgba(0,0,0,0.16)`;
+                    block.style.boxShadow = '0 4px 14px rgba(0,0,0,0.30), 0 0 0 1px rgba(0,0,0,0.10)';
                     block.style.transform = 'translateY(-1px)';
+                    block.style.zIndex    = String(100 + col);
                 });
                 block.addEventListener('mouseleave', () => {
-                    block.style.boxShadow = `0 2px 8px rgba(0,0,0,0.18), 0 1px 2px rgba(0,0,0,0.12)`;
+                    block.style.boxShadow = '0 1px 4px rgba(0,0,0,0.20), 0 0 0 1px rgba(0,0,0,0.08)';
                     block.style.transform = '';
+                    block.style.zIndex    = String(10 + col);
                 });
                 block.addEventListener('click', () => editEvent(task));
 
