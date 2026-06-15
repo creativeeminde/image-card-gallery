@@ -653,21 +653,39 @@
                             </select>
                         </div>
 
-                        <!-- Radial Dial Container -->
+                        <!-- Analog Clock Face -->
                         <div class="relative w-72 h-72 flex items-center justify-center bg-white dark:bg-slate-800 rounded-full shadow-md border border-slate-100 dark:border-slate-700/60">
-                            <svg id="timer-dial-svg" class="w-64 h-64 select-none cursor-grab active:cursor-grabbing" viewBox="0 0 200 200">
-                                <!-- Dial Face -->
-                                <circle cx="100" cy="100" r="85" fill="none" stroke="#f1f5f9" stroke-width="1.5" class="dark:stroke-slate-700" />
-                                
-                                <!-- Ticks Group -->
+                            <svg id="timer-dial-svg" class="w-64 h-64 select-none" viewBox="0 0 200 200">
+                                <!-- Outer ring -->
+                                <circle cx="100" cy="100" r="93" fill="none" stroke="#f1f5f9" stroke-width="1" class="dark:stroke-slate-700/60" />
+
+                                <!-- Progress arc (now → end time), updated dynamically -->
+                                <path id="dial-progress-arc" fill="none" stroke="#ef4444" stroke-width="6" stroke-linecap="round" opacity="0.25" />
+
+                                <!-- Hour markers (12 major + 48 minor) -->
                                 <g id="dial-ticks"></g>
-                                
-                                <!-- Colored Arc (filled segment representing selected duration) -->
-                                <path id="dial-progress-arc" fill="none" stroke="#ef4444" stroke-width="12" stroke-linecap="round" />
-                                
-                                <!-- Rotatable Hand/Pointer -->
-                                <line id="dial-hand" x1="100" y1="100" x2="100" y2="25" stroke="#ef4444" stroke-width="4.5" stroke-linecap="round" />
-                                <circle id="dial-center" cx="100" cy="100" r="9" fill="#ffffff" stroke="#ef4444" stroke-width="3" />
+
+                                <!-- Hour numbers -->
+                                <g id="dial-hour-numbers" font-family="system-ui,sans-serif" text-anchor="middle" dominant-baseline="central"></g>
+
+                                <!-- Second hand (thin, red) -->
+                                <line id="clock-second-hand" x1="100" y1="100" x2="100" y2="22"
+                                    stroke="#ef4444" stroke-width="1.2" stroke-linecap="round" />
+                                <!-- Second hand tail -->
+                                <line id="clock-second-tail" x1="100" y1="100" x2="100" y2="116"
+                                    stroke="#ef4444" stroke-width="1.2" stroke-linecap="round" />
+
+                                <!-- Minute hand (medium, dark) -->
+                                <line id="clock-minute-hand" x1="100" y1="100" x2="100" y2="28"
+                                    stroke="#1e293b" stroke-width="3" stroke-linecap="round" class="dark:stroke-slate-200" />
+
+                                <!-- Hour hand (thick, dark) -->
+                                <line id="clock-hour-hand" x1="100" y1="100" x2="100" y2="48"
+                                    stroke="#1e293b" stroke-width="4.5" stroke-linecap="round" class="dark:stroke-slate-200" />
+
+                                <!-- Center cap -->
+                                <circle cx="100" cy="100" r="5" fill="#ef4444" />
+                                <circle cx="100" cy="100" r="2" fill="#ffffff" />
                             </svg>
                         </div>
 
@@ -2095,124 +2113,132 @@
 
         function generateTicks() {
             const ticksGroup = document.getElementById('dial-ticks');
+            const numbersGroup = document.getElementById('dial-hour-numbers');
             if (!ticksGroup) return;
             ticksGroup.innerHTML = '';
+            if (numbersGroup) numbersGroup.innerHTML = '';
+
             for (let i = 0; i < 60; i++) {
-                const angle = i * 6; 
+                const angle = i * 6;
                 const isMajor = i % 5 === 0;
-                const r1 = isMajor ? 76 : 79;
-                const r2 = 84;
+                const r1 = isMajor ? 76 : 80;
+                const r2 = 86;
                 const p1 = polarToCartesian(100, 100, r1, angle);
                 const p2 = polarToCartesian(100, 100, r2, angle);
                 const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                line.setAttribute("x1", p1.x);
-                line.setAttribute("y1", p1.y);
-                line.setAttribute("x2", p2.x);
-                line.setAttribute("y2", p2.y);
-                line.setAttribute("stroke", isMajor ? "#94a3b8" : "#cbd5e1");
-                line.setAttribute("stroke-width", isMajor ? "1.5" : "0.75");
+                line.setAttribute("x1", p1.x); line.setAttribute("y1", p1.y);
+                line.setAttribute("x2", p2.x); line.setAttribute("y2", p2.y);
+                line.setAttribute("stroke", isMajor ? "#94a3b8" : "#e2e8f0");
+                line.setAttribute("stroke-width", isMajor ? "1.8" : "0.8");
                 ticksGroup.appendChild(line);
             }
+
+            // Hour numerals 1–12
+            if (numbersGroup) {
+                for (let h = 1; h <= 12; h++) {
+                    const angle = h * 30; // 360/12
+                    const pos = polarToCartesian(100, 100, 65, angle);
+                    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    text.setAttribute("x", pos.x);
+                    text.setAttribute("y", pos.y);
+                    text.setAttribute("font-size", "9");
+                    text.setAttribute("font-weight", "600");
+                    text.setAttribute("fill", "#94a3b8");
+                    text.textContent = h;
+                    numbersGroup.appendChild(text);
+                }
+            }
+        }
+
+        // ── Core clock hand positioning ──────────────────────────────────────
+        // Rotates a hand line endpoint around the center (100,100)
+        // angleDeg: 0 = 12 o'clock, increases clockwise
+        function setHandAngle(handId, tailId, angleDeg, length, tailLength) {
+            const hand = document.getElementById(handId);
+            const tail = tailId ? document.getElementById(tailId) : null;
+            if (!hand) return;
+            const tip = polarToCartesian(100, 100, length, angleDeg);
+            hand.setAttribute("x2", tip.x);
+            hand.setAttribute("y2", tip.y);
+            if (tail && tailLength) {
+                const tailTip = polarToCartesian(100, 100, tailLength, (angleDeg + 180) % 360);
+                tail.setAttribute("x2", tailTip.x);
+                tail.setAttribute("y2", tailTip.y);
+            }
+        }
+
+        // ── Update all three hands to a given Date or time ──────────────────
+        function updateClockHands(targetDate) {
+            const h = targetDate.getHours() % 12;
+            const m = targetDate.getMinutes();
+            const s = targetDate.getSeconds();
+
+            // Hour: 360/12 = 30° per hour + 0.5° per minute
+            const hourAngle   = h * 30 + m * 0.5 + s * (0.5 / 60);
+            // Minute: 360/60 = 6° per minute + 0.1° per second
+            const minuteAngle = m * 6 + s * 0.1;
+            // Second: 6° per second
+            const secondAngle = s * 6;
+
+            setHandAngle('clock-hour-hand',   null,                 hourAngle,   52, 0);
+            setHandAngle('clock-minute-hand', null,                 minuteAngle, 72, 0);
+            setHandAngle('clock-second-hand', 'clock-second-tail',  secondAngle, 78, 16);
+        }
+
+        // ── Draw the red progress arc from "now" to "end time" on the clock ─
+        // Both angles are clock-face positions in degrees (0 = 12 o'clock)
+        function updateClockArc(startDate, endDate) {
+            const arc = document.getElementById('dial-progress-arc');
+            if (!arc) return;
+
+            function clockAngle(d) {
+                const h = d.getHours() % 12;
+                const m = d.getMinutes();
+                const s = d.getSeconds();
+                return ((h * 3600 + m * 60 + s) / 43200) * 360; // 12h = 43200s
+            }
+
+            let startAngle = clockAngle(startDate);
+            let endAngle   = clockAngle(endDate);
+
+            // If end < start (session crosses noon/midnight), wrap by adding 360
+            if (endAngle <= startAngle) endAngle += 360;
+
+            // Clamp to avoid full-circle degenerate case
+            const span = Math.min(endAngle - startAngle, 359.9);
+            if (span < 0.5) { arc.setAttribute("d", ""); return; }
+
+            arc.setAttribute("d", describeArc(100, 100, 89, startAngle, startAngle + span));
         }
 
         function setCustomFocusDuration(minutes) {
             focusDurationMinutes = minutes;
-            const progressArc = document.getElementById('dial-progress-arc');
-            const dialHand = document.getElementById('dial-hand');
             const durationDisplay = document.getElementById('focus-duration-display');
             const timeRangeDisplay = document.getElementById('focus-time-range-display');
             
-            if (!progressArc || !dialHand || !durationDisplay || !timeRangeDisplay) return;
+            if (!durationDisplay || !timeRangeDisplay) return;
             
             durationDisplay.textContent = `${minutes.toString().padStart(2, '0')}:00`;
             
-            // Calculate Projected time range
+            // Calculate projected start → end
             const now = new Date();
-            const startHours = now.getHours();
-            const startMins = now.getMinutes();
-            const startDisp = `${startHours.toString().padStart(2, '0')}:${startMins.toString().padStart(2, '0')}`;
-            
-            const future = new Date(now.getTime() + minutes * 60000);
-            const endHours = future.getHours();
-            const endMins = future.getMinutes();
-            const endDisp = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
-            
+            const endTime = new Date(now.getTime() + minutes * 60000);
+
+            const startDisp = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+            const endDisp   = `${String(endTime.getHours()).padStart(2,'0')}:${String(endTime.getMinutes()).padStart(2,'0')}`;
             timeRangeDisplay.textContent = `${startDisp} → ${endDisp}`;
             
-            // Render Progress Arc and pointer position
-            let angle = minutes * 6;
-            if (angle >= 360) angle = 359.99;
-            if (angle <= 0) angle = 0.01;
-            
-            progressArc.setAttribute("d", describeArc(100, 100, 75, 0, angle));
-            
-            const tip = polarToCartesian(100, 100, 75, angle);
-            dialHand.setAttribute("x2", tip.x);
-            dialHand.setAttribute("y2", tip.y);
+            // Point clock hands at the projected end time
+            updateClockHands(endTime);
+            updateClockArc(now, endTime);
         }
 
         function handleDialInteraction(e) {
-            const svg = document.getElementById('timer-dial-svg');
-            if (!svg) return;
-            const rect = svg.getBoundingClientRect();
-            
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            
-            const x = clientX - rect.left - rect.width / 2;
-            const y = clientY - rect.top - rect.height / 2;
-            
-            let angle = Math.atan2(y, x) * 180 / Math.PI;
-            angle = (angle + 90 + 360) % 360; 
-            
-            let minutes = Math.round((angle / 360) * 60);
-            if (minutes < 1) minutes = 1;
-            if (minutes > 60) minutes = 60;
-            
-            setCustomFocusDuration(minutes);
-            // Keep custom input and preset buttons in sync with dial
-            const inp = document.getElementById('custom-dur-input');
-            if (inp) inp.value = minutes;
-            document.querySelectorAll('.preset-btn').forEach(b => {
-                const match = parseInt(b.dataset.mins) === minutes;
-                b.classList.toggle('active-preset', match);
-                b.classList.toggle('bg-red-500', match);
-                b.classList.toggle('text-white', match);
-                b.classList.toggle('border-red-500', match);
-            });
+            // Clock is now display-only — use presets, stepper, or the custom input to change duration
         }
 
         function setupTimerDialEvents() {
-            const svg = document.getElementById('timer-dial-svg');
-            if (!svg) return;
-            
-            const onDrag = (e) => {
-                if (focusIsRunning) return;
-                e.preventDefault();
-                handleDialInteraction(e);
-            };
-            
-            svg.addEventListener('mousedown', (e) => {
-                isDialDragging = true;
-                onDrag(e);
-            });
-            window.addEventListener('mousemove', (e) => {
-                if (isDialDragging) onDrag(e);
-            });
-            window.addEventListener('mouseup', () => {
-                isDialDragging = false;
-            });
-            
-            svg.addEventListener('touchstart', (e) => {
-                isDialDragging = true;
-                onDrag(e);
-            });
-            window.addEventListener('touchmove', (e) => {
-                if (isDialDragging) onDrag(e);
-            }, { passive: false });
-            window.addEventListener('touchend', () => {
-                isDialDragging = false;
-            });
+            // No drag interaction — clock face is read-only display
         }
 
         function extendFocusSession(addMinutes) {
@@ -2979,30 +3005,23 @@
             const timeString = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
             disp.textContent = timeString;
             
-            // Update live end-time pill: now + secondsLeft
+            // Compute live end time = now + remaining seconds
+            const now     = new Date();
+            const endTime = new Date(now.getTime() + focusSecondsLeft * 1000);
+
+            // Update time-range pill
             const timeRangeDisplay = document.getElementById('focus-time-range-display');
             if (timeRangeDisplay && focusSessionStartTimestamp) {
-                const start = focusSessionStartTimestamp;
-                const endTime = new Date(Date.now() + focusSecondsLeft * 1000);
+                const start    = focusSessionStartTimestamp;
                 const startStr = `${String(start.getHours()).padStart(2,'0')}:${String(start.getMinutes()).padStart(2,'0')}`;
                 const endStr   = `${String(endTime.getHours()).padStart(2,'0')}:${String(endTime.getMinutes()).padStart(2,'0')}`;
                 timeRangeDisplay.textContent = `${startStr} → ${endStr}`;
             }
 
-            // Update dial arc based on fraction of remaining / total (original + added)
-            const totalSecs = focusDurationMinutes * 60 + focusTotalAddedSeconds;
-            const fraction = totalSecs > 0 ? focusSecondsLeft / totalSecs : 0;
-            let angle = fraction * 360;
-            if (angle <= 0) angle = 0.01;
-            if (angle >= 360) angle = 359.99;
-            
-            const progressArc = document.getElementById('dial-progress-arc');
-            const dialHand = document.getElementById('dial-hand');
-            if (progressArc) progressArc.setAttribute("d", describeArc(100, 100, 75, 0, angle));
-            if (dialHand) {
-                const tip = polarToCartesian(100, 100, 75, angle);
-                dialHand.setAttribute("x2", tip.x);
-                dialHand.setAttribute("y2", tip.y);
+            // Point clock hands at the projected end time + arc from now to end
+            updateClockHands(endTime);
+            if (focusSessionStartTimestamp) {
+                updateClockArc(focusSessionStartTimestamp, endTime);
             }
             
             document.title = `${timeString} | Focus - TaskMaster`;
@@ -3368,6 +3387,8 @@
             return html;
         }
 
+        let clockTickInterval = null;
+
         function initializeFocusView() {
             renderFocusDaySelector();
             populateFocusTaskSelector();
@@ -3392,6 +3413,16 @@
             timelineTickingInterval = setInterval(() => {
                 updateTimelineCurrentTimeLine();
             }, 60000);
+
+            // Live clock tick: update projected end-time hands every second
+            if (clockTickInterval) clearInterval(clockTickInterval);
+            clockTickInterval = setInterval(() => {
+                if (!focusIsRunning) {
+                    // When idle: show projected end of current configured duration
+                    setCustomFocusDuration(focusDurationMinutes);
+                }
+                // When running: updateFocusCountdownDisplay already updates hands every second
+            }, 1000);
         }
 
         async function handleInlineTaskAdd(event, dateStr) {
