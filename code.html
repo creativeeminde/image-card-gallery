@@ -988,38 +988,45 @@
             return `${category}|${start}|${end}`;
         }
 
-        const getCategoryClasses = (category) => {
-            switch (category) {
-                case 'Work':
-                    return 'bg-green-300 dark:bg-green-900/50 text-slate-800 dark:text-slate-200';
-                case 'Personal':
-                    return 'bg-orange-300 dark:bg-orange-900/50 text-slate-800 dark:text-slate-200';
-                case 'Education':
-                    return 'bg-purple-300 dark:bg-purple-900/50 text-slate-800 dark:text-slate-200';
-                case 'Entertainment':
-                    return 'bg-blue-300 dark:bg-blue-900/50 text-slate-800 dark:text-slate-200';
-                case 'Spiritual': 
-                    return 'bg-amber-700 text-white dark:bg-orange-900/50 dark:text-slate-200';
-                default:
-                    return 'bg-slate-100 dark:bg-slate-900/50 text-slate-700 dark:text-slate-300';
-            }
+        // ── Unified event color palette ───────────────────────────────────────
+        // All event surfaces (timeline cards, month pills, template grid) draw
+        // from this single source of truth so the same category always looks the
+        // same everywhere.  Text is always near-black for WCAG AA contrast on the
+        // light pastel backgrounds.
+        const EVENT_PALETTE = {
+            'Work':          { bg: '#A7F3D0', accent: '#059669', text: '#064E3B', sub: '#065F46', dot: '#059669', icon: 'work'            },
+            'Personal':      { bg: '#FBCFE8', accent: '#DB2777', text: '#831843', sub: '#9D174D', dot: '#DB2777', icon: 'person'          },
+            'Education':     { bg: '#FDE68A', accent: '#D97706', text: '#78350F', sub: '#92400E', dot: '#D97706', icon: 'school'          },
+            'Entertainment': { bg: '#BAE6FD', accent: '#0284C7', text: '#0C4A6E', sub: '#075985', dot: '#0284C7', icon: 'celebration'     },
+            'Spiritual':     { bg: '#DDD6FE', accent: '#7C3AED', text: '#3B0764', sub: '#4C1D95', dot: '#7C3AED', icon: 'self_improvement' },
+            'focus':         { bg: '#FED7AA', accent: '#EA580C', text: '#431407', sub: '#7C2D12', dot: '#EA580C', icon: 'timer'           },
+            'default':       { bg: '#E2E8F0', accent: '#64748B', text: '#1E293B', sub: '#334155', dot: '#64748B', icon: 'task_alt'        },
+        };
+
+        function getPalette(category, isFocus) {
+            if (isFocus) return EVENT_PALETTE['focus'];
+            return EVENT_PALETTE[category] || EVENT_PALETTE['default'];
         }
 
+        // Legacy shim kept for template editor (uses Tailwind classes)
+        const getCategoryClasses = (category) => {
+            const p = getPalette(category, false);
+            // Return inline-style-friendly version via data attribute trick —
+            // caller uses this for Tailwind, so map to closest Tailwind class
+            const map = {
+                'Work': 'text-emerald-900',
+                'Personal': 'text-pink-900',
+                'Education': 'text-amber-900',
+                'Entertainment': 'text-sky-900',
+                'Spiritual': 'text-violet-900',
+                'default': 'text-slate-800',
+            };
+            return map[category] || map['default'];
+        };
+
         function getCategoryStyle(category) {
-            switch (category) {
-                case 'Work':
-                    return { icon: 'work', color: 'bg-green-500 text-white' };
-                case 'Personal':
-                    return { icon: 'person', color: 'bg-orange-500 text-white' };
-                case 'Spiritual':
-                    return { icon: 'self_improvement', color: 'bg-amber-600 text-white' };
-                case 'Education':
-                    return { icon: 'school', color: 'bg-purple-500 text-white' };
-                case 'Entertainment':
-                    return { icon: 'celebration', color: 'bg-blue-500 text-white' };
-                default:
-                    return { icon: 'task_alt', color: 'bg-slate-500 text-white' };
-            }
+            const p = getPalette(category, false);
+            return { icon: p.icon, color: `text-white`, bg: p.bg, dot: p.dot };
         }
 
         const formatTimeRange = (startStr, endStr) => {
@@ -1519,26 +1526,25 @@
                 if (dayTasks.length > 0) {
                     eventsHtml = `<div class="space-y-1.5 mt-auto pt-2 relative z-10 w-full">` + dayTasks.slice(0, 3).map(task => {
                         const parsed = parseTaskCategory(task.category);
-                        const style = getCategoryStyle(parsed.category);
+                        const isFocus = parsed.category === 'Work' && task.title.toLowerCase().startsWith('session:');
+                        const P = getPalette(parsed.category, isFocus);
                         const isCompleted = task.status === 'Completed';
                         const isSessionTracked = parsed.start_time !== null;
+                        const displayTitle = task.title.replace(/^Session:\s*/i, '');
 
                         if (isSelected) {
-                             return `<div class="text-[11px] md:text-[12px] leading-tight font-bold opacity-80 truncate ${isCompleted ? 'line-through text-black/50' : ''}">${task.title}</div>`;
+                             return `<div class="text-[11px] md:text-[12px] leading-tight font-bold truncate" style="color:${P.text};${isCompleted ? 'text-decoration:line-through;opacity:0.5;' : ''}">${displayTitle}</div>`;
                         } else {
                              if (isSessionTracked) {
-                                 // Filled badge style for tracked work blocks
                                  return `
-                                    <div class="bg-green-200 dark:bg-green-900/60 rounded-full px-2.5 py-1 text-[10px] md:text-[11px] font-bold flex items-center gap-1.5 shadow-sm truncate border border-transparent">
-                                        <div class="size-1.5 rounded-full ${style.color.split(' ')[0]} flex-shrink-0"></div>
-                                        <span class="truncate">${task.title.replace('Session: ', '')}</span>
+                                    <div style="background:${P.bg};border-left:3px solid ${P.accent};border-radius:6px;" class="px-2 py-0.5 text-[10px] md:text-[11px] font-bold flex items-center gap-1.5 shadow-sm truncate">
+                                        <span class="truncate" style="color:${P.text};">${displayTitle}</span>
                                     </div>`;
                              } else {
-                                 // Bullet style for unscheduled tasks (To-Do backlog items due this day)
                                  return `
-                                    <div class="bg-white/80 dark:bg-slate-800/80 rounded-full px-2.5 py-1 text-[10px] md:text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5 shadow-sm truncate border border-dashed border-slate-300 dark:border-slate-700">
-                                        <div class="size-1.5 rounded-full bg-slate-400 dark:bg-slate-600 flex-shrink-0"></div>
-                                        <span class="truncate">${task.title}</span>
+                                    <div style="background:${P.bg};opacity:0.75;border-radius:6px;" class="px-2 py-0.5 text-[10px] md:text-[11px] font-medium flex items-center gap-1.5 truncate">
+                                        <div class="size-1.5 rounded-full flex-shrink-0" style="background:${P.dot};"></div>
+                                        <span class="truncate" style="color:${P.text};">${displayTitle}</span>
                                     </div>`;
                              }
                         }
@@ -2051,10 +2057,11 @@
             if (error || !events || events.length === 0) { eventsContainer.innerHTML = `<p class="text-center text-slate-500 pt-4">No events.</p>`; return; }
             events.forEach(event => {
                 const start = timeToDecimal(event.start_time), end = timeToDecimal(event.end_time);
+                const P = getPalette(event.category, false);
                 const eventEl = document.createElement('div');
-                eventEl.className = `absolute p-2 rounded-lg overflow-hidden cursor-pointer ${getCategoryClasses(event.category)} hover:opacity-80`;
-                eventEl.style.cssText = `top:calc(${start}*4rem);height:calc(${(end-start)}*4rem);left:.5rem;right:.5rem;`;
-                eventEl.innerHTML = `<p class="font-bold text-sm truncate">${event.title}</p><p class="text-xs opacity-80">${formatTime(event.start_time)}</p>`;
+                eventEl.className = `absolute p-2 rounded-lg overflow-hidden cursor-pointer hover:opacity-80`;
+                eventEl.style.cssText = `top:calc(${start}*4rem);height:calc(${(end-start)}*4rem);left:.5rem;right:.5rem;background:${P.bg};border-left:3px solid ${P.accent};`;
+                eventEl.innerHTML = `<p class="font-bold text-sm truncate" style="color:${P.text}">${event.title}</p><p class="text-xs" style="color:${P.sub}">${formatTime(event.start_time)}</p>`;
                 eventEl.addEventListener('click', () => editTemplateEvent(event));
                 eventsContainer.appendChild(eventEl);
             });
@@ -2474,16 +2481,8 @@
                 }
             }
 
-            // ── Card Style Map ───────────────────────────────────────────────
-            const CARD_STYLES = {
-                'Work':          { bg: '#1a7a5e', accent: '#0d5c44', text: '#ffffff', sub: 'rgba(255,255,255,0.75)' },
-                'Personal':      { bg: '#c84a42', accent: '#9e3830', text: '#ffffff', sub: 'rgba(255,255,255,0.75)' },
-                'Education':     { bg: '#5b4fcf', accent: '#3d348b', text: '#ffffff', sub: 'rgba(255,255,255,0.75)' },
-                'Entertainment': { bg: '#1a6fcf', accent: '#0d4fa3', text: '#ffffff', sub: 'rgba(255,255,255,0.75)' },
-                'Spiritual':     { bg: '#b45309', accent: '#92400e', text: '#ffffff', sub: 'rgba(255,255,255,0.75)' },
-                'default':       { bg: '#4a5568', accent: '#2d3748', text: '#ffffff', sub: 'rgba(255,255,255,0.75)' },
-                'focus':         { bg: '#991b1b', accent: '#7f1d1d', text: '#ffffff', sub: 'rgba(255,255,255,0.70)' },
-            };
+            // ── Card Style Map — sourced from EVENT_PALETTE for visual consistency ──
+            const CARD_STYLES = EVENT_PALETTE;
 
             // ── Layout constants ─────────────────────────────────────────────
             const PX_PER_HOUR  = 96;
@@ -2509,11 +2508,11 @@
                 const height   = Math.max((endDec - startDec) * PX_PER_HOUR, 28);
 
                 // ── Style ────────────────────────────────────────────────────
-                const styleKey  = isFocus ? 'focus' : (CARD_STYLES[parsed.category] ? parsed.category : 'default');
-                const S         = CARD_STYLES[styleKey];
+                const S         = getPalette(parsed.category, isFocus);
                 const isCompleted = task.status === 'Completed';
-                const cardBg    = isCompleted ? '#94a3b8' : S.bg;
-                const accentBg  = isCompleted ? '#64748b' : S.accent;
+                // Completed: same hue but at 40% opacity (achieved via a light wash)
+                const cardBg    = isCompleted ? '#F1F5F9' : S.bg;
+                const accentBg  = isCompleted ? '#CBD5E1' : S.accent;
 
                 // ── Content helpers ──────────────────────────────────────────
                 const durationMins  = Math.round((endDec - startDec) * 60);
@@ -2541,7 +2540,7 @@
                     `display: flex`,
                     `flex-direction: row`,
                     `background: ${cardBg}`,
-                    `box-shadow: 0 1px 4px rgba(0,0,0,0.20), 0 0 0 1px rgba(0,0,0,0.08)`,
+                    `box-shadow: 0 1px 3px rgba(0,0,0,0.10), 0 0 0 1px ${isCompleted ? '#E2E8F0' : S.accent}33`,
                     `cursor: pointer`,
                     `user-select: none`,
                     `transition: box-shadow 0.12s ease, transform 0.12s ease`,
@@ -2593,12 +2592,12 @@
                 `;
 
                 block.addEventListener('mouseenter', () => {
-                    block.style.boxShadow = '0 4px 14px rgba(0,0,0,0.30), 0 0 0 1px rgba(0,0,0,0.10)';
+                    block.style.boxShadow = `0 4px 12px ${S.accent}40, 0 0 0 1px ${S.accent}55`;
                     block.style.transform = 'translateY(-1px)';
                     block.style.zIndex    = String(100 + col);
                 });
                 block.addEventListener('mouseleave', () => {
-                    block.style.boxShadow = '0 1px 4px rgba(0,0,0,0.20), 0 0 0 1px rgba(0,0,0,0.08)';
+                    block.style.boxShadow = `0 1px 3px rgba(0,0,0,0.10), 0 0 0 1px ${isCompleted ? '#E2E8F0' : S.accent}33`;
                     block.style.transform = '';
                     block.style.zIndex    = String(10 + col);
                 });
