@@ -215,7 +215,7 @@
                 <div class="absolute inset-y-0 left-0 pl-3 md:pl-4 flex items-center pointer-events-none">
                     <i data-lucide="search" class="w-4 h-4 text-gray-400"></i>
                 </div>
-                <input type="text" id="global-search" oninput="handleGlobalSearch(event)" onfocus="if(currentActiveTab!=='discover') switchTab('discover');" placeholder="Search games..." 
+                <input type="text" id="global-search" oninput="handleGlobalSearch(event)" placeholder="Search games..." 
                     class="w-full bg-dark-input text-xs md:text-sm text-white placeholder-gray-500 rounded-full pl-9 md:pl-11 pr-4 py-2 md:py-2.5 focus:outline-none focus:ring-1 focus:ring-brand transition-shadow border border-transparent focus:border-brand/30">
             </div>
 
@@ -1023,8 +1023,11 @@
                 if (isLoadMore && discoverNextUrl) {
                     url = discoverNextUrl;
                 } else {
-                    url = `${RAWG_BASE_URL}?key=${RAWG_API_KEY}&page_size=24&ordering=${discoverState.sort}`;
-                    if (discoverState.search) url += `&search=${encodeURIComponent(discoverState.search)}`;
+                    if (discoverState.search) {
+                        url = `${RAWG_BASE_URL}?key=${RAWG_API_KEY}&page_size=24&search=${encodeURIComponent(discoverState.search)}&search_exact=true`;
+                    } else {
+                        url = `${RAWG_BASE_URL}?key=${RAWG_API_KEY}&page_size=24&ordering=${discoverState.sort}`;
+                    }
                     if (discoverState.platform) url += `&platforms=${discoverState.platform}`;
                     if (discoverState.genre) url += `&genres=${discoverState.genre}`;
                 }
@@ -1327,16 +1330,8 @@
 
             if (tab === 'discover') {
                 const currentSearch = document.getElementById('global-search').value;
-                const currentSearchLower = currentSearch.toLowerCase();
-                if(currentSearch && currentSearchLower !== discoverState.search) {
-                    discoverState.search = currentSearchLower;
-                    document.getElementById('filter-search').value = currentSearch;
-                    fetchDiscoverResults();
-                } else if(currentSearch && currentSearchLower === discoverState.search && !window.currentDiscoverData) {
-                    fetchDiscoverResults();
-                } else if(!currentSearch && !window.currentDiscoverData) {
-                    fetchDiscoverResults();
-                }
+                document.getElementById('filter-search').value = currentSearch;
+                fetchDiscoverResults();
             } else if (tab === 'mygames') {
                 renderMyGames();
             } else if (tab === 'playlists') {
@@ -2428,12 +2423,11 @@
             document.getElementById('filter-search').value = val;
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
+                discoverState.search = val.toLowerCase();
                 if(currentActiveTab !== 'discover') {
-                    // switchTab will detect the new search term and fetch
-                    discoverState.search = val.toLowerCase();
                     switchTab('discover');
                 } else {
-                    handleFilterChange('search', { target: { value: val }});
+                    fetchDiscoverResults();
                 }
             }, 600);
         }
