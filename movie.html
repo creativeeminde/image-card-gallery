@@ -79,6 +79,70 @@
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
+
+        /* --- TOUCH AND MOBILE UI OPTIMIZATIONS --- */
+        
+        /* Eliminate 300ms double-tap delay on all interactive elements & remove native touch highlight on iOS */
+        a, button, select, input, textarea, [role="button"], .cursor-pointer {
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Smooth scrollable lists with touch deceleration physics */
+        .overflow-x-auto, .overflow-y-auto {
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* Crucial Tap Fix for Touch Screens:
+           On hover-capable devices (desktop), hover effects work great.
+           On touchscreens, the first tap fires a 'mouseenter/mouseover' sequence which triggers :hover styles.
+           If the :hover style transforms (scales, translates, or shifts) the element, its physical bounding box 
+           moves. When the browser finishes the tap sequence and tries to synthesize a 'click' event at the 
+           touch coordinates, the element has already moved out of the hit target or shifted, cancelling the tap 
+           or misrouting it! The user is forced to tap a second time to trigger the actual action.
+           We completely bypass this click-misfire bug by resetting transform hover effects on touch devices.
+        */
+        @media (hover: none) {
+            /* Disable translate animations on tap/hover */
+            .hover\:-translate-y-1:hover,
+            .hover\:-translate-y-1:active,
+            .group:hover .group-hover\:-translate-y-1 {
+                transform: none !important;
+                transition: none !important;
+            }
+
+            /* Disable poster & image zooming scales on hover/active */
+            .group:hover .group-hover\:scale-105,
+            .group-hover\:scale-105:hover,
+            .hover\:scale-105:hover,
+            .hover\:scale-105:active,
+            .group:active .group-hover\:scale-105 {
+                transform: none !important;
+                transition: none !important;
+            }
+
+            .group:hover .group-hover\:scale-110,
+            .group-hover\:scale-110:hover,
+            .hover\:scale-110:hover,
+            .hover\:scale-110:active,
+            .group:active .group-hover\:scale-110 {
+                transform: none !important;
+                transition: none !important;
+            }
+
+            /* Disable container scale shrinking on tap, which makes inner buttons (like selects or checkmarks) jump & fail to register clicks */
+            .active\:scale-98:active,
+            .active\:scale-95:active,
+            .active\:scale-90:active {
+                transform: none !important;
+                transition: none !important;
+            }
+
+            /* Keep transitions functional for opacity/color only, but disable transform-related ones to prevent layout shifting on tap */
+            .transition-transform, .transition-all {
+                transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -607,6 +671,21 @@
                 favFilter, favGenreFilter, libraryFilter, libraryTypeFilter, libraryGenreFilter
             };
 
+            // Debounce replaceState calls to prevent UI lag and iOS Safari rate-limiting limits
+            const replaceStateDebounceRef = useRef(null);
+            const debouncedReplaceState = (state, title = '') => {
+                if (replaceStateDebounceRef.current) {
+                    clearTimeout(replaceStateDebounceRef.current);
+                }
+                replaceStateDebounceRef.current = setTimeout(() => {
+                    try {
+                        window.history.replaceState(state, title);
+                    } catch (e) {
+                        console.warn("History serialization failed:", e);
+                    }
+                }, 150);
+            };
+
             // Restore React State from custom history snapshot
             const restoreStateSnapshot = (snapshot) => {
                 if (!snapshot) return;
@@ -642,7 +721,13 @@
             const navigateToState = (updatedFields) => {
                 const currentScroll = window.scrollY;
                 const currentHistoryState = window.history.state || {};
-                window.history.replaceState({ ...currentHistoryState, scrollPosition: currentScroll }, '');
+                
+                // Write immediately on manual click transition to guarantee routing trace preservation
+                try {
+                    window.history.replaceState({ ...currentHistoryState, scrollPosition: currentScroll }, '');
+                } catch (e) {
+                    console.warn(e);
+                }
 
                 const nextState = {
                     ...stateRef.current,
@@ -650,15 +735,25 @@
                     scrollPosition: 0 // Reset scroll view to top of new target subpages
                 };
 
-                window.history.pushState(nextState, '');
+                // Clear any pending debounced updates since we're writing a hard navigate
+                if (replaceStateDebounceRef.current) {
+                    clearTimeout(replaceStateDebounceRef.current);
+                }
+
+                try {
+                    window.history.pushState(nextState, '');
+                } catch (e) {
+                    console.warn(e);
+                }
+                
                 restoreStateSnapshot(nextState);
             };
 
-            // Keep current history records updated continuously with secondary React state mutations (like Infinite Scroll additions)
+            // Keep current history records updated continuously with secondary React state mutations (debounced to avoid blocking touches)
             useEffect(() => {
                 if (isRestoringRef.current) return;
                 const currentState = window.history.state || {};
-                window.history.replaceState({
+                debouncedReplaceState({
                     ...currentState,
                     ...stateRef.current
                 }, '');
@@ -669,13 +764,13 @@
                 favFilter, favGenreFilter, libraryFilter, libraryTypeFilter, libraryGenreFilter
             ]);
 
-            // Track page scrolls actively and cache top position instantly in state record
+            // Track page scrolls and cache top position (highly debounced to fully optimize frame-rate / gesture responsive behavior)
             useEffect(() => {
                 const handleScrollSave = () => {
                     if (isRestoringRef.current) return;
                     const currentState = window.history.state;
                     if (currentState) {
-                        window.history.replaceState({
+                        debouncedReplaceState({
                             ...currentState,
                             scrollPosition: window.scrollY
                         }, '');
@@ -683,6 +778,15 @@
                 };
                 window.addEventListener('scroll', handleScrollSave, { passive: true });
                 return () => window.removeEventListener('scroll', handleScrollSave);
+            }, []);
+
+            // Clean up timers on App Unmount
+            useEffect(() => {
+                return () => {
+                    if (replaceStateDebounceRef.current) {
+                        clearTimeout(replaceStateDebounceRef.current);
+                    }
+                };
             }, []);
 
             // Handle landing or manual reload page queries
@@ -1054,14 +1158,15 @@
                 if (activeTab === 'LIBRARY') fetchTracking();
             }, [activeTab]);
 
+            // Track menu outside clicks - changed to click listener instead of mousedown to avoid race-condition blocks on mobile taps
             useEffect(() => {
                 const handleOutsideClick = (e) => {
                     if (isTrackMenuOpen && !e.target.closest('.track-menu-container')) {
                         setIsTrackMenuOpen(false);
                     }
                 };
-                document.addEventListener('mousedown', handleOutsideClick);
-                return () => document.removeEventListener('mousedown', handleOutsideClick);
+                document.addEventListener('click', handleOutsideClick);
+                return () => document.removeEventListener('click', handleOutsideClick);
             }, [isTrackMenuOpen]);
 
             useEffect(() => {
@@ -2017,8 +2122,8 @@
                                                 />
                                                 <div className="absolute inset-0 bg-gradient-to-r from-black/90 to-transparent"></div>
                                                 <div className="absolute inset-x-4 top-1/2 flex -translate-y-1/2 justify-between z-20 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={() => setCurrentHeroIndex(p => p === 0 ? comingSoonItems.length - 1 : p - 1)} className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-md border border-white/20"><Icon name="ChevronLeft" /></button>
-                                                    <button onClick={() => setCurrentHeroIndex(p => (p + 1) % comingSoonItems.length)} className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-md border border-white/20"><Icon name="ChevronRight" /></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); setCurrentHeroIndex(p => p === 0 ? comingSoonItems.length - 1 : p - 1); }} className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-md border border-white/20"><Icon name="ChevronLeft" /></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); setCurrentHeroIndex(p => (p + 1) % comingSoonItems.length); }} className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-md border border-white/20"><Icon name="ChevronRight" /></button>
                                                 </div>
                                                 <div className="absolute bottom-6 md:bottom-12 left-6 md:left-12 text-white z-20 cursor-pointer pr-6" onClick={() => openDetails(comingSoonItems[currentHeroIndex].id, 'movie')}>
                                                     <p className="text-[8px] md:text-xs font-bold mb-2 md:mb-3 uppercase tracking-widest bg-white/10 w-max px-2 py-0.5 md:px-3 md:py-1 rounded-full">Releasing {comingSoonItems[currentHeroIndex].dateFormatted}</p>
