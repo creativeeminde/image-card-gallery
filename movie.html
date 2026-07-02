@@ -202,6 +202,295 @@
             );
         }
 
+        function LibraryMovieCard({ item, openDetails, handleRemoveTracking, handleTrackItem }) {
+            return (
+                <div 
+                    onClick={() => openDetails(item.media_id, 'movie')}
+                    className="group relative flex flex-col bg-white/60 hover:bg-white backdrop-blur-md rounded-3xl border border-gray-100 p-3.5 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 active:scale-98 cursor-pointer select-none"
+                >
+                    <div className="aspect-[16/10] sm:aspect-[16/9] w-full rounded-2xl overflow-hidden mb-3.5 relative shadow-inner">
+                        <img 
+                            src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} 
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-60"></div>
+                        <span className="absolute top-2 left-2 rounded-full bg-black/60 backdrop-blur-md px-2.5 py-0.5 text-[9px] font-black tracking-widest uppercase border border-white/10 text-white">
+                            MOVIE
+                        </span>
+                        <span className="absolute bottom-2 left-2 text-[10px] font-bold text-white tracking-wide">
+                            ★ {item.rating} TMDb
+                        </span>
+                    </div>
+                    <div className="flex-1 flex flex-col justify-between">
+                        <div>
+                            <h3 className="text-[15px] font-extrabold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1 mb-1">
+                                {item.title}
+                            </h3>
+                            <p className="text-[11px] text-gray-500 font-semibold truncate mb-3">
+                                {item.genres || 'Uncategorized'}
+                            </p>
+                        </div>
+                        <div className="pt-3 border-t border-gray-100/80 flex items-center justify-between gap-3">
+                            <select 
+                                value={item.status} 
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => handleTrackItem(item, e.target.value)}
+                                className="text-[11px] font-bold text-gray-600 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 outline-none cursor-pointer focus:bg-white transition-all flex-1"
+                            >
+                                <option value="Watching">Watching</option>
+                                <option value="Watched">Watched</option>
+                                <option value="Plan to Watch">Plan to Watch</option>
+                                <option value="On Hold">On Hold</option>
+                                <option value="Dropped">Dropped</option>
+                            </select>
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); handleRemoveTracking(item.media_id, 'movie'); }}
+                                className="p-1.5 text-red-500 hover:bg-red-50 rounded-xl border border-transparent hover:border-red-100 transition-all shrink-0"
+                                title="Remove from Library"
+                            >
+                                <Icon name="Trash" className="h-4 w-4" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function LibraryTvCard({ item, openDetails, handleRemoveTracking, handleTrackItem, updateTvProgress }) {
+            const [tvDetails, setTvDetails] = useState(null);
+            const [seasonData, setSeasonData] = useState(null);
+            const [isCardLoading, setIsCardLoading] = useState(true);
+
+            const progressInfo = useMemo(() => {
+                let prog = {};
+                if (item.progress) {
+                    prog = typeof item.progress === 'string' ? JSON.parse(item.progress) : item.progress;
+                }
+                const watched_episodes = prog?.watched_episodes || {};
+                return { watched_episodes };
+            }, [item.progress]);
+
+            // 1. Fetch main TV show details
+            useEffect(() => {
+                let active = true;
+                const fetchDetails = async () => {
+                    try {
+                        const url = `${TMDB_BASE_URL}/tv/${item.media_id}?api_key=${TMDB_API_KEY}`;
+                        const res = await fetch(url);
+                        if (res.ok && active) {
+                            const data = await res.json();
+                            setTvDetails(data);
+                        }
+                    } catch (e) {
+                        console.error(e);
+                    } finally {
+                        if (active) setIsCardLoading(false);
+                    }
+                };
+                fetchDetails();
+                return () => { active = false; };
+            }, [item.media_id]);
+
+            // 2. Compute total episodes and next unwatched episode
+            const computedProgress = useMemo(() => {
+                if (!tvDetails) return { nextS: 1, nextE: 1, totalEpisodes: 0, watchedCount: 0, foundNext: false };
+                const regularSeasons = tvDetails.seasons?.filter(s => s.season_number > 0) || [];
+                const totalEpisodes = regularSeasons.reduce((acc, s) => acc + (s.episode_count || 0), 0);
+
+                // Find next unwatched episode
+                const sortedSeasons = [...regularSeasons].sort((a, b) => a.season_number - b.season_number);
+                let nextS = 1;
+                let nextE = 1;
+                let foundNext = false;
+
+                for (const s of sortedSeasons) {
+                    for (let ep = 1; ep <= s.episode_count; ep++) {
+                        const key = `${s.season_number}_${ep}`;
+                        if (!progressInfo.watched_episodes[key]) {
+                            nextS = s.season_number;
+                            nextE = ep;
+                            foundNext = true;
+                            break;
+                        }
+                    }
+                    if (foundNext) break;
+                }
+
+                const watchedCount = Object.keys(progressInfo.watched_episodes).filter(k => progressInfo.watched_episodes[k] === true).length;
+
+                return {
+                    nextS,
+                    nextE,
+                    totalEpisodes,
+                    watchedCount,
+                    foundNext
+                };
+            }, [tvDetails, progressInfo.watched_episodes]);
+
+            // 3. Fetch Season details to get exact episode details for nextS
+            useEffect(() => {
+                if (!tvDetails) return;
+                let active = true;
+                const fetchSeason = async () => {
+                    try {
+                        const url = `${TMDB_BASE_URL}/tv/${item.media_id}/season/${computedProgress.nextS}?api_key=${TMDB_API_KEY}`;
+                        const res = await fetch(url);
+                        if (res.ok && active) {
+                            const data = await res.json();
+                            setSeasonData(data);
+                        }
+                    } catch (e) {
+                        console.error(e);
+                    }
+                };
+                fetchSeason();
+                return () => { active = false; };
+            }, [tvDetails, computedProgress.nextS]);
+
+            // Get exact details for computedProgress.nextE
+            const nextEpisodeInfo = useMemo(() => {
+                if (!seasonData) return { title: 'Loading...', isPremiere: false, isFinale: false, isNew: false };
+                const ep = seasonData.episodes?.find(e => e.episode_number === computedProgress.nextE);
+                if (!ep) return { title: `Episode ${computedProgress.nextE}`, isPremiere: false, isFinale: false, isNew: false };
+
+                const isPremiere = computedProgress.nextE === 1;
+                const isFinale = computedProgress.nextE === seasonData.episodes.length;
+
+                // Check if New (air_date is within last 30 days)
+                let isNew = false;
+                if (ep.air_date) {
+                    const air = new Date(ep.air_date);
+                    const now = new Date();
+                    const diffTime = Math.abs(now - air);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    isNew = diffDays <= 30 && air <= now;
+                }
+
+                return {
+                    title: ep.name || `Episode ${computedProgress.nextE}`,
+                    isPremiere,
+                    isFinale,
+                    isNew
+                };
+            }, [seasonData, computedProgress.nextE]);
+
+            const percentage = computedProgress.totalEpisodes > 0 
+                ? Math.round((computedProgress.watchedCount / computedProgress.totalEpisodes) * 100) 
+                : 0;
+
+            const handleMarkWatched = (e) => {
+                e.stopPropagation();
+                const epKey = `${computedProgress.nextS}_${computedProgress.nextE}`;
+                const updatedWatched = { ...progressInfo.watched_episodes, [epKey]: true };
+                updateTvProgress(item.media_id, updatedWatched, computedProgress.totalEpisodes);
+            };
+
+            if (isCardLoading) {
+                return (
+                    <div className="bg-white/40 backdrop-blur-md rounded-2xl border border-white/20 p-4 shadow-sm animate-pulse h-[340px]">
+                        <div className="bg-gray-200 h-48 rounded-xl mb-4" />
+                        <div className="bg-gray-200 h-4 w-3/4 rounded mb-2" />
+                        <div className="bg-gray-200 h-3 w-1/2 rounded" />
+                    </div>
+                );
+            }
+
+            return (
+                <div 
+                    onClick={() => openDetails(item.media_id, 'tv')}
+                    className="group relative flex flex-col bg-white/60 hover:bg-white backdrop-blur-md rounded-3xl border border-gray-100 p-3.5 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 active:scale-98 cursor-pointer select-none overflow-hidden"
+                >
+                    {/* Media Poster */}
+                    <div className="aspect-[16/10] sm:aspect-[16/9] w-full rounded-2xl overflow-hidden mb-3.5 relative shadow-inner">
+                        <img 
+                            src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} 
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-60"></div>
+                        <span className="absolute top-2 left-2 rounded-full bg-black/60 backdrop-blur-md px-2.5 py-0.5 text-[9px] font-black tracking-widest uppercase border border-white/10 text-white">
+                            TV SHOW
+                        </span>
+                        <span className="absolute bottom-2 left-2 text-[10px] font-bold text-white tracking-wide">
+                            {computedProgress.watchedCount}/{computedProgress.totalEpisodes} Episodes ({percentage}%)
+                        </span>
+                    </div>
+
+                    {/* Show Details */}
+                    <div className="flex-1 flex flex-col justify-between">
+                        <div>
+                            <h3 className="text-[15px] font-extrabold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1 mb-2">
+                                {item.title}
+                            </h3>
+
+                            {/* Next Episode Subcard Info (key enforces smooth re-render animations) */}
+                            <div key={`${computedProgress.nextS}_${computedProgress.nextE}`} className="bg-gray-50/70 border border-gray-100/50 rounded-2xl p-2.5 flex items-center justify-between gap-3 animate-in fade-in duration-300">
+                                <div className="overflow-hidden flex-1">
+                                    <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                                        <span className="text-[11px] font-black text-blue-600 uppercase tracking-wider">
+                                            S{String(computedProgress.nextS).padStart(2, '0')} • E{String(computedProgress.nextE).padStart(2, '0')}
+                                        </span>
+                                        
+                                        {/* Dynamically Computed Badges */}
+                                        {computedProgress.foundNext && nextEpisodeInfo.isPremiere && (
+                                            <span className="text-[8px] font-black bg-emerald-50 text-green-600 border border-emerald-100 px-1.5 py-0.5 rounded-md uppercase tracking-wider">Premiere</span>
+                                        )}
+                                        {computedProgress.foundNext && nextEpisodeInfo.isFinale && (
+                                            <span className="text-[8px] font-black bg-rose-50 text-red-600 border border-rose-100 px-1.5 py-0.5 rounded-md uppercase tracking-wider">Finale</span>
+                                        )}
+                                        {computedProgress.foundNext && nextEpisodeInfo.isNew && (
+                                            <span className="text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded-md uppercase tracking-wider">New</span>
+                                        )}
+                                    </div>
+                                    <p className="text-xs font-semibold text-gray-700 truncate">
+                                        {computedProgress.foundNext ? nextEpisodeInfo.title : 'All Caught Up! 🎉'}
+                                    </p>
+                                </div>
+
+                                {/* Mark Episode as Watched Large Circular Button */}
+                                {computedProgress.foundNext && (
+                                    <button 
+                                        onClick={handleMarkWatched}
+                                        className="w-10 h-10 shrink-0 rounded-full border border-blue-100 bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all duration-300 shadow-sm active:scale-90"
+                                        title="Mark episode as watched"
+                                    >
+                                        <Icon name="Check" className="h-5 w-5 stroke-[2.5]" />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Progress Bar & Quick Status Select */}
+                        <div className="mt-3.5 pt-3 border-t border-gray-100/80">
+                            <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden mb-3">
+                                <div className="bg-blue-600 h-full transition-all duration-500" style={{ width: `${percentage}%` }} />
+                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                                <select 
+                                    value={item.status} 
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => handleTrackItem(item, e.target.value)}
+                                    className="text-[11px] font-bold text-gray-600 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 outline-none cursor-pointer focus:bg-white transition-all flex-1"
+                                >
+                                    <option value="Watching">Watching</option>
+                                    <option value="Watched">Watched</option>
+                                    <option value="Plan to Watch">Plan to Watch</option>
+                                    <option value="On Hold">On Hold</option>
+                                    <option value="Dropped">Dropped</option>
+                                </select>
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); handleRemoveTracking(item.media_id, 'tv'); }}
+                                    className="p-1.5 text-red-500 hover:bg-red-50 rounded-xl border border-transparent hover:border-red-100 transition-all shrink-0"
+                                    title="Remove from Library"
+                                >
+                                    <Icon name="Trash" className="h-4 w-4" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         // --- MAIN APP ---
         function App() {
             const [activeTab, setActiveTab] = useState('BOARD');
@@ -345,45 +634,6 @@
                     if (needsRepair) repairMissingGenres(data);
                 }
                 setIsFavLoading(false);
-            };
-
-            const toggleFavorite = async (item) => {
-                if (isActionInProgress) return;
-                setIsActionInProgress(true);
-
-                try {
-                    const itemId = Number(item.id);
-                    const itemType = item.type;
-                    
-                    const isAlreadyFav = favorites.some(fav => Number(fav.media_id) === itemId && fav.media_type === itemType);
-                    
-                    if (isAlreadyFav) {
-                        const { error } = await supabase
-                            .from('favorites')
-                            .delete()
-                            .match({ media_id: itemId, media_type: itemType });
-                        if (error) throw error;
-                    } else {
-                        const genresString = item.genres ? item.genres.map(g => g.name).join(', ') : 'Uncategorized';
-                        
-                        const { error } = await supabase
-                            .from('favorites')
-                            .insert([{
-                                media_id: itemId,
-                                media_type: itemType,
-                                title: item.title || item.name,
-                                poster_path: item.poster_path,
-                                rating: (item.vote_average || 0).toFixed(1),
-                                genres: genresString
-                            }]);
-                        if (error) throw error;
-                    }
-                    await fetchFavorites();
-                } catch (error) {
-                    console.error("Toggle favorite failed:", error.message);
-                } finally {
-                    setIsActionInProgress(false);
-                }
             };
 
             // --- TV TIME TRACKING LOGIC ---
@@ -1488,69 +1738,33 @@
                                         {filteredLibraryItems.length === 0 ? (
                                             <div className="py-20 text-center font-bold text-gray-400">No tracked items matches.</div>
                                         ) : (
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4 md:gap-6">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                                                 {filteredLibraryItems.map(item => {
-                                                    const { watched_count, total_episodes, percentage } = getTvProgress(item);
-                                                    return (
-                                                        <div key={`${item.media_id}-${item.media_type}`} className="relative group bg-white/40 backdrop-blur-md rounded-2xl border border-white/20 p-2.5 shadow-sm hover:shadow-md transition-all duration-300 animate-in zoom-in-95">
-                                                            <div onClick={() => openDetails(item.media_id, item.media_type)} className="aspect-[2/3] rounded-xl overflow-hidden mb-2 relative cursor-pointer">
-                                                                <img src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                                                                <span className="absolute top-2 left-2 rounded-full bg-black/60 backdrop-blur-md px-2 py-0.5 text-[8px] md:text-[9px] font-black tracking-widest uppercase border border-white/10 text-white">
-                                                                    {item.media_type === 'movie' ? 'Movie' : 'TV'}
-                                                                </span>
-                                                                <span className="absolute bottom-2 left-2 rounded-full bg-black/60 backdrop-blur-md px-2.5 py-1 text-[9px] md:text-[10px] font-bold text-white flex items-center gap-1 border border-white/10">
-                                                                    <span className={`w-1.5 h-1.5 rounded-full ${
-                                                                        item.status === 'Watching' ? 'bg-green-500' :
-                                                                        item.status === 'Watched' ? 'bg-blue-500' :
-                                                                        item.status === 'Plan to Watch' ? 'bg-yellow-500' :
-                                                                        item.status === 'On Hold' ? 'bg-orange-500' : 'bg-red-500'
-                                                                    }`} />
-                                                                    {item.status}
-                                                                </span>
-                                                            </div>
-                                                            <div className="px-1">
-                                                                <h3 onClick={() => openDetails(item.media_id, item.media_type)} className="text-xs md:text-sm font-extrabold text-gray-900 truncate hover:text-black cursor-pointer mb-1.5">
-                                                                    {item.title}
-                                                                </h3>
-                                                                
-                                                                {/* TV Show progress display on library cards */}
-                                                                {item.media_type === 'tv' && total_episodes > 0 && (
-                                                                    <div className="mb-2">
-                                                                        <div className="flex items-center justify-between text-[10px] font-black text-gray-500 mb-1">
-                                                                            <span>Progress</span>
-                                                                            <span>{watched_count}/{total_episodes} Ep ({percentage}%)</span>
-                                                                        </div>
-                                                                        <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
-                                                                            <div className="bg-blue-600 h-full transition-all" style={{ width: `${percentage}%` }} />
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-
-                                                                <div className="flex items-center justify-between gap-2">
-                                                                    <div className="relative flex-1">
-                                                                        <select 
-                                                                            value={item.status} 
-                                                                            onChange={(e) => handleTrackItem({ id: item.media_id, type: item.media_type, title: item.title, poster_path: item.poster_path, vote_average: Number(item.rating) }, e.target.value)}
-                                                                            className="w-full text-[10px] md:text-xs font-semibold bg-white/60 border border-gray-200 rounded-lg px-2 py-1 outline-none cursor-pointer focus:bg-white transition-all"
-                                                                        >
-                                                                            <option value="Watching">Watching</option>
-                                                                            <option value="Watched">Watched</option>
-                                                                            <option value="Plan to Watch">Plan to Watch</option>
-                                                                            <option value="On Hold">On Hold</option>
-                                                                            <option value="Dropped">Dropped</option>
-                                                                        </select>
-                                                                    </div>
-                                                                    <button 
-                                                                        onClick={() => handleRemoveTracking(item.media_id, item.media_type)}
-                                                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-100 transition-all shrink-0"
-                                                                        title="Remove from Library"
-                                                                    >
-                                                                        <Icon name="Trash" className="h-3.5 w-3.5" />
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    );
+                                                    if (item.media_type === 'tv') {
+                                                        return (
+                                                            <Icon key={`${item.media_id}-${item.media_type}`} name="" className="hidden" style={{ display: 'none' }}>
+                                                                {/* Custom React Element Hook wrapper mapping parameters dynamically */}
+                                                            </Icon>,
+                                                            <LibraryTvCard 
+                                                                key={`${item.media_id}-${item.media_type}`} 
+                                                                item={item} 
+                                                                openDetails={openDetails} 
+                                                                handleRemoveTracking={handleRemoveTracking} 
+                                                                handleTrackItem={handleTrackItem}
+                                                                updateTvProgress={updateTvProgress}
+                                                            />
+                                                        );
+                                                    } else {
+                                                        return (
+                                                            <LibraryMovieCard 
+                                                                key={`${item.media_id}-${item.media_type}`} 
+                                                                item={item} 
+                                                                openDetails={openDetails} 
+                                                                handleRemoveTracking={handleRemoveTracking} 
+                                                                handleTrackItem={handleTrackItem}
+                                                            />
+                                                        );
+                                                    }
                                                 })}
                                             </div>
                                         )}
