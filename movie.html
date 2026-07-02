@@ -705,6 +705,7 @@
             const [selectedPerson, setSelectedPerson] = useState(null);
             const [personData, setPersonData] = useState(null);
             const [isPersonLoading, setIsPersonLoading] = useState(false);
+            const [actorSort, setActorSort] = useState('popularity'); // popularity, newest, oldest
             
             const castScrollRef = useRef(null);
 
@@ -860,6 +861,13 @@
                     }
                 };
             }, []);
+
+            // Reset actor roles sort order whenever a new actor profile is loaded
+            useEffect(() => {
+                if (selectedPerson) {
+                    setActorSort('popularity');
+                }
+            }, [selectedPerson]);
 
             // Handle landing or manual reload page queries
             useEffect(() => {
@@ -1219,16 +1227,6 @@
                     fetchTracking();
                 }
             };
-
-            useEffect(() => {
-                fetchFavorites();
-                fetchTracking();
-            }, []);
-
-            useEffect(() => {
-                if (activeTab === 'FAVORITES') fetchFavorites();
-                if (activeTab === 'LIBRARY') fetchTracking();
-            }, [activeTab]);
 
             // Track menu outside clicks - changed to click listener instead of mousedown to avoid race-condition blocks on mobile taps
             useEffect(() => {
@@ -1676,11 +1674,29 @@
                                                     <div className="col-span-2 md:col-span-1"><p className="text-[10px] font-bold text-gray-500 uppercase">Place of Birth</p><p className="text-sm font-semibold">{personData.place_of_birth || 'N/A'}</p></div>
                                                 </div>
                                             </div>
+                                            
                                             <div className="flex-1">
                                                 <h1 className="text-3xl md:text-6xl font-black mb-4 md:mb-6 tracking-tighter">{personData.name}</h1>
                                                 <h2 className="text-xl md:text-2xl font-black mb-4">Biography</h2>
                                                 <p className="text-base md:text-lg text-gray-600 mb-8 md:mb-12 leading-relaxed">{personData.biography || "No biography available."}</p>
-                                                <h2 className="text-xl md:text-2xl font-black mb-6 md:mb-8">Acting Roles</h2>
+                                                
+                                                {/* Acting Roles Header with custom Responsive Sort dropdown aligned */}
+                                                <div className="flex items-center justify-between mb-6 md:mb-8 gap-4 border-b border-gray-100 pb-4">
+                                                    <h2 className="text-xl md:text-2xl font-black">Acting Roles</h2>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest hidden sm:inline">Sort:</span>
+                                                        <select 
+                                                            value={actorSort} 
+                                                            onChange={(e) => setActorSort(e.target.value)}
+                                                            className="h-9 px-4 rounded-full border border-gray-300 bg-white/80 text-xs font-bold outline-none focus:bg-white shadow-xs cursor-pointer select-none"
+                                                        >
+                                                            <option value="popularity">Popularity (Default)</option>
+                                                            <option value="newest">Newest → Oldest</option>
+                                                            <option value="oldest">Oldest → Newest</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+
                                                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
                                                     {personData.combined_credits?.cast
                                                         ?.filter(i => {
@@ -1689,7 +1705,23 @@
                                                             return i.poster_path && !i.genre_ids?.some(id => excludedGenres.includes(id)) && 
                                                                    !characterName.includes("self") && !characterName.includes("himself") && !characterName.includes("herself");
                                                         })
-                                                        ?.sort((a,b) => (b.popularity || 0) - (a.popularity || 0))
+                                                        ?.sort((a, b) => {
+                                                            if (actorSort === 'newest') {
+                                                                const dateA = a.release_date || a.first_air_date || '';
+                                                                const dateB = b.release_date || b.first_air_date || '';
+                                                                if (!dateA) return 1;
+                                                                if (!dateB) return -1;
+                                                                return new Date(dateB) - new Date(dateA);
+                                                            } else if (actorSort === 'oldest') {
+                                                                const dateA = a.release_date || a.first_air_date || '';
+                                                                const dateB = b.release_date || b.first_air_date || '';
+                                                                if (!dateA) return 1;
+                                                                if (!dateB) return -1;
+                                                                return new Date(dateA) - new Date(dateB);
+                                                            } else {
+                                                                return (b.popularity || 0) - (a.popularity || 0);
+                                                            }
+                                                        })
                                                         ?.slice(0, 50)
                                                         ?.map((item, idx) => (
                                                             <div key={idx} onClick={() => openDetails(item.id, item.media_type)} className="cursor-pointer group">
@@ -1697,6 +1729,12 @@
                                                                     <img src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                                                                 </div>
                                                                 <h4 className="text-xs font-bold truncate">{item.title || item.name}</h4>
+                                                                {/* Displaying release dates for context validation when sorted */}
+                                                                {(item.release_date || item.first_air_date) && (
+                                                                    <p className="text-[10px] font-semibold text-gray-400 mt-0.5">
+                                                                        {(item.release_date || item.first_air_date).split('-')[0]}
+                                                                    </p>
+                                                                )}
                                                             </div>
                                                         ))}
                                                 </div>
@@ -1832,6 +1870,7 @@
                                                 </div>
                                             </div>
                                         </div>
+                                        
                                         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
                                             <div className="hidden md:block col-span-4 xl:col-span-3">
                                                 <img src={`https://image.tmdb.org/t/p/w500${detailsData.poster_path}`} className="w-full rounded-[2rem] shadow-lg" />
