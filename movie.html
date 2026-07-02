@@ -93,7 +93,6 @@
         const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         // --- ICON WRAPPER COMPONENT ---
-        // Completely isolates DOM mutation to prevent React "removeChild" node-mismatch crashes.
         const Icon = ({ name, className = "h-4 w-4", ...props }) => {
             const containerRef = useRef(null);
             
@@ -270,7 +269,6 @@
                 return { watched_episodes };
             }, [item.progress]);
 
-            // 1. Fetch main TV show details
             useEffect(() => {
                 let active = true;
                 const fetchDetails = async () => {
@@ -297,19 +295,16 @@
                 const totalEpisodes = regularSeasons.reduce((acc, s) => acc + (s.episode_count || 0), 0);
                 const watchedCount = Object.keys(progressInfo.watched_episodes).filter(k => progressInfo.watched_episodes[k] === true).length;
                 
-                // If marked as Watched but new episodes are added, move back to Watching
                 if (item.status === 'Watched' && watchedCount < totalEpisodes && totalEpisodes > 0) {
                     handleTrackItem(item, 'Watching');
                 }
             }, [tvDetails, progressInfo.watched_episodes, item.status]);
 
-            // 2. Compute total episodes and next unwatched episode
             const computedProgress = useMemo(() => {
                 if (!tvDetails) return { nextS: 1, nextE: 1, totalEpisodes: 0, watchedCount: 0, foundNext: false };
                 const regularSeasons = tvDetails.seasons?.filter(s => s.season_number > 0) || [];
                 const totalEpisodes = regularSeasons.reduce((acc, s) => acc + (s.episode_count || 0), 0);
 
-                // Find next unwatched episode
                 const sortedSeasons = [...regularSeasons].sort((a, b) => a.season_number - b.season_number);
                 let nextS = 1;
                 let nextE = 1;
@@ -339,7 +334,6 @@
                 };
             }, [tvDetails, progressInfo.watched_episodes]);
 
-            // 3. Fetch Season details to get exact episode details for nextS
             useEffect(() => {
                 if (!tvDetails) return;
                 let active = true;
@@ -359,7 +353,6 @@
                 return () => { active = false; };
             }, [tvDetails, computedProgress.nextS]);
 
-            // Get exact details for computedProgress.nextE
             const nextEpisodeInfo = useMemo(() => {
                 if (!seasonData) return { title: 'Loading...', isPremiere: false, isFinale: false, isNew: false };
                 const ep = seasonData.episodes?.find(e => e.episode_number === computedProgress.nextE);
@@ -368,7 +361,6 @@
                 const isPremiere = computedProgress.nextE === 1;
                 const isFinale = computedProgress.nextE === seasonData.episodes.length;
 
-                // Check if New (air_date is within last 30 days)
                 let isNew = false;
                 if (ep.air_date) {
                     const air = new Date(ep.air_date);
@@ -412,7 +404,6 @@
                     onClick={() => openDetails(item.media_id, 'tv')}
                     className="group relative flex flex-col bg-white/60 hover:bg-white backdrop-blur-md rounded-3xl border border-gray-100 p-2.5 sm:p-3.5 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 active:scale-98 cursor-pointer select-none overflow-hidden"
                 >
-                    {/* Media Poster - preserved original 2:3 vertical aspect ratio */}
                     <div className="aspect-[2/3] w-full rounded-2xl overflow-hidden mb-3.5 relative shadow-inner">
                         <img 
                             src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} 
@@ -427,14 +418,12 @@
                         </span>
                     </div>
 
-                    {/* Show Details */}
                     <div className="flex-1 flex flex-col justify-between">
                         <div>
                             <h3 className="text-sm sm:text-[15px] font-extrabold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1 mb-2">
                                 {item.title}
                             </h3>
 
-                            {/* Next Episode Subcard Info (key enforces smooth re-render animations) */}
                             <div key={`${computedProgress.nextS}_${computedProgress.nextE}`} className="bg-gray-50/70 border border-gray-100/50 rounded-2xl p-2 sm:p-2.5 flex items-center justify-between gap-1.5 sm:gap-3 animate-in fade-in duration-300 min-h-[50px] sm:min-h-[58px]">
                                 <div className="overflow-hidden flex-1 min-w-0">
                                     <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 mb-0.5 sm:mb-1">
@@ -442,7 +431,6 @@
                                             S{String(computedProgress.nextS).padStart(2, '0')} • E{String(computedProgress.nextE).padStart(2, '0')}
                                         </span>
                                         
-                                        {/* Dynamically Computed Badges */}
                                         {computedProgress.foundNext && nextEpisodeInfo.isPremiere && (
                                             <span className="text-[7px] sm:text-[8px] font-black bg-emerald-50 text-green-600 border border-emerald-100 px-1 sm:px-1.5 py-0.5 rounded-md uppercase tracking-wider">Premiere</span>
                                         )}
@@ -458,7 +446,6 @@
                                     </p>
                                 </div>
 
-                                {/* Mark Episode as Watched Large Circular Button */}
                                 {computedProgress.foundNext && (
                                     <button 
                                         onClick={handleMarkWatched}
@@ -471,7 +458,6 @@
                             </div>
                         </div>
 
-                        {/* Progress Bar & Quick Status Select */}
                         <div className="mt-3.5 pt-3 border-t border-gray-100/80">
                             <div className="w-full bg-gray-100 h-1 rounded-full overflow-hidden mb-3">
                                 <div className="bg-blue-600 h-full transition-all duration-500" style={{ width: `${percentage}%` }} />
@@ -563,46 +549,164 @@
             const [expandedSeasons, setExpandedSeasons] = useState({});
             const [seasonEpisodesMap, setSeasonEpisodesMap] = useState({});
 
-            const handleTabChange = (tab) => {
-                setActiveTab(tab);
-                setPage(1);
-                setRandomPageOffset(Math.floor(Math.random() * 50));
-                setFilterYear('');
-                setFilterGenre('');
-                setFilterCountry('');
-                setFilterTimeframe('60');
-                setSelectedItem(null);
-                setSelectedPerson(null);
-                setFavGenreFilter('All');
-                setLibraryGenreFilter('All');
-                if (tab !== 'SEARCH') {
-                    setSearchInput('');
-                    setSearchQuery('');
+            // --- BROWSER HISTORY ROUTING ENHANCEMENT ---
+            const isRestoringRef = useRef(false);
+            const stateRef = useRef();
+
+            // Synchronize state values dynamically in Ref to fully bypass React closure limits in listener events
+            stateRef.current = {
+                activeTab, fetchedShows, page, randomPageOffset,
+                filterYear, filterGenre, filterCountry, filterTimeframe,
+                boardGenre, searchInput, searchQuery, selectedItem, selectedPerson,
+                favFilter, favGenreFilter, libraryFilter, libraryTypeFilter, libraryGenreFilter
+            };
+
+            // Restore React State from custom history snapshot
+            const restoreStateSnapshot = (snapshot) => {
+                if (!snapshot) return;
+                isRestoringRef.current = true;
+
+                if (snapshot.activeTab !== undefined) setActiveTab(snapshot.activeTab);
+                if (snapshot.fetchedShows !== undefined) setFetchedShows(snapshot.fetchedShows);
+                if (snapshot.page !== undefined) setPage(snapshot.page);
+                if (snapshot.randomPageOffset !== undefined) setRandomPageOffset(snapshot.randomPageOffset);
+                if (snapshot.filterYear !== undefined) setFilterYear(snapshot.filterYear);
+                if (snapshot.filterGenre !== undefined) setFilterGenre(snapshot.filterGenre);
+                if (snapshot.filterCountry !== undefined) setFilterCountry(snapshot.filterCountry);
+                if (snapshot.filterTimeframe !== undefined) setFilterTimeframe(snapshot.filterTimeframe);
+                if (snapshot.boardGenre !== undefined) setBoardGenre(snapshot.boardGenre);
+                if (snapshot.searchInput !== undefined) setSearchInput(snapshot.searchInput);
+                if (snapshot.searchQuery !== undefined) setSearchQuery(snapshot.searchQuery);
+                if (snapshot.selectedItem !== undefined) setSelectedItem(snapshot.selectedItem);
+                if (snapshot.selectedPerson !== undefined) setSelectedPerson(snapshot.selectedPerson);
+                if (snapshot.favFilter !== undefined) setFavFilter(snapshot.favFilter);
+                if (snapshot.favGenreFilter !== undefined) setFavGenreFilter(snapshot.favGenreFilter);
+                if (snapshot.libraryFilter !== undefined) setLibraryFilter(snapshot.libraryFilter);
+                if (snapshot.libraryTypeFilter !== undefined) setLibraryTypeFilter(snapshot.libraryTypeFilter);
+                if (snapshot.libraryGenreFilter !== undefined) setLibraryGenreFilter(snapshot.libraryGenreFilter);
+
+                // Re-position Scroll back to historical coordinate
+                setTimeout(() => {
+                    window.scrollTo(0, snapshot.scrollPosition || 0);
+                    isRestoringRef.current = false;
+                }, 80);
+            };
+
+            // Capture context, save state details to previous tab, and write a fresh history record
+            const navigateToState = (updatedFields) => {
+                const currentScroll = window.scrollY;
+                const currentHistoryState = window.history.state || {};
+                window.history.replaceState({ ...currentHistoryState, scrollPosition: currentScroll }, '');
+
+                const nextState = {
+                    ...stateRef.current,
+                    ...updatedFields,
+                    scrollPosition: 0 // Reset scroll view to top of new target subpages
+                };
+
+                window.history.pushState(nextState, '');
+                restoreStateSnapshot(nextState);
+            };
+
+            // Keep current history records updated continuously with secondary React state mutations (like Infinite Scroll additions)
+            useEffect(() => {
+                if (isRestoringRef.current) return;
+                const currentState = window.history.state || {};
+                window.history.replaceState({
+                    ...currentState,
+                    ...stateRef.current
+                }, '');
+            }, [
+                activeTab, fetchedShows, page, randomPageOffset,
+                filterYear, filterGenre, filterCountry, filterTimeframe,
+                boardGenre, searchInput, searchQuery, selectedItem, selectedPerson,
+                favFilter, favGenreFilter, libraryFilter, libraryTypeFilter, libraryGenreFilter
+            ]);
+
+            // Track page scrolls actively and cache top position instantly in state record
+            useEffect(() => {
+                const handleScrollSave = () => {
+                    if (isRestoringRef.current) return;
+                    const currentState = window.history.state;
+                    if (currentState) {
+                        window.history.replaceState({
+                            ...currentState,
+                            scrollPosition: window.scrollY
+                        }, '');
+                    }
+                };
+                window.addEventListener('scroll', handleScrollSave, { passive: true });
+                return () => window.removeEventListener('scroll', handleScrollSave);
+            }, []);
+
+            // Handle landing or manual reload page queries
+            useEffect(() => {
+                if (window.history.state && window.history.state.activeTab) {
+                    restoreStateSnapshot(window.history.state);
+                } else {
+                    const initialState = {
+                        ...stateRef.current,
+                        scrollPosition: 0
+                    };
+                    window.history.replaceState(initialState, '');
                 }
-                if (tab !== 'BOARD' && tab !== 'LIBRARY') setFetchedShows([]);
+            }, []);
+
+            // Set popstate listener callback tracking native back actions
+            useEffect(() => {
+                const handlePopState = (event) => {
+                    if (event.state) {
+                        restoreStateSnapshot(event.state);
+                    }
+                };
+                window.addEventListener('popstate', handlePopState);
+                return () => window.removeEventListener('popstate', handlePopState);
+            }, []);
+
+            const handleTabChange = (tab) => {
+                navigateToState({
+                    activeTab: tab,
+                    page: 1,
+                    randomPageOffset: Math.floor(Math.random() * 50),
+                    filterYear: '',
+                    filterGenre: '',
+                    filterCountry: '',
+                    filterTimeframe: '60',
+                    selectedItem: null,
+                    selectedPerson: null,
+                    favGenreFilter: 'All',
+                    libraryGenreFilter: 'All',
+                    searchInput: tab !== 'SEARCH' ? '' : stateRef.current.searchInput,
+                    searchQuery: tab !== 'SEARCH' ? '' : stateRef.current.searchQuery,
+                    fetchedShows: []
+                });
             };
 
             const openDetails = (id, type) => {
                 const numericId = typeof id === 'string' ? id.split('-')[0] : id;
-                setSelectedItem({ id: numericId, type });
-                setSelectedPerson(null);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                navigateToState({
+                    selectedItem: { id: numericId, type },
+                    selectedPerson: null
+                });
             };
 
             const openPersonDetails = (personId) => {
-                setSelectedPerson(personId);
-                setSelectedItem(null);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                navigateToState({
+                    selectedPerson: personId,
+                    selectedItem: null
+                });
             };
 
             const handleSearch = (e) => {
                 if ((e.key === 'Enter' || e.type === 'click') && searchInput.trim()) {
-                    setSearchQuery(searchInput.trim());
-                    setActiveTab('SEARCH');
-                    setPage(1);
-                    setFetchedShows([]);
-                    setSelectedItem(null);
-                    setSelectedPerson(null);
+                    navigateToState({
+                        searchQuery: searchInput.trim(),
+                        activeTab: 'SEARCH',
+                        page: 1,
+                        fetchedShows: [],
+                        selectedItem: null,
+                        selectedPerson: null
+                    });
                 }
             };
 
@@ -648,12 +752,64 @@
                 setIsFavLoading(false);
             };
 
+            const toggleFavorite = async (item) => {
+                if (isActionInProgress) return;
+                setIsActionInProgress(true);
+
+                const itemId = Number(item.id);
+                const itemType = item.type;
+                const isFav = isFavorited(itemId, itemType);
+
+                if (isFav) {
+                    const newFavorites = favorites.filter(fav => !(Number(fav.media_id) === itemId && fav.media_type === itemType));
+                    setFavorites(newFavorites);
+
+                    try {
+                        const { error } = await supabase
+                            .from('favorites')
+                            .delete()
+                            .match({ media_id: itemId, media_type: itemType });
+                        if (error) throw error;
+                    } catch (err) {
+                        console.error("Error removing favorite:", err);
+                    } finally {
+                        setIsActionInProgress(false);
+                        fetchFavorites();
+                    }
+                } else {
+                    const genresString = item.genres ? item.genres.map(g => g.name).join(', ') : 'Uncategorized';
+                    const payload = {
+                        media_id: itemId,
+                        media_type: itemType,
+                        title: item.title,
+                        poster_path: item.poster_path,
+                        rating: item.vote_average?.toFixed(1) || 'N/A',
+                        genres: genresString,
+                        created_at: new Date().toISOString()
+                    };
+
+                    const newFavorites = [payload, ...favorites];
+                    setFavorites(newFavorites);
+
+                    try {
+                        const { error } = await supabase
+                            .from('favorites')
+                            .insert([payload]);
+                        if (error) throw error;
+                    } catch (err) {
+                        console.error("Error adding favorite:", err);
+                    } finally {
+                        setIsActionInProgress(false);
+                        fetchFavorites();
+                    }
+                }
+            };
+
             // --- TV TIME TRACKING LOGIC ---
             
             const fetchTracking = async () => {
                 setIsTrackLoading(true);
                 try {
-                    // Fetch tracked movies/TV shows from Supabase 'tracking' table
                     const { data, error } = await supabase
                         .from('tracking')
                         .select('*')
@@ -664,7 +820,6 @@
                     setTrackedItems(data || []);
                     localStorage.setItem('moviegather_tracking', JSON.stringify(data || []));
                 } catch (err) {
-                    // Fallback to local storage if network is offline or table has some issues
                     console.warn("Supabase tracking failed to fetch, loading locally:", err.message);
                     const localData = localStorage.getItem('moviegather_tracking');
                     if (localData) {
@@ -698,7 +853,6 @@
                 const existingItem = trackedItems.find(t => Number(t.media_id) === itemId && t.media_type === itemType);
                 const progressPayload = existingItem?.progress || {};
 
-                // Direct SQL payload schema
                 const trackingPayload = {
                     media_id: itemId,
                     media_type: itemType,
@@ -711,7 +865,6 @@
                     updated_at: new Date().toISOString()
                 };
 
-                // Optimistically update interface state
                 const newTrackedItems = [...trackedItems];
                 const idx = newTrackedItems.findIndex(t => Number(t.media_id) === itemId && t.media_type === itemType);
                 if (idx > -1) {
@@ -723,7 +876,6 @@
                 localStorage.setItem('moviegather_tracking', JSON.stringify(newTrackedItems));
 
                 try {
-                    // Upsert status seamlessly on Supabase matching unique composite keys
                     const { error } = await supabase
                         .from('tracking')
                         .upsert(trackingPayload, { onConflict: 'media_id,media_type' });
@@ -744,13 +896,11 @@
                 const itemId = Number(id);
                 const itemType = type;
 
-                // Optimistically remove from interface state
                 const newTrackedItems = trackedItems.filter(t => !(Number(t.media_id) === itemId && t.media_type === itemType));
                 setTrackedItems(newTrackedItems);
                 localStorage.setItem('moviegather_tracking', JSON.stringify(newTrackedItems));
 
                 try {
-                    // Delete tracker from database
                     const { error } = await supabase
                         .from('tracking')
                         .delete()
@@ -770,7 +920,6 @@
                 return found ? found.status : null;
             };
 
-            // TV episode progress state fetch / compute helper
             const getTvProgress = (item) => {
                 if (!item) return { watched_episodes: {}, watched_count: 0, total_episodes: 0, percentage: 0 };
                 let prog = {};
@@ -824,7 +973,6 @@
                     updated_at: new Date().toISOString()
                 };
 
-                // Optimistically update local states
                 const newTrackedItems = [...trackedItems];
                 const idx = newTrackedItems.findIndex(t => Number(t.media_id) === numericId && t.media_type === 'tv');
                 if (idx > -1) {
@@ -858,7 +1006,6 @@
                 if (activeTab === 'LIBRARY') fetchTracking();
             }, [activeTab]);
 
-            // Track Menu Closure Handler on Outside Click
             useEffect(() => {
                 const handleOutsideClick = (e) => {
                     if (isTrackMenuOpen && !e.target.closest('.track-menu-container')) {
@@ -869,7 +1016,6 @@
                 return () => document.removeEventListener('mousedown', handleOutsideClick);
             }, [isTrackMenuOpen]);
 
-            // Clear collapsible state when details target switches
             useEffect(() => {
                 setExpandedSeasons({});
                 setSeasonEpisodesMap({});
@@ -893,7 +1039,6 @@
                 });
             }, [favorites, favFilter, favGenreFilter]);
 
-            // Computed filters for personal Library view
             const availableTrackedGenres = useMemo(() => {
                 const genresSet = new Set(['All']);
                 trackedItems.forEach(item => {
@@ -913,7 +1058,6 @@
                 });
             }, [trackedItems, libraryFilter, libraryTypeFilter, libraryGenreFilter]);
 
-            // Auto-play Hero Carousel
             useEffect(() => {
                 if (activeTab === 'BOARD' && comingSoonItems.length > 0 && !selectedItem && !selectedPerson) {
                     const timer = setInterval(() => {
@@ -923,7 +1067,6 @@
                 }
             }, [activeTab, comingSoonItems.length, selectedItem, selectedPerson]);
 
-            // Infinite Scroll
             useEffect(() => {
                 const handleScroll = () => {
                     if (selectedItem || selectedPerson || activeTab === 'FAVORITES' || activeTab === 'LIBRARY') return; 
@@ -937,7 +1080,6 @@
                 return () => window.removeEventListener('scroll', handleScroll);
             }, [isLoading, activeTab, selectedItem, selectedPerson]);
 
-            // Fetch Media Details
             useEffect(() => {
                 if (!selectedItem) {
                     setDetailsData(null);
@@ -958,7 +1100,6 @@
                 fetchDetails();
             }, [selectedItem]);
 
-            // Fetch Person Details
             useEffect(() => {
                 if (!selectedPerson) {
                     setPersonData(null);
@@ -978,7 +1119,6 @@
                 fetchPerson();
             }, [selectedPerson]);
 
-            // Fetch Board Data
             useEffect(() => {
                 if (activeTab !== 'BOARD') return;
 
@@ -999,7 +1139,6 @@
                     setIsSectionsLoading(true);
                     
                     try {
-                        // Strict validation logic to protect TMDB URLs from returning 'undefined' query fields
                         let trendingUrl = boardGenre && genreMap[boardGenre] && genreMap[boardGenre].m
                             ? `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&with_genres=${genreMap[boardGenre].m}&sort_by=popularity.desc`
                             : `${TMDB_BASE_URL}/trending/all/week?api_key=${TMDB_API_KEY}`;
@@ -1145,7 +1284,6 @@
 
             const isFavorited = (id, type) => favorites.some(fav => Number(fav.media_id) === Number(id) && fav.media_type === type);
 
-            // Compute values for Collapsible Season list Checklist & Progress Calculation
             const { 
                 tvTotalEpisodes, 
                 tvWatchedEpisodes, 
@@ -1162,7 +1300,6 @@
                 const trackedItem = trackedItems.find(t => Number(t.media_id) === Number(selectedItem.id) && t.media_type === 'tv');
                 const { watched_episodes } = getTvProgress(trackedItem);
 
-                // Find next episode to watch
                 let nextEpStr = 'All Caught Up!';
                 let foundNext = false;
                 const sortedSeasons = [...regularSeasons].sort((a, b) => a.season_number - b.season_number);
@@ -1301,7 +1438,7 @@
                                     <div className="flex h-[60vh] items-center justify-center"><div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-300 border-t-black"></div></div>
                                 ) : (
                                     <div className="flex flex-col gap-6 md:gap-10">
-                                        <button onClick={() => setSelectedPerson(null)} className="flex w-max items-center space-x-2 rounded-full bg-white px-4 py-2 text-sm font-bold shadow-sm border border-gray-200">
+                                        <button onClick={() => window.history.back()} className="flex w-max items-center space-x-2 rounded-full bg-white px-4 py-2 text-sm font-bold shadow-sm border border-gray-200">
                                             <Icon name="ArrowLeft" /> <span>Back</span>
                                         </button>
                                         <div className="flex flex-col md:flex-row gap-8 md:gap-12">
@@ -1350,7 +1487,7 @@
                                 ) : (
                                     <div className="flex flex-col gap-6 md:gap-10">
                                         <div className="flex flex-wrap justify-between items-center gap-4">
-                                            <button onClick={() => setSelectedItem(null)} className="flex w-max items-center space-x-2 rounded-full bg-white px-4 py-2 text-sm font-bold shadow-sm border border-gray-200">
+                                            <button onClick={() => window.history.back()} className="flex w-max items-center space-x-2 rounded-full bg-white px-4 py-2 text-sm font-bold shadow-sm border border-gray-200">
                                                 <Icon name="ArrowLeft" /> <span>Back</span>
                                             </button>
                                             <div className="flex items-center flex-wrap gap-2">
@@ -1371,7 +1508,7 @@
                                                     <span>{isFavorited(selectedItem.id, selectedItem.type) ? 'Favorited' : 'Add Favorite'}</span>
                                                 </button>
 
-                                                {/* TV Time Track Menu (Container class is used for click outside) */}
+                                                {/* TV Time Track Menu */}
                                                 <div className="track-menu-container relative">
                                                     <button 
                                                         onClick={() => setIsTrackMenuOpen(!isTrackMenuOpen)}
@@ -1458,7 +1595,7 @@
                                                 <h2 className="text-xl md:text-2xl font-black mb-4">Synopsis</h2>
                                                 <p className="text-base md:text-lg text-gray-600 mb-8 md:mb-10 leading-relaxed">{detailsData.overview}</p>
 
-                                                {/* Dedicated Episode/Season Tracking Hub for TV Shows */}
+                                                {/* TV Show Progress Tracker */}
                                                 {selectedItem.type === 'tv' && (
                                                     <div className="bg-white/60 border border-gray-100 rounded-3xl p-6 md:p-8 mb-8 backdrop-blur-sm shadow-sm">
                                                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
@@ -1484,7 +1621,6 @@
                                                             </div>
                                                         </div>
 
-                                                        {/* TV Progress Stats Bar */}
                                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                                                             <div className="bg-white rounded-2xl p-4 border border-gray-50 shadow-xs">
                                                                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Watched</p>
@@ -1504,12 +1640,10 @@
                                                             </div>
                                                         </div>
 
-                                                        {/* Linear Progress Bar */}
                                                         <div className="w-full bg-gray-200 h-2.5 rounded-full overflow-hidden mb-8">
                                                             <div className="bg-blue-600 h-full transition-all duration-500" style={{ width: `${tvProgressPercent}%` }}></div>
                                                         </div>
 
-                                                        {/* Collapsible Seasons Lists */}
                                                         <div className="space-y-4">
                                                             {detailsData.seasons?.filter(s => s.season_number > 0).map((season) => {
                                                                 const seasonWatchedCount = Object.keys(tvWatchedEpisodes)
@@ -1518,7 +1652,6 @@
 
                                                                 return (
                                                                     <div key={season.id} className="border border-gray-100 bg-white rounded-2xl overflow-hidden shadow-xs transition-all duration-200">
-                                                                        {/* Season Title Bar */}
                                                                         <div className="flex items-center justify-between p-4 bg-gray-50/50 cursor-pointer select-none">
                                                                             <div onClick={() => toggleSeasonExpand(season.season_number)} className="flex-1 flex items-center gap-3">
                                                                                 <Icon name={expandedSeasons[season.season_number] ? 'ChevronDown' : 'ChevronRight'} className="text-gray-500" />
@@ -1542,7 +1675,6 @@
                                                                             </div>
                                                                         </div>
 
-                                                                        {/* Collapsible Episode Sub-List */}
                                                                         {expandedSeasons[season.season_number] && (
                                                                             <div className="border-t border-gray-50 p-4 space-y-3.5 bg-white divide-y divide-gray-50">
                                                                                 {!seasonEpisodesMap[season.season_number] ? (
@@ -1627,7 +1759,7 @@
                                         {['all', 'movie', 'tv'].map(type => (
                                             <button 
                                                 key={type} 
-                                                onClick={() => { setFavFilter(type); setFavGenreFilter('All'); }} 
+                                                onClick={() => navigateToState({ favFilter: type, favGenreFilter: 'All' })} 
                                                 className={`px-3 md:px-6 py-1 md:py-2 rounded-full font-bold text-[10px] md:text-xs transition-all uppercase tracking-wider ${favFilter === type ? 'bg-black text-white shadow-md' : 'text-gray-500 hover:text-black'}`}
                                             >
                                                 {type === 'all' ? 'All' : type === 'movie' ? 'Movies' : 'TV'}
@@ -1642,7 +1774,7 @@
                                             {availableFavGenres.map(genre => (
                                                 <button 
                                                     key={genre}
-                                                    onClick={() => setFavGenreFilter(genre)}
+                                                    onClick={() => navigateToState({ favGenreFilter: genre })}
                                                     className={`shrink-0 px-4 md:px-6 py-2 rounded-full text-[10px] md:text-xs font-black transition-all border shadow-sm ${favGenreFilter === genre ? 'bg-black text-white border-black scale-105' : 'bg-white text-gray-900 border-gray-100 hover:bg-white'}`}
                                                 >
                                                     {genre}
@@ -1684,7 +1816,6 @@
                                 )}
                             </div>
                         ) : activeTab === 'LIBRARY' ? (
-                            /* --- TRACKED ITEMS LIBRARY TAB --- */
                             <div className="animate-in fade-in duration-500">
                                 <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 md:mb-8 gap-4">
                                     <div>
@@ -1699,7 +1830,7 @@
                                         {['All', 'movie', 'tv'].map(type => (
                                             <button 
                                                 key={type} 
-                                                onClick={() => { setLibraryTypeFilter(type); setLibraryGenreFilter('All'); }} 
+                                                onClick={() => navigateToState({ libraryTypeFilter: type, libraryGenreFilter: 'All' })} 
                                                 className={`px-3 md:px-6 py-1 md:py-2 rounded-full font-bold text-[10px] md:text-xs transition-all uppercase tracking-wider ${libraryTypeFilter === type ? 'bg-black text-white shadow-md' : 'text-gray-500 hover:text-black'}`}
                                             >
                                                 {type === 'All' ? 'All' : type === 'movie' ? 'Movies' : 'TV'}
@@ -1714,7 +1845,7 @@
                                             {['All', 'Watching', 'Watched', 'Plan to Watch', 'On Hold', 'Dropped'].map(status => (
                                                 <button
                                                     key={status}
-                                                    onClick={() => setLibraryFilter(status)}
+                                                    onClick={() => navigateToState({ libraryFilter: status })}
                                                     className={`shrink-0 px-4 py-2 rounded-full text-[10px] md:text-xs font-black transition-all border shadow-sm ${
                                                         libraryFilter === status 
                                                         ? 'bg-black text-white border-black scale-105' 
@@ -1734,7 +1865,7 @@
                                             {availableTrackedGenres.map(genre => (
                                                 <button 
                                                     key={genre}
-                                                    onClick={() => setLibraryGenreFilter(genre)}
+                                                    onClick={() => navigateToState({ libraryGenreFilter: genre })}
                                                     className={`shrink-0 px-4 md:px-6 py-2 rounded-full text-[10px] md:text-xs font-black transition-all border shadow-sm ${libraryGenreFilter === genre ? 'bg-black text-white border-black scale-105' : 'bg-white text-gray-900 border-gray-100 hover:bg-white'}`}
                                                 >
                                                     {genre}
@@ -1758,14 +1889,10 @@
                                         {filteredLibraryItems.length === 0 ? (
                                             <div className="py-20 text-center font-bold text-gray-400">No tracked items matches.</div>
                                         ) : (
-                                            /* Mobile grid displays exactly 2 cards per row (grid-cols-2) with clean, cohesive gap spacing */
                                             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6">
                                                 {filteredLibraryItems.map(item => {
                                                     if (item.media_type === 'tv') {
                                                         return (
-                                                            <Icon key={`${item.media_id}-${item.media_type}`} name="" className="hidden" style={{ display: 'none' }}>
-                                                                {/* Custom React Element Hook wrapper mapping parameters dynamically */}
-                                                            </Icon>,
                                                             <LibraryTvCard 
                                                                 key={`${item.media_id}-${item.media_type}`} 
                                                                 item={item} 
@@ -1839,7 +1966,7 @@
                                     <span className="hidden md:block mr-6 w-16 text-sm font-extrabold leading-tight">Find by genre</span>
                                     <div className="flex flex-1 gap-2.5 overflow-x-auto no-scrollbar py-2">
                                         {GENRES_BOARD.map(g => (
-                                            <button key={g.name} onClick={() => setBoardGenre(boardGenre === g.name ? '' : g.name)} className={`flex shrink-0 items-center gap-2 px-5 py-2 md:py-2.5 rounded-full font-bold text-[10px] md:text-sm shadow-sm transition-all border ${boardGenre === g.name ? 'bg-black text-white' : 'bg-white/70 hover:bg-white'}`}>
+                                            <button key={g.name} onClick={() => navigateToState({ boardGenre: boardGenre === g.name ? '' : g.name })} className={`flex shrink-0 items-center gap-2 px-5 py-2 md:py-2.5 rounded-full font-bold text-[10px] md:text-sm shadow-sm transition-all border ${boardGenre === g.name ? 'bg-black text-white' : 'bg-white/70 hover:bg-white'}`}>
                                                 <Icon name={g.icon} /> {g.name}
                                             </button>
                                         ))}
@@ -1858,15 +1985,15 @@
                                 <h1 className="text-2xl md:text-3xl font-black mb-6 md:mb-8 capitalize">{activeTab.toLowerCase()} Collection</h1>
                                 {['MOVIES', 'SERIES'].includes(activeTab) && (
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
-                                        <select value={filterGenre} onChange={e => { setFilterGenre(e.target.value); setPage(1); setFetchedShows([]); }} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-xs md:text-sm font-semibold outline-none focus:bg-white">
+                                        <select value={filterGenre} onChange={e => navigateToState({ filterGenre: e.target.value, page: 1, fetchedShows: [] })} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-xs md:text-sm font-semibold outline-none focus:bg-white">
                                             <option value="">All Genres</option>
                                             {Object.keys(activeTab === 'SERIES' ? GENRE_MAP_TV : GENRE_MAP_MOVIE).map(g => <option key={g} value={g}>{g}</option>)}
                                         </select>
-                                        <select value={filterYear} onChange={e => { setFilterYear(e.target.value); setPage(1); setFetchedShows([]); }} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-xs md:text-sm font-semibold outline-none focus:bg-white">
+                                        <select value={filterYear} onChange={e => navigateToState({ filterYear: e.target.value, page: 1, fetchedShows: [] })} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-xs md:text-sm font-semibold outline-none focus:bg-white">
                                             <option value="">All Years</option>
                                             {[2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013].map(y => <option key={y} value={y}>{y}</option>)}
                                         </select>
-                                        <select value={filterCountry} onChange={e => { setFilterCountry(e.target.value); setPage(1); setFetchedShows([]); }} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-xs md:text-sm font-semibold outline-none focus:bg-white">
+                                        <select value={filterCountry} onChange={e => navigateToState({ filterCountry: e.target.value, page: 1, fetchedShows: [] })} className="h-10 px-4 rounded-full border border-gray-300 bg-white/60 text-xs md:text-sm font-semibold outline-none focus:bg-white">
                                             <option value="">All Countries</option>
                                             {Object.keys(COUNTRY_MAP).map(c => <option key={c} value={c}>{c}</option>)}
                                         </select>
