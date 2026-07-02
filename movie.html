@@ -572,7 +572,7 @@
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-60"></div>
-                        <span className="absolute top-2 left-2 rounded-full bg-black/60 backdrop-blur-md px-2 py-0.5 text-[8px] md:text-[9px] font-black tracking-widest uppercase border border-white/10 text-white">
+                        <span className="absolute top-2 left-2 rounded-full bg-black/60 backdrop-blur-md px-2.5 py-0.5 text-[9px] font-black tracking-widest uppercase border border-white/10 text-white">
                             TV SHOW
                         </span>
                         {comingSoon ? (
@@ -670,6 +670,7 @@
         // --- MAIN APP ---
         function App() {
             const [activeTab, setActiveTab] = useState('BOARD');
+            const [isTrailerModalOpen, setIsTrailerModalOpen] = useState(false);
             const [fetchedShows, setFetchedShows] = useState([]);
             const [isLoading, setIsLoading] = useState(false);
             const [page, setPage] = useState(1);
@@ -892,6 +893,53 @@
                 window.addEventListener('popstate', handlePopState);
                 return () => window.removeEventListener('popstate', handlePopState);
             }, []);
+
+            const trailerKey = useMemo(() => {
+                if (!detailsData || !detailsData.videos || !detailsData.videos.results) return null;
+                // Try finding an official Youtube Trailer
+                const officialTrailer = detailsData.videos.results.find(
+                    v => v.type === 'Trailer' && v.site === 'YouTube' && v.official === true
+                );
+                if (officialTrailer) return officialTrailer.key;
+                
+                // Try finding any Youtube Trailer
+                const anyTrailer = detailsData.videos.results.find(
+                    v => v.type === 'Trailer' && v.site === 'YouTube'
+                );
+                if (anyTrailer) return anyTrailer.key;
+
+                // Fallback to clips / teasers
+                const anyVideo = detailsData.videos.results.find(
+                    v => v.site === 'YouTube'
+                );
+                return anyVideo ? anyVideo.key : null;
+            }, [detailsData]);
+
+            // Compose clean YouTube embed URL with dynamic origin parameter to bypass sandboxing errors
+            const computedTrailerEmbedUrl = useMemo(() => {
+                if (!trailerKey) return '';
+                const base = `https://www.youtube.com/embed/${trailerKey}`;
+                const params = ['autoplay=1', 'enablejsapi=1'];
+                
+                // Fetch window location origin safely to satisfy YouTube's strict embed referrer guards
+                if (typeof window !== 'undefined' && window.location.origin && window.location.origin !== 'null') {
+                    params.push(`origin=${encodeURIComponent(window.location.origin)}`);
+                }
+                
+                return `${base}?${params.join('&')}`;
+            }, [trailerKey]);
+
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if (e.key === 'Escape') {
+                        setIsTrailerModalOpen(false);
+                    }
+                };
+                if (isTrailerModalOpen) {
+                    window.addEventListener('keydown', handleKeyDown);
+                }
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [isTrailerModalOpen]);
 
             const handleTabChange = (tab) => {
                 navigateToState({
@@ -1507,6 +1555,38 @@
 
             const isFavorited = (id, type) => favorites.some(fav => Number(fav.media_id) === Number(id) && fav.media_type === type);
 
+            const sortedActorCredits = useMemo(() => {
+                if (!personData || !personData.combined_credits || !personData.combined_credits.cast) return [];
+                
+                // Keep only valid movies and TV shows
+                const baseCast = personData.combined_credits.cast.filter(item => {
+                    const excludedGenres = [10767, 10763, 10764];
+                    const characterName = (item.character || "").toLowerCase();
+                    return item.poster_path && 
+                           !item.genre_ids?.some(id => excludedGenres.includes(id)) && 
+                           !characterName.includes("self") && 
+                           !characterName.includes("himself") && 
+                           !characterName.includes("herself");
+                });
+
+                if (actorSort === 'popularity') {
+                    return [...baseCast].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+                }
+
+                return [...baseCast].sort((a, b) => {
+                    const dateAStr = a.release_date || a.first_air_date || '';
+                    const dateBStr = b.release_date || b.first_air_date || '';
+                    
+                    if (!dateAStr) return actorSort === 'newest' ? 1 : -1;
+                    if (!dateBStr) return actorSort === 'newest' ? -1 : 1;
+                    
+                    const timeA = new Date(dateAStr).getTime();
+                    const timeB = new Date(dateBStr).getTime();
+                    
+                    return actorSort === 'newest' ? (timeB - timeA) : (timeA - timeB);
+                });
+            }, [personData, actorSort]);
+
             const { 
                 tvTotalEpisodes, 
                 tvWatchedEpisodes, 
@@ -1674,23 +1754,21 @@
                                                     <div className="col-span-2 md:col-span-1"><p className="text-[10px] font-bold text-gray-500 uppercase">Place of Birth</p><p className="text-sm font-semibold">{personData.place_of_birth || 'N/A'}</p></div>
                                                 </div>
                                             </div>
-                                            
                                             <div className="flex-1">
                                                 <h1 className="text-3xl md:text-6xl font-black mb-4 md:mb-6 tracking-tighter">{personData.name}</h1>
                                                 <h2 className="text-xl md:text-2xl font-black mb-4">Biography</h2>
                                                 <p className="text-base md:text-lg text-gray-600 mb-8 md:mb-12 leading-relaxed">{personData.biography || "No biography available."}</p>
                                                 
-                                                {/* Acting Roles Header with custom Responsive Sort dropdown aligned */}
-                                                <div className="flex items-center justify-between mb-6 md:mb-8 gap-4 border-b border-gray-100 pb-4">
+                                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 md:mb-8 border-b border-gray-200/60 pb-4">
                                                     <h2 className="text-xl md:text-2xl font-black">Acting Roles</h2>
                                                     <div className="flex items-center gap-2">
-                                                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest hidden sm:inline">Sort:</span>
+                                                        <span className="text-xs font-bold text-gray-500 uppercase">Sort by:</span>
                                                         <select 
                                                             value={actorSort} 
                                                             onChange={(e) => setActorSort(e.target.value)}
-                                                            className="h-9 px-4 rounded-full border border-gray-300 bg-white/80 text-xs font-bold outline-none focus:bg-white shadow-xs cursor-pointer select-none"
+                                                            className="h-9 px-3 rounded-full border border-gray-300 bg-white text-xs font-bold outline-none cursor-pointer focus:border-black transition-colors"
                                                         >
-                                                            <option value="popularity">Popularity (Default)</option>
+                                                            <option value="popularity">Most Popular</option>
                                                             <option value="newest">Newest → Oldest</option>
                                                             <option value="oldest">Oldest → Newest</option>
                                                         </select>
@@ -1698,45 +1776,30 @@
                                                 </div>
 
                                                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
-                                                    {personData.combined_credits?.cast
-                                                        ?.filter(i => {
-                                                            const excludedGenres = [10767, 10763, 10764];
-                                                            const characterName = (i.character || "").toLowerCase();
-                                                            return i.poster_path && !i.genre_ids?.some(id => excludedGenres.includes(id)) && 
-                                                                   !characterName.includes("self") && !characterName.includes("himself") && !characterName.includes("herself");
-                                                        })
-                                                        ?.sort((a, b) => {
-                                                            if (actorSort === 'newest') {
-                                                                const dateA = a.release_date || a.first_air_date || '';
-                                                                const dateB = b.release_date || b.first_air_date || '';
-                                                                if (!dateA) return 1;
-                                                                if (!dateB) return -1;
-                                                                return new Date(dateB) - new Date(dateA);
-                                                            } else if (actorSort === 'oldest') {
-                                                                const dateA = a.release_date || a.first_air_date || '';
-                                                                const dateB = b.release_date || b.first_air_date || '';
-                                                                if (!dateA) return 1;
-                                                                if (!dateB) return -1;
-                                                                return new Date(dateA) - new Date(dateB);
-                                                            } else {
-                                                                return (b.popularity || 0) - (a.popularity || 0);
-                                                            }
-                                                        })
-                                                        ?.slice(0, 50)
-                                                        ?.map((item, idx) => (
-                                                            <div key={idx} onClick={() => openDetails(item.id, item.media_type)} className="cursor-pointer group">
-                                                                <div className="aspect-[2/3] rounded-2xl overflow-hidden shadow-sm mb-2 md:mb-3">
-                                                                    <img src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                                                                </div>
-                                                                <h4 className="text-xs font-bold truncate">{item.title || item.name}</h4>
-                                                                {/* Displaying release dates for context validation when sorted */}
+                                                    {sortedActorCredits.slice(0, 50).map((item, idx) => (
+                                                        <div key={idx} onClick={() => openDetails(item.id, item.media_type)} className="cursor-pointer group">
+                                                            <div className="aspect-[2/3] rounded-2xl overflow-hidden shadow-sm mb-2 md:mb-3 relative">
+                                                                <img src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                                                <span className="absolute bottom-2 right-2 rounded-full bg-black/75 px-2 py-0.5 text-[8px] font-black uppercase text-white tracking-widest border border-white/10">
+                                                                    {item.media_type === 'movie' ? 'Movie' : 'TV'}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                                                                <span className="text-[10px] font-extrabold text-blue-600">
+                                                                    ★ {(item.vote_average || 0).toFixed(1)}
+                                                                </span>
                                                                 {(item.release_date || item.first_air_date) && (
-                                                                    <p className="text-[10px] font-semibold text-gray-400 mt-0.5">
+                                                                    <span className="text-[10px] font-bold text-gray-400">
                                                                         {(item.release_date || item.first_air_date).split('-')[0]}
-                                                                    </p>
+                                                                    </span>
                                                                 )}
                                                             </div>
-                                                        ))}
+                                                            <h4 className="text-xs font-bold truncate group-hover:text-blue-600 transition-colors">{item.title || item.name}</h4>
+                                                            {item.character && (
+                                                                <p className="text-[10px] text-gray-500 font-medium truncate italic mt-0.5">as {item.character}</p>
+                                                            )}
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             </div>
                                         </div>
@@ -1754,6 +1817,17 @@
                                                 <Icon name="ArrowLeft" /> <span>Back</span>
                                             </button>
                                             <div className="flex items-center flex-wrap gap-2">
+                                                {/* Watch Trailer Button */}
+                                                {trailerKey && (
+                                                    <button 
+                                                        onClick={() => setIsTrailerModalOpen(true)}
+                                                        className="flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition-all bg-red-600 hover:bg-red-700 text-white shadow-sm hover:scale-105 active:scale-95 animate-in slide-in-from-right-2 duration-300"
+                                                    >
+                                                        <Icon name="Play" className="h-4 w-4 fill-white" />
+                                                        <span>Watch Trailer</span>
+                                                    </button>
+                                                )}
+
                                                 {/* Favorites Button */}
                                                 <button 
                                                     disabled={isActionInProgress}
@@ -2330,6 +2404,47 @@
                             </div>
                         )}
                     </main>
+
+                    {/* Trailer Modal */}
+                    {isTrailerModalOpen && trailerKey && (
+                        <div 
+                            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 p-4 transition-opacity duration-300 animate-in fade-in"
+                            onClick={() => setIsTrailerModalOpen(false)}
+                        >
+                            <div 
+                                className="relative w-full max-w-4xl aspect-video rounded-3xl overflow-hidden bg-black shadow-2xl border border-white/15 animate-in zoom-in-95 duration-300"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                {/* Direct YouTube Fallback Button Header */}
+                                <div className="absolute top-4 left-4 z-50 flex gap-2">
+                                    <a 
+                                        href={`https://www.youtube.com/watch?v=${trailerKey}`} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-black rounded-full bg-red-600 hover:bg-red-700 text-white shadow-lg transition-transform active:scale-95 border border-red-500/10"
+                                    >
+                                        <Icon name="ExternalLink" className="h-3.5 w-3.5" />
+                                        <span>Watch on YouTube</span>
+                                    </a>
+                                </div>
+
+                                <button 
+                                    onClick={() => setIsTrailerModalOpen(false)}
+                                    className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black/50 text-white hover:bg-black/85 transition-colors border border-white/10 focus:outline-none"
+                                >
+                                    <Icon name="X" className="h-5 w-5" />
+                                </button>
+                                
+                                <iframe 
+                                    src={computedTrailerEmbedUrl}
+                                    title="Official Trailer Player"
+                                    className="w-full h-full border-0 bg-black"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                    allowFullScreen
+                                ></iframe>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
