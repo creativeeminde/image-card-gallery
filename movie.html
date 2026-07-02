@@ -219,6 +219,67 @@
             return releaseDate > today;
         };
 
+        // --- HELPER UTILITY FOR SERIES STATUS ---
+        const getSeriesStatusInfo = (status, nextEpisode, forOverlay = false) => {
+            if (!status) return { label: 'Unknown', colorClass: 'bg-gray-100 text-gray-600 border-gray-200' };
+            const statusLower = status.toLowerCase();
+            
+            if (statusLower === 'ended') {
+                return { 
+                    label: 'Ended', 
+                    colorClass: forOverlay 
+                        ? 'bg-red-500/90 text-white border-red-400' 
+                        : 'bg-red-50 text-red-600 border-red-100' 
+                };
+            }
+            if (statusLower === 'canceled') {
+                return { 
+                    label: 'Canceled', 
+                    colorClass: forOverlay 
+                        ? 'bg-rose-600/90 text-white border-rose-400' 
+                        : 'bg-rose-50 text-rose-600 border-rose-100' 
+                };
+            }
+            if (statusLower === 'returning series') {
+                if (nextEpisode) {
+                    return { 
+                        label: 'Ongoing', 
+                        colorClass: forOverlay 
+                            ? 'bg-emerald-600/95 text-white border-emerald-400 animate-pulse' 
+                            : 'bg-emerald-50 text-emerald-600 border-emerald-100' 
+                    };
+                }
+                return { 
+                    label: 'Returning', 
+                    colorClass: forOverlay 
+                        ? 'bg-indigo-600/90 text-white border-indigo-400' 
+                        : 'bg-indigo-50 text-indigo-600 border-indigo-100' 
+                };
+            }
+            if (statusLower === 'in production' || statusLower === 'planned' || statusLower === 'post production') {
+                return { 
+                    label: 'Returning', 
+                    colorClass: forOverlay 
+                        ? 'bg-indigo-600/90 text-white border-indigo-400' 
+                        : 'bg-indigo-50 text-indigo-600 border-indigo-100' 
+                };
+            }
+            if (statusLower === 'pilot') {
+                return { 
+                    label: 'Upcoming', 
+                    colorClass: forOverlay 
+                        ? 'bg-amber-500/90 text-white border-amber-400' 
+                        : 'bg-amber-50 text-amber-600 border-amber-100' 
+                };
+            }
+            return { 
+                label: status, 
+                colorClass: forOverlay 
+                    ? 'bg-blue-600/90 text-white border-blue-400' 
+                    : 'bg-blue-50 text-blue-600 border-blue-100' 
+            };
+        };
+
         // --- SUB-COMPONENTS ---
         function Section({ title, items, onSelect, isLoading }) {
             const scrollContainerRef = useRef(null);
@@ -514,10 +575,21 @@
                         <span className="absolute top-2 left-2 rounded-full bg-black/60 backdrop-blur-md px-2 py-0.5 text-[8px] md:text-[9px] font-black tracking-widest uppercase border border-white/10 text-white">
                             TV SHOW
                         </span>
-                        {comingSoon && (
+                        {comingSoon ? (
                             <span className="absolute top-2 right-2 rounded-full bg-amber-500/95 backdrop-blur-md px-2 py-0.5 text-[8px] font-black tracking-widest uppercase border border-amber-400 text-white flex items-center gap-1 shadow-lg animate-pulse">
                                 <Icon name="Calendar" className="h-2.5 w-2.5" /> Coming Soon
                             </span>
+                        ) : (
+                            tvDetails && tvDetails.status && (
+                                (() => {
+                                    const statusInfo = getSeriesStatusInfo(tvDetails.status, tvDetails.next_episode_to_air, true);
+                                    return (
+                                        <span className={`absolute top-2 right-2 rounded-full px-2 py-0.5 text-[8px] font-black tracking-widest uppercase border backdrop-blur-md shadow-sm ${statusInfo.colorClass}`}>
+                                            {statusInfo.label}
+                                        </span>
+                                    );
+                                })()
+                            )
                         )}
                         <span className="absolute bottom-2 left-2 text-[9px] sm:text-[10px] font-bold text-white tracking-wide">
                             {computedProgress.watchedCount}/{computedProgress.totalEpisodes} Episodes ({percentage}%)
@@ -1723,6 +1795,16 @@
                                                         <span className="rounded-full bg-white/20 backdrop-blur-md px-2 py-0.5 text-[8px] md:text-[10px] font-black tracking-widest uppercase border border-white/20">
                                                             {selectedItem.type === 'movie' ? 'Movie' : 'TV'}
                                                         </span>
+                                                        {selectedItem.type === 'tv' && detailsData.status && (
+                                                            (() => {
+                                                                const statusInfo = getSeriesStatusInfo(detailsData.status, detailsData.next_episode_to_air);
+                                                                return (
+                                                                    <span className={`rounded-full px-2.5 py-0.5 text-[8px] md:text-[10px] font-black tracking-widest uppercase border ${statusInfo.colorClass}`}>
+                                                                        {statusInfo.label}
+                                                                    </span>
+                                                                );
+                                                            })()
+                                                        )}
                                                         {isFutureRelease(detailsData.release_date || detailsData.first_air_date) && (
                                                             <span className="rounded-full bg-amber-500 text-white px-2.5 py-0.5 text-[8px] md:text-[10px] font-black tracking-widest uppercase border border-amber-400/50 flex items-center gap-1 shadow-md animate-pulse">
                                                                 <Icon name="Calendar" className="h-3 w-3 stroke-[2.5]" /> Coming Soon
@@ -1739,7 +1821,12 @@
                                                         {selectedItem.type === 'movie' ? (
                                                             <span className="flex items-center gap-1"><Icon name="Clock" className="h-3 w-3" /> {detailsData.runtime}m</span>
                                                         ) : (
-                                                            <span className="flex items-center gap-1"><Icon name="Layers" className="h-3 w-3" /> {detailsData.number_of_seasons}S / {detailsData.number_of_episodes}E</span>
+                                                            <React.Fragment>
+                                                                <span className="flex items-center gap-1"><Icon name="Layers" className="h-3 w-3" /> {detailsData.number_of_seasons}S / {detailsData.number_of_episodes}E</span>
+                                                                {detailsData.status && (
+                                                                    <span className="flex items-center gap-1"><Icon name="Activity" className="h-3 w-3" /> {getSeriesStatusInfo(detailsData.status, detailsData.next_episode_to_air).label}</span>
+                                                                )}
+                                                            </React.Fragment>
                                                         )}
                                                     </div>
                                                 </div>
