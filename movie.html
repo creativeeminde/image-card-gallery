@@ -291,6 +291,18 @@
                 return () => { active = false; };
             }, [item.media_id]);
 
+            useEffect(() => {
+                if (!tvDetails) return;
+                const regularSeasons = tvDetails.seasons?.filter(s => s.season_number > 0) || [];
+                const totalEpisodes = regularSeasons.reduce((acc, s) => acc + (s.episode_count || 0), 0);
+                const watchedCount = Object.keys(progressInfo.watched_episodes).filter(k => progressInfo.watched_episodes[k] === true).length;
+                
+                // If marked as Watched but new episodes are added, move back to Watching
+                if (item.status === 'Watched' && watchedCount < totalEpisodes && totalEpisodes > 0) {
+                    handleTrackItem(item, 'Watching');
+                }
+            }, [tvDetails, progressInfo.watched_episodes, item.status]);
+
             // 2. Compute total episodes and next unwatched episode
             const computedProgress = useMemo(() => {
                 if (!tvDetails) return { nextS: 1, nextE: 1, totalEpisodes: 0, watchedCount: 0, foundNext: false };
@@ -783,14 +795,22 @@
 
                 const numericId = Number(mediaId);
                 const foundItem = trackedItems.find(t => Number(t.media_id) === numericId && t.media_type === 'tv');
+                const watchedCount = Object.keys(newWatchedEpisodes).filter(k => newWatchedEpisodes[k] === true).length;
 
                 const progressPayload = {
                     watched_episodes: newWatchedEpisodes,
                     total_episodes: totalCount,
-                    watched_count: Object.keys(newWatchedEpisodes).filter(k => newWatchedEpisodes[k] === true).length
+                    watched_count: watchedCount
                 };
 
-                const currentStatus = foundItem ? foundItem.status : 'Watching';
+                let targetStatus = foundItem ? foundItem.status : 'Watching';
+                if (totalCount > 0) {
+                    if (watchedCount === totalCount) {
+                        targetStatus = 'Watched';
+                    } else if (targetStatus === 'Watched' && watchedCount < totalCount) {
+                        targetStatus = 'Watching';
+                    }
+                }
 
                 const payload = {
                     media_id: numericId,
@@ -799,7 +819,7 @@
                     poster_path: detailsData?.poster_path || foundItem?.poster_path || '',
                     rating: (detailsData?.vote_average || Number(foundItem?.rating) || 0).toFixed(1),
                     genres: detailsData?.genres ? detailsData.genres.map(g => g.name).join(', ') : (foundItem?.genres || 'Uncategorized'),
-                    status: currentStatus,
+                    status: targetStatus,
                     progress: progressPayload,
                     updated_at: new Date().toISOString()
                 };
