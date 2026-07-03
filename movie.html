@@ -1038,8 +1038,9 @@
                 if (isActionInProgress) return;
                 setIsActionInProgress(true);
 
-                const itemId = Number(item.id);
-                const itemType = item.type;
+                // Fixed to prioritize media_id (TMDB ID) over Supabase Primary Key
+                const itemId = Number(item.media_id || item.id);
+                const itemType = item.type || item.media_type;
                 const isFav = isFavorited(itemId, itemType);
 
                 if (isFav) {
@@ -1118,7 +1119,9 @@
                 if (isActionInProgress) return;
                 setIsActionInProgress(true);
 
-                const itemId = Number(item.id || item.media_id);
+                // Fixed: Prioritize media_id to get the true TMDB ID, fallback to id only if media_id is not set.
+                // This prevents item.id (Supabase primary key) from clobbering the media ID during status shifts.
+                const itemId = Number(item.media_id || item.id);
                 const itemType = item.type || item.media_type;
                 const title = item.title || item.name || detailsData?.title || detailsData?.name;
                 const poster_path = item.poster_path || detailsData?.poster_path;
@@ -1147,6 +1150,11 @@
                     updated_at: new Date().toISOString()
                 };
 
+                // Fixed: Include Supabase PK row ID to prevent duplication on status transition updates
+                if (existingItem && existingItem.id) {
+                    trackingPayload.id = existingItem.id;
+                }
+
                 const newTrackedItems = [...trackedItems];
                 const idx = newTrackedItems.findIndex(t => Number(t.media_id) === itemId && t.media_type === itemType);
                 if (idx > -1) {
@@ -1160,7 +1168,7 @@
                 try {
                     const { error } = await supabase
                         .from('tracking')
-                        .upsert(trackingPayload, { onConflict: 'media_id,media_type' });
+                        .upsert(trackingPayload);
                     
                     if (error) throw error;
                 } catch (error) {
@@ -1255,6 +1263,11 @@
                     updated_at: new Date().toISOString()
                 };
 
+                // Fixed: Include Supabase PK row ID to prevent duplication during progress updates
+                if (foundItem && foundItem.id) {
+                    payload.id = foundItem.id;
+                }
+
                 const newTrackedItems = [...trackedItems];
                 const idx = newTrackedItems.findIndex(t => Number(t.media_id) === numericId && t.media_type === 'tv');
                 if (idx > -1) {
@@ -1268,7 +1281,7 @@
                 try {
                     const { error } = await supabase
                         .from('tracking')
-                        .upsert(payload, { onConflict: 'media_id,media_type' });
+                        .upsert(payload);
                     if (error) throw error;
                 } catch (error) {
                     console.error("Failed to save TV progress to Supabase:", error.message);
@@ -1872,7 +1885,7 @@
                                                         <Icon name="ChevronDown" className="h-3 w-3 ml-1 text-current opacity-80" />
                                                     </button>
                                                     {isTrackMenuOpen && (
-                                                        <div className="absolute right-0 mt-2 w-48 rounded-2xl bg-white shadow-xl border border-gray-100 py-1.5 z-[120] animate-in fade-in slide-in-from-top-2 duration-200">
+                                                        <div className="absolute left-0 sm:left-auto right-auto sm:right-0 mt-2 w-48 rounded-2xl bg-white shadow-xl border border-gray-100 py-1.5 z-[120] animate-in fade-in slide-in-from-top-2 duration-200">
                                                             <p className="px-4 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-50 mb-1">Set Status</p>
                                                             {['Watching', 'Watched', 'Plan to Watch', 'On Hold', 'Dropped'].map((status) => (
                                                                 <button
