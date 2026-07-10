@@ -20,6 +20,8 @@
     <link rel="apple-touch-icon" sizes="167x167" href="icons/music-167x167.png">
        
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- jsmediatags CDN for reading ID3 metadata from remote MP3 files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
     <title>Modern Music Streamer</title>
     <!-- Favicon: Blue Music Note -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%233b82f6'%3E%3Cpath d='M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z'/%3E%3C/svg%3E">
@@ -171,10 +173,6 @@
             font-size: 0.9rem;
             transition: background 0.2s;
             max-width: 150px;
-        }
-
-        .glass-select:hover {
-            background: rgba(255, 255, 255, 0.15);
         }
 
         .glass-select option {
@@ -1530,7 +1528,7 @@
                     </div>
                     <div class="form-group">
                         <label>Cover Image URL (Optional)</label>
-                        <input type="url" id="in-cover" placeholder="https://example.com/image.jpg">
+                        <input type="url" id="in-cover" placeholder="Leave empty for auto MP3 artwork extraction">
                     </div>
                     
                     <!-- Row 3: Meta -->
@@ -1639,6 +1637,23 @@
         </div>
     </div>
 
+    <!-- Custom Dialogs to Completely Replace Alert & Confirm -->
+    <div id="custom-toast" style="position: fixed; bottom: 110px; right: 20px; background: rgba(15, 23, 42, 0.95); border: 1px solid var(--glass-border); padding: 0.8rem 1.5rem; border-radius: 12px; z-index: 10000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: none; align-items: center; gap: 0.8rem; color: white; transition: all 0.3s ease; transform: translateY(20px); opacity: 0;">
+        <i id="custom-toast-icon" class="fas fa-info-circle" style="color: var(--primary-color);"></i>
+        <span id="custom-toast-text"></span>
+    </div>
+
+    <div id="custom-confirm-modal" class="modal-overlay" style="z-index: 9999;">
+        <div class="modal" style="width: 400px; text-align: center;">
+            <h2 style="font-size: 1.3rem; margin-bottom: 1rem;"><i class="fas fa-exclamation-triangle" style="color: #ef4444; margin-right: 8px;"></i>Confirm Action</h2>
+            <p id="custom-confirm-text" style="color: var(--text-muted); margin-bottom: 2rem;"></p>
+            <div style="display: flex; justify-content: center; gap: 1rem;">
+                <button class="btn-cancel" id="custom-confirm-cancel" style="padding: 0.6rem 1.5rem;">Cancel</button>
+                <button class="btn-primary" id="custom-confirm-ok" style="background: #ef4444; padding: 0.6rem 1.5rem; border-color: #ef4444;">Delete</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // --- 1. CONFIGURATION ---
         const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
@@ -1656,6 +1671,9 @@
         let currentIndex = -1;
         let isPlaying = false;
         let isShuffle = false;
+        
+        // Runtime in-memory cache for auto-extracted artwork (mapped by Song ID to Base64)
+        let extractedCoversCache = {};
         
         // Loop Segment State
         let customLoopStart = null;
@@ -1700,6 +1718,59 @@
         const mobileCurrTime = document.getElementById('mobile-curr-time');
         const mobileDurTime = document.getElementById('mobile-dur-time');
         const mobileLoopBtn = document.getElementById('mobile-loop-btn');
+
+        // --- 3.5 CUSTOM SLEEK NOTIFICATIONS (Replacing alert & confirm) ---
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('custom-toast');
+            const text = document.getElementById('custom-toast-text');
+            const icon = document.getElementById('custom-toast-icon');
+            
+            text.innerText = message;
+            
+            if (type === 'error') {
+                icon.className = 'fas fa-exclamation-circle';
+                icon.style.color = '#ef4444';
+            } else if (type === 'success') {
+                icon.className = 'fas fa-check-circle';
+                icon.style.color = '#10b981';
+            } else {
+                icon.className = 'fas fa-info-circle';
+                icon.style.color = 'var(--primary-color)';
+            }
+            
+            toast.style.display = 'flex';
+            toast.offsetHeight; // Force reflow
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateY(0)';
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(20px)';
+                setTimeout(() => {
+                    toast.style.display = 'none';
+                }, 300);
+            }, 4000);
+        }
+
+        function showConfirm(message, onConfirm) {
+            const modalConfirm = document.getElementById('custom-confirm-modal');
+            const text = document.getElementById('custom-confirm-text');
+            const btnCancel = document.getElementById('custom-confirm-cancel');
+            const btnOk = document.getElementById('custom-confirm-ok');
+            
+            text.innerText = message;
+            modalConfirm.classList.add('open');
+            
+            const cleanup = () => {
+                modalConfirm.classList.remove('open');
+            };
+            
+            btnCancel.onclick = cleanup;
+            btnOk.onclick = () => {
+                cleanup();
+                onConfirm();
+            };
+        }
 
         // --- 4. INITIALIZATION ---
         window.addEventListener('DOMContentLoaded', () => {
@@ -1763,6 +1834,49 @@
             document.documentElement.style.setProperty('--glass-bg', 'rgba(255, 255, 255, 0.05)');
         }
 
+        // --- 5.5 MP3 ID3 APIC METADATA ARTWORK EXTRACTION & CONVERSION ---
+        function arrayBufferToBase64(dataArray) {
+            let binary = '';
+            const len = dataArray.length;
+            const chunkSize = 0xffff; // Protect against Call Stack Overflow limit
+            for (let i = 0; i < len; i += chunkSize) {
+                const chunk = dataArray.slice(i, i + chunkSize);
+                binary += String.fromCharCode.apply(null, chunk);
+            }
+            return window.btoa(binary);
+        }
+
+        function extractArtworkFromMp3(mp3Url) {
+            return new Promise((resolve) => {
+                if (!window.jsmediatags) {
+                    console.error("jsmediatags library is not loaded.");
+                    resolve(null);
+                    return;
+                }
+                
+                window.jsmediatags.read(mp3Url, {
+                    onSuccess: function(tag) {
+                        try {
+                            const picture = tag.tags.picture;
+                            if (picture) {
+                                const base64 = arrayBufferToBase64(picture.data);
+                                resolve(`data:${picture.format};base64,${base64}`);
+                            } else {
+                                resolve(null);
+                            }
+                        } catch (e) {
+                            console.error("Error formatting extracted picture array: ", e);
+                            resolve(null);
+                        }
+                    },
+                    onError: function(error) {
+                        console.warn("jsmediatags failed to parse remote file artwork: ", error);
+                        resolve(null);
+                    }
+                });
+            });
+        }
+
         // --- 6. DATA FETCHING ---
         async function fetchSongs() {
             songListEl.innerHTML = '<div class="loading-container"><div class="loading-spinner" style="display:block"></div></div>';
@@ -1800,7 +1914,7 @@
             applyFilters();
 
             if (songs.length === 0) {
-                songListEl.innerHTML = '<div class="empty-state">No songs found. Click "Upload Song" to add one!</div>';
+                songListEl.innerHTML = '<div class="empty-state">No songs found. Click "Upload" to add one!</div>';
             } else {
                 loadSong(0);
             }
@@ -1901,11 +2015,15 @@
                 // Favorite Check
                 const isFav = song.playlists && song.playlists.includes('Favorites');
                 
+                // Priority image source: User provided URL -> Extracted Cache -> Default Placeholder
+                const cachedCover = extractedCoversCache[song.id];
+                const activeCover = song.cover_url || cachedCover || 'https://via.placeholder.com/50';
+                
                 el.innerHTML = `
                     <button class="star-btn ${isFav ? 'active' : ''}" onclick="toggleFavorite(${song.id}, event)" title="Toggle Favorite">
                         <i class="${isFav ? 'fas' : 'far'} fa-star"></i>
                     </button>
-                    <img src="${song.cover_url || 'https://via.placeholder.com/50'}" alt="cover" class="song-thumb" onerror="this.src='https://via.placeholder.com/50'">
+                    <img src="${activeCover}" alt="cover" class="song-thumb" onerror="this.src='https://via.placeholder.com/50'">
                     <div class="song-details">
                         <div class="song-title">${song.song_title}</div>
                         <div class="song-artist clickable-artist" onclick="filterByArtist('${song.artist.replace(/'/g, "\\'")}', event)">${song.artist}</div>
@@ -1951,13 +2069,35 @@
             mainArtist.classList.add('clickable-artist');
             mainArtist.onclick = () => filterByArtist(song.artist);
             
+            // Check Priority Artwork for active tracks
+            let selectedCover = song.cover_url;
+            if (!selectedCover) {
+                if (extractedCoversCache[song.id]) {
+                    selectedCover = extractedCoversCache[song.id];
+                } else {
+                    selectedCover = 'https://via.placeholder.com/300/1e293b/ffffff?text=Music';
+                    
+                    // Asynchronously extract from MP3 URL in the background to avoid blocking
+                    extractArtworkFromMp3(song.mp3_url).then(base64Image => {
+                        if (base64Image) {
+                            extractedCoversCache[song.id] = base64Image;
+                            if (currentIndex === index) {
+                                mainCover.src = base64Image;
+                                mobileCover.src = base64Image;
+                            }
+                            renderSongList(); // Refresh thumbnails dynamically
+                        }
+                    });
+                }
+            }
+            
             mainCover.setAttribute('crossorigin', 'anonymous');
-            mainCover.src = song.cover_url || 'https://via.placeholder.com/300/1e293b/ffffff?text=Music';
+            mainCover.src = selectedCover;
             
             // Sync Mobile Player UI
             mobileTitle.innerText = song.song_title;
             mobileArtist.innerText = song.artist;
-            mobileCover.src = song.cover_url || 'https://via.placeholder.com/300/1e293b/ffffff?text=Music';
+            mobileCover.src = selectedCover;
             
             downloadBtn.href = song.mp3_url;
             audio.src = song.mp3_url;
@@ -1988,7 +2128,7 @@
                 mobilePlayIcon.classList.add('fa-pause');
             }).catch(e => {
                 console.error("Playback failed", e);
-                alert("Could not play audio. Check URL.");
+                showToast("Could not play audio. Check URL.", "error");
             });
         }
 
@@ -2035,7 +2175,6 @@
 
         function handleSongEnd() {
             if (!audio.loop && !isCustomLoopActive) nextSong();
-            // If custom loop is active, the updateProgress handles the looping
         }
 
         function nextSong() {
@@ -2046,14 +2185,12 @@
                 let currentFilterIndex = filteredSongs.findIndex(s => s.id === currentId);
                 let nextFilterIndex;
                 
-                // Ensure the next random song is not the current song
                 do {
                     nextFilterIndex = Math.floor(Math.random() * filteredSongs.length);
                 } while (nextFilterIndex === currentFilterIndex);
                 
                 playSongFromFilterList(nextFilterIndex);
             } else {
-                // Normal sequential play
                 const currentId = songs[currentIndex]?.id;
                 let filterIndex = filteredSongs.findIndex(s => s.id === currentId);
                 let nextFilterIndex = filterIndex + 1;
@@ -2079,15 +2216,14 @@
             if (isCustomLoopActive && customLoopEnd !== null && customLoopStart !== null) {
                 if (currentTime >= customLoopEnd) {
                     audio.currentTime = customLoopStart;
-                    // Force play if paused
                     if (!isPlaying) playAudio();
-                    return; // Prevent progress bar jitter
+                    return; 
                 }
             }
 
             const progressPercent = (currentTime / duration) * 100;
             progressBar.style.width = `${progressPercent}%`;
-            mobileProgressBar.style.width = `${progressPercent}%`; // Update mobile bar
+            mobileProgressBar.style.width = `${progressPercent}%`;
             
             const formatTime = (time) => {
                 const min = Math.floor(time / 60);
@@ -2106,7 +2242,6 @@
         }
 
         function setProgress(e) {
-            // "this" refers to the clicked container (desktop or mobile)
             const width = this.clientWidth;
             const clickX = e.offsetX;
             const duration = audio.duration;
@@ -2149,12 +2284,11 @@
                 customLoopEnd = end;
                 isCustomLoopActive = true;
                 document.getElementById('loop-indicator').style.display = 'block';
-                // Jump to start if currently outside
                 if (audio.currentTime < start || audio.currentTime > end) {
                     audio.currentTime = start;
                 }
             } else {
-                alert("Invalid Time Range. Use mm:ss format (e.g. 0:35 - 1:01)");
+                showToast("Invalid Time Range. Use mm:ss format (e.g. 0:35 - 1:01)", "error");
             }
         }
 
@@ -2167,16 +2301,14 @@
             document.getElementById('loop-indicator').style.display = 'none';
         }
 
-        // --- LYRICS LOGIC (IMPROVED) ---
+        // --- 8.5 LYRICS LOGIC ---
         function cleanTrackTitle(title) {
-            // Remove text in parentheses or brackets, "feat.", "remastered", etc.
-            // NON-GREEDY MATCHING to preserve title parts if possible
             return title
-                .replace(/\([^)]*\)/g, '') // Remove (content) non-greedy
-                .replace(/\[[^\]]*\]/g, '') // Remove [content] non-greedy
-                .replace(/-.*remaster.*/i, '') // Remove "- Remaster..."
-                .replace(/feat\..*/i, '') // Remove "feat..."
-                .replace(/ft\..*/i, '') // Remove "ft..."
+                .replace(/\([^)]*\)/g, '')
+                .replace(/\[[^\]]*\]/g, '')
+                .replace(/-.*remaster.*/i, '')
+                .replace(/feat\..*/i, '')
+                .replace(/ft\..*/i, '')
                 .trim();
         }
 
@@ -2186,7 +2318,7 @@
             const titleEl = document.getElementById('lyrics-title');
             
             if (currentIndex === -1 || !songs[currentIndex]) {
-                alert("Play a song first!");
+                showToast("Play a song first!", "info");
                 return;
             }
 
@@ -2197,12 +2329,9 @@
             content.innerHTML = '<div class="loading-container"><div class="loading-spinner" style="display:block"></div></div>';
 
             try {
-                // 1. Clean the title for better search accuracy
                 const cleanedTitle = cleanTrackTitle(song.song_title);
                 const searchQuery = `${song.artist} ${cleanedTitle}`;
-                console.log("Searching lyrics for:", searchQuery);
-
-                // 2. Search LRCLIB
+                
                 const searchUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(searchQuery)}`;
                 const searchRes = await fetch(searchUrl);
                 
@@ -2210,14 +2339,11 @@
                 
                 let searchData = await searchRes.json();
 
-                // FALLBACK: If specific search fails, try searching just by Title and filter later
                 if (!searchData || searchData.length === 0) {
-                    console.log("Specific search failed. Trying title fallback:", cleanedTitle);
                     const fallbackUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(cleanedTitle)}`;
                     const fallbackRes = await fetch(fallbackUrl);
                     if (fallbackRes.ok) {
                         const fallbackData = await fallbackRes.json();
-                        // We will filter these results in the matching logic below
                         if (fallbackData && fallbackData.length > 0) {
                             searchData = fallbackData;
                         }
@@ -2228,57 +2354,32 @@
                     throw new Error("No search results found");
                 }
 
-                // 3. IMPROVED MATCHING LOGIC
-                // We want to find the result that best matches our Artist and Title
                 const targetArtist = song.artist.toLowerCase();
                 const targetTitle = cleanedTitle.toLowerCase();
 
-                // Step A: Filter by Artist (loose match)
-                // We allow results where the API artist contains our artist OR our artist contains the API artist
                 const artistMatches = searchData.filter(item => {
                     const itemArtist = (item.artistName || "").toLowerCase();
                     return itemArtist.includes(targetArtist) || targetArtist.includes(itemArtist);
                 });
 
-                console.log(`Found ${artistMatches.length} artist matches out of ${searchData.length} results.`);
-
                 let bestMatch = null;
 
                 if (artistMatches.length > 0) {
-                    // Step B: Within artist matches, look for EXACT title match
                     bestMatch = artistMatches.find(item => 
                         (item.trackName || "").toLowerCase() === targetTitle
-                    );
-
-                    // Step C: If no exact match, look for PARTIAL title match
-                    if (!bestMatch) {
-                        bestMatch = artistMatches.find(item => 
-                            (item.trackName || "").toLowerCase().includes(targetTitle)
-                        );
-                    }
-
-                    // Step D: Fallback to the first artist match if titles don't align perfectly
-                    if (!bestMatch) {
-                        bestMatch = artistMatches[0];
-                    }
+                    ) || artistMatches.find(item => 
+                        (item.trackName || "").toLowerCase().includes(targetTitle)
+                    ) || artistMatches[0];
                 } else {
-                    // Step E: No artist match found? This is risky, but we take the first result from the API
-                    // assuming LRCLIB's search ranking algorithm did a decent job for the query.
-                    console.warn("No strict artist match found. Using first API result.");
                     bestMatch = searchData[0];
                 }
 
-                console.log("Best match selected:", bestMatch);
-
-                // 4. Fetch details by ID
                 const getUrl = `https://lrclib.net/api/get/${bestMatch.id}`;
                 const getRes = await fetch(getUrl);
                 const lyricData = await getRes.json();
 
-                // 5. Display Lyrics (Plain preferred, fallback to cleaned synced)
                 let lyrics = lyricData.plainLyrics;
                 if (!lyrics && lyricData.syncedLyrics) {
-                    // Regex to remove [mm:ss.xx] timestamps
                     lyrics = lyricData.syncedLyrics.replace(/\[\d{2}:\d{2}\.\d{2}\] /g, ""); 
                 }
 
@@ -2289,8 +2390,7 @@
                 }
 
             } catch (e) {
-                // Warn instead of Error to keep console clean for expected misses
-                console.warn("Lyrics not found:", e.message);
+                console.warn("Lyrics not found: ", e.message);
                 content.innerHTML = '<div class="empty-state">Lyrics not found.<br><small>Try checking the artist/title spelling.</small></div>';
             }
         }
@@ -2302,7 +2402,7 @@
         // --- RELATED SONGS LOGIC ---
         function openRelatedModal() {
             if (currentIndex === -1 || !songs[currentIndex]) {
-                alert("Play a song first!");
+                showToast("Play a song first!", "info");
                 return;
             }
 
@@ -2310,7 +2410,6 @@
             const relatedModal = document.getElementById('related-modal');
             const relatedList = document.getElementById('related-list');
             
-            // Filter related songs by genre excluding the currently playing song
             const related = songs.filter(s => s.genre === currentSong.genre && s.id !== currentSong.id);
             
             relatedList.innerHTML = '';
@@ -2330,9 +2429,11 @@
                     };
                     
                     const moodHtml = song.mood ? `<span class="mood-tag" style="margin-left: 10px;">${song.mood}</span>` : '';
+                    const cachedCover = extractedCoversCache[song.id];
+                    const activeCover = song.cover_url || cachedCover || 'https://via.placeholder.com/50';
                     
                     el.innerHTML = `
-                        <img src="${song.cover_url || 'https://via.placeholder.com/50'}" alt="cover" class="song-thumb" onerror="this.src='https://via.placeholder.com/50'">
+                        <img src="${activeCover}" alt="cover" class="song-thumb" onerror="this.src='https://via.placeholder.com/50'">
                         <div class="song-details">
                             <div class="song-title">${song.song_title} ${moodHtml}</div>
                             <div class="song-artist">${song.artist}</div>
@@ -2394,7 +2495,6 @@
                 const select = document.getElementById(selectId);
                 const input = document.getElementById(inputId);
                 
-                // Special case for empty mood
                 if (value === null || value === "") {
                     select.value = ""; 
                     input.style.display = 'none';
@@ -2412,7 +2512,6 @@
             };
 
             setSelectOrCustom('in-genre', 'in-new-genre', song.genre, 'new_genre_option');
-            // Ensure null/undefined mood maps to the "None" option (value="")
             setSelectOrCustom('in-mood', 'in-new-mood', song.mood || "", 'new_mood_option');
         }
         
@@ -2424,11 +2523,9 @@
             if (songIndex === -1) return;
             const song = songs[songIndex];
 
-            // 1. Optimistic Update (Update UI immediately)
             const wasFav = song.playlists && song.playlists.includes('Favorites');
             let newPlaylists;
             
-            // Ensure playlists is an array
             const currentPlaylists = song.playlists || [];
 
             if (wasFav) {
@@ -2437,23 +2534,18 @@
                 newPlaylists = [...currentPlaylists, 'Favorites'];
             }
             
-            // Update local model
             songs[songIndex].playlists = newPlaylists;
             
-            // Re-render UI to show change instantly
             applyFilters(); 
 
-            // 2. Database Update
             const { error } = await _supabase
                 .from('songs')
                 .update({ playlist: JSON.stringify(newPlaylists) })
                 .eq('id', id);
 
-            // 3. Rollback if error
             if (error) {
                 console.error('Error updating favorite:', error);
-                alert('Could not update favorite status');
-                // Revert local change
+                showToast('Could not update favorite status', 'error');
                 songs[songIndex].playlists = wasFav ? [...newPlaylists, 'Favorites'] : newPlaylists.filter(p => p !== 'Favorites'); 
                 applyFilters();
             }
@@ -2514,7 +2606,6 @@
              const dbMoods = [...new Set(songs.map(s => s.mood))].filter(m => m);
              const allMoods = [...new Set([...defaultOptions, ...dbMoods])];
              
-             // Add "None" option first
              selectModal.innerHTML = '<option value="">None</option>';
              allMoods.forEach(m => {
                  const opt = document.createElement('option');
@@ -2554,6 +2645,7 @@
             input.required = select.value === 'new_mood_option';
         }
 
+        // --- 9.5 PROCESS UPLOAD & OPTIONAL EXTRACTION LOGIC ---
         async function handleUpload(e) {
             e.preventDefault();
             
@@ -2569,7 +2661,7 @@
             const title = document.getElementById('in-title').value;
             const artist = document.getElementById('in-artist').value;
             const mp3 = document.getElementById('in-mp3').value;
-            const cover = document.getElementById('in-cover').value;
+            let cover = document.getElementById('in-cover').value;
             let genre = document.getElementById('in-genre').value;
             let mood = document.getElementById('in-mood').value;
             
@@ -2581,8 +2673,29 @@
             
             if (genre === 'new_genre_option') genre = document.getElementById('in-new-genre').value || 'Unknown';
             if (mood === 'new_mood_option') mood = document.getElementById('in-new-mood').value || 'General';
-            // Treat empty mood string as null
             if (mood === "") mood = null;
+
+            // Priority Logic: Extract artwork from MP3 only if the Cover Image URL field is left empty
+            if (!cover) {
+                // Show Extraction state on form
+                btn.querySelector('.btn-text').innerText = "Extracting Artwork...";
+                text.style.display = 'block';
+                spinner.style.display = 'none';
+                try {
+                    const extractedCover = await extractArtworkFromMp3(mp3);
+                    if (extractedCover) {
+                        cover = extractedCover;
+                        showToast("Embedded album artwork successfully extracted!", "success");
+                    } else {
+                        showToast("No embedded artwork found inside the MP3. Using placeholder.", "info");
+                    }
+                } catch (err) {
+                    console.error("Failed to automatically extract embedded artwork: ", err);
+                    showToast("Failed to parse artwork. Falling back to default cover.", "info");
+                }
+                text.style.display = 'none';
+                spinner.style.display = 'block';
+            }
 
             const songData = {
                 song_title: title,
@@ -2598,7 +2711,6 @@
             let res;
 
             try {
-                // Ensure we call .select() to verify the update happened
                 if (id) {
                     res = await _supabase.from('songs').update(songData).eq('id', id).select();
                 } else {
@@ -2606,13 +2718,10 @@
                 }
                 error = res.error;
 
-                // --- CHECK FOR "SILENT FAILURE" (RLS BLOCKING UPDATE) ---
                 if (!error && res.data && res.data.length === 0) {
                     throw new Error("Database permission denied. You must enable UPDATE/DELETE policies in Supabase.");
                 }
 
-                // --- SAFETY FALLBACK FOR MISSING MOOD COLUMN ---
-                // If the error is about the missing mood column, remove it from payload and retry
                 if (error && error.message && error.message.includes('mood') && error.message.includes('column')) {
                     console.warn("Supabase 'mood' column missing. Retrying without mood data.");
                     delete songData.mood;
@@ -2623,66 +2732,65 @@
                     }
                     error = res.error;
                 }
-                // ---------------------------------------------
 
             } catch (err) {
                 error = err;
             }
 
             if (error) {
-                alert('Error saving song: ' + (error.message || "Unknown error"));
+                showToast('Error saving song: ' + (error.message || "Unknown error"), "error");
                 resetBtn();
                 return;
             }
 
+            showToast("Song saved successfully!", "success");
             await fetchSongs();
             closeModal();
             resetBtn();
 
             function resetBtn() {
+                text.innerText = "Save Song";
                 text.style.display = 'block';
                 spinner.style.display = 'none';
                 btn.disabled = false;
             }
         }
 
-        async function deleteSong(id, e) {
+        function deleteSong(id, e) {
             e.stopPropagation();
-            if(!confirm("Are you sure you want to delete this song?")) return;
-
-            const { error } = await _supabase.from('songs').delete().eq('id', id);
-            
-            if (error) {
-                alert("Error deleting: " + error.message);
-            } else {
-                if (songs[currentIndex] && songs[currentIndex].id === id) {
-                    audio.pause();
-                    audio.src = '';
-                    mainTitle.innerText = "No Song Selected";
-                    currentIndex = -1;
-                    isPlaying = false;
-                    playBtnIcon.classList.remove('fa-pause');
-                    playBtnIcon.classList.add('fa-play');
+            showConfirm("Are you sure you want to delete this song?", async () => {
+                const { error } = await _supabase.from('songs').delete().eq('id', id);
+                
+                if (error) {
+                    showToast("Error deleting: " + error.message, "error");
+                } else {
+                    showToast("Song deleted successfully.", "success");
+                    if (songs[currentIndex] && songs[currentIndex].id === id) {
+                        audio.pause();
+                        audio.src = '';
+                        mainTitle.innerText = "No Song Selected";
+                        currentIndex = -1;
+                        isPlaying = false;
+                        playBtnIcon.classList.remove('fa-pause');
+                        playBtnIcon.classList.add('fa-play');
+                    }
+                    fetchSongs();
                 }
-                fetchSongs();
-            }
+            });
         }
 
         // --- DRAG-TO-SEEK GESTURE (Mobile Album Art) ---
         (function() {
-            // Config
             const HOLD_DELAY_MS = 180;       // ms to wait before activating drag mode
             const SEEK_THRESHOLD_PX = 40;    // px per 10-second step
             const SEEK_STEP_S = 10;          // seconds per threshold crossing
 
-            // State
             let holdTimer = null;
             let dragActive = false;
             let touchStartX = 0;
-            let lastAppliedStep = 0;         // tracks last applied +/- steps
-            let baseTime = 0;                // audio time when drag started
+            let lastAppliedStep = 0;         
+            let baseTime = 0;                
 
-            // Elements (resolved after DOM ready)
             let artContainer, seekOverlay, seekTimeLabel, seekArrowLeft, seekArrowRight, seekHintText;
 
             function initSeekGesture() {
@@ -2707,7 +2815,6 @@
                 dragActive = false;
                 lastAppliedStep = 0;
 
-                // Start hold timer — activate drag mode after delay
                 holdTimer = setTimeout(() => {
                     dragActive = true;
                     baseTime = audio.src ? audio.currentTime : 0;
@@ -2719,12 +2826,11 @@
                 if (!dragActive) return;
 
                 const dx = e.touches[0].clientX - touchStartX;
-                const rawSteps = Math.floor(dx / SEEK_THRESHOLD_PX);  // negative = rewind
+                const rawSteps = Math.floor(dx / SEEK_THRESHOLD_PX);  
                 const totalSeconds = rawSteps * SEEK_STEP_S;
 
                 updateOverlay(rawSteps, totalSeconds);
 
-                // Apply incremental seek only when steps change
                 if (rawSteps !== lastAppliedStep) {
                     lastAppliedStep = rawSteps;
                     if (audio.src) {
@@ -2738,7 +2844,6 @@
                 clearTimeout(holdTimer);
 
                 if (dragActive) {
-                    // Brief flash confirming the seek, then hide
                     setTimeout(hideOverlay, 350);
                 }
 
@@ -2760,7 +2865,6 @@
                 const sign = totalSeconds >= 0 ? '+' : '';
                 seekTimeLabel.textContent = sign + totalSeconds + 's';
 
-                // Highlight the active arrow
                 if (steps > 0) {
                     seekArrowRight.classList.add('active');
                     seekArrowLeft.classList.remove('active');
@@ -2773,7 +2877,6 @@
                 }
             }
 
-            // Init after DOM is ready
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', initSeekGesture);
             } else {
