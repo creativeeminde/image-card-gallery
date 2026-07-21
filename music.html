@@ -1970,6 +1970,8 @@
     let parsedLyricsArray = [];
     let currentLyricIndex = -1;
     let isSyncedLyrics = false;
+    let lyricsRequestToken = 0;
+    let fsLyricsRequestToken = 0;
     
     const defaultTheme = {
         bg: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #000000 100%)',
@@ -2005,6 +2007,17 @@
     const mobileCurrTime = document.getElementById('mobile-curr-time');
     const mobileDurTime = document.getElementById('mobile-dur-time');
     const mobileLoopBtn = document.getElementById('mobile-loop-btn');
+
+    // --- Utility: Escape HTML to prevent broken formatting/XSS ---
+    function escapeHtml(unsafe) {
+        if (!unsafe) return '';
+        return unsafe.toString()
+             .replace(/&/g, "&amp;")
+             .replace(/</g, "&lt;")
+             .replace(/>/g, "&gt;")
+             .replace(/"/g, "&quot;")
+             .replace(/'/g, "&#039;");
+    }
 
     // --- 3.5 CUSTOM NOTIFICATIONS ---
     function showToast(message, type = 'info') {
@@ -2072,6 +2085,17 @@
         if (fsProgressWrapper) {
             fsProgressWrapper.addEventListener('click', setProgress);
         }
+        
+        document.querySelector('.current-track-info').addEventListener('click', () => {
+            if (window.innerWidth <= 900) {
+                document.getElementById('mobile-player').classList.add('active');
+            }
+        });
+        document.querySelector('.album-art-large').addEventListener('click', () => {
+            if (window.innerWidth <= 900) {
+                document.getElementById('mobile-player').classList.add('active');
+            }
+        });
     });
     
     // --- 5. IMAGE COLOR EXTRACTION ---
@@ -2328,7 +2352,6 @@
             `;
         }).join('');
 
-        // Extract ID3 artwork for songs missing a URL cover
         filteredSongs.forEach(song => {
             if (!song.cover_url && !extractedCoversCache[song.id] && song.mp3_url) {
                 extractArtworkFromMp3(song.mp3_url).then(extractedBase64 => {
@@ -2627,6 +2650,18 @@
         return false;
     }
 
+    const LYRICS_FETCH_TIMEOUT_MS = 8000;
+
+    async function fetchWithTimeout(url, timeoutMs = LYRICS_FETCH_TIMEOUT_MS) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await fetch(url, { signal: controller.signal });
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
     async function fetchSongLyrics(song) {
         if (!song) return null;
         if (lyricsCache[song.id] !== undefined) {
@@ -2638,92 +2673,80 @@
         const cleanedTitle = cleanTrackTitle(rawTitle);
         const cleanedArtist = cleanArtistName(rawArtist);
 
-        // 1. Try direct LRCLIB endpoint with exact/cleaned parameters
-        const directCandidates = [
-            { title: rawTitle, artist: rawArtist },
-            { title: cleanedTitle, artist: rawArtist },
-            { title: cleanedTitle, artist: cleanedArtist }
-        ];
+        let bestMatch = null;
 
-        for (const candidate of directCandidates) {
-            if (!candidate.title || !candidate.artist) continue;
-            try {
-                const getUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(candidate.title)}&artist_name=${encodeURIComponent(candidate.artist)}`;
-                const res = await fetch(getUrl);
+        const isGoodMatch = (item) => {
+            if (!hasValidLyrics(item)) return false;
+            const itemArtist = (item.artistName || '').toLowerCase();
+            const itemTrack = (item.trackName || '').toLowerCase();
+            const tTitle = cleanedTitle.toLowerCase();
+            const tArtist = cleanedArtist.toLowerCase();
+            
+            return (itemTrack.includes(tTitle) || tTitle.includes(itemTrack)) || 
+                   (itemArtist.includes(tArtist) || tArtist.includes(itemArtist));
+        };
+
+        try {
+            // 1. Direct search by track_name and artist_name
+            const searchUrl1 = `https://lrclib.net/api/search?track_name=${encodeURIComponent(cleanedTitle)}&artist_name=${encodeURIComponent(cleanedArtist)}`;
+            let res = await fetchWithTimeout(searchUrl1);
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data) && data.length > 0) {
+                    bestMatch = data.find(isGoodMatch) || data.find(hasValidLyrics);
+                }
+            }
+
+            // 2. Query search
+            if (!bestMatch) {
+                const searchUrl2 = `https://lrclib.net/api/search?q=${encodeURIComponent(cleanedArtist + ' ' + cleanedTitle)}`;
+                res = await fetchWithTimeout(searchUrl2);
                 if (res.ok) {
                     const data = await res.json();
-                    if (hasValidLyrics(data)) {
-                        lyricsCache[song.id] = data;
-                        return data;
+                    if (Array.isArray(data) && data.length > 0) {
+                        bestMatch = data.find(isGoodMatch) || data.find(hasValidLyrics);
+                    }
+                }
+            }
+
+            // 3. Title only search
+            if (!bestMatch) {
+                const searchUrl3 = `https://lrclib.net/api/search?q=${encodeURIComponent(cleanedTitle)}`;
+                res = await fetchWithTimeout(searchUrl3);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data) && data.length > 0) {
+                        bestMatch = data.find(isGoodMatch) || data.find(hasValidLyrics);
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn("LRCLIB fetch error:", e);
+        }
+
+        // 4. Fallback to lyrics.ovh (only plain lyrics)
+        if (!bestMatch) {
+            try {
+                const ovhUrl = `https://api.lyrics.ovh/v1/${encodeURIComponent(cleanedArtist)}/${encodeURIComponent(cleanedTitle)}`;
+                const res = await fetchWithTimeout(ovhUrl);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.lyrics) {
+                        bestMatch = {
+                            plainLyrics: data.lyrics,
+                            syncedLyrics: null,
+                            instrumental: false
+                        };
                     }
                 }
             } catch (e) {
-                // Continue cascade
+                console.warn("Lyrics.ovh fetch error:", e);
             }
         }
 
-        // 2. Search LRCLIB endpoint with multiple queries
-        const searchQueries = [
-            `${cleanedArtist} ${cleanedTitle}`,
-            `${rawArtist} ${cleanedTitle}`,
-            cleanedTitle
-        ];
-
-        for (const query of searchQueries) {
-            if (!query.trim()) continue;
-            try {
-                const searchUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(query)}`;
-                const res = await fetch(searchUrl);
-                if (!res.ok) continue;
-
-                const searchData = await res.json();
-                if (!Array.isArray(searchData) || searchData.length === 0) continue;
-
-                // Filter out entries that have no lyrics content
-                const validResults = searchData.filter(item => hasValidLyrics(item));
-                if (validResults.length === 0) continue;
-
-                const targetArtistLower = cleanedArtist.toLowerCase();
-                const targetTitleLower = cleanedTitle.toLowerCase();
-
-                // Priority ranking:
-                // a. Match artist & exact title
-                let bestMatch = validResults.find(item => {
-                    const itemArtist = (item.artistName || '').toLowerCase();
-                    const itemTrack = (item.trackName || '').toLowerCase();
-                    return itemArtist.includes(targetArtistLower) && itemTrack === targetTitleLower;
-                });
-
-                // b. Match artist & fuzzy title
-                if (!bestMatch) {
-                    bestMatch = validResults.find(item => {
-                        const itemArtist = (item.artistName || '').toLowerCase();
-                        const itemTrack = (item.trackName || '').toLowerCase();
-                        return (itemArtist.includes(targetArtistLower) || targetArtistLower.includes(itemArtist)) &&
-                               (itemTrack.includes(targetTitleLower) || targetTitleLower.includes(itemTrack));
-                    });
-                }
-
-                // c. Match title
-                if (!bestMatch) {
-                    bestMatch = validResults.find(item => {
-                        const itemTrack = (item.trackName || '').toLowerCase();
-                        return itemTrack.includes(targetTitleLower) || targetTitleLower.includes(itemTrack);
-                    });
-                }
-
-                // d. First valid result
-                if (!bestMatch) {
-                    bestMatch = validResults[0];
-                }
-
-                if (bestMatch) {
-                    lyricsCache[song.id] = bestMatch;
-                    return bestMatch;
-                }
-            } catch (e) {
-                // Continue cascade
-            }
+        if (bestMatch) {
+            lyricsCache[song.id] = bestMatch;
+            return bestMatch;
         }
 
         lyricsCache[song.id] = null;
@@ -2745,7 +2768,16 @@
         content.innerHTML = '<div class="loading-spinner" style="display:block; margin: 2rem auto;"></div>';
         modal.classList.add('open');
 
-        const lyricData = await fetchSongLyrics(song);
+        const requestId = ++lyricsRequestToken;
+
+        let lyricData = null;
+        try {
+            lyricData = await fetchSongLyrics(song);
+        } catch (e) {
+            lyricData = null;
+        }
+
+        if (requestId !== lyricsRequestToken) return;
 
         if (!lyricData) {
             content.innerHTML = '<p>Lyrics not found for this song.</p>';
@@ -2756,8 +2788,8 @@
             content.innerHTML = '<p><i>This track is instrumental.</i></p>';
         } else if (lyricData.syncedLyrics && lyricData.syncedLyrics.trim().length > 0) {
             const plainText = lyricData.syncedLyrics
-                .replace(/\[\d{1,3}:\d{2}(?:[\.:]\d{1,3})?\]/g, '')
-                .replace(/^\[[a-z]+:.+\]$/gm, '')
+                .replace(/\[\d+:\d+(?:\.\d+)?\]/g, '') // Only strip out timeline brackets [00:12.34]
+                .replace(/^\[[a-zA-Z]+:.+\]$/gm, '')  // And metadata like [ar:Artist]
                 .trim();
             content.innerText = plainText || lyricData.plainLyrics || 'Lyrics not found for this song.';
         } else if (lyricData.plainLyrics && lyricData.plainLyrics.trim().length > 0) {
@@ -2855,7 +2887,16 @@
 
         container.innerHTML = '<div class="loading-spinner" style="display:block; margin: 3rem auto;"></div>';
 
-        const lyricData = await fetchSongLyrics(song);
+        const requestId = ++fsLyricsRequestToken;
+
+        let lyricData = null;
+        try {
+            lyricData = await fetchSongLyrics(song);
+        } catch (e) {
+            lyricData = null;
+        }
+
+        if (requestId !== fsLyricsRequestToken) return;
 
         if (!lyricData) {
             container.innerHTML = '<div class="fs-lyrics-empty"><i class="fas fa-comment-slash" style="font-size: 2rem; margin-bottom: 0.5rem;"></i><span>Lyrics not found</span></div>';
@@ -2913,111 +2954,117 @@
     }
 
     function renderSyncedLyricsLines(container) {
-        container.innerHTML = parsedLyricsArray.map((line, idx) => `
-            <div class="fs-lyric-line" id="fs-line-${idx}" onclick="seekToLyricTime(${line.time})">
-                ${escapeHtml(line.text || '♪')}
-            </div>
-        `).join('');
-        
+        container.innerHTML = '';
+        parsedLyricsArray.forEach((lyric, index) => {
+            const lineEl = document.createElement('div');
+            lineEl.className = 'fs-lyric-line';
+            lineEl.id = `fs-lyric-${index}`;
+            lineEl.innerText = lyric.text || '♪';
+            lineEl.onclick = () => {
+                if (audio && audio.duration) {
+                    audio.currentTime = lyric.time;
+                    if (!isPlaying) togglePlay();
+                }
+            };
+            container.appendChild(lineEl);
+        });
         currentLyricIndex = -1;
-    }
-
-    function seekToLyricTime(time) {
-        if (audio && !isNaN(time)) {
-            audio.currentTime = time;
-        }
     }
 
     function updateSyncedLyrics(currentTime) {
         if (!isSyncedLyrics || parsedLyricsArray.length === 0) return;
-
-        let activeIdx = -1;
+        
+        let activeIndex = -1;
         for (let i = 0; i < parsedLyricsArray.length; i++) {
             if (currentTime >= parsedLyricsArray[i].time) {
-                activeIdx = i;
+                activeIndex = i;
             } else {
                 break;
             }
         }
-
-        if (activeIdx !== currentLyricIndex) {
+        
+        if (activeIndex !== currentLyricIndex) {
             if (currentLyricIndex !== -1) {
-                const prevEl = document.getElementById(`fs-line-${currentLyricIndex}`);
-                if (prevEl) prevEl.classList.remove('active');
+                const oldEl = document.getElementById(`fs-lyric-${currentLyricIndex}`);
+                if (oldEl) oldEl.classList.remove('active');
             }
-
-            if (activeIdx !== -1) {
-                const currEl = document.getElementById(`fs-line-${activeIdx}`);
-                if (currEl) {
-                    currEl.classList.add('active');
-                    currEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (activeIndex !== -1) {
+                const newEl = document.getElementById(`fs-lyric-${activeIndex}`);
+                if (newEl) {
+                    newEl.classList.add('active');
+                    // Scroll smoothly in fullscreen layout
+                    newEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
             }
-
-            currentLyricIndex = activeIdx;
+            currentLyricIndex = activeIndex;
         }
     }
 
-    function escapeHtml(str) {
-        if (!str) return '';
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
+    // --- 11. EXTRA CRUD AND EVENT HANDLERS ---
+    function toggleFavorite(id, event) {
+        if (event) event.stopPropagation();
+        const songIndex = songs.findIndex(s => s.id === id);
+        if (songIndex > -1) {
+            const newStatus = !songs[songIndex].is_favorite;
+            songs[songIndex].is_favorite = newStatus;
+            
+            _supabase.from('songs').update({ is_favorite: newStatus }).eq('id', id).then(({error}) => {
+                if (error) showToast("Error updating favorite", "error");
+            });
+            
+            renderSongList();
+        }
     }
 
-    // --- 11. MODAL & PLAYLIST ACTIONS ---
+    function deleteSong(id, event) {
+        if (event) event.stopPropagation();
+        showConfirm("Are you sure you want to delete this song?", async () => {
+            const { error } = await _supabase.from('songs').delete().eq('id', id);
+            if (error) {
+                showToast("Error deleting song", "error");
+            } else {
+                showToast("Song deleted", "success");
+                songs = songs.filter(s => s.id !== id);
+                if (currentIndex !== -1 && songs[currentIndex]?.id === id) {
+                    audio.pause();
+                    currentIndex = -1;
+                }
+                applyFilters();
+            }
+        });
+    }
+
     function openModal(mode, id = null, event = null) {
         if (event) event.stopPropagation();
-        
         const modal = document.getElementById('upload-modal');
         const form = document.getElementById('upload-form');
-        const title = document.getElementById('modal-title');
-        
         form.reset();
         document.getElementById('in-id').value = '';
-        document.getElementById('in-new-genre').style.display = 'none';
-        document.getElementById('in-new-mood').style.display = 'none';
-
-        renderPlaylistSelector([]);
-
+        document.getElementById('playlist-selector').innerHTML = '';
+        
         if (mode === 'edit' && id) {
+            document.getElementById('modal-title').innerText = 'Edit Song';
             const song = songs.find(s => s.id === id);
             if (song) {
-                title.innerText = 'Edit Song';
                 document.getElementById('in-id').value = song.id;
                 document.getElementById('in-title').value = song.song_title;
                 document.getElementById('in-artist').value = song.artist;
                 document.getElementById('in-mp3').value = song.mp3_url;
                 document.getElementById('in-cover').value = song.cover_url || '';
+                document.getElementById('in-genre').value = song.genre || 'Pop';
                 
-                const genreSelect = document.getElementById('in-genre');
-                if ([...genreSelect.options].some(o => o.value === song.genre)) {
-                    genreSelect.value = song.genre;
-                } else {
-                    genreSelect.value = 'new_genre_option';
-                    const newGenreIn = document.getElementById('in-new-genre');
-                    newGenreIn.style.display = 'block';
-                    newGenreIn.value = song.genre || '';
-                }
-
                 const moodSelect = document.getElementById('in-mood');
                 if ([...moodSelect.options].some(o => o.value === song.mood)) {
                     moodSelect.value = song.mood || '';
-                } else if (song.mood) {
-                    moodSelect.value = 'new_mood_option';
-                    const newMoodIn = document.getElementById('in-new-mood');
-                    newMoodIn.style.display = 'block';
-                    newMoodIn.value = song.mood;
                 }
-
-                renderPlaylistSelector(song.playlists);
+                
+                song.playlists.forEach(pl => {
+                    if (pl !== 'General') addPlaylistChip(pl, true);
+                });
             }
         } else {
-            title.innerText = 'Add New Song';
+            document.getElementById('modal-title').innerText = 'Add New Song';
         }
-
         modal.classList.add('open');
     }
 
@@ -3025,206 +3072,134 @@
         document.getElementById('upload-modal').classList.remove('open');
     }
 
-    function renderPlaylistSelector(selectedPlaylists = []) {
-        const existingLists = [...new Set(songs.flatMap(s => s.playlists))].filter(p => p !== 'All' && p !== 'Favorites');
-        if (!existingLists.includes('General')) existingLists.unshift('General');
-        
-        const allPlaylists = [...new Set([...existingLists, ...selectedPlaylists])];
-
-        playlistSelectorEl.innerHTML = allPlaylists.map(pl => `
-            <div class="playlist-chip ${selectedPlaylists.includes(pl) ? 'selected' : ''}" 
-                 onclick="togglePlaylistChip(this, '${escapeHtml(pl)}')">
-                ${escapeHtml(pl)}
-            </div>
-        `).join('');
-    }
-
-    function togglePlaylistChip(chip, name) {
-        chip.classList.toggle('selected');
-    }
-
-    function addPlaylistChip(name) {
-        name = name.trim();
-        if (!name) return;
-        
-        const existing = [...playlistSelectorEl.querySelectorAll('.playlist-chip')].find(c => c.innerText.trim() === name);
-        if (existing) {
-            existing.classList.add('selected');
-        } else {
-            const chip = document.createElement('div');
-            chip.className = 'playlist-chip selected';
-            chip.innerText = name;
-            chip.onclick = function() { togglePlaylistChip(this, name); };
-            playlistSelectorEl.appendChild(chip);
-        }
-    }
-
     function checkNewGenre(select) {
-        const newGenreIn = document.getElementById('in-new-genre');
+        const input = document.getElementById('in-new-genre');
         if (select.value === 'new_genre_option') {
-            newGenreIn.style.display = 'block';
-            newGenreIn.required = true;
+            input.style.display = 'block';
+            input.required = true;
         } else {
-            newGenreIn.style.display = 'none';
-            newGenreIn.required = false;
+            input.style.display = 'none';
+            input.required = false;
         }
     }
 
     function checkNewMood(select) {
-        const newMoodIn = document.getElementById('in-new-mood');
+        const input = document.getElementById('in-new-mood');
         if (select.value === 'new_mood_option') {
-            newMoodIn.style.display = 'block';
-            newMoodIn.required = true;
+            input.style.display = 'block';
+            input.required = true;
         } else {
-            newMoodIn.style.display = 'none';
-            newMoodIn.required = false;
+            input.style.display = 'none';
+            input.required = false;
+        }
+    }
+
+    function addPlaylistChip(val, preselected = false) {
+        val = val.trim();
+        if (!val) return;
+        const container = document.getElementById('playlist-selector');
+        const exists = [...container.children].find(c => c.dataset.val === val);
+        if (!exists) {
+            const chip = document.createElement('div');
+            chip.className = `playlist-chip ${preselected ? 'selected' : 'selected'}`;
+            chip.dataset.val = val;
+            chip.innerText = val;
+            chip.onclick = function() {
+                this.classList.toggle('selected');
+            };
+            container.appendChild(chip);
         }
     }
 
     async function handleUpload(e) {
         e.preventDefault();
-        
-        const saveBtn = document.getElementById('save-btn');
+        const btn = document.getElementById('save-btn');
         const spinner = document.getElementById('save-spinner');
-        saveBtn.querySelector('.btn-text').style.display = 'none';
+        const btnText = btn.querySelector('.btn-text');
+        
+        btn.disabled = true;
         spinner.style.display = 'block';
+        btnText.style.display = 'none';
 
         const id = document.getElementById('in-id').value;
-        const song_title = document.getElementById('in-title').value.trim();
-        const artist = document.getElementById('in-artist').value.trim();
-        const mp3_url = document.getElementById('in-mp3').value.trim();
-        const cover_url = document.getElementById('in-cover').value.trim();
+        const title = document.getElementById('in-title').value;
+        const artist = document.getElementById('in-artist').value;
+        const mp3 = document.getElementById('in-mp3').value;
+        const cover = document.getElementById('in-cover').value;
         
         let genre = document.getElementById('in-genre').value;
-        if (genre === 'new_genre_option') {
-            genre = document.getElementById('in-new-genre').value.trim();
-        }
-
+        if (genre === 'new_genre_option') genre = document.getElementById('in-new-genre').value;
+        
         let mood = document.getElementById('in-mood').value;
-        if (mood === 'new_mood_option') {
-            mood = document.getElementById('in-new-mood').value.trim();
-        }
+        if (mood === 'new_mood_option') mood = document.getElementById('in-new-mood').value;
 
-        const selectedChips = playlistSelectorEl.querySelectorAll('.playlist-chip.selected');
-        const playlists = Array.from(selectedChips).map(c => c.innerText.trim());
-        if (playlists.length === 0) playlists.push('General');
+        const selectedPlaylists = [...document.getElementById('playlist-selector').children]
+            .filter(c => c.classList.contains('selected'))
+            .map(c => c.dataset.val);
+        
+        if (selectedPlaylists.length === 0) selectedPlaylists.push('General');
 
         const payload = {
-            song_title,
-            artist,
-            mp3_url,
-            cover_url: cover_url || null,
-            genre,
-            mood: mood || null,
-            playlist: JSON.stringify(playlists)
+            song_title: title,
+            artist: artist,
+            mp3_url: mp3,
+            cover_url: cover,
+            genre: genre,
+            mood: mood,
+            playlist: JSON.stringify(selectedPlaylists)
         };
 
-        try {
-            if (id) {
-                const { error } = await _supabase
-                    .from('songs')
-                    .update(payload)
-                    .eq('id', id);
-                if (error) throw error;
-                showToast("Song updated successfully!", "success");
-            } else {
-                const { error } = await _supabase
-                    .from('songs')
-                    .insert([payload]);
-                if (error) throw error;
-                showToast("New song added successfully!", "success");
-            }
-            
+        let error;
+        if (id) {
+            const res = await _supabase.from('songs').update(payload).eq('id', id);
+            error = res.error;
+        } else {
+            const res = await _supabase.from('songs').insert([payload]);
+            error = res.error;
+        }
+
+        btn.disabled = false;
+        spinner.style.display = 'none';
+        btnText.style.display = 'block';
+
+        if (error) {
+            showToast("Error saving song: " + error.message, "error");
+        } else {
+            showToast("Song saved successfully!", "success");
             closeModal();
             fetchSongs();
-        } catch (err) {
-            showToast("Error saving song: " + err.message, "error");
-        } finally {
-            saveBtn.querySelector('.btn-text').style.display = 'inline';
-            spinner.style.display = 'none';
         }
-    }
-
-    async function toggleFavorite(id, event) {
-        if (event) event.stopPropagation();
-        
-        const song = songs.find(s => s.id === id);
-        if (!song) return;
-
-        const newFavState = !song.is_favorite;
-
-        try {
-            const { error } = await _supabase
-                .from('songs')
-                .update({ is_favorite: newFavState })
-                .eq('id', id);
-
-            if (error) throw error;
-
-            song.is_favorite = newFavState;
-            applyFilters();
-            showToast(newFavState ? "Added to Favorites" : "Removed from Favorites");
-        } catch (err) {
-            showToast("Failed to update favorite status", "error");
-        }
-    }
-
-    function deleteSong(id, event) {
-        if (event) event.stopPropagation();
-        
-        showConfirm("Are you sure you want to delete this track?", async () => {
-            try {
-                const { error } = await _supabase
-                    .from('songs')
-                    .delete()
-                    .eq('id', id);
-
-                if (error) throw error;
-
-                songs = songs.filter(s => s.id !== id);
-                applyFilters();
-                showToast("Song deleted", "success");
-                
-                if (currentIndex !== -1 && songs[currentIndex]?.id === id) {
-                    audio.pause();
-                    isPlaying = false;
-                    updatePlayButtons();
-                }
-            } catch (err) {
-                showToast("Failed to delete song: " + err.message, "error");
-            }
-        });
     }
 
     function openRelatedModal() {
         const modal = document.getElementById('related-modal');
         const list = document.getElementById('related-list');
+        list.innerHTML = '';
         
-        if (currentIndex < 0 || !songs[currentIndex]) {
-            showToast("No track selected", "error");
-            return;
-        }
-
-        const current = songs[currentIndex];
-        const related = songs.filter(s => s.id !== current.id && (s.genre === current.genre || s.artist === current.artist));
-
-        if (related.length === 0) {
-            list.innerHTML = '<div class="empty-state">No related tracks found.</div>';
+        if (currentIndex === -1 || !songs[currentIndex]) {
+            list.innerHTML = '<div class="empty-state">Play a song to see related tracks.</div>';
         } else {
-            list.innerHTML = related.map(song => {
-                const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/150/1e293b/ffffff?text=Music';
-                return `
-                    <div class="related-item" onclick="playSongById('${song.id}')">
-                        <img src="${coverSrc}" class="song-thumb" alt="art">
-                        <div class="song-details">
-                            <div class="song-title">${escapeHtml(song.song_title)}</div>
-                            <div class="song-artist">${escapeHtml(song.artist)}</div>
+            const currentSong = songs[currentIndex];
+            const related = songs.filter(s => s.id !== currentSong.id && (s.artist === currentSong.artist || s.genre === currentSong.genre)).slice(0, 5);
+            
+            if (related.length === 0) {
+                list.innerHTML = '<div class="empty-state">No related tracks found.</div>';
+            } else {
+                list.innerHTML = related.map((song) => {
+                    const actualIndex = songs.findIndex(s => s.id === song.id);
+                    const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/150/1e293b/ffffff?text=Music';
+                    return `
+                        <div class="related-item" onclick="closeRelatedModal(); loadSong(${actualIndex}); playAudio();">
+                            <img src="${coverSrc}" class="song-thumb" alt="art">
+                            <div class="song-details">
+                                <div class="song-title">${escapeHtml(song.song_title)}</div>
+                                <div class="song-artist">${escapeHtml(song.artist)}</div>
+                            </div>
                         </div>
-                    </div>
-                `;
-            }).join('');
+                    `;
+                }).join('');
+            }
         }
-
         modal.classList.add('open');
     }
 
@@ -3232,17 +3207,8 @@
         document.getElementById('related-modal').classList.remove('open');
     }
 
-    function playSongById(id) {
-        closeRelatedModal();
-        const actualIndex = songs.findIndex(s => s.id === id);
-        if (actualIndex !== -1) {
-            loadSong(actualIndex);
-            playAudio();
-        }
-    }
-
     function closeMobilePlayer() {
-        if (mobilePlayer) mobilePlayer.classList.remove('active');
+        document.getElementById('mobile-player').classList.remove('active');
     }
 </script>
 </body>
