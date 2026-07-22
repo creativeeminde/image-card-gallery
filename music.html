@@ -2320,8 +2320,8 @@
     let fsLyricsRequestToken = 0;
     
     const defaultTheme = {
-        bg: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #000000 100%)',
-        primary: '#3b82f6'
+        bg: 'linear-gradient(135deg, #171717 0%, #0a0a0a 50%, #000000 100%)',
+        primary: '#ffffff'
     };
     
     const audio = new Audio();
@@ -2344,6 +2344,7 @@
 
     const mobilePlayer = document.getElementById('mobile-player');
     const mobileCover = document.getElementById('mobile-cover');
+    const mobileCoverBlur = document.getElementById('mobile-cover-blur');
     const mobileTitle = document.getElementById('mobile-title');
     const mobileArtist = document.getElementById('mobile-artist');
     const mobilePlayIcon = document.getElementById('mobile-play-icon');
@@ -2448,24 +2449,15 @@
             ctx.drawImage(mainCover, 0, 0, 1, 1);
             const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
             
-            const bgR = Math.floor(r * 0.5);
-            const bgG = Math.floor(g * 0.5);
-            const bgB = Math.floor(b * 0.5);
-            const bgGradient = `linear-gradient(135deg, rgb(${bgR},${bgG},${bgB}) 0%, #000000 100%)`;
+            // Calculate luminosity for monochrome depth
+            const gray = Math.floor((r * 299 + g * 587 + b * 114) / 1000);
+            const bgTone = Math.floor(gray * 0.15); 
+            const bgGradient = `linear-gradient(135deg, rgb(${bgTone + 10},${bgTone + 10},${bgTone + 10}) 0%, #000000 100%)`;
             
-            const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-            let primaryColor = `rgb(${r},${g},${b})`;
-            if (brightness < 120) {
-               const lightR = Math.min(r + 100, 255);
-               const lightG = Math.min(g + 100, 255);
-               const lightB = Math.min(b + 100, 255);
-               primaryColor = `rgb(${lightR},${lightG},${lightB})`;
-            }
-
             document.documentElement.style.setProperty('--bg-gradient', bgGradient);
-            document.documentElement.style.setProperty('--primary-color', primaryColor);
-            document.documentElement.style.setProperty('--secondary-color', primaryColor);
-            document.documentElement.style.setProperty('--glass-bg', `rgba(${r}, ${g}, ${b}, 0.05)`);
+            document.documentElement.style.setProperty('--primary-color', '#ffffff');
+            document.documentElement.style.setProperty('--secondary-color', '#a3a3a3');
+            document.documentElement.style.setProperty('--glass-bg', `rgba(${bgTone + 20}, ${bgTone + 20}, ${bgTone + 20}, 0.05)`);
         } catch (e) { resetTheme(); }
     });
     
@@ -2477,7 +2469,7 @@
             resetTheme();
         } else {
             if (!this.src.includes('via.placeholder.com')) {
-                this.src = 'https://via.placeholder.com/300/1e293b/ffffff?text=Music';
+                this.src = 'https://via.placeholder.com/300/1a1a1a/ffffff?text=Music';
             }
             resetTheme();
         }
@@ -2486,8 +2478,8 @@
     function resetTheme() {
         document.documentElement.style.setProperty('--bg-gradient', defaultTheme.bg);
         document.documentElement.style.setProperty('--primary-color', defaultTheme.primary);
-        document.documentElement.style.setProperty('--secondary-color', '#60a5fa');
-        document.documentElement.style.setProperty('--glass-bg', 'rgba(255, 255, 255, 0.05)');
+        document.documentElement.style.setProperty('--secondary-color', '#a3a3a3');
+        document.documentElement.style.setProperty('--glass-bg', 'rgba(255, 255, 255, 0.03)');
     }
 
     function arrayBufferToBase64(dataArray) {
@@ -2580,7 +2572,7 @@
         
         playlistTabsEl.innerHTML = playlists.map(pl => `
             <div class="tab ${currentPlaylist === pl ? 'active' : ''}" onclick="filterPlaylist('${pl}')">
-                ${pl === 'Favorites' ? '<i class="fas fa-star" style="color:#fbbf24; margin-right:4px;"></i>' : ''}${pl}
+                ${pl === 'Favorites' ? '<i class="fas fa-star" style="color:#ffffff; margin-right:4px; text-shadow: 0 0 8px rgba(255,255,255,0.4);"></i>' : ''}${pl}
             </div>
         `).join('');
     }
@@ -2660,7 +2652,7 @@
 
         songListEl.innerHTML = filteredSongs.map((song, index) => {
             const isCurrent = currentIndex !== -1 && songs[currentIndex]?.id === song.id;
-            const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/150/1e293b/ffffff?text=Music';
+            const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/150/1a1a1a/ffffff?text=Music';
             const isFav = song.playlists.includes('Favorites');
             
             return `
@@ -2693,7 +2685,7 @@
                         </div>
                     </div>
                     <div class="play-icon-overlay">
-                        <i class="fas ${isCurrent && isPlaying ? 'fa-pause' : 'fa-play'}" style="color:white; font-size: 0.8rem"></i>
+                        <i class="fas ${isCurrent && isPlaying ? 'fa-pause' : 'fa-play'}" style="color:black; font-size: 0.8rem"></i>
                     </div>
                 </div>
             `;
@@ -2709,6 +2701,7 @@
                         if (currentIndex !== -1 && songs[currentIndex]?.id === song.id) {
                             mainCover.src = extractedBase64;
                             if (mobileCover) mobileCover.src = extractedBase64;
+                            if (mobileCoverBlur) mobileCoverBlur.src = extractedBase64;
                             const fsCover = document.getElementById('fs-cover');
                             if (fsCover) fsCover.src = extractedBase64;
                         }
@@ -2732,13 +2725,14 @@
         audio.src = song.mp3_url;
         audio.load();
 
-        const activeCover = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/300/1e293b/ffffff?text=Music';
+        const activeCover = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/300/1a1a1a/ffffff?text=Music';
 
         mainCover.src = activeCover;
         mainTitle.innerText = song.song_title;
         mainArtist.innerText = song.artist;
 
         if (mobileCover) mobileCover.src = activeCover;
+        if (mobileCoverBlur) mobileCoverBlur.src = activeCover;
         if (mobileTitle) mobileTitle.innerText = song.song_title;
         if (mobileArtist) mobileArtist.innerText = song.artist;
 
@@ -2770,11 +2764,10 @@
 
     function playFilteredSong(filteredIndex) {
         const selectedSong = filteredSongs[filteredIndex];
-        const actualIndex = songs.findIndex(s => s.id === selectedSong.id);
+        const actualIndex = songs.findIndex(s => String(s.id) === String(selectedSong.id));
         
         if (actualIndex !== -1) {
             if (currentIndex === actualIndex) {
-                // On mobile: if tapping the active song while the player is hidden, just open the player.
                 if (window.innerWidth <= 900 && !document.getElementById('mobile-player').classList.contains('active')) {
                     document.getElementById('mobile-player').classList.add('active');
                 } else {
@@ -2784,7 +2777,6 @@
                 loadSong(actualIndex);
                 playAudio();
                 
-                // Automatically open the mobile player when a new song starts
                 if (window.innerWidth <= 900) {
                     document.getElementById('mobile-player').classList.add('active');
                 }
@@ -3162,13 +3154,11 @@
     let fsLyricsSyncFrameId = null;
     let lastSyncTime = -1;
 
-    // Triggered if user uses Escape key to exit native fullscreen explicitly
     function handleNativeFullscreenChange() {
         const isNativeFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
         const trueFsIcon = document.getElementById('true-fs-icon');
         const trueFsBtn = document.getElementById('true-fs-btn');
 
-        // Update the True Fullscreen button appearance dynamically based on state
         if (isNativeFullscreen) {
             if (trueFsIcon) trueFsIcon.className = 'fas fa-compress';
             if (trueFsBtn) trueFsBtn.title = 'Exit True Fullscreen';
@@ -3178,7 +3168,6 @@
         }
     }
 
-    // Toggles the Virtual CSS-based Player View
     function toggleFullscreenMode() {
         const fsPlayer = document.getElementById('fullscreen-player');
         if (!fsPlayer) return;
@@ -3190,7 +3179,6 @@
         }
     }
 
-    // Enters the Virtual Player View (Does not trigger native fullscreen here anymore)
     function enterFullscreenMode() {
         const fsPlayer = document.getElementById('fullscreen-player');
         if (!fsPlayer) return;
@@ -3199,11 +3187,11 @@
 
         if (currentIndex !== -1 && songs[currentIndex]) {
             const song = songs[currentIndex];
-            const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/300/1e293b/ffffff?text=Music';
+            const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/300/1a1a1a/ffffff?text=Music';
             updateFullscreenPlayerInfo(song, coverSrc);
             loadFullscreenLyrics(song);
         } else {
-            updateFullscreenPlayerInfo(null, 'https://via.placeholder.com/300/1e293b/ffffff?text=Music');
+            updateFullscreenPlayerInfo(null, 'https://via.placeholder.com/300/1a1a1a/ffffff?text=Music');
             loadFullscreenLyrics(null);
         }
 
@@ -3214,20 +3202,17 @@
         startFsLyricsSync();
     }
 
-    // Toggles the True OS-level Fullscreen mode
     function toggleNativeFullscreen() {
         const fsPlayer = document.getElementById('fullscreen-player');
         const isNativeFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
 
         if (!isNativeFullscreen) {
-            // Request native fullscreen on the virtual player element to hide OS chrome
             if (fsPlayer.requestFullscreen) {
                 fsPlayer.requestFullscreen().catch(err => console.warn(err));
             } else if (fsPlayer.webkitRequestFullscreen) {
                 fsPlayer.webkitRequestFullscreen();
             }
         } else {
-            // Exit native fullscreen
             if (document.exitFullscreen) {
                 document.exitFullscreen().catch(err => console.warn(err));
             } else if (document.webkitExitFullscreen) {
@@ -3236,12 +3221,10 @@
         }
     }
 
-    // Exits both Virtual Player View and Native Fullscreen simultaneously
     function exitFullscreenMode() {
         const fsPlayer = document.getElementById('fullscreen-player');
         if (!fsPlayer) return;
 
-        // If native fullscreen is currently active, back out of it
         if (document.fullscreenElement || document.webkitFullscreenElement) {
             if (document.exitFullscreen) {
                 document.exitFullscreen().catch(err => console.warn(err));
@@ -3428,7 +3411,6 @@
         if (!isSyncedLyrics || parsedLyricsArray.length === 0) return;
         
         let activeIndex = -1;
-        // Adding 0.2s offset creates a more natural leading timing feeling to humans reading it
         for (let i = 0; i < parsedLyricsArray.length; i++) {
             if (currentTime >= parsedLyricsArray[i].time - 0.2) {
                 activeIndex = i;
@@ -3438,13 +3420,11 @@
         }
         
         if (activeIndex !== currentLyricIndex) {
-            // Un-highlight previous
             if (currentLyricIndex !== -1) {
                 const oldEl = document.getElementById(`fs-lyric-${currentLyricIndex}`);
                 if (oldEl) oldEl.classList.remove('active');
             }
             
-            // Highlight and perfectly scroll active lyric utilizing precise container offset math
             if (activeIndex !== -1) {
                 const newEl = document.getElementById(`fs-lyric-${activeIndex}`);
                 if (newEl) {
@@ -3454,7 +3434,6 @@
                     if (container) {
                         const containerHalfHeight = container.clientHeight / 2;
                         const elementHalfHeight = newEl.clientHeight / 2;
-                        // Position mathematically relative to nearest positioned ancestor (.fs-lyrics-container)
                         const scrollPos = newEl.offsetTop - containerHalfHeight + elementHalfHeight;
                         
                         container.scrollTo({
@@ -3485,7 +3464,6 @@
             song.playlists = updatedPlaylists;
             song.is_favorite = newStatus;
             
-            // Backup favorite status inside the JSON playlist column to bypass missing column errors
             _supabase.from('songs')
                 .update({ playlist: JSON.stringify(updatedPlaylists) })
                 .eq('id', song.id)
@@ -3496,13 +3474,11 @@
                     }
                 });
                 
-            // Silently attempt legacy column if it exists to maintain sync
             _supabase.from('songs')
                 .update({ is_favorite: newStatus })
                 .eq('id', song.id)
                 .then(() => {}).catch(() => {});
             
-            // Re-render library immediately (will vanish from Favorites tab smoothly)
             applyFilters();
             
             const artistModal = document.getElementById('artist-modal');
@@ -3731,7 +3707,7 @@
             } else {
                 list.innerHTML = related.map((song) => {
                     const actualIndex = songs.findIndex(s => s.id === song.id);
-                    const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/150/1e293b/ffffff?text=Music';
+                    const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/150/1a1a1a/ffffff?text=Music';
                     const isFav = song.playlists.includes('Favorites');
                     return `
                         <div class="related-item" onclick="closeRelatedModal(); loadSong(${actualIndex}); playAudio();">
@@ -3774,11 +3750,10 @@
         const listEl = document.getElementById('artist-song-list');
         const modalContent = modal.querySelector('.modal');
         
-        // Reset scroll position to top
         modalContent.scrollTop = 0;
         
         nameEl.innerText = artistName;
-        imgEl.src = 'https://via.placeholder.com/1000/1e293b/ffffff?text=Artist';
+        imgEl.src = 'https://via.placeholder.com/1000/1a1a1a/ffffff?text=Artist';
         listEl.innerHTML = '<div class="loading-container"><div class="loading-spinner" style="display:block"></div></div>';
         document.getElementById('artist-more-section').style.display = 'none';
         
@@ -3789,13 +3764,11 @@
         
         currentArtistSongs = songs.filter(s => normalizeArtist(s.artist) === normTarget);
         
-        // Fallback handler directly on image 
         imgEl.onerror = function() {
             this.onerror = null;
-            this.src = 'https://via.placeholder.com/1000/1e293b/ffffff?text=Artist';
+            this.src = 'https://via.placeholder.com/1000/1a1a1a/ffffff?text=Artist';
         };
         
-        // Fetch hero profile picture
         fetchArtistImageJSONP(artistName, 'artist-hero-img');
         
         renderArtistSongs(currentArtistSongs);
@@ -3839,7 +3812,6 @@
         
         const normCurrent = currentArtistName.replace(/\s+/g, ' ').trim().toLowerCase();
         
-        // Extract unique artists from library (preserve original casing)
         const uniqueArtistsSet = new Set();
         songs.forEach(s => {
             if (s.artist) {
@@ -3850,7 +3822,6 @@
             }
         });
         
-        // Filter out casing duplicates uniquely by normalized name
         const uniqueArtists = [];
         const seenNorms = new Set();
         for (let artist of uniqueArtistsSet) {
@@ -3866,7 +3837,6 @@
             return;
         }
         
-        // Shuffle and slice top 10
         uniqueArtists.sort(() => 0.5 - Math.random());
         const selectedArtists = uniqueArtists.slice(0, 10);
         
@@ -3874,12 +3844,11 @@
         
         moreContainer.innerHTML = selectedArtists.map((artist, idx) => `
             <div class="artist-carousel-item" onclick="openArtistPage('${escapeHtml(artist).replace(/&#039;/g, "\\'")}', event)">
-                <img id="carousel-img-${idx}" src="https://via.placeholder.com/300/1e293b/ffffff?text=Artist" alt="${escapeHtml(artist)}" onerror="this.onerror=null; this.src='https://via.placeholder.com/300/1e293b/ffffff?text=Artist';">
+                <img id="carousel-img-${idx}" src="https://via.placeholder.com/300/1a1a1a/ffffff?text=Artist" alt="${escapeHtml(artist)}" onerror="this.onerror=null; this.src='https://via.placeholder.com/300/1a1a1a/ffffff?text=Artist';">
                 <span>${escapeHtml(artist)}</span>
             </div>
         `).join('');
         
-        // Fetch circular images dynamically
         selectedArtists.forEach((artist, idx) => {
             fetchArtistImageJSONP(artist, `carousel-img-${idx}`);
         });
@@ -3898,7 +3867,7 @@
 
         listEl.innerHTML = artistSongs.map((song) => {
             const isCurrent = currentIndex !== -1 && songs[currentIndex]?.id === song.id;
-            const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/150/1e293b/ffffff?text=Music';
+            const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/150/1a1a1a/ffffff?text=Music';
             const isFav = song.playlists.includes('Favorites');
             
             return `
@@ -3929,7 +3898,7 @@
                         </div>
                     </div>
                     <div class="play-icon-overlay">
-                        <i class="fas ${isCurrent && isPlaying ? 'fa-pause' : 'fa-play'}" style="color:white; font-size: 0.8rem"></i>
+                        <i class="fas ${isCurrent && isPlaying ? 'fa-pause' : 'fa-play'}" style="color:black; font-size: 0.8rem"></i>
                     </div>
                 </div>
             `;
@@ -3949,6 +3918,7 @@
                         if (currentIndex !== -1 && songs[currentIndex]?.id === song.id) {
                             mainCover.src = extractedBase64;
                             if (mobileCover) mobileCover.src = extractedBase64;
+                            if (mobileCoverBlur) mobileCoverBlur.src = extractedBase64;
                             const fsCover = document.getElementById('fs-cover');
                             if (fsCover) fsCover.src = extractedBase64;
                         }
@@ -3959,12 +3929,10 @@
     }
 
     function playFromArtistPage(songId) {
-        // Robust check converting both comparison elements to strings to avoid database type-mismatches
         const actualIndex = songs.findIndex(s => String(s.id) === String(songId));
         
         if (actualIndex !== -1) {
             if (currentIndex === actualIndex) {
-                // If on mobile and tapping the active song, optionally pop open the player
                 if (window.innerWidth <= 900 && !document.getElementById('mobile-player').classList.contains('active')) {
                     document.getElementById('mobile-player').classList.add('active');
                 } else {
@@ -3974,7 +3942,6 @@
                 loadSong(actualIndex);
                 playAudio();
                 
-                // Automatically open the mobile player when a new song starts
                 if (window.innerWidth <= 900) {
                     document.getElementById('mobile-player').classList.add('active');
                 }
