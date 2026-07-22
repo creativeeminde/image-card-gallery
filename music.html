@@ -1096,6 +1096,21 @@
             color: var(--primary-color);
         }
 
+        .mobile-only-icon { display: none; }
+        .desktop-only-icon { display: inline-block; }
+        
+        .lyrics-scroll-wrapper {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            overflow: hidden;
+            width: 100%;
+        }
+        
+        .mobile-lyrics-header, .mobile-lyrics-controls {
+            display: none;
+        }
+
         .mobile-player {
             display: none; 
         }
@@ -2141,6 +2156,86 @@
                 letter-spacing: 1px;
             }
         }
+        
+        /* New Mobile Lyrics Layout overrides */
+        @media (max-width: 900px) {
+            #lyrics-modal.modal-overlay {
+                background: #090d16;
+            }
+            #lyrics-modal .modal {
+                padding: 0;
+            }
+            
+            .mobile-only-icon { display: inline-block; }
+            .desktop-only-icon { display: none; }
+            
+            .desktop-lyrics-title, .desktop-lyrics-actions { display: none !important; }
+            
+            .lyrics-scroll-wrapper {
+                flex: 1;
+                width: 100%;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                padding: 4rem 1.5rem 12rem 1.5rem; 
+                scroll-behavior: smooth;
+            }
+            .lyrics-scroll-wrapper::-webkit-scrollbar { display: none; }
+            
+            .mobile-lyrics-header {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                margin-bottom: 2rem;
+                width: 100%;
+                text-align: center;
+            }
+            .mobile-lyrics-header img {
+                width: 240px;
+                height: 240px;
+                border-radius: 20px;
+                margin-bottom: 1.2rem;
+                box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+                object-fit: cover;
+            }
+            .mobile-lyrics-header h2 {
+                font-size: 1.5rem;
+                font-weight: 700;
+                color: white;
+                margin-bottom: 0.3rem;
+                text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            }
+            .mobile-lyrics-header p {
+                font-size: 1.1rem;
+                color: rgba(255,255,255,0.7);
+            }
+            
+            /* Override old lyrics rules */
+            #lyrics-modal .lyrics-content {
+                flex: none;
+                text-align: center;
+                overflow: visible;
+                height: auto;
+                width: 100%;
+                padding: 0;
+                padding-bottom: 50vh; 
+            }
+            
+            .mobile-lyrics-controls {
+                display: block;
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                width: 100%;
+                background: rgba(9, 13, 22, 0.95);
+                backdrop-filter: blur(20px);
+                -webkit-backdrop-filter: blur(20px);
+                border-top: 1px solid rgba(255,255,255,0.05);
+                padding: 1rem 1.5rem 2.5rem 1.5rem;
+                z-index: 20;
+            }
+        }
     </style>
 </head>
 <body>
@@ -2226,12 +2321,44 @@
     <!-- Lyrics Modal -->
     <div class="modal-overlay" id="lyrics-modal">
         <div class="modal">
-            <button class="close-lyrics-absolute" onclick="closeLyricsModal()"><i class="fas fa-times"></i></button>
-            <h2 id="lyrics-title">Lyrics</h2>
-            <div id="lyrics-content" class="lyrics-content">
+            <button class="close-lyrics-absolute" onclick="closeLyricsModal()">
+                <i class="fas fa-chevron-down mobile-only-icon"></i>
+                <i class="fas fa-times desktop-only-icon"></i>
+            </button>
+            <h2 id="lyrics-title" class="desktop-lyrics-title">Lyrics</h2>
+            
+            <div class="lyrics-scroll-wrapper" id="lyrics-scroll-wrapper">
+                <div class="mobile-lyrics-header">
+                    <img id="mobile-lyrics-cover" src="https://via.placeholder.com/150/1e293b/ffffff?text=Music" alt="Cover">
+                    <h2 id="mobile-lyrics-title">Song Title</h2>
+                    <p id="mobile-lyrics-artist">Artist Name</p>
+                </div>
+                
+                <div id="lyrics-content" class="lyrics-content">
+                </div>
             </div>
-            <div class="modal-actions">
+            
+            <div class="modal-actions desktop-lyrics-actions">
                 <button type="button" class="btn-cancel" onclick="closeLyricsModal()">Close</button>
+            </div>
+            
+            <div class="mobile-lyrics-controls">
+                <div class="mobile-progress">
+                    <div class="progress-bar-wrapper" id="lyrics-progress-container">
+                        <div class="progress-bar" id="lyrics-progress-bar"></div>
+                    </div>
+                    <div class="mobile-time-info">
+                        <span id="lyrics-curr-time">0:00</span>
+                        <span id="lyrics-dur-time">0:00</span>
+                    </div>
+                </div>
+                <div class="mobile-controls" style="margin-bottom: 0; padding: 0;">
+                    <button class="mobile-ctrl-btn" onclick="prevSong()"><i class="fas fa-step-backward"></i></button>
+                    <button class="mobile-play-btn" onclick="togglePlay()" style="width: 60px; height: 60px; font-size: 1.5rem;">
+                        <i class="fas fa-play" id="lyrics-play-icon"></i>
+                    </button>
+                    <button class="mobile-ctrl-btn" onclick="nextSong()"><i class="fas fa-step-forward"></i></button>
+                </div>
             </div>
         </div>
     </div>
@@ -2685,6 +2812,9 @@
         audio.addEventListener('ended', handleSongEnd);
         progressContainer.addEventListener('click', setProgress);
         mobileProgressContainer.addEventListener('click', setProgress);
+        
+        const lyricsProgressWrapper = document.getElementById('lyrics-progress-container');
+        if (lyricsProgressWrapper) lyricsProgressWrapper.addEventListener('click', setProgress);
 
         const tabContainer = document.getElementById('tab-views-container');
         if (tabContainer) {
@@ -2863,6 +2993,8 @@
                         if (currentIndex !== -1 && songs[currentIndex]?.id === song.id) {
                             mainCover.src = extractedBase64;
                             if (mobileCover) mobileCover.src = extractedBase64;
+                            const lyricsCover = document.getElementById('mobile-lyrics-cover');
+                            if (lyricsCover) lyricsCover.src = extractedBase64;
                             const fsCover = document.getElementById('fs-cover');
                             if (fsCover) fsCover.src = extractedBase64;
                         }
@@ -2889,6 +3021,13 @@
         if (mobileTitle) mobileTitle.innerText = song.song_title;
         if (mobileArtist) mobileArtist.innerText = song.artist;
         if (mobileCover) mobileCover.src = coverSrc;
+        
+        const lyricsCover = document.getElementById('mobile-lyrics-cover');
+        const lyricsTitle = document.getElementById('mobile-lyrics-title');
+        const lyricsArtist = document.getElementById('mobile-lyrics-artist');
+        if (lyricsTitle) lyricsTitle.innerText = song.song_title;
+        if (lyricsArtist) lyricsArtist.innerText = song.artist;
+        if (lyricsCover) lyricsCover.src = coverSrc;
         
         const fsTitle = document.getElementById('fs-title');
         const fsArtist = document.getElementById('fs-artist');
@@ -2940,6 +3079,10 @@
     function updatePlayIcons() {
         if (playBtnIcon) playBtnIcon.className = isPlaying ? 'fas fa-pause' : 'fas fa-play';
         if (mobilePlayIcon) mobilePlayIcon.className = isPlaying ? 'fas fa-pause' : 'fas fa-play';
+        
+        const lyricsPlayIcon = document.getElementById('lyrics-play-icon');
+        if (lyricsPlayIcon) lyricsPlayIcon.className = isPlaying ? 'fas fa-pause' : 'fas fa-play';
+        
         const fsPlayIcon = document.getElementById('fs-play-icon');
         if (fsPlayIcon) fsPlayIcon.className = isPlaying ? 'fas fa-pause' : 'fas fa-play';
     }
@@ -3022,6 +3165,13 @@
         
         if (mobileCurrTime) mobileCurrTime.innerText = formatTime(current);
         if (mobileDurTime) mobileDurTime.innerText = formatTime(duration);
+        
+        const lyricsProgressBar = document.getElementById('lyrics-progress-bar');
+        const lyricsCurr = document.getElementById('lyrics-curr-time');
+        const lyricsDur = document.getElementById('lyrics-dur-time');
+        if (lyricsProgressBar) lyricsProgressBar.style.width = `${percent}%`;
+        if (lyricsCurr) lyricsCurr.innerText = formatTime(current);
+        if (lyricsDur) lyricsDur.innerText = formatTime(duration);
         
         const fsCurr = document.getElementById('fs-curr-time');
         const fsDur = document.getElementById('fs-dur-time');
@@ -3317,6 +3467,40 @@
         
         // Ensure chronological order
         return parsed.sort((a, b) => a.time - b.time);
+    }
+    
+    function syncLyricsUI(force = false) {
+        const updateContainerSync = (containerId, scrollWrapperId) => {
+            const container = document.getElementById(containerId);
+            const scrollWrapper = document.getElementById(scrollWrapperId) || container;
+            if (!container) return;
+            
+            const lines = container.querySelectorAll('.fs-lyric-line');
+            lines.forEach((line, index) => {
+                if (index === currentLyricIndex) {
+                    line.classList.add('active');
+                    
+                    const lineRect = line.getBoundingClientRect();
+                    const wrapperRect = scrollWrapper.getBoundingClientRect();
+                    
+                    const relativeTop = lineRect.top - wrapperRect.top;
+                    const targetTop = (wrapperRect.height / 2) - (lineRect.height / 2);
+                    const scrollDiff = relativeTop - targetTop;
+                    
+                    if (wrapperRect.height > 0) {
+                        scrollWrapper.scrollBy({
+                            top: scrollDiff,
+                            behavior: force ? 'auto' : 'smooth'
+                        });
+                    }
+                } else {
+                    line.classList.remove('active');
+                }
+            });
+        };
+        
+        updateContainerSync('lyrics-content', window.innerWidth <= 900 ? 'lyrics-scroll-wrapper' : 'lyrics-content');
+        updateContainerSync('fs-lyrics-container', 'fs-lyrics-container');
     }
 
     function seekToLyric(time) {
@@ -4178,6 +4362,8 @@
                             mainCover.src = extractedBase64;
                             if (mobileCover) mobileCover.src = extractedBase64;
                             if (mobileCoverBlur) mobileCoverBlur.src = extractedBase64;
+                            const lyricsCover = document.getElementById('mobile-lyrics-cover');
+                            if (lyricsCover) lyricsCover.src = extractedBase64;
                             const fsCover = document.getElementById('fs-cover');
                             if (fsCover) fsCover.src = extractedBase64;
                         }
