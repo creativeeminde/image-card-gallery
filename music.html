@@ -412,10 +412,65 @@
             margin-left: 1rem;
             opacity: 0;
             transition: opacity 0.2s;
+            position: relative;
         }
 
         .song-item:hover .song-actions {
             opacity: 1;
+        }
+
+        .song-menu-dropdown {
+            position: absolute;
+            right: 0;
+            top: 100%;
+            margin-top: 0.5rem;
+            background: #1e293b;
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 0.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+            z-index: 100;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-10px);
+            transition: all 0.2s ease;
+        }
+
+        .song-menu-dropdown.show {
+            opacity: 1;
+            pointer-events: all;
+            transform: translateY(0);
+        }
+
+        .song-menu-dropdown button {
+            background: transparent;
+            border: none;
+            color: var(--text-main);
+            padding: 0.5rem 1rem;
+            text-align: left;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+
+        .song-menu-dropdown button:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        
+        .song-menu-dropdown button.delete-opt {
+            color: #ef4444;
+        }
+
+        .song-menu-dropdown button.delete-opt:hover {
+            background: rgba(239, 68, 68, 0.1);
         }
 
         .action-btn {
@@ -1962,6 +2017,8 @@
     let customLoopEnd = null;
     let isCustomLoopActive = false;
 
+    let activeSongMenu = null;
+
     let lyricsCache = {};
     let parsedLyricsArray = [];
     let currentLyricIndex = -1;
@@ -2299,6 +2356,10 @@
     }
 
     function renderSongList() {
+        if (activeSongMenu) {
+            activeSongMenu = null;
+        }
+
         if (filteredSongs.length === 0) {
             songListEl.innerHTML = '<div class="empty-state">No matching tracks found.</div>';
             return;
@@ -2326,12 +2387,17 @@
                         <span>${escapeHtml(song.genre || '')}</span>
                     </div>
                     <div class="song-actions">
-                        <button class="action-btn" onclick="openModal('edit', '${song.id}', event)" title="Edit">
-                            <i class="fas fa-pencil-alt"></i>
+                        <button class="action-btn" onclick="toggleSongMenu('${song.id}', event)" title="More options">
+                            <i class="fas fa-ellipsis-v"></i>
                         </button>
-                        <button class="action-btn delete" onclick="deleteSong('${song.id}', event)" title="Delete">
-                            <i class="fas fa-trash"></i>
-                        </button>
+                        <div class="song-menu-dropdown" id="song-menu-${song.id}">
+                            <button onclick="openModal('edit', '${song.id}', event)">
+                                <i class="fas fa-pencil-alt"></i> Edit
+                            </button>
+                            <button class="delete-opt" onclick="deleteSong('${song.id}', event)">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                        </div>
                     </div>
                     <div class="play-icon-overlay">
                         <i class="fas ${isCurrent && isPlaying ? 'fa-pause' : 'fa-play'}" style="color:white; font-size: 0.8rem"></i>
@@ -3128,8 +3194,44 @@
         });
     }
 
+    function toggleSongMenu(id, event) {
+        event.stopPropagation();
+        const menu = document.getElementById(`song-menu-${id}`);
+        const actionsContainer = menu.closest('.song-actions');
+        
+        if (activeSongMenu && activeSongMenu !== menu) {
+            activeSongMenu.classList.remove('show');
+            activeSongMenu.closest('.song-actions').style.opacity = '';
+        }
+
+        if (menu.classList.contains('show')) {
+            menu.classList.remove('show');
+            actionsContainer.style.opacity = '';
+            activeSongMenu = null;
+        } else {
+            menu.classList.add('show');
+            actionsContainer.style.opacity = '1';
+            activeSongMenu = menu;
+        }
+    }
+
+    document.addEventListener('click', (e) => {
+        if (activeSongMenu && !e.target.closest('.song-actions')) {
+            activeSongMenu.classList.remove('show');
+            activeSongMenu.closest('.song-actions').style.opacity = '';
+            activeSongMenu = null;
+        }
+    });
+
     function openModal(mode, id = null, event = null) {
         if (event) event.stopPropagation();
+        
+        if (activeSongMenu) {
+            activeSongMenu.classList.remove('show');
+            activeSongMenu.closest('.song-actions').style.opacity = '';
+            activeSongMenu = null;
+        }
+
         const modal = document.getElementById('upload-modal');
         const form = document.getElementById('upload-form');
         form.reset();
