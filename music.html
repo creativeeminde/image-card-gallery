@@ -2769,6 +2769,16 @@
     let fsLyricsSyncFrameId = null;
     let lastSyncTime = -1;
 
+    function handleNativeFullscreenChange() {
+        const fsPlayer = document.getElementById('fullscreen-player');
+        const isNativeFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+        
+        // If the user exits native fullscreen, ensure our UI state updates
+        if (!isNativeFullscreen && fsPlayer && fsPlayer.classList.contains('active')) {
+            exitFullscreenMode();
+        }
+    }
+
     function toggleFullscreenMode() {
         const fsPlayer = document.getElementById('fullscreen-player');
         if (!fsPlayer) return;
@@ -2784,6 +2794,13 @@
         const fsPlayer = document.getElementById('fullscreen-player');
         if (!fsPlayer) return;
 
+        // Native Fullscreen API Request
+        if (fsPlayer.requestFullscreen) {
+            fsPlayer.requestFullscreen().catch(err => console.warn(err));
+        } else if (fsPlayer.webkitRequestFullscreen) {
+            fsPlayer.webkitRequestFullscreen();
+        }
+
         fsPlayer.classList.add('active');
 
         if (currentIndex !== -1 && songs[currentIndex]) {
@@ -2797,6 +2814,8 @@
         }
 
         document.addEventListener('keydown', handleFsKeyDown);
+        document.addEventListener('fullscreenchange', handleNativeFullscreenChange);
+        document.addEventListener('webkitfullscreenchange', handleNativeFullscreenChange);
         
         // Starts our localized, single-instance real-time sync manager
         startFsLyricsSync();
@@ -2806,8 +2825,19 @@
         const fsPlayer = document.getElementById('fullscreen-player');
         if (!fsPlayer) return;
 
+        // Exit Native Fullscreen
+        if (document.fullscreenElement || document.webkitFullscreenElement) {
+            if (document.exitFullscreen) {
+                document.exitFullscreen().catch(err => console.warn(err));
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
+        }
+
         fsPlayer.classList.remove('active');
         document.removeEventListener('keydown', handleFsKeyDown);
+        document.removeEventListener('fullscreenchange', handleNativeFullscreenChange);
+        document.removeEventListener('webkitfullscreenchange', handleNativeFullscreenChange);
         
         // Destroys loop precisely to prevent memory leaks/multiple updates
         stopFsLyricsSync();
