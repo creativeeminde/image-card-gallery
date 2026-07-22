@@ -2152,7 +2152,7 @@
             <div class="tab-view" id="view-playlists">
                 <div class="view-header">
                     <h2 style="font-size:1.3rem; font-weight:600;">Your Playlists</h2>
-                    <button class="btn-primary" onclick="openModal('add')">
+                    <button class="btn-primary" onclick="openCreatePlaylistModal()">
                         <i class="fas fa-plus"></i> Create Playlist
                     </button>
                 </div>
@@ -2339,6 +2339,23 @@
     </div>
 </div>
 
+<!-- Dedicated Create Playlist Modal -->
+<div class="modal-overlay" id="create-playlist-modal">
+    <div class="modal" style="width: 400px; max-width: 95vw;">
+        <h2>Create Playlist</h2>
+        <form id="create-playlist-form" onsubmit="handleCreatePlaylist(event)">
+            <div class="form-group">
+                <label>Playlist Name</label>
+                <input type="text" id="new-playlist-name" required placeholder="e.g. Summer Vibes, Workout...">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-cancel" onclick="closeCreatePlaylistModal()">Cancel</button>
+                <button type="submit" class="btn-primary">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div id="mobile-player" class="mobile-player">
     <div class="mobile-header">
         <button class="icon-btn" onclick="closeMobilePlayer()"><i class="fas fa-arrow-left"></i></button>
@@ -2505,6 +2522,9 @@
     let isSyncedLyrics = false;
     let lyricsRequestToken = 0;
     let fsLyricsRequestToken = 0;
+    
+    let sessionPlaylists = []; // Holds empty playlists created during the session
+    let dbPlaylists = []; // Holds playlists fetched from Supabase
     
     const defaultTheme = {
         bg: 'linear-gradient(135deg, #171717 0%, #0a0a0a 50%, #000000 100%)',
@@ -2722,8 +2742,23 @@
         });
     }
 
+    async function fetchPlaylists() {
+        try {
+            const { data, error } = await _supabase.from('playlists').select('name');
+            if (error) {
+                console.warn('Playlists table might not exist yet:', error.message);
+            } else if (data) {
+                dbPlaylists = data.map(p => p.name);
+            }
+        } catch (e) {
+            console.warn('Error fetching playlists:', e);
+        }
+    }
+
     async function fetchSongs() {
         songListEl.innerHTML = '<div class="loading-container"><div class="loading-spinner" style="display:block"></div></div>';
+        
+        await fetchPlaylists();
         
         const { data, error } = await _supabase
             .from('songs')
@@ -2751,10 +2786,13 @@
         });
         
         populateMoodOptions();
-        applyFilters();
+        
+        // Render all the modern tab views
         renderArtistsTab();
         renderPlaylistsTab();
         renderMoodsTab();
+        
+        applyFilters();
 
         if (songs.length === 0) {
             songListEl.innerHTML = '<div class="empty-state">No songs found. Click "Upload" to add one!</div>';
@@ -2881,7 +2919,7 @@
         const list = document.getElementById('playlists-tab-list');
         if(!list) return;
         const allLists = songs.flatMap(s => s.playlists);
-        const uniquePlaylists = ['Favorites', ...new Set(allLists.filter(p => p !== 'General' && p !== 'Favorites'))];
+        const uniquePlaylists = ['Favorites', ...new Set([...allLists, ...dbPlaylists, ...sessionPlaylists].filter(p => p !== 'General' && p !== 'Favorites'))];
 
         list.innerHTML = uniquePlaylists.map(pl => {
             const plSongs = songs.filter(s => pl === 'Favorites' ? !!s.is_favorite : s.playlists.includes(pl));
@@ -3891,7 +3929,13 @@
         const form = document.getElementById('upload-form');
         form.reset();
         document.getElementById('in-id').value = '';
-        document.getElementById('playlist-selector').innerHTML = '';
+        const playlistContainer = document.getElementById('playlist-selector');
+        playlistContainer.innerHTML = '';
+        
+        // Populate existing playlists as unselected chips for easy picking
+        const allLists = songs.flatMap(s => s.playlists);
+        const uniquePlaylists = [...new Set([...allLists, ...dbPlaylists, ...sessionPlaylists].filter(p => p !== 'General' && p !== 'Favorites'))];
+        uniquePlaylists.forEach(pl => addPlaylistChip(pl, false));
         
         if (mode === 'edit' && id) {
             document.getElementById('modal-title').innerText = 'Edit Song';
@@ -3910,7 +3954,14 @@
                 }
                 
                 song.playlists.forEach(pl => {
-                    if (pl !== 'General') addPlaylistChip(pl, true);
+                    if (pl !== 'General') {
+                        const existingChip = [...playlistContainer.children].find(c => c.dataset.val === pl);
+                        if (existingChip) {
+                            existingChip.classList.add('selected');
+                        } else {
+                            addPlaylistChip(pl, true);
+                        }
+                    }
                 });
             }
         } else {
@@ -3952,13 +4003,56 @@
         const exists = [...container.children].find(c => c.dataset.val === val);
         if (!exists) {
             const chip = document.createElement('div');
-            chip.className = `playlist-chip ${preselected ? 'selected' : 'selected'}`;
+            chip.className = `playlist-chip ${preselected ? 'selected' : ''}`;
             chip.dataset.val = val;
             chip.innerText = val;
             chip.onclick = function() {
                 this.classList.toggle('selected');
             };
             container.appendChild(chip);
+        }
+    }
+    
+    function openCreatePlaylistModal() {
+        document.getElementById('new-playlist-name').value = '';
+        document.getElementById('create-playlist-modal').classList.add('open');
+    }
+
+    function closeCreatePlaylistModal() {
+        document.getElementById('create-playlist-modal').classList.remove('open');
+    }
+
+    async function handleCreatePlaylist(e) {
+        e.preventDefault();
+        const nameInput = document.getElementById('new-playlist-name');
+        const name = nameInput.value.trim();
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        
+        if (name) {
+            const originalText = submitBtn.innerText;
+            submitBtn.innerText = 'Creating...';
+            submitBtn.disabled = true;
+
+            // Attempt to save playlist to Supabase permanently
+            const { error } = await _supabase.from('playlists').insert([{ name: name }]);
+            
+            submitBtn.innerText = originalText;
+            submitBtn.disabled = false;
+
+            if (error) {
+                console.warn("Failed to save playlist to Supabase. Falling back to session memory.", error.message);
+                if (!sessionPlaylists.includes(name)) {
+                    sessionPlaylists.push(name);
+                }
+            } else {
+                if (!dbPlaylists.includes(name)) {
+                    dbPlaylists.push(name);
+                }
+            }
+            
+            renderPlaylistsTab();
+            closeCreatePlaylistModal();
+            showToast(`Playlist "${name}" created`, 'success');
         }
     }
 
