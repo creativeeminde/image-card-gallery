@@ -158,6 +158,7 @@
             border-radius: 3px;
             transition: left 0.35s cubic-bezier(0.4, 0, 0.2, 1), width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
             z-index: 3;
+            pointer-events: none;
         }
 
         .tab-views-container {
@@ -2808,15 +2809,12 @@
 
         const tabContainer = document.getElementById('tab-views-container');
         if (tabContainer) {
-            tabContainer.addEventListener('scroll', () => {
-                const index = Math.round(tabContainer.scrollLeft / tabContainer.clientWidth);
-                updateTabIndicator(index);
-            });
-            setTimeout(() => updateTabIndicator(0), 100);
+            // Removed the swipe/scroll listener to strictly enforce tap-to-change
+            setTimeout(() => switchMainTab(0), 100);
             
             window.addEventListener('resize', () => {
                 const activeIndex = Array.from(document.querySelectorAll('.tab-item')).findIndex(t => t.classList.contains('active'));
-                if (activeIndex > -1) updateTabIndicator(activeIndex);
+                if (activeIndex > -1) switchMainTab(activeIndex);
             });
         }
 
@@ -3749,13 +3747,26 @@
 
     function switchMainTab(index) {
         const tabContainer = document.getElementById('tab-views-container');
-        if (tabContainer) {
-            const viewWidth = tabContainer.clientWidth;
-            tabContainer.scrollTo({
-                left: index * viewWidth,
-                behavior: 'smooth'
+        const views = document.querySelectorAll('.tab-view');
+        
+        updateTabIndicator(index);
+        
+        if (window.innerWidth <= 900) {
+            // Mobile: strictly hide inactive tabs to prevent horizontal scroll bugs
+            views.forEach((view, i) => {
+                view.style.display = i === index ? 'block' : 'none';
             });
-            updateTabIndicator(index);
+            if (tabContainer) tabContainer.scrollLeft = 0;
+        } else {
+            // Desktop: programmatic horizontal slide
+            views.forEach(view => view.style.display = '');
+            if (tabContainer) {
+                const viewWidth = tabContainer.clientWidth;
+                tabContainer.scrollTo({
+                    left: index * viewWidth,
+                    behavior: 'smooth'
+                });
+            }
         }
     }
 
