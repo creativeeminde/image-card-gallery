@@ -2554,6 +2554,11 @@
             } catch(e) {
                 pl = [song.playlist || 'General'];
             }
+            
+            if (song.is_favorite && !pl.includes('Favorites')) {
+                pl.push('Favorites');
+            }
+            
             return { ...song, playlists: pl };
         });
         
@@ -2625,7 +2630,6 @@
     function applyFilters() {
         filteredSongs = songs.filter(song => {
             const matchesPlaylist = currentPlaylist === 'All' ? true :
-                                   currentPlaylist === 'Favorites' ? !!song.is_favorite :
                                    song.playlists.includes(currentPlaylist);
             
             const matchesSearch = song.song_title.toLowerCase().includes(searchQuery) || 
@@ -2649,10 +2653,6 @@
     }
 
     function renderSongList() {
-        if (activeSongMenu) {
-            activeSongMenu = null;
-        }
-
         if (filteredSongs.length === 0) {
             songListEl.innerHTML = '<div class="empty-state">No matching tracks found.</div>';
             return;
@@ -2661,7 +2661,7 @@
         songListEl.innerHTML = filteredSongs.map((song, index) => {
             const isCurrent = currentIndex !== -1 && songs[currentIndex]?.id === song.id;
             const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/150/1e293b/ffffff?text=Music';
-            const isFav = !!song.is_favorite;
+            const isFav = song.playlists.includes('Favorites');
             
             return `
                 <div class="song-item ${isCurrent ? 'active' : ''}" onclick="playFilteredSong(${index})">
@@ -3428,6 +3428,7 @@
         if (!isSyncedLyrics || parsedLyricsArray.length === 0) return;
         
         let activeIndex = -1;
+        // Adding 0.2s offset creates a more natural leading timing feeling to humans reading it
         for (let i = 0; i < parsedLyricsArray.length; i++) {
             if (currentTime >= parsedLyricsArray[i].time - 0.2) {
                 activeIndex = i;
@@ -3437,11 +3438,13 @@
         }
         
         if (activeIndex !== currentLyricIndex) {
+            // Un-highlight previous
             if (currentLyricIndex !== -1) {
                 const oldEl = document.getElementById(`fs-lyric-${currentLyricIndex}`);
                 if (oldEl) oldEl.classList.remove('active');
             }
             
+            // Highlight and perfectly scroll active lyric utilizing precise container offset math
             if (activeIndex !== -1) {
                 const newEl = document.getElementById(`fs-lyric-${activeIndex}`);
                 if (newEl) {
@@ -3451,6 +3454,7 @@
                     if (container) {
                         const containerHalfHeight = container.clientHeight / 2;
                         const elementHalfHeight = newEl.clientHeight / 2;
+                        // Position mathematically relative to nearest positioned ancestor (.fs-lyrics-container)
                         const scrollPos = newEl.offsetTop - containerHalfHeight + elementHalfHeight;
                         
                         container.scrollTo({
@@ -3468,14 +3472,48 @@
         if (event) event.stopPropagation();
         const songIndex = songs.findIndex(s => String(s.id) === String(id));
         if (songIndex > -1) {
-            const newStatus = !songs[songIndex].is_favorite;
-            songs[songIndex].is_favorite = newStatus;
+            const song = songs[songIndex];
+            const isFav = song.playlists.includes('Favorites');
+            const newStatus = !isFav;
             
-            _supabase.from('songs').update({ is_favorite: newStatus }).eq('id', id).then(({error}) => {
-                if (error) showToast("Error updating favorite", "error");
-            });
+            let updatedPlaylists = [...song.playlists];
+            if (newStatus) {
+                updatedPlaylists.push('Favorites');
+            } else {
+                updatedPlaylists = updatedPlaylists.filter(p => p !== 'Favorites');
+            }
+            song.playlists = updatedPlaylists;
+            song.is_favorite = newStatus;
             
-            renderSongList();
+            // Backup favorite status inside the JSON playlist column to bypass missing column errors
+            _supabase.from('songs')
+                .update({ playlist: JSON.stringify(updatedPlaylists) })
+                .eq('id', song.id)
+                .then(({error}) => {
+                    if (error) {
+                        console.error('Favorite update failed:', error);
+                        showToast("Error updating favorite", "error");
+                    }
+                });
+                
+            // Silently attempt legacy column if it exists to maintain sync
+            _supabase.from('songs')
+                .update({ is_favorite: newStatus })
+                .eq('id', song.id)
+                .then(() => {}).catch(() => {});
+            
+            // Re-render library immediately (will vanish from Favorites tab smoothly)
+            applyFilters();
+            
+            const artistModal = document.getElementById('artist-modal');
+            if (artistModal && artistModal.classList.contains('open')) {
+                renderArtistSongs(currentArtistSongs);
+            }
+            
+            const relatedModal = document.getElementById('related-modal');
+            if (relatedModal && relatedModal.classList.contains('open')) {
+                openRelatedModal();
+            }
         }
     }
 
@@ -3694,8 +3732,12 @@
                 list.innerHTML = related.map((song) => {
                     const actualIndex = songs.findIndex(s => s.id === song.id);
                     const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/150/1e293b/ffffff?text=Music';
+                    const isFav = song.playlists.includes('Favorites');
                     return `
                         <div class="related-item" onclick="closeRelatedModal(); loadSong(${actualIndex}); playAudio();">
+                            <button class="star-btn ${isFav ? 'active' : ''}" onclick="toggleFavorite('${song.id}', event)" title="${isFav ? 'Remove Favorite' : 'Mark Favorite'}">
+                                <i class="${isFav ? 'fas' : 'far'} fa-star"></i>
+                            </button>
                             <img src="${coverSrc}" class="song-thumb" alt="art">
                             <div class="song-details">
                                 <div class="song-title">${escapeHtml(song.song_title)}</div>
@@ -3857,7 +3899,7 @@
         listEl.innerHTML = artistSongs.map((song) => {
             const isCurrent = currentIndex !== -1 && songs[currentIndex]?.id === song.id;
             const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/150/1e293b/ffffff?text=Music';
-            const isFav = !!song.is_favorite;
+            const isFav = song.playlists.includes('Favorites');
             
             return `
                 <div class="song-item ${isCurrent ? 'active' : ''}" onclick="playFromArtistPage('${song.id}')">
