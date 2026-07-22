@@ -914,11 +914,17 @@
             z-index: 2;
         }
 
-        .fs-exit-btn {
+        /* New container for top right actions in player view */
+        .fs-top-actions {
             position: absolute;
             top: 2rem;
             right: 2.5rem;
             z-index: 10;
+            display: flex;
+            gap: 1rem;
+        }
+
+        .fs-top-btn {
             background: rgba(255, 255, 255, 0.1);
             border: 1px solid rgba(255, 255, 255, 0.2);
             color: white;
@@ -935,7 +941,7 @@
             -webkit-backdrop-filter: blur(12px);
         }
 
-        .fs-exit-btn:hover {
+        .fs-top-btn:hover {
             background: rgba(255, 255, 255, 0.25);
             transform: scale(1.08);
             border-color: rgba(255, 255, 255, 0.4);
@@ -1160,7 +1166,7 @@
         }
 
         @media (prefers-reduced-motion: reduce) {
-            .fullscreen-bg-blur, .fs-cover-wrapper, .fs-lyric-line, .fs-exit-btn {
+            .fullscreen-bg-blur, .fs-cover-wrapper, .fs-lyric-line, .fs-top-btn {
                 transition: none !important;
             }
             .fs-lyrics-container {
@@ -1694,8 +1700,9 @@
                 <i class="fas fa-music"></i>
             </button>
 
-            <button class="ctrl-btn" id="fullscreen-btn" onclick="toggleFullscreenMode()" title="Fullscreen Now Playing" aria-label="Fullscreen Player">
-                <i class="fas fa-expand" id="fullscreen-btn-icon"></i>
+            <!-- Renamed aria label to clarify it opens the virtual view -->
+            <button class="ctrl-btn" id="fullscreen-btn" onclick="toggleFullscreenMode()" title="Open Player View" aria-label="Open Player View">
+                <i class="fas fa-expand-alt" id="fullscreen-btn-icon"></i>
             </button>
 
             <a id="download-btn" href="#" target="_blank" class="ctrl-btn" title="Download Song" aria-label="Download Song">
@@ -1853,9 +1860,18 @@
     <div class="fullscreen-bg-blur" id="fs-bg-blur"></div>
     <div class="fullscreen-overlay-dark"></div>
     
-    <button class="fs-exit-btn" onclick="exitFullscreenMode()" title="Exit Fullscreen (Esc)" aria-label="Exit Fullscreen">
-        <i class="fas fa-compress"></i>
-    </button>
+    <!-- New Top Actions Cluster -->
+    <div class="fs-top-actions">
+        <!-- True Fullscreen Native API Toggle Button -->
+        <button class="fs-top-btn" id="true-fs-btn" onclick="toggleNativeFullscreen()" title="True Fullscreen" aria-label="Toggle True Fullscreen">
+            <i class="fas fa-expand" id="true-fs-icon"></i>
+        </button>
+        
+        <!-- Close Virtual Player View -->
+        <button class="fs-top-btn" onclick="exitFullscreenMode()" title="Close Player View (Esc)" aria-label="Close Player View">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
 
     <div class="fs-container">
         <div class="fs-left-col">
@@ -2764,21 +2780,26 @@
         document.getElementById('lyrics-modal').classList.remove('open');
     }
 
-    
-    // Core animation sync variables to prevent loops/leaks
     let fsLyricsSyncFrameId = null;
     let lastSyncTime = -1;
 
+    // Triggered if user uses Escape key to exit native fullscreen explicitly
     function handleNativeFullscreenChange() {
-        const fsPlayer = document.getElementById('fullscreen-player');
         const isNativeFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
-        
-        // If the user exits native fullscreen, ensure our UI state updates
-        if (!isNativeFullscreen && fsPlayer && fsPlayer.classList.contains('active')) {
-            exitFullscreenMode();
+        const trueFsIcon = document.getElementById('true-fs-icon');
+        const trueFsBtn = document.getElementById('true-fs-btn');
+
+        // Update the True Fullscreen button appearance dynamically based on state
+        if (isNativeFullscreen) {
+            if (trueFsIcon) trueFsIcon.className = 'fas fa-compress';
+            if (trueFsBtn) trueFsBtn.title = 'Exit True Fullscreen';
+        } else {
+            if (trueFsIcon) trueFsIcon.className = 'fas fa-expand';
+            if (trueFsBtn) trueFsBtn.title = 'True Fullscreen';
         }
     }
 
+    // Toggles the Virtual CSS-based Player View
     function toggleFullscreenMode() {
         const fsPlayer = document.getElementById('fullscreen-player');
         if (!fsPlayer) return;
@@ -2790,16 +2811,10 @@
         }
     }
 
+    // Enters the Virtual Player View (Does not trigger native fullscreen here anymore)
     function enterFullscreenMode() {
         const fsPlayer = document.getElementById('fullscreen-player');
         if (!fsPlayer) return;
-
-        // Native Fullscreen API Request
-        if (fsPlayer.requestFullscreen) {
-            fsPlayer.requestFullscreen().catch(err => console.warn(err));
-        } else if (fsPlayer.webkitRequestFullscreen) {
-            fsPlayer.webkitRequestFullscreen();
-        }
 
         fsPlayer.classList.add('active');
 
@@ -2817,15 +2832,37 @@
         document.addEventListener('fullscreenchange', handleNativeFullscreenChange);
         document.addEventListener('webkitfullscreenchange', handleNativeFullscreenChange);
         
-        // Starts our localized, single-instance real-time sync manager
         startFsLyricsSync();
     }
 
+    // Toggles the True OS-level Fullscreen mode
+    function toggleNativeFullscreen() {
+        const fsPlayer = document.getElementById('fullscreen-player');
+        const isNativeFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+
+        if (!isNativeFullscreen) {
+            // Request native fullscreen on the virtual player element to hide OS chrome
+            if (fsPlayer.requestFullscreen) {
+                fsPlayer.requestFullscreen().catch(err => console.warn(err));
+            } else if (fsPlayer.webkitRequestFullscreen) {
+                fsPlayer.webkitRequestFullscreen();
+            }
+        } else {
+            // Exit native fullscreen
+            if (document.exitFullscreen) {
+                document.exitFullscreen().catch(err => console.warn(err));
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
+        }
+    }
+
+    // Exits both Virtual Player View and Native Fullscreen simultaneously
     function exitFullscreenMode() {
         const fsPlayer = document.getElementById('fullscreen-player');
         if (!fsPlayer) return;
 
-        // Exit Native Fullscreen
+        // If native fullscreen is currently active, back out of it
         if (document.fullscreenElement || document.webkitFullscreenElement) {
             if (document.exitFullscreen) {
                 document.exitFullscreen().catch(err => console.warn(err));
@@ -2839,7 +2876,6 @@
         document.removeEventListener('fullscreenchange', handleNativeFullscreenChange);
         document.removeEventListener('webkitfullscreenchange', handleNativeFullscreenChange);
         
-        // Destroys loop precisely to prevent memory leaks/multiple updates
         stopFsLyricsSync();
     }
 
@@ -2849,9 +2885,7 @@
         }
     }
 
-    // Handles the requestAnimationFrame logic to update immediately without listener spam
     function startFsLyricsSync() {
-        // Double check clear
         if (fsLyricsSyncFrameId) {
             cancelAnimationFrame(fsLyricsSyncFrameId);
             fsLyricsSyncFrameId = null;
@@ -2859,21 +2893,18 @@
         
         function syncLoop() {
             const fsPlayer = document.getElementById('fullscreen-player');
-            // If the element closed unexpectedly or manually, auto-terminate loop
             if (!fsPlayer || !fsPlayer.classList.contains('active')) {
                 fsLyricsSyncFrameId = null;
                 return;
             }
             
             if (isSyncedLyrics && parsedLyricsArray.length > 0) {
-                // Update lyric highlights anytime the time has shifted (handles seeking seamlessly)
                 if (audio.currentTime !== lastSyncTime) {
                     updateSyncedLyrics(audio.currentTime);
                     lastSyncTime = audio.currentTime;
                 }
             }
             
-            // Re-schedule perfectly at browser refresh rate
             fsLyricsSyncFrameId = requestAnimationFrame(syncLoop);
         }
         
@@ -2927,7 +2958,7 @@
         }
 
         container.innerHTML = '<div class="loading-spinner" style="display:block; margin: 3rem auto;"></div>';
-        currentLyricIndex = -1; // Reset active track tracking
+        currentLyricIndex = -1;
 
         const requestId = ++fsLyricsRequestToken;
 
@@ -2964,7 +2995,6 @@
 
         if (isSyncedLyrics) {
             renderSyncedLyricsLines(container);
-            // Trigger an immediate manual frame to orient to current time instantly
             updateSyncedLyrics(audio.currentTime); 
         } else if (lyricData.plainLyrics && lyricData.plainLyrics.trim().length > 0) {
             container.innerHTML = `<div class="fs-lyrics-plain">${escapeHtml(lyricData.plainLyrics)}</div>`;
@@ -3015,12 +3045,10 @@
         currentLyricIndex = -1;
     }
 
-    // Mathematical update method to keep active line centrally aligned perfectly
     function updateSyncedLyrics(currentTime) {
         if (!isSyncedLyrics || parsedLyricsArray.length === 0) return;
         
         let activeIndex = -1;
-        // Adding 0.2s offset creates a more natural leading timing feeling to humans reading it
         for (let i = 0; i < parsedLyricsArray.length; i++) {
             if (currentTime >= parsedLyricsArray[i].time - 0.2) {
                 activeIndex = i;
@@ -3030,13 +3058,11 @@
         }
         
         if (activeIndex !== currentLyricIndex) {
-            // Un-highlight previous
             if (currentLyricIndex !== -1) {
                 const oldEl = document.getElementById(`fs-lyric-${currentLyricIndex}`);
                 if (oldEl) oldEl.classList.remove('active');
             }
             
-            // Highlight and perfectly scroll active lyric utilizing precise container offset math
             if (activeIndex !== -1) {
                 const newEl = document.getElementById(`fs-lyric-${activeIndex}`);
                 if (newEl) {
@@ -3046,7 +3072,6 @@
                     if (container) {
                         const containerHalfHeight = container.clientHeight / 2;
                         const elementHalfHeight = newEl.clientHeight / 2;
-                        // Position mathematically relative to nearest positioned ancestor (.fs-lyrics-container)
                         const scrollPos = newEl.offsetTop - containerHalfHeight + elementHalfHeight;
                         
                         container.scrollTo({
