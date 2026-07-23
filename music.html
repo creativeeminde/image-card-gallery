@@ -2975,6 +2975,8 @@
         
         if (downloadBtn) downloadBtn.href = song.mp3_url;
 
+        updateMediaSession(song, coverSrc);
+
         renderSongList();
         
         if (document.getElementById('artist-modal').classList.contains('open')) {
@@ -3018,6 +3020,10 @@
         
         const fsPlayIcon = document.getElementById('fs-play-icon');
         if (fsPlayIcon) fsPlayIcon.className = isPlaying ? 'fas fa-pause' : 'fas fa-play';
+        
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+        }
     }
 
     function nextSong() {
@@ -3114,6 +3120,18 @@
         if (isCustomLoopActive && customLoopEnd && current >= customLoopEnd) {
             audio.currentTime = customLoopStart;
         }
+        
+        if ('mediaSession' in navigator && !isNaN(duration)) {
+            try {
+                navigator.mediaSession.setPositionState({
+                    duration: duration,
+                    playbackRate: audio.playbackRate,
+                    position: current
+                });
+            } catch (e) {
+                // Ignore errors if position state is unsupported or invalid
+            }
+        }
 
         if (isSyncedLyrics && parsedLyricsArray.length > 0) {
             const nextLineIndex = parsedLyricsArray.findIndex(line => line.time > current);
@@ -3151,6 +3169,31 @@
         const clickX = e.clientX - rect.left;
         const percent = clickX / rect.width;
         audio.currentTime = percent * audio.duration;
+    }
+    
+    function updateMediaSession(song, coverSrc) {
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: song.song_title,
+                artist: song.artist,
+                album: 'Modern Music Streamer',
+                artwork: [
+                    { src: coverSrc, sizes: '96x96', type: 'image/jpeg' },
+                    { src: coverSrc, sizes: '128x128', type: 'image/jpeg' },
+                    { src: coverSrc, sizes: '192x192', type: 'image/jpeg' },
+                    { src: coverSrc, sizes: '256x256', type: 'image/jpeg' },
+                    { src: coverSrc, sizes: '384x384', type: 'image/jpeg' },
+                    { src: coverSrc, sizes: '512x512', type: 'image/jpeg' }
+                ]
+            });
+
+            navigator.mediaSession.setActionHandler('play', playAudio);
+            navigator.mediaSession.setActionHandler('pause', () => {
+                if (isPlaying) togglePlay();
+            });
+            navigator.mediaSession.setActionHandler('previoustrack', prevSong);
+            navigator.mediaSession.setActionHandler('nexttrack', nextSong);
+        }
     }
 
     function handleSongEnd() {
@@ -4312,6 +4355,8 @@
                             if (lyricsCover) lyricsCover.src = extractedBase64;
                             const fsCover = document.getElementById('fs-cover');
                             if (fsCover) fsCover.src = extractedBase64;
+                            
+                            updateMediaSession(songs[currentIndex], extractedBase64);
                         }
                     }
                 });
