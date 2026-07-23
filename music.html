@@ -2680,6 +2680,206 @@
     };
     
     const audio = new Audio();
+    audio.preload = 'metadata';
+
+    // ============================================================
+    // iOS MEDIA SESSION INTEGRATION
+    // Rebuilt from scratch with step-by-step logging so any failure
+    // is visible in the console instead of silently doing nothing.
+    // ============================================================
+    function msLog(...args) { console.log('[MediaSession]', ...args); }
+    function msWarn(...args) { console.warn('[MediaSession]', ...args); }
+    function msError(...args) { console.error('[MediaSession]', ...args); }
+
+    let mediaSessionHandlersRegistered = false;
+    let lastPositionStateUpdate = 0;
+
+    function logMediaSessionEnvironment() {
+        const ua = navigator.userAgent;
+        const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+        const isStandalone = window.navigator.standalone === true ||
+            (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+
+        msLog('--- Environment check ---');
+        msLog('User agent:', ua);
+        msLog('Detected iOS device:', isIOS);
+        msLog('Running as installed Home Screen app (standalone):', isStandalone);
+
+        if (!('mediaSession' in navigator)) {
+            msError('navigator.mediaSession is NOT available. This browser/context does not support Lock Screen / Control Center integration at all. Requires Safari 15+/iOS 13.4+ or an installed PWA.');
+            return false;
+        }
+        msLog('navigator.mediaSession API is available.');
+
+        if (isIOS && !isStandalone) {
+            msWarn('Page is running inside Safari (not added to Home Screen). iOS is far more reliable at showing Now Playing / Lock Screen controls when the site is installed as a standalone app (Share -> Add to Home Screen). If controls do not appear, try that first.');
+        }
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+            msWarn('Page is not served over HTTPS. iOS requires a secure context for MediaSession and for autoplay-adjacent APIs to behave correctly.');
+        }
+        return true;
+    }
+
+    // Register every action handler exactly once. Re-registering per
+    // track is unnecessary and was previously masking whether a
+    // given track-change path actually re-armed the handlers.
+    function registerMediaSessionActionHandlers() {
+        if (!('mediaSession' in navigator)) return;
+        if (mediaSessionHandlersRegistered) {
+            msLog('Action handlers already registered - skipping duplicate registration.');
+            return;
+        }
+
+        const handlers = [
+            ['play', () => { msLog('OS action received: play'); playAudio(); }],
+            ['pause', () => { msLog('OS action received: pause'); audio.pause(); }],
+            ['previoustrack', () => { msLog('OS action received: previoustrack'); prevSong(); }],
+            ['nexttrack', () => { msLog('OS action received: nexttrack'); nextSong(); }],
+            ['seekbackward', (details) => {
+                msLog('OS action received: seekbackward', details);
+                skipTime(-(details && details.seekOffset || 10));
+                updateMediaSessionPosition(true);
+            }],
+            ['seekforward', (details) => {
+                msLog('OS action received: seekforward', details);
+                skipTime(details && details.seekOffset || 10);
+                updateMediaSessionPosition(true);
+            }],
+            ['seekto', (details) => {
+                msLog('OS action received: seekto', details);
+                if (isNaN(audio.duration) || !isFinite(audio.duration)) {
+                    msWarn('Ignoring seekto - audio duration unknown yet.');
+                    return;
+                }
+                if (details.fastSeek && 'fastSeek' in audio) {
+                    audio.fastSeek(details.seekTime);
+                } else {
+                    audio.currentTime = details.seekTime;
+                }
+                updateMediaSessionPosition(true);
+            }],
+            ['stop', () => {
+                msLog('OS action received: stop');
+                audio.pause();
+                audio.currentTime = 0;
+            }]
+        ];
+
+        handlers.forEach(([action, handler]) => {
+            try {
+                navigator.mediaSession.setActionHandler(action, handler);
+                msLog(`Registered action handler: "${action}"`);
+            } catch (err) {
+                msWarn(`Action "${action}" is not supported on this platform (this is normal for some actions on iOS).`, err);
+            }
+        });
+
+        mediaSessionHandlersRegistered = true;
+        msLog('Finished registering all action handlers (one-time setup).');
+    }
+
+    function setMediaSessionPlaybackState(state) {
+        if (!('mediaSession' in navigator)) return;
+        navigator.mediaSession.playbackState = state;
+        msLog('playbackState set to:', state);
+    }
+
+    // Throttled so iOS's lock-screen scrubber gets smooth updates
+    // instead of either freezing (0 updates) or jittering (updates
+    // on every timeupdate tick, which can be 4-66ms apart).
+    function updateMediaSessionPosition(force) {
+        if (!('mediaSession' in navigator)) return;
+        if (isNaN(audio.duration) || !isFinite(audio.duration) || audio.duration <= 0) {
+            return;
+        }
+        const now = performance.now();
+        if (!force && now - lastPositionStateUpdate < 900) return;
+        lastPositionStateUpdate = now;
+        try {
+            navigator.mediaSession.setPositionState({
+                duration: audio.duration,
+                playbackRate: audio.playbackRate > 0 ? audio.playbackRate : 1,
+                position: Math.min(audio.currentTime, audio.duration)
+            });
+            msLog(`Position state -> ${audio.currentTime.toFixed(2)}s / ${audio.duration.toFixed(2)}s`);
+        } catch (e) {
+            msWarn('setPositionState failed:', e);
+        }
+    }
+
+    // Sets title/artist/artwork. Called synchronously from loadSong()
+    // and again from playAudio() BEFORE audio.play() is invoked, so it
+    // always executes inside the original user-gesture call stack
+    // (tapping Play), which iOS is strict about for reliably surfacing
+    // the Now Playing UI.
+    function setMediaSessionMetadata(song, coverSrc) {
+        if (!('mediaSession' in navigator)) {
+            msWarn('Cannot set metadata - mediaSession unsupported.');
+            return;
+        }
+        if (!song) {
+            msWarn('setMediaSessionMetadata called with no song.');
+            return;
+        }
+
+        msLog(`Setting metadata -> title="${song.song_title}" artist="${song.artist}"`);
+
+        if (currentMediaBlobUrl) {
+            URL.revokeObjectURL(currentMediaBlobUrl);
+            currentMediaBlobUrl = null;
+        }
+
+        let safeArtworkSrc = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=512&auto=format&fit=crop';
+        let mimeType = 'image/jpeg';
+
+        try {
+            if (song.cover_url && song.cover_url.startsWith('http')) {
+                safeArtworkSrc = song.cover_url;
+                mimeType = song.cover_url.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+                msLog('Artwork source: remote HTTPS cover_url ->', safeArtworkSrc);
+            } else if (coverSrc && coverSrc.startsWith('data:image')) {
+                const parts = coverSrc.split(';');
+                mimeType = parts[0].split(':')[1];
+                const base64Data = parts[1].split(',')[1];
+                currentMediaBlobUrl = base64ToBlobUrl(base64Data, mimeType);
+                safeArtworkSrc = currentMediaBlobUrl;
+                msLog('Artwork source: Blob URL generated from extracted ID3 artwork ->', safeArtworkSrc);
+            } else if (coverSrc && coverSrc.startsWith('http')) {
+                safeArtworkSrc = coverSrc;
+                if (coverSrc.includes('placeholder.com')) mimeType = 'image/png';
+                msLog('Artwork source: fallback HTTP cover ->', safeArtworkSrc);
+            } else {
+                msWarn('No usable artwork found for this song, using generic fallback image.');
+            }
+        } catch (e) {
+            msWarn('Artwork resolution threw an error, using generic fallback image.', e);
+        }
+
+        // iOS silently shows blank artwork if the image fails to load,
+        // with no console error of its own - so we verify it ourselves.
+        const testImg = new Image();
+        testImg.onload = () => msLog('Artwork preload check OK:', safeArtworkSrc.slice(0, 80));
+        testImg.onerror = () => msWarn('Artwork preload check FAILED (Lock Screen artwork will likely be blank):', safeArtworkSrc.slice(0, 80));
+        testImg.src = safeArtworkSrc;
+
+        const artworkArray = ['96x96', '128x128', '192x192', '256x256', '384x384', '512x512'].map(size => ({
+            src: safeArtworkSrc,
+            sizes: size,
+            type: mimeType
+        }));
+
+        try {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: song.song_title || 'Unknown Title',
+                artist: song.artist || 'Unknown Artist',
+                album: 'Modern Music Streamer',
+                artwork: artworkArray
+            });
+            msLog('MediaMetadata assigned successfully.');
+        } catch (err) {
+            msError('Failed to assign MediaMetadata:', err);
+        }
+    }
 
     const songListEl = document.getElementById('song-list');
     const playlistTabsEl = document.getElementById('playlist-tabs');
@@ -2773,39 +2973,54 @@
 
     window.addEventListener('DOMContentLoaded', () => {
         fetchSongs();
-        
-        audio.addEventListener('timeupdate', updateProgress);
-        audio.addEventListener('ended', handleSongEnd);
-        
+
+        // --- One-time Media Session setup ---
+        logMediaSessionEnvironment();
+        registerMediaSessionActionHandlers();
+
+        audio.addEventListener('timeupdate', () => {
+            updateProgress();
+            updateMediaSessionPosition(false); // throttled internally
+        });
+        audio.addEventListener('ended', () => {
+            console.log("[Audio] ended event fired");
+            handleSongEnd();
+        });
+
         // Native Audio Event Listeners for completely reliable UI & iOS Sync
         audio.addEventListener('loadedmetadata', () => {
-            console.log("[Audio] loadedmetadata event fired");
-            updateMediaSessionPosition();
+            console.log(`[Audio] loadedmetadata event fired, duration=${audio.duration}`);
+            updateMediaSessionPosition(true);
         });
         audio.addEventListener('play', () => {
             console.log("[Audio] play event fired");
             isPlaying = true;
             updatePlayIcons();
             renderSongList();
-            if ('mediaSession' in navigator) {
-                navigator.mediaSession.playbackState = 'playing';
-                console.log("[MediaSession] playbackState set to 'playing'");
-            }
-            updateMediaSessionPosition();
+            setMediaSessionPlaybackState('playing');
+            updateMediaSessionPosition(true);
         });
         audio.addEventListener('pause', () => {
             console.log("[Audio] pause event fired");
             isPlaying = false;
             updatePlayIcons();
             renderSongList();
-            if ('mediaSession' in navigator) {
-                navigator.mediaSession.playbackState = 'paused';
-                console.log("[MediaSession] playbackState set to 'paused'");
-            }
+            setMediaSessionPlaybackState('paused');
+            updateMediaSessionPosition(true);
         });
         audio.addEventListener('seeked', () => {
-            console.log("[Audio] seeked event fired");
-            updateMediaSessionPosition();
+            console.log(`[Audio] seeked event fired, currentTime=${audio.currentTime}`);
+            updateMediaSessionPosition(true);
+        });
+        audio.addEventListener('waiting', () => {
+            console.log("[Audio] waiting (buffering) event fired");
+        });
+        audio.addEventListener('canplay', () => {
+            console.log("[Audio] canplay event fired");
+        });
+        audio.addEventListener('error', () => {
+            const err = audio.error;
+            console.error("[Audio] error event fired", err ? { code: err.code, message: err.message } : err);
         });
 
         progressContainer.addEventListener('click', setProgress);
@@ -2963,6 +3178,7 @@
                             if (lyricsCover) lyricsCover.src = extractedBase64;
                             const fsCover = document.getElementById('fs-cover');
                             if (fsCover) fsCover.src = extractedBase64;
+                            setMediaSessionMetadata(songs[currentIndex], extractedBase64);
                         }
                     }
                 });
@@ -3008,9 +3224,14 @@
         
         if (downloadBtn) downloadBtn.href = song.mp3_url;
 
-        // Note: updateMediaSession is intentionally NOT called here anymore.
-        // iOS requires Media Session to be initialized AFTER playback successfully starts.
-        // It is now strictly called inside playAudio() once the audio.play() promise resolves.
+        // Set Media Session metadata as soon as the track is selected,
+        // not only after playback starts. This is safe to call outside
+        // a user gesture (it's just data assignment, not audio.play()),
+        // and it means Control Center shows the right info immediately.
+        // playAudio() also re-asserts this right before audio.play()
+        // so it's guaranteed fresh inside the click's call stack too.
+        setMediaSessionMetadata(song, coverSrc);
+        setMediaSessionPlaybackState(audio.paused ? 'paused' : 'playing');
 
         renderSongList();
         
@@ -3024,30 +3245,48 @@
     }
 
     function togglePlay() {
-        if (!audio.src) return;
+        if (!audio.src) {
+            console.warn("[Audio] togglePlay called but audio.src is empty - no track loaded yet.");
+            return;
+        }
         if (audio.paused) {
             playAudio();
         } else {
+            console.log("[Audio] togglePlay -> pausing");
             audio.pause();
         }
     }
 
     function playAudio() {
-        console.log("[Audio] Attempting playback...");
+        if (currentIndex === -1 || !songs[currentIndex]) {
+            console.warn("[Audio] playAudio called with no current song selected.");
+            return;
+        }
+        const song = songs[currentIndex];
+        console.log(`[Audio] Attempting playback: "${song.song_title}" by "${song.artist}"`);
+
+        // IMPORTANT: set metadata + make sure handlers are registered
+        // BEFORE calling audio.play(), and do it synchronously (not in
+        // a .then() callback). iOS is strict about MediaSession state
+        // being touched inside the same call stack as the user gesture
+        // that triggered playback (tap on Play / lock screen button).
+        const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/300/00030F/ffffff?text=Music';
+        setMediaSessionMetadata(song, coverSrc);
+        registerMediaSessionActionHandlers(); // no-op if already registered
+
         const playPromise = audio.play();
         if (playPromise !== undefined) {
             playPromise.then(() => {
-                console.log("[Audio] Playback started successfully.");
-                if (currentIndex !== -1) {
-                    const song = songs[currentIndex];
-                    // Get the exact same cover source used in loadSong
-                    const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/300/00030F/ffffff?text=Music';
-                    updateMediaSession(song, coverSrc);
-                }
+                console.log("[Audio] Playback started successfully (play() promise resolved).");
+                setMediaSessionPlaybackState('playing');
+                updateMediaSessionPosition(true);
             }).catch(err => {
-                console.error("[Audio] Playback error:", err);
+                console.error("[Audio] Playback error - play() promise rejected:", err);
                 showToast("Failed to play audio. Check URL.", "error");
+                setMediaSessionPlaybackState('paused');
             });
+        } else {
+            console.warn("[Audio] audio.play() did not return a Promise (unusual for modern browsers).");
         }
     }
 
@@ -3221,119 +3460,6 @@
         audio.currentTime = percent * audio.duration;
     }
     
-    function updateMediaSessionPosition() {
-        if ('mediaSession' in navigator && !isNaN(audio.duration) && isFinite(audio.duration) && audio.duration > 0) {
-            try {
-                navigator.mediaSession.setPositionState({
-                    duration: audio.duration,
-                    playbackRate: audio.playbackRate || 1,
-                    position: audio.currentTime
-                });
-                console.log(`[MediaSession] Position state updated: ${audio.currentTime.toFixed(2)} / ${audio.duration.toFixed(2)}`);
-            } catch (e) {
-                console.warn("[MediaSession] Failed to update position state:", e);
-            }
-        }
-    }
-
-    function updateMediaSession(song, coverSrc) {
-        if (!('mediaSession' in navigator)) {
-            console.warn("[MediaSession] API not supported in this browser.");
-            return;
-        }
-
-        console.log(`[MediaSession] Updating metadata for: ${song.song_title} - ${song.artist}`);
-
-        // Revoke old blob to prevent lockscreen memory crashes in Safari
-        if (currentMediaBlobUrl) {
-            URL.revokeObjectURL(currentMediaBlobUrl);
-            currentMediaBlobUrl = null;
-        }
-            
-        // Extremely reliable high-quality fallback HTTPS image if everything else fails
-        let safeArtworkSrc = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=512&auto=format&fit=crop';
-        let mimeType = 'image/jpeg';
-
-        if (song.cover_url && song.cover_url.startsWith('http')) {
-            safeArtworkSrc = song.cover_url;
-            mimeType = song.cover_url.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-            console.log("[MediaSession] Using provided public HTTPS cover URL.");
-        } else if (coverSrc && coverSrc.startsWith('data:image')) {
-            try {
-                const parts = coverSrc.split(';');
-                mimeType = parts[0].split(':')[1];
-                const base64Data = parts[1].split(',')[1];
-                currentMediaBlobUrl = base64ToBlobUrl(base64Data, mimeType);
-                safeArtworkSrc = currentMediaBlobUrl;
-                console.log("[MediaSession] Using generated Blob URL for extracted artwork.");
-            } catch(e) {
-                console.warn("[MediaSession] Could not convert base64 to blob. Using fallback.", e);
-            }
-        } else if (coverSrc && coverSrc.startsWith('http')) {
-            safeArtworkSrc = coverSrc;
-            if (coverSrc.includes('placeholder.com')) mimeType = 'image/png';
-            console.log("[MediaSession] Using HTTP fallback artwork.");
-        }
-
-        const artworkSizes = ['96x96', '128x128', '192x192', '256x256', '384x384', '512x512'];
-        const artworkArray = artworkSizes.map(size => ({
-            src: safeArtworkSrc,
-            sizes: size,
-            type: mimeType
-        }));
-
-        try {
-            navigator.mediaSession.metadata = new MediaMetadata({
-                title: song.song_title || 'Unknown Title',
-                artist: song.artist || 'Unknown Artist',
-                album: 'Modern Music Streamer',
-                artwork: artworkArray
-            });
-            console.log("[MediaSession] Metadata successfully assigned.");
-        } catch (err) {
-            console.error("[MediaSession] Error setting metadata:", err);
-        }
-
-        // Register action handlers for lock-screen/bluetooth controls
-        const handlers = [
-            ['play', () => { console.log('[MediaSession] OS Play triggered'); playAudio(); }],
-            ['pause', () => { console.log('[MediaSession] OS Pause triggered'); audio.pause(); }],
-            ['previoustrack', () => { console.log('[MediaSession] OS Previous triggered'); prevSong(); }],
-            ['nexttrack', () => { console.log('[MediaSession] OS Next triggered'); nextSong(); }],
-            ['seekbackward', (details) => { 
-                console.log('[MediaSession] OS Seek backward triggered');
-                skipTime(-(details.seekOffset || 10)); 
-            }],
-            ['seekforward', (details) => { 
-                console.log('[MediaSession] OS Seek forward triggered');
-                skipTime(details.seekOffset || 10); 
-            }],
-            ['seekto', (details) => {
-                console.log('[MediaSession] OS Seek to position triggered:', details.seekTime);
-                if (details.fastSeek && 'fastSeek' in audio) {
-                    audio.fastSeek(details.seekTime);
-                } else {
-                    audio.currentTime = details.seekTime;
-                }
-            }]
-        ];
-
-        handlers.forEach(([action, handler]) => {
-            try {
-                navigator.mediaSession.setActionHandler(action, handler);
-                console.log(`[MediaSession] Successfully registered action handler: ${action}`);
-            } catch (error) {
-                console.warn(`[MediaSession] Action handler ${action} is not supported.`, error);
-            }
-        });
-        
-        // Sync initial playback state based on current audio element
-        if ('mediaSession' in navigator) {
-            navigator.mediaSession.playbackState = !audio.paused ? 'playing' : 'paused';
-            console.log(`[MediaSession] Initial playbackState set to: ${navigator.mediaSession.playbackState}`);
-        }
-    }
-
     function handleSongEnd() {
         if (!audio.loop && !isCustomLoopActive) {
             nextSong();
@@ -4494,7 +4620,7 @@
                             const fsCover = document.getElementById('fs-cover');
                             if (fsCover) fsCover.src = extractedBase64;
                             
-                            updateMediaSession(songs[currentIndex], extractedBase64);
+                            setMediaSessionMetadata(songs[currentIndex], extractedBase64);
                         }
                     }
                 });
