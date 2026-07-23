@@ -2662,6 +2662,7 @@
 
     let activeSongMenu = null;
     let currentArtistSongs = [];
+    let currentMediaBlobUrl = null;
 
     let lyricsCache = {};
     let parsedLyricsArray = [];
@@ -2775,6 +2776,24 @@
         
         audio.addEventListener('timeupdate', updateProgress);
         audio.addEventListener('ended', handleSongEnd);
+        
+        // Native Audio Event Listeners for completely reliable UI & iOS Sync
+        audio.addEventListener('loadedmetadata', updateMediaSessionPosition);
+        audio.addEventListener('play', () => {
+            isPlaying = true;
+            updatePlayIcons();
+            renderSongList();
+            if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+            updateMediaSessionPosition();
+        });
+        audio.addEventListener('pause', () => {
+            isPlaying = false;
+            updatePlayIcons();
+            renderSongList();
+            if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+        });
+        audio.addEventListener('seeked', updateMediaSessionPosition);
+
         progressContainer.addEventListener('click', setProgress);
         mobileProgressContainer.addEventListener('click', setProgress);
         
@@ -2990,22 +3009,15 @@
 
     function togglePlay() {
         if (!audio.src) return;
-        if (isPlaying) {
-            audio.pause();
-            isPlaying = false;
-            updatePlayIcons();
-            renderSongList();
-        } else {
+        if (audio.paused) {
             playAudio();
+        } else {
+            audio.pause();
         }
     }
 
     function playAudio() {
-        audio.play().then(() => {
-            isPlaying = true;
-            updatePlayIcons();
-            renderSongList();
-        }).catch(err => {
+        audio.play().catch(err => {
             console.error("Audio playback error:", err);
             showToast("Failed to play audio. Check URL.", "error");
         });
@@ -3020,10 +3032,6 @@
         
         const fsPlayIcon = document.getElementById('fs-play-icon');
         if (fsPlayIcon) fsPlayIcon.className = isPlaying ? 'fas fa-pause' : 'fas fa-play';
-        
-        if ('mediaSession' in navigator) {
-            navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
-        }
     }
 
     function base64ToBlobUrl(base64Data, contentType) {
@@ -3048,6 +3056,7 @@
     }
 
     function nextSong() {
+        const wasPlaying = !audio.paused;
         if (isShuffle) {
             let nextIdx;
             do {
@@ -3059,7 +3068,7 @@
             if (nextIdx >= songs.length) nextIdx = 0;
             loadSong(nextIdx);
         }
-        if (isPlaying) playAudio();
+        if (wasPlaying) playAudio();
     }
 
     function prevSong() {
@@ -3067,10 +3076,11 @@
             audio.currentTime = 0;
             return;
         }
+        const wasPlaying = !audio.paused;
         let prevIdx = currentIndex - 1;
         if (prevIdx < 0) prevIdx = songs.length - 1;
         loadSong(prevIdx);
-        if (isPlaying) playAudio();
+        if (wasPlaying) playAudio();
     }
 
     function toggleShuffle() {
@@ -3100,6 +3110,7 @@
     }
 
     function skipTime(seconds) {
+        if (isNaN(audio.duration)) return;
         audio.currentTime = Math.min(Math.max(audio.currentTime + seconds, 0), audio.duration);
     }
 
@@ -3180,15 +3191,14 @@
         const clickX = e.clientX - rect.left;
         const percent = clickX / rect.width;
         audio.currentTime = percent * audio.duration;
-        updateMediaSessionPosition();
     }
     
     function updateMediaSessionPosition() {
-        if ('mediaSession' in navigator && !isNaN(audio.duration)) {
+        if ('mediaSession' in navigator && !isNaN(audio.duration) && isFinite(audio.duration) && audio.duration > 0) {
             try {
                 navigator.mediaSession.setPositionState({
                     duration: audio.duration,
-                    playbackRate: audio.playbackRate,
+                    playbackRate: audio.playbackRate || 1,
                     position: audio.currentTime
                 });
             } catch (e) {
@@ -3198,59 +3208,68 @@
     }
 
     function updateMediaSession(song, coverSrc) {
-        if ('mediaSession' in navigator) {
-            
-            // Check if coverSrc is a raw base64 string, iOS Safari blocks these in the lock screen
-            let safeArtworkSrc = coverSrc;
-            if (coverSrc && coverSrc.startsWith('data:image')) {
-                try {
-                    const parts = coverSrc.split(';');
-                    const mime = parts[0].split(':')[1];
-                    const base64Data = parts[1].split(',')[1];
-                    safeArtworkSrc = base64ToBlobUrl(base64Data, mime);
-                } catch(e) {
-                    console.warn("Could not convert base64 to blob for Media Session", e);
-                }
-            }
+        if (!('mediaSession' in navigator)) return;
 
-            navigator.mediaSession.metadata = new MediaMetadata({
-                title: song.song_title,
-                artist: song.artist,
-                album: 'Modern Music Streamer',
-                artwork: [
-                    { src: safeArtworkSrc, sizes: '96x96', type: 'image/jpeg' },
-                    { src: safeArtworkSrc, sizes: '128x128', type: 'image/jpeg' },
-                    { src: safeArtworkSrc, sizes: '192x192', type: 'image/jpeg' },
-                    { src: safeArtworkSrc, sizes: '256x256', type: 'image/jpeg' },
-                    { src: safeArtworkSrc, sizes: '384x384', type: 'image/jpeg' },
-                    { src: safeArtworkSrc, sizes: '512x512', type: 'image/jpeg' }
-                ]
-            });
-
-            navigator.mediaSession.setActionHandler('play', playAudio);
-            navigator.mediaSession.setActionHandler('pause', () => {
-                if (isPlaying) togglePlay();
-            });
-            navigator.mediaSession.setActionHandler('previoustrack', prevSong);
-            navigator.mediaSession.setActionHandler('nexttrack', nextSong);
-            
-            navigator.mediaSession.setActionHandler('seekbackward', (details) => {
-                skipTime(-(details.seekOffset || 10));
-                updateMediaSessionPosition();
-            });
-            navigator.mediaSession.setActionHandler('seekforward', (details) => {
-                skipTime(details.seekOffset || 10);
-                updateMediaSessionPosition();
-            });
-            navigator.mediaSession.setActionHandler('seekto', (details) => {
-                if (details.fastSeek && 'fastSeek' in audio) {
-                  audio.fastSeek(details.seekTime);
-                } else {
-                  audio.currentTime = details.seekTime;
-                }
-                updateMediaSessionPosition();
-            });
+        // Revoke old blob to prevent lockscreen memory crashes in Safari
+        if (currentMediaBlobUrl) {
+            URL.revokeObjectURL(currentMediaBlobUrl);
+            currentMediaBlobUrl = null;
         }
+            
+        // Extremely reliable high-quality fallback image if everything else fails
+        let safeArtworkSrc = 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=512&q=80';
+        let mimeType = 'image/jpeg';
+
+        if (song.cover_url && song.cover_url.startsWith('http')) {
+            safeArtworkSrc = song.cover_url;
+        } else if (coverSrc && coverSrc.startsWith('data:image')) {
+            try {
+                const parts = coverSrc.split(';');
+                mimeType = parts[0].split(':')[1];
+                const base64Data = parts[1].split(',')[1];
+                currentMediaBlobUrl = base64ToBlobUrl(base64Data, mimeType);
+                safeArtworkSrc = currentMediaBlobUrl;
+            } catch(e) {
+                console.warn("Could not convert base64 to blob for Media Session", e);
+            }
+        } else if (coverSrc && coverSrc.startsWith('http')) {
+            safeArtworkSrc = coverSrc;
+            if (coverSrc.includes('placeholder.com')) mimeType = 'image/png';
+        }
+
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: song.song_title || 'Unknown Title',
+            artist: song.artist || 'Unknown Artist',
+            album: 'Modern Music Streamer',
+            artwork: [
+                { src: safeArtworkSrc, sizes: '96x96', type: mimeType },
+                { src: safeArtworkSrc, sizes: '128x128', type: mimeType },
+                { src: safeArtworkSrc, sizes: '192x192', type: mimeType },
+                { src: safeArtworkSrc, sizes: '256x256', type: mimeType },
+                { src: safeArtworkSrc, sizes: '384x384', type: mimeType },
+                { src: safeArtworkSrc, sizes: '512x512', type: mimeType }
+            ]
+        });
+
+        // Directly attach OS handlers to audio element functions
+        navigator.mediaSession.setActionHandler('play', () => { playAudio(); });
+        navigator.mediaSession.setActionHandler('pause', () => { audio.pause(); });
+        navigator.mediaSession.setActionHandler('previoustrack', () => { prevSong(); });
+        navigator.mediaSession.setActionHandler('nexttrack', () => { nextSong(); });
+        
+        navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+            skipTime(-(details.seekOffset || 10));
+        });
+        navigator.mediaSession.setActionHandler('seekforward', (details) => {
+            skipTime(details.seekOffset || 10);
+        });
+        navigator.mediaSession.setActionHandler('seekto', (details) => {
+            if (details.fastSeek && 'fastSeek' in audio) {
+              audio.fastSeek(details.seekTime);
+            } else {
+              audio.currentTime = details.seekTime;
+            }
+        });
     }
 
     function handleSongEnd() {
@@ -3538,7 +3557,7 @@
 
     function seekToLyric(time) {
         audio.currentTime = time;
-        if (!isPlaying) togglePlay();
+        if (audio.paused) playAudio();
     }
 
     function openLyricsModal() {
