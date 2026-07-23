@@ -2778,21 +2778,35 @@
         audio.addEventListener('ended', handleSongEnd);
         
         // Native Audio Event Listeners for completely reliable UI & iOS Sync
-        audio.addEventListener('loadedmetadata', updateMediaSessionPosition);
+        audio.addEventListener('loadedmetadata', () => {
+            console.log("[Audio] loadedmetadata event fired");
+            updateMediaSessionPosition();
+        });
         audio.addEventListener('play', () => {
+            console.log("[Audio] play event fired");
             isPlaying = true;
             updatePlayIcons();
             renderSongList();
-            if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.playbackState = 'playing';
+                console.log("[MediaSession] playbackState set to 'playing'");
+            }
             updateMediaSessionPosition();
         });
         audio.addEventListener('pause', () => {
+            console.log("[Audio] pause event fired");
             isPlaying = false;
             updatePlayIcons();
             renderSongList();
-            if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.playbackState = 'paused';
+                console.log("[MediaSession] playbackState set to 'paused'");
+            }
         });
-        audio.addEventListener('seeked', updateMediaSessionPosition);
+        audio.addEventListener('seeked', () => {
+            console.log("[Audio] seeked event fired");
+            updateMediaSessionPosition();
+        });
 
         progressContainer.addEventListener('click', setProgress);
         mobileProgressContainer.addEventListener('click', setProgress);
@@ -2994,7 +3008,9 @@
         
         if (downloadBtn) downloadBtn.href = song.mp3_url;
 
-        updateMediaSession(song, coverSrc);
+        // Note: updateMediaSession is intentionally NOT called here anymore.
+        // iOS requires Media Session to be initialized AFTER playback successfully starts.
+        // It is now strictly called inside playAudio() once the audio.play() promise resolves.
 
         renderSongList();
         
@@ -3017,10 +3033,22 @@
     }
 
     function playAudio() {
-        audio.play().catch(err => {
-            console.error("Audio playback error:", err);
-            showToast("Failed to play audio. Check URL.", "error");
-        });
+        console.log("[Audio] Attempting playback...");
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+            playPromise.then(() => {
+                console.log("[Audio] Playback started successfully.");
+                if (currentIndex !== -1) {
+                    const song = songs[currentIndex];
+                    // Get the exact same cover source used in loadSong
+                    const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/300/00030F/ffffff?text=Music';
+                    updateMediaSession(song, coverSrc);
+                }
+            }).catch(err => {
+                console.error("[Audio] Playback error:", err);
+                showToast("Failed to play audio. Check URL.", "error");
+            });
+        }
     }
 
     function updatePlayIcons() {
@@ -3201,14 +3229,20 @@
                     playbackRate: audio.playbackRate || 1,
                     position: audio.currentTime
                 });
+                console.log(`[MediaSession] Position state updated: ${audio.currentTime.toFixed(2)} / ${audio.duration.toFixed(2)}`);
             } catch (e) {
-                // Ignore errors if position state is unsupported or invalid
+                console.warn("[MediaSession] Failed to update position state:", e);
             }
         }
     }
 
     function updateMediaSession(song, coverSrc) {
-        if (!('mediaSession' in navigator)) return;
+        if (!('mediaSession' in navigator)) {
+            console.warn("[MediaSession] API not supported in this browser.");
+            return;
+        }
+
+        console.log(`[MediaSession] Updating metadata for: ${song.song_title} - ${song.artist}`);
 
         // Revoke old blob to prevent lockscreen memory crashes in Safari
         if (currentMediaBlobUrl) {
@@ -3216,12 +3250,14 @@
             currentMediaBlobUrl = null;
         }
             
-        // Extremely reliable high-quality fallback image if everything else fails
-        let safeArtworkSrc = 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=512&q=80';
+        // Extremely reliable high-quality fallback HTTPS image if everything else fails
+        let safeArtworkSrc = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=512&auto=format&fit=crop';
         let mimeType = 'image/jpeg';
 
         if (song.cover_url && song.cover_url.startsWith('http')) {
             safeArtworkSrc = song.cover_url;
+            mimeType = song.cover_url.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+            console.log("[MediaSession] Using provided public HTTPS cover URL.");
         } else if (coverSrc && coverSrc.startsWith('data:image')) {
             try {
                 const parts = coverSrc.split(';');
@@ -3229,47 +3265,73 @@
                 const base64Data = parts[1].split(',')[1];
                 currentMediaBlobUrl = base64ToBlobUrl(base64Data, mimeType);
                 safeArtworkSrc = currentMediaBlobUrl;
+                console.log("[MediaSession] Using generated Blob URL for extracted artwork.");
             } catch(e) {
-                console.warn("Could not convert base64 to blob for Media Session", e);
+                console.warn("[MediaSession] Could not convert base64 to blob. Using fallback.", e);
             }
         } else if (coverSrc && coverSrc.startsWith('http')) {
             safeArtworkSrc = coverSrc;
             if (coverSrc.includes('placeholder.com')) mimeType = 'image/png';
+            console.log("[MediaSession] Using HTTP fallback artwork.");
         }
 
-        navigator.mediaSession.metadata = new MediaMetadata({
-            title: song.song_title || 'Unknown Title',
-            artist: song.artist || 'Unknown Artist',
-            album: 'Modern Music Streamer',
-            artwork: [
-                { src: safeArtworkSrc, sizes: '96x96', type: mimeType },
-                { src: safeArtworkSrc, sizes: '128x128', type: mimeType },
-                { src: safeArtworkSrc, sizes: '192x192', type: mimeType },
-                { src: safeArtworkSrc, sizes: '256x256', type: mimeType },
-                { src: safeArtworkSrc, sizes: '384x384', type: mimeType },
-                { src: safeArtworkSrc, sizes: '512x512', type: mimeType }
-            ]
-        });
+        const artworkSizes = ['96x96', '128x128', '192x192', '256x256', '384x384', '512x512'];
+        const artworkArray = artworkSizes.map(size => ({
+            src: safeArtworkSrc,
+            sizes: size,
+            type: mimeType
+        }));
 
-        // Directly attach OS handlers to audio element functions
-        navigator.mediaSession.setActionHandler('play', () => { playAudio(); });
-        navigator.mediaSession.setActionHandler('pause', () => { audio.pause(); });
-        navigator.mediaSession.setActionHandler('previoustrack', () => { prevSong(); });
-        navigator.mediaSession.setActionHandler('nexttrack', () => { nextSong(); });
-        
-        navigator.mediaSession.setActionHandler('seekbackward', (details) => {
-            skipTime(-(details.seekOffset || 10));
-        });
-        navigator.mediaSession.setActionHandler('seekforward', (details) => {
-            skipTime(details.seekOffset || 10);
-        });
-        navigator.mediaSession.setActionHandler('seekto', (details) => {
-            if (details.fastSeek && 'fastSeek' in audio) {
-              audio.fastSeek(details.seekTime);
-            } else {
-              audio.currentTime = details.seekTime;
+        try {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: song.song_title || 'Unknown Title',
+                artist: song.artist || 'Unknown Artist',
+                album: 'Modern Music Streamer',
+                artwork: artworkArray
+            });
+            console.log("[MediaSession] Metadata successfully assigned.");
+        } catch (err) {
+            console.error("[MediaSession] Error setting metadata:", err);
+        }
+
+        // Register action handlers for lock-screen/bluetooth controls
+        const handlers = [
+            ['play', () => { console.log('[MediaSession] OS Play triggered'); playAudio(); }],
+            ['pause', () => { console.log('[MediaSession] OS Pause triggered'); audio.pause(); }],
+            ['previoustrack', () => { console.log('[MediaSession] OS Previous triggered'); prevSong(); }],
+            ['nexttrack', () => { console.log('[MediaSession] OS Next triggered'); nextSong(); }],
+            ['seekbackward', (details) => { 
+                console.log('[MediaSession] OS Seek backward triggered');
+                skipTime(-(details.seekOffset || 10)); 
+            }],
+            ['seekforward', (details) => { 
+                console.log('[MediaSession] OS Seek forward triggered');
+                skipTime(details.seekOffset || 10); 
+            }],
+            ['seekto', (details) => {
+                console.log('[MediaSession] OS Seek to position triggered:', details.seekTime);
+                if (details.fastSeek && 'fastSeek' in audio) {
+                    audio.fastSeek(details.seekTime);
+                } else {
+                    audio.currentTime = details.seekTime;
+                }
+            }]
+        ];
+
+        handlers.forEach(([action, handler]) => {
+            try {
+                navigator.mediaSession.setActionHandler(action, handler);
+                console.log(`[MediaSession] Successfully registered action handler: ${action}`);
+            } catch (error) {
+                console.warn(`[MediaSession] Action handler ${action} is not supported.`, error);
             }
         });
+        
+        // Sync initial playback state based on current audio element
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = !audio.paused ? 'playing' : 'paused';
+            console.log(`[MediaSession] Initial playbackState set to: ${navigator.mediaSession.playbackState}`);
+        }
     }
 
     function handleSongEnd() {
