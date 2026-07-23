@@ -631,6 +631,122 @@
         .song-menu-dropdown button.delete-opt:hover {
             background: rgba(239, 68, 68, 0.1);
         }
+        
+        .bulk-action-bar {
+            position: fixed;
+            bottom: 110px;
+            left: 50%;
+            transform: translateX(-50%) translateY(150%);
+            background: #111827;
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.8);
+            padding: 1rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            z-index: 1000;
+            width: 90%;
+            max-width: 600px;
+            opacity: 0;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .bulk-action-bar.visible {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .bulk-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--glass-border);
+            padding-bottom: 0.8rem;
+        }
+
+        .bulk-info span {
+            font-weight: 600;
+            color: var(--primary-color);
+            font-size: 1.1rem;
+        }
+
+        .bulk-actions {
+            display: flex;
+            justify-content: space-between;
+            gap: 0.6rem;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .bulk-actions::-webkit-scrollbar { display: none; }
+
+        .bulk-btn {
+            background: var(--bg-color);
+            border: 1px solid var(--glass-border);
+            color: var(--text-main);
+            padding: 0.6rem 1rem;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+
+        .bulk-btn:hover {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        .bulk-btn.delete:hover {
+            background: #ef4444;
+            border-color: #ef4444;
+        }
+
+        .text-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .text-btn:hover { color: var(--text-main); }
+
+        .song-checkbox {
+            margin-right: 1rem;
+            font-size: 1.3rem;
+            color: var(--glass-border);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            transition: color 0.2s;
+        }
+
+        .song-item.selected-bulk {
+            background: var(--glass-highlight);
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .song-item.selected-bulk .song-checkbox {
+            color: var(--primary-color);
+        }
+
+        .toggle-select-btn.active {
+            color: var(--primary-color) !important;
+            border-color: var(--primary-color) !important;
+        }
+
+        @media (max-width: 900px) {
+            .bulk-action-bar {
+                bottom: 130px;
+                padding: 1rem;
+                width: 95%;
+            }
+        }
 
         .action-btn {
             background: var(--bg-color);
@@ -2200,6 +2316,37 @@
                 flex-shrink: 0;
             }
         }
+
+        .custom-toast {
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: #111827;
+            border: 1px solid var(--glass-border);
+            color: var(--text-main);
+            padding: 12px 24px;
+            border-radius: 30px;
+            box-shadow: 0 15px 30px rgba(0,0,0,0.6);
+            display: none;
+            align-items: center;
+            gap: 12px;
+            z-index: 100000;
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            pointer-events: none;
+            font-weight: 500;
+            font-size: 0.95rem;
+        }
+
+        @media (max-width: 900px) {
+            .custom-toast {
+                bottom: 120px;
+                width: 90%;
+                max-width: 400px;
+                justify-content: center;
+            }
+        }
     </style>
 </head>
 <body>
@@ -2234,9 +2381,14 @@
                         <input type="text" id="search-input" placeholder="Search song or artist..." oninput="handleSearch(this.value)">
                         <i class="fas fa-times clear-search-btn" id="clear-search-btn" onclick="clearSearch()" title="Clear search"></i>
                     </div>
-                    <button class="btn-primary" onclick="openModal('add')">
-                        <i class="fas fa-plus"></i> Upload
-                    </button>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="btn-primary toggle-select-btn" onclick="toggleMultiSelectMode()" style="background: transparent; border-color: var(--glass-border);">
+                            <i class="fas fa-check-square"></i> <span class="desktop-only-icon">Select</span>
+                        </button>
+                        <button class="btn-primary" onclick="openModal('add')">
+                            <i class="fas fa-plus"></i> <span class="desktop-only-icon">Upload</span>
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="active-filter-banner" id="active-filter-banner" style="display:none;">
@@ -2354,7 +2506,10 @@
                 <div class="artist-hero-gradient"></div>
                 <div class="artist-hero-top">
                 <button class="hero-btn pill" onclick="closeArtistModal()"><i class="fas fa-arrow-left"></i> Back</button>
-                <button class="hero-btn round" onclick="if(currentArtistSongs.length > 0) playSongActionById(currentArtistSongs[0].id);" title="Play Top Song"><i class="fas fa-play"></i></button>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="hero-btn round toggle-select-btn" onclick="toggleMultiSelectMode()" title="Select Songs"><i class="fas fa-check-square"></i></button>
+                    <button class="hero-btn round" onclick="if(currentArtistSongs.length > 0) playSongActionById(currentArtistSongs[0].id);" title="Play Top Song"><i class="fas fa-play"></i></button>
+                </div>
             </div>
             <div class="artist-hero-content">
                     <h2 id="artist-name-display">Artist Name</h2>
@@ -2365,6 +2520,57 @@
             <div class="more-artists-section" id="artist-more-section" style="display: none;">
                 <h3 class="more-artists-title">More Artists</h3>
                 <div class="artist-carousel" id="artist-carousel">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fullscreen Player View -->
+    <div id="fullscreen-player" class="fullscreen-player">
+        <div id="fs-bg-blur" class="fullscreen-bg-blur" style="background-image: url('https://via.placeholder.com/300/111111/ffffff?text=Music');"></div>
+        <div class="fullscreen-overlay-dark"></div>
+        
+        <div class="fs-top-actions">
+            <button class="fs-top-btn" onclick="toggleNativeFullscreen()" title="Toggle Native Fullscreen"><i class="fas fa-expand"></i></button>
+            <button class="fs-top-btn" onclick="exitFullscreenMode()" title="Close Player"><i class="fas fa-compress-alt"></i></button>
+        </div>
+        
+        <div class="fs-container">
+            <div class="fs-left-col">
+                <div class="fs-cover-wrapper">
+                    <img id="fs-cover" crossorigin="anonymous" src="https://via.placeholder.com/512/111111/ffffff?text=Music" alt="Cover">
+                </div>
+                <div class="fs-track-info">
+                    <h2 id="fs-title">No Song Selected</h2>
+                    <p id="fs-artist">Select a track to play</p>
+                </div>
+                <div class="fs-progress-container">
+                    <div class="fs-time-info">
+                        <span id="fs-curr-time">0:00</span>
+                        <span id="fs-dur-time">0:00</span>
+                    </div>
+                    <div class="progress-bar-wrapper" id="fs-progress-container">
+                        <div class="progress-bar" id="fs-progress-bar"></div>
+                    </div>
+                </div>
+                <div class="fs-controls">
+                    <button class="ctrl-btn" id="fs-shuffle-btn" onclick="toggleShuffle()" title="Shuffle Mode"><i class="fas fa-random"></i></button>
+                    <button class="ctrl-btn" onclick="prevSong()" title="Previous Song"><i class="fas fa-step-backward"></i></button>
+                    <button class="play-pause-btn" onclick="togglePlay()" title="Play or Pause"><i class="fas fa-play" id="fs-play-icon"></i></button>
+                    <button class="ctrl-btn" onclick="nextSong()" title="Next Song"><i class="fas fa-step-forward"></i></button>
+                    <button class="ctrl-btn" id="fs-loop-btn" onclick="toggleLoop()" title="Loop Song"><i class="fas fa-repeat"></i></button>
+                </div>
+                <div class="fs-volume-container">
+                    <i class="fas fa-volume-up" style="color:var(--text-muted); font-size: 1rem;"></i>
+                    <input type="range" class="volume-slider" min="0" max="1" step="0.01" value="0.8" oninput="setVolume(this.value)">
+                </div>
+            </div>
+            <div class="fs-right-col">
+                <div class="fs-lyrics-header">
+                    <span class="fs-lyrics-badge">Lyrics</span>
+                </div>
+                <div class="fs-lyrics-container" id="fs-lyrics-container">
+                    <div class="fs-lyrics-empty">Play a song to see lyrics</div>
                 </div>
             </div>
         </div>
@@ -2432,82 +2638,132 @@
     </div>
 </div>
 
-<div class="modal-overlay" id="upload-modal">
+<!-- Bulk Action Bar -->
+<div id="bulk-action-bar" class="bulk-action-bar">
+    <div class="bulk-info">
+        <button class="icon-btn" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1.2rem;" onclick="cancelBulkSelect()"><i class="fas fa-times"></i></button>
+        <span id="bulk-count">0 Selected</span>
+        <button class="text-btn" onclick="selectAllBulk()">Select All</button>
+    </div>
+    <div class="bulk-actions">
+        <button class="bulk-btn" onclick="openBulkPlaylistModal()"><i class="fas fa-list-ul"></i> Playlist</button>
+        <button class="bulk-btn" onclick="openBulkMoodModal()"><i class="fas fa-smile"></i> Mood</button>
+        <button class="bulk-btn" onclick="openBulkGenreModal()"><i class="fas fa-music"></i> Genre</button>
+        <button class="bulk-btn delete" onclick="bulkDelete()"><i class="fas fa-trash"></i> Delete</button>
+    </div>
+</div>
+
+<!-- Bulk Playlist Modal -->
+<div class="modal-overlay" id="bulk-playlist-modal" style="z-index: 10005;">
     <div class="modal">
-        <h2 id="modal-title">Add New Song</h2>
+        <h2>Add to Playlist</h2>
+        <div class="form-group full-width">
+            <label>Select Playlists</label>
+            <div id="bulk-playlist-selector" class="playlist-selector"></div>
+            <input type="text" id="bulk-new-playlist" placeholder="+ Add new playlist..." 
+                   style="margin-top:0.5rem; font-size:0.85rem;" 
+                   onkeydown="if(event.key === 'Enter'){ event.preventDefault(); addBulkPlaylistChip(this.value); this.value=''; }">
+        </div>
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="closeBulkModals()">Cancel</button>
+            <button class="btn-primary" id="bulk-pl-save-btn" onclick="submitBulkPlaylist()">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Mood Modal -->
+<div class="modal-overlay" id="bulk-mood-modal" style="z-index: 10005;">
+    <div class="modal">
+        <h2>Assign Mood</h2>
+        <p style="color: #ef4444; font-size: 0.85rem; margin-bottom: 1rem;">Warning: This will replace the current mood for all selected songs.</p>
+        <div class="form-group">
+            <select id="bulk-in-mood" onchange="document.getElementById('bulk-new-mood').style.display = this.value === 'new_mood_option' ? 'block' : 'none'"></select>
+            <input type="text" id="bulk-new-mood" placeholder="Enter mood name" style="display:none; margin-top:0.5rem;">
+        </div>
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="closeBulkModals()">Cancel</button>
+            <button class="btn-primary" id="bulk-mood-save-btn" onclick="submitBulkMood()">Assign</button>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Genre Modal -->
+<div class="modal-overlay" id="bulk-genre-modal" style="z-index: 10005;">
+    <div class="modal">
+        <h2>Assign Genre</h2>
+        <p style="color: #ef4444; font-size: 0.85rem; margin-bottom: 1rem;">Warning: This will replace the current genre for all selected songs.</p>
+        <div class="form-group">
+            <select id="bulk-in-genre" onchange="document.getElementById('bulk-new-genre').style.display = this.value === 'new_genre_option' ? 'block' : 'none'"></select>
+            <input type="text" id="bulk-new-genre" placeholder="Enter genre name" style="display:none; margin-top:0.5rem;">
+        </div>
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="closeBulkModals()">Cancel</button>
+            <button class="btn-primary" id="bulk-genre-save-btn" onclick="submitBulkGenre()">Assign</button>
+        </div>
+    </div>
+</div>
+
+<!-- Upload/Edit Modal -->
+<div class="modal-overlay" id="upload-modal" style="z-index: 10000;">
+    <div class="modal">
+        <h2 id="modal-title">Upload Song</h2>
         <form id="upload-form" onsubmit="handleUpload(event)">
             <input type="hidden" id="in-id">
-            
             <div class="form-grid">
                 <div class="form-group">
-                    <label>Song Title</label>
-                    <input type="text" id="in-title" required placeholder="e.g. Midnight City">
+                    <label>Title</label>
+                    <input type="text" id="in-title" required>
                 </div>
                 <div class="form-group">
                     <label>Artist</label>
-                    <input type="text" id="in-artist" required placeholder="e.g. M83">
+                    <input type="text" id="in-artist" required>
                 </div>
-
-                <div class="form-group">
-                    <label>MP3 URL (Direct Link)</label>
-                    <input type="url" id="in-mp3" required placeholder="https://example.com/song.mp3">
+                <div class="form-group full-width">
+                    <label>MP3 URL</label>
+                    <input type="url" id="in-mp3" required>
                 </div>
-                <div class="form-group">
-                    <label>Cover Image URL (Optional)</label>
-                    <input type="url" id="in-cover" placeholder="Leave empty for auto MP3 artwork extraction">
+                <div class="form-group full-width">
+                    <label>Cover Art URL</label>
+                    <input type="url" id="in-cover">
                 </div>
-                
                 <div class="form-group">
                     <label>Genre</label>
-                    <select id="in-genre" onchange="checkNewGenre(this)">
-                        <option value="Pop">Pop</option>
-                        <option value="Rock">Rock</option>
-                        <option value="Hip Hop">Hip Hop</option>
-                        <option value="Electronic">Electronic</option>
-                        <option value="Jazz">Jazz</option>
-                        <option value="Classical">Classical</option>
-                        <option value="new_genre_option">+ Create New...</option>
-                    </select>
-                    <input type="text" id="in-new-genre" placeholder="Enter genre name" style="display:none; margin-top:0.5rem;">
+                    <select id="in-genre" onchange="checkNewGenre(this)"></select>
+                    <input type="text" id="in-new-genre" placeholder="Enter new genre" style="display:none; margin-top:0.5rem;">
                 </div>
-                
                 <div class="form-group">
-                    <label>Mood (Optional)</label>
-                    <select id="in-mood" onchange="checkNewMood(this)">
-                    </select>
-                    <input type="text" id="in-new-mood" placeholder="Enter mood name" style="display:none; margin-top:0.5rem;">
+                    <label>Mood</label>
+                    <select id="in-mood" onchange="checkNewMood(this)"></select>
+                    <input type="text" id="in-new-mood" placeholder="Enter new mood" style="display:none; margin-top:0.5rem;">
                 </div>
-
                 <div class="form-group full-width">
-                    <label>Playlists (Select multiple)</label>
-                    <div id="playlist-selector" class="playlist-selector">
-                    </div>
+                    <label>Playlists</label>
+                    <div id="playlist-selector" class="playlist-selector"></div>
                     <input type="text" id="in-new-playlist" placeholder="+ Add new playlist..." 
                            style="margin-top:0.5rem; font-size:0.85rem;" 
                            onkeydown="if(event.key === 'Enter'){ event.preventDefault(); addPlaylistChip(this.value); this.value=''; }">
                 </div>
             </div>
-            
             <div class="modal-actions">
                 <button type="button" class="btn-cancel" onclick="closeModal()">Cancel</button>
                 <button type="submit" class="btn-primary" id="save-btn">
-                    <span class="btn-text">Save Song</span>
-                    <div class="loading-spinner" id="save-spinner"></div>
+                    <span class="btn-text">Save</span>
+                    <div class="loading-spinner" id="save-spinner" style="width: 16px; height: 16px; border-width: 2px;"></div>
                 </button>
             </div>
         </form>
     </div>
 </div>
 
-<!-- Dedicated Create Playlist Modal -->
-<div class="modal-overlay" id="create-playlist-modal">
-    <div class="modal" style="width: 400px; max-width: 95vw;">
+<!-- Create Playlist Modal -->
+<div class="modal-overlay" id="create-playlist-modal" style="z-index: 10005;">
+    <div class="modal">
         <h2 id="create-pl-title">Create Playlist</h2>
-        <form id="create-playlist-form" onsubmit="handleCreatePlaylist(event)">
-            <input type="hidden" id="edit-playlist-old-name" value="">
-            <div class="form-group">
+        <form onsubmit="handleCreatePlaylist(event)">
+            <input type="hidden" id="edit-playlist-old-name">
+            <div class="form-group full-width">
                 <label>Playlist Name</label>
-                <input type="text" id="new-playlist-name" required placeholder="e.g. Summer Vibes, Workout...">
+                <input type="text" id="new-playlist-name" required placeholder="My Awesome Playlist">
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn-cancel" onclick="closeCreatePlaylistModal()">Cancel</button>
@@ -2517,137 +2773,20 @@
     </div>
 </div>
 
-<div id="mobile-player" class="mobile-player">
-    <div class="mobile-header">
-        <button class="icon-btn" onclick="closeMobilePlayer()"><i class="fas fa-arrow-left"></i></button>
-        <button class="icon-btn" onclick="openRelatedModal()"><i class="fas fa-ellipsis-h"></i></button>
-    </div>
-    
-    <div class="mobile-art-container" id="mobile-art-container">
-        <img id="mobile-cover" src="https://via.placeholder.com/300/1e293b/ffffff?text=Music" alt="Cover">
-        <div class="seek-gesture-overlay" id="seek-overlay">
-            <div class="seek-gesture-content">
-                <div class="seek-arrow-row">
-                    <span class="seek-arrow" id="seek-arrow-left">&#8592;</span>
-                    <span class="seek-time-label" id="seek-time-label">+0s</span>
-                    <span class="seek-arrow" id="seek-arrow-right">&#8594;</span>
-                </div>
-                <span class="seek-hint-text" id="seek-hint-text">Hold &amp; drag to seek</span>
-            </div>
-        </div>
-    </div>
-    
-    <div class="mobile-info">
-        <h2 id="mobile-title">Song Title</h2>
-        <p id="mobile-artist" class="clickable-artist-name" onclick="openArtistPage(this.innerText, event)">Artist Name</p>
-    </div>
-    
-    <div class="mobile-progress">
-        <div class="progress-bar-wrapper" id="mobile-progress-container">
-            <div class="progress-bar" id="mobile-progress-bar"></div>
-        </div>
-        <div class="mobile-time-info">
-            <span id="mobile-curr-time">0:00</span>
-            <span id="mobile-dur-time">0:00</span>
-        </div>
-    </div>
-    
-    <div class="mobile-controls">
-        <button class="mobile-ctrl-btn" id="mobile-shuffle-btn" onclick="toggleShuffle()"><i class="fas fa-random"></i></button>
-        <button class="mobile-ctrl-btn" onclick="prevSong()"><i class="fas fa-step-backward"></i></button>
-        <button class="mobile-play-btn" onclick="togglePlay()">
-            <i class="fas fa-play" id="mobile-play-icon"></i>
-        </button>
-        <button class="mobile-ctrl-btn" onclick="nextSong()"><i class="fas fa-step-forward"></i></button>
-        <button class="mobile-ctrl-btn" id="mobile-loop-btn" onclick="toggleLoop()"><i class="fas fa-repeat"></i></button>
-    </div>
-    
-    <div class="mobile-lyrics-teaser" onclick="openLyricsModal()">
-        <i class="fas fa-chevron-up"></i>
-        <span>Lyrics</span>
-    </div>
-</div>
-
-<div id="fullscreen-player" class="fullscreen-player" aria-label="Fullscreen Now Playing Player">
-    <div class="fullscreen-bg-blur" id="fs-bg-blur"></div>
-    <div class="fullscreen-overlay-dark"></div>
-    
-    <!-- New Top Actions Cluster -->
-    <div class="fs-top-actions">
-        <!-- True Fullscreen Native API Toggle Button -->
-        <button class="fs-top-btn" id="true-fs-btn" onclick="toggleNativeFullscreen()" title="True Fullscreen" aria-label="Toggle True Fullscreen">
-            <i class="fas fa-expand" id="true-fs-icon"></i>
-        </button>
-        
-        <!-- Close Virtual Player View -->
-        <button class="fs-top-btn" onclick="exitFullscreenMode()" title="Close Player View (Esc)" aria-label="Close Player View">
-            <i class="fas fa-times"></i>
-        </button>
-    </div>
-
-    <div class="fs-container">
-        <div class="fs-left-col">
-            <div class="fs-cover-wrapper">
-                <img id="fs-cover" src="https://via.placeholder.com/300/1e293b/ffffff?text=Music" alt="Album Cover">
-            </div>
-            <div class="fs-track-info">
-                <h2 id="fs-title">No Song Selected</h2>
-                <p id="fs-artist" class="clickable-artist-name" onclick="openArtistPage(this.innerText, event)">Select a track to play</p>
-            </div>
-            <div class="fs-progress-container">
-                <div class="fs-time-info">
-                    <span id="fs-curr-time">0:00</span>
-                    <span id="fs-dur-time">0:00</span>
-                </div>
-                <div class="progress-bar-wrapper" id="fs-progress-container" aria-label="Seek track position">
-                    <div class="progress-bar" id="fs-progress-bar"></div>
-                </div>
-            </div>
-            <div class="fs-controls">
-                <button class="ctrl-btn" id="fs-shuffle-btn" onclick="toggleShuffle()" title="Shuffle Mode" aria-label="Shuffle Mode"><i class="fas fa-random"></i></button>
-                <button class="ctrl-btn" onclick="prevSong()" title="Previous Song" aria-label="Previous Song"><i class="fas fa-step-backward"></i></button>
-                <button class="ctrl-btn skip-btn" onclick="skipTime(-10)" title="Rewind 10 seconds" aria-label="Rewind 10 seconds">-10s</button>
-                
-                <button class="play-pause-btn" onclick="togglePlay()" title="Play or Pause" aria-label="Play or Pause">
-                    <i class="fas fa-play" id="fs-play-icon"></i>
-                </button>
-                
-                <button class="ctrl-btn skip-btn" onclick="skipTime(10)" title="Forward 10 seconds" aria-label="Forward 10 seconds">+10s</button>
-                <button class="ctrl-btn" onclick="nextSong()" title="Next Song" aria-label="Next Song"><i class="fas fa-step-forward"></i></button>
-                <button class="ctrl-btn" id="fs-loop-btn" onclick="toggleLoop()" title="Loop Song" aria-label="Loop Song"><i class="fas fa-repeat"></i></button>
-            </div>
-            <div class="fs-volume-container">
-                <i class="fas fa-volume-up" style="color:var(--text-muted)"></i>
-                <input type="range" class="volume-slider" id="fs-volume-slider" min="0" max="1" step="0.01" value="0.8" oninput="setVolume(this.value)" aria-label="Fullscreen Volume Slider">
-            </div>
-        </div>
-
-        <div class="fs-right-col">
-            <div class="fs-lyrics-header">
-                <span id="fs-lyrics-badge" class="fs-lyrics-badge">Lyrics</span>
-            </div>
-            <div class="fs-lyrics-container" id="fs-lyrics-container">
-                <div class="fs-lyrics-empty">
-                    <i class="fas fa-music" style="font-size: 2rem; margin-bottom: 0.5rem;"></i>
-                    <span>Select a song to view lyrics</span>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div id="custom-toast" style="position: fixed; bottom: 110px; right: 20px; background: var(--bg-color); border: 1px solid var(--glass-border); padding: 0.8rem 1.5rem; border-radius: 12px; z-index: 10000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: none; align-items: center; gap: 0.8rem; color: var(--text-main); transition: all 0.3s ease; transform: translateY(20px); opacity: 0;">
-    <i id="custom-toast-icon" class="fas fa-info-circle" style="color: var(--primary-color);"></i>
+<div id="custom-toast" class="custom-toast">
+    <i id="custom-toast-icon" class="fas fa-info-circle"></i>
     <span id="custom-toast-text"></span>
 </div>
 
-<div id="custom-confirm-modal" class="modal-overlay" style="z-index: 9999;">
-    <div class="modal" style="width: 400px; text-align: center;">
-        <h2 style="font-size: 1.3rem; margin-bottom: 1rem;"><i class="fas fa-exclamation-triangle" style="color: #ef4444; margin-right: 8px;"></i>Confirm Action</h2>
-        <p id="custom-confirm-text" style="color: var(--text-muted); margin-bottom: 2rem;"></p>
-        <div style="display: flex; justify-content: center; gap: 1rem;">
-            <button class="btn-cancel" id="custom-confirm-cancel" style="padding: 0.6rem 1.5rem;">Cancel</button>
-            <button class="btn-primary" id="custom-confirm-ok" style="background: #ef4444; padding: 0.6rem 1.5rem; border-color: #ef4444;">Delete</button>
+<div class="modal-overlay" id="custom-confirm-modal" style="z-index: 100000;">
+    <div class="modal">
+        <h2 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+            <i class="fas fa-exclamation-triangle" style="color: #ef4444;"></i> Confirm Action
+        </h2>
+        <p id="custom-confirm-text" style="color: var(--text-muted); margin-bottom: 2rem; font-size: 1.05rem; line-height: 1.5;"></p>
+        <div class="modal-actions">
+            <button class="btn-cancel" id="custom-confirm-cancel">Cancel</button>
+            <button class="btn-primary" id="custom-confirm-ok" style="background: #ef4444; border-color: #ef4444; color: white;">Confirm</button>
         </div>
     </div>
 </div>
@@ -2669,6 +2808,9 @@
     let isPlaying = false;
     let isShuffle = false;
     
+    let upNextQueue = [];
+    let playHistory = [];
+    
     let extractedCoversCache = {};
     
     let customLoopStart = null;
@@ -2688,6 +2830,13 @@
     
     let sessionPlaylists = []; // Holds empty playlists created during the session
     let dbPlaylists = []; // Holds playlists fetched from Supabase
+    
+    let isMultiSelectMode = false;
+    let selectedSongs = new Set();
+    let pressTimer;
+    let isPressing = false;
+    let startY = 0;
+    let ignoreNextClick = false;
     
     const defaultTheme = {
         bg: 'linear-gradient(135deg, #171717 0%, #0a0a0a 50%, #000000 100%)',
@@ -2946,17 +3095,54 @@
         const btnOk = document.getElementById('custom-confirm-ok');
         
         text.innerText = message;
-        modalConfirm.classList.add('open');
+        if (modalConfirm) modalConfirm.classList.add('open');
         
         const cleanup = () => {
-            modalConfirm.classList.remove('open');
+            if (modalConfirm) modalConfirm.classList.remove('open');
         };
         
-        btnCancel.onclick = cleanup;
-        btnOk.onclick = () => {
+        if (btnCancel) btnCancel.onclick = cleanup;
+        if (btnOk) btnOk.onclick = () => {
             cleanup();
             onConfirm();
         };
+    }
+
+    function fetchArtistImageJSONP(artistName, imgElementId) {
+        const callbackName = 'deezerCallback_' + Math.random().toString(36).substr(2, 9);
+        
+        window[callbackName] = function(data) {
+            const imgEl = document.getElementById(imgElementId);
+            if (!imgEl) {
+                delete window[callbackName];
+                return;
+            }
+            
+            if (data && data.data && data.data.length > 0) {
+                const artistInfo = data.data[0];
+                const picUrl = artistInfo.picture_medium || artistInfo.picture;
+                
+                // Explicitly reject ONLY broken empty path signatures from Deezer
+                if (picUrl && !picUrl.includes('/images/artist//')) {
+                    imgEl.src = picUrl;
+                } else {
+                    // Clean, premium monogram fallback matching app theme
+                    imgEl.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(artistName)}&background=1F2937&color=fff&size=150`;
+                }
+            } else {
+                imgEl.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(artistName)}&background=1F2937&color=fff&size=150`;
+            }
+            
+            // Cleanup DOM overhead
+            delete window[callbackName];
+            const scriptEl = document.getElementById(callbackName);
+            if (scriptEl) scriptEl.remove();
+        };
+
+        const script = document.createElement('script');
+        script.id = callbackName;
+        script.src = `https://api.deezer.com/search/artist?q=${encodeURIComponent(artistName)}&output=jsonp&callback=${callbackName}`;
+        document.body.appendChild(script);
     }
 
     window.addEventListener('DOMContentLoaded', () => {
@@ -2972,7 +3158,7 @@
         });
         audio.addEventListener('ended', () => {
             console.log("[Audio] ended event fired");
-            handleSongEnd();
+            nextSong(true);
         });
 
         // Native Audio Event Listeners for completely reliable UI & iOS Sync
@@ -3014,8 +3200,8 @@
             console.error("[Audio] error event fired", err ? { code: err.code, message: err.message } : err);
         });
 
-        progressContainer.addEventListener('click', setProgress);
-        mobileProgressContainer.addEventListener('click', setProgress);
+        if (progressContainer) progressContainer.addEventListener('click', setProgress);
+        if (mobileProgressContainer) mobileProgressContainer.addEventListener('click', setProgress);
         
         const lyricsProgressWrapper = document.getElementById('lyrics-progress-container');
         if (lyricsProgressWrapper) lyricsProgressWrapper.addEventListener('click', setProgress);
@@ -3106,6 +3292,122 @@
         return `${m}:${s < 10 ? '0' : ''}${s}`;
     }
 
+    function startPress(songId, event) {
+        if (event.type === 'mousedown' && event.button !== 0) return;
+        isPressing = true;
+        if (event.touches) startY = event.touches[0].clientY;
+        
+        pressTimer = setTimeout(() => {
+            if (isPressing) {
+                if (!isMultiSelectMode) {
+                    isMultiSelectMode = true;
+                    selectedSongs.add(String(songId));
+                    updateBulkUI();
+                    renderAllSongLists();
+                    if (navigator.vibrate) navigator.vibrate(50);
+                    ignoreNextClick = true;
+                    setTimeout(() => ignoreNextClick = false, 500);
+                }
+            }
+        }, 500);
+    }
+
+    function movePress(event) {
+        if (event.touches) {
+            const y = event.touches[0].clientY;
+            if (Math.abs(y - startY) > 10) {
+                isPressing = false;
+                clearTimeout(pressTimer);
+            }
+        } else {
+            isPressing = false;
+            clearTimeout(pressTimer);
+        }
+    }
+
+    function endPress() {
+        isPressing = false;
+        clearTimeout(pressTimer);
+    }
+
+    function handleSongClick(songId, index, event) {
+        if (ignoreNextClick) {
+            ignoreNextClick = false;
+            return;
+        }
+        if (isMultiSelectMode) {
+            if (event) {
+                event.stopPropagation();
+                event.preventDefault();
+            }
+            if (selectedSongs.has(String(songId))) {
+                selectedSongs.delete(String(songId));
+            } else {
+                selectedSongs.add(String(songId));
+            }
+            updateBulkUI();
+            renderAllSongLists();
+        } else {
+            playSongAction(index);
+        }
+    }
+
+    function toggleMultiSelectMode() {
+        isMultiSelectMode = !isMultiSelectMode;
+        if (!isMultiSelectMode) {
+            selectedSongs.clear();
+        }
+        updateBulkUI();
+        renderAllSongLists();
+    }
+
+    function cancelBulkSelect() {
+        isMultiSelectMode = false;
+        selectedSongs.clear();
+        updateBulkUI();
+        renderAllSongLists();
+    }
+
+    function selectAllBulk() {
+        let currentList = [];
+        const artistModal = document.getElementById('artist-modal');
+        if (artistModal && artistModal.classList.contains('open')) {
+            currentList = currentArtistSongs;
+        } else {
+            currentList = filteredSongs;
+        }
+        
+        const allSelected = currentList.every(s => selectedSongs.has(String(s.id)));
+        if (allSelected) {
+            currentList.forEach(s => selectedSongs.delete(String(s.id)));
+        } else {
+            currentList.forEach(s => selectedSongs.add(String(s.id)));
+        }
+        updateBulkUI();
+        renderAllSongLists();
+    }
+
+    function updateBulkUI() {
+        const bar = document.getElementById('bulk-action-bar');
+        if (isMultiSelectMode) {
+            bar.classList.add('visible');
+            document.getElementById('bulk-count').innerText = `${selectedSongs.size} Selected`;
+        } else {
+            bar.classList.remove('visible');
+        }
+        
+        const selectBtns = document.querySelectorAll('.toggle-select-btn');
+        selectBtns.forEach(btn => btn.classList.toggle('active', isMultiSelectMode));
+    }
+
+    function renderAllSongLists() {
+        renderSongList();
+        const artistModal = document.getElementById('artist-modal');
+        if (artistModal && artistModal.classList.contains('open')) {
+            renderArtistSongs(currentArtistSongs);
+        }
+    }
+
     function renderSongList() {
         const list = document.getElementById('song-list');
         if (!list) return;
@@ -3120,9 +3422,18 @@
             const actualIndex = songs.findIndex(s => s.id === song.id);
             const isCurrent = currentIndex === actualIndex;
             const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/150/1a1a1a/ffffff?text=Music';
+            
+            const checkboxHtml = isMultiSelectMode ? 
+                `<div class="song-checkbox">
+                    <i class="fas ${selectedSongs.has(String(song.id)) ? 'fa-check-square' : 'fa-square'}"></i>
+                </div>` : '';
 
             return `
-                <div class="song-item ${isCurrent ? 'active' : ''}" onclick="playSongAction(${actualIndex})">
+                <div class="song-item ${isCurrent ? 'active' : ''} ${selectedSongs.has(String(song.id)) ? 'selected-bulk' : ''}" 
+                     ontouchstart="startPress('${song.id}', event)" ontouchend="endPress()" ontouchmove="movePress(event)"
+                     onmousedown="startPress('${song.id}', event)" onmouseup="endPress()" onmouseleave="endPress()"
+                     onclick="handleSongClick('${song.id}', ${actualIndex}, event)">
+                    ${checkboxHtml}
                     <button class="star-btn ${isFav ? 'active' : ''}" onclick="toggleFavorite('${song.id}', event)" title="${isFav ? 'Remove Favorite' : 'Mark Favorite'}">
                         <i class="${isFav ? 'fas' : 'far'} fa-star"></i>
                     </button>
@@ -3140,6 +3451,9 @@
                             <i class="fas fa-ellipsis-v"></i>
                         </button>
                         <div class="song-menu-dropdown" id="song-menu-${song.id}">
+                            <button onclick="addToQueue('${song.id}', event)">
+                                <i class="fas fa-list"></i> Add to Queue
+                            </button>
                             <button onclick="openModal('edit', '${song.id}', event)">
                                 <i class="fas fa-pencil-alt"></i> Edit
                             </button>
@@ -3229,11 +3543,15 @@
 
         renderSongList();
         
-        if (document.getElementById('artist-modal').classList.contains('open')) {
+        const artistModal = document.getElementById('artist-modal');
+        if (artistModal && artistModal.classList.contains('open')) {
             renderArtistSongs(currentArtistSongs);
         }
         
-        if (document.getElementById('lyrics-modal').classList.contains('open') || document.getElementById('fullscreen-player').classList.contains('active')) {
+        const lyricsModal = document.getElementById('lyrics-modal');
+        const fsPlayer = document.getElementById('fullscreen-player');
+        
+        if ((lyricsModal && lyricsModal.classList.contains('open')) || (fsPlayer && fsPlayer.classList.contains('active'))) {
              fetchLyrics(song.artist, song.song_title);
         }
     }
@@ -3316,8 +3634,40 @@
         return URL.createObjectURL(new Blob(byteArrays, { type: contentType }));
     }
 
+    function addToQueue(songId, event) {
+        if (event) event.stopPropagation();
+        
+        if (activeSongMenu) {
+            activeSongMenu.classList.remove('show');
+            activeSongMenu.closest('.song-actions').style.opacity = '';
+            activeSongMenu = null;
+        }
+
+        if (!upNextQueue.includes(songId)) {
+            upNextQueue.push(songId);
+            showToast('Added to Queue', 'success');
+        } else {
+            showToast('Song is already in queue', 'info');
+        }
+    }
+
     function nextSong(forcePlay = false) {
         const wasPlaying = !audio.paused || forcePlay;
+        
+        if (currentIndex !== -1) {
+            playHistory.push(currentIndex);
+        }
+        
+        if (upNextQueue.length > 0) {
+            const nextId = upNextQueue.shift();
+            const nextIdx = songs.findIndex(s => String(s.id) === String(nextId));
+            if (nextIdx !== -1) {
+                loadSong(nextIdx);
+                if (wasPlaying) playAudio();
+                return;
+            }
+        }
+
         if (isShuffle) {
             let nextIdx;
             do {
@@ -3338,9 +3688,16 @@
             return;
         }
         const wasPlaying = !audio.paused;
-        let prevIdx = currentIndex - 1;
-        if (prevIdx < 0) prevIdx = songs.length - 1;
-        loadSong(prevIdx);
+        
+        if (playHistory.length > 0) {
+            const prevIdx = playHistory.pop();
+            loadSong(prevIdx);
+        } else {
+            let prevIdx = currentIndex - 1;
+            if (prevIdx < 0) prevIdx = songs.length - 1;
+            loadSong(prevIdx);
+        }
+        
         if (wasPlaying) playAudio();
     }
 
@@ -3454,170 +3811,209 @@
         audio.currentTime = percent * audio.duration;
     }
     
-    function handleSongEnd() {
-        if (!audio.loop && !isCustomLoopActive) {
-            nextSong(true);
-        }
-    }
-
-    async function toggleFavorite(id, e) {
-        if (e) e.stopPropagation();
+    function openBulkPlaylistModal() {
+        if (selectedSongs.size === 0) return;
+        const modal = document.getElementById('bulk-playlist-modal');
         
-        const songIdx = songs.findIndex(s => String(s.id) === String(id));
-        if (songIdx === -1) return;
-        
-        const song = songs[songIdx];
-        let playlists = song.playlists || ['General'];
-        
-        const isFav = playlists.includes('Favorites');
-        
-        if (isFav) {
-            playlists = playlists.filter(p => p !== 'Favorites');
-        } else {
-            playlists.push('Favorites');
-        }
-        
-        if (playlists.length === 0) playlists.push('General');
-        
-        const { error } = await _supabase
-            .from('songs')
-            .update({ playlist: JSON.stringify(playlists) })
-            .eq('id', id);
-            
-        if (error) {
-            showToast("Error updating favorite: " + error.message, "error");
-            return;
-        }
-        
-        song.playlists = playlists;
-        showToast(isFav ? "Removed from Favorites" : "Added to Favorites", "success");
-        
-        applyFilters();
-        if (document.getElementById('artist-modal').classList.contains('open')) {
-             renderArtistSongs(currentArtistSongs);
-        }
-    }
-    
-    function openModal(mode, id = null, e = null) {
-        if (e) e.stopPropagation();
-        const modal = document.getElementById('upload-modal');
-        const form = document.getElementById('upload-form');
-        const titleEl = document.getElementById('modal-title');
-        
-        form.reset();
-        document.getElementById('in-id').value = '';
-        document.getElementById('in-new-genre').style.display = 'none';
-        document.getElementById('in-new-mood').style.display = 'none';
-        
-        const allLists = songs.flatMap(s => s.playlists);
+        const allLists = songs.flatMap(s => s.playlists || []);
         const uniquePlaylists = ['Favorites', ...new Set([...allLists, ...dbPlaylists, ...sessionPlaylists].filter(p => p !== 'General' && p !== 'Favorites'))];
         
-        const plContainer = document.getElementById('playlist-selector');
+        const plContainer = document.getElementById('bulk-playlist-selector');
         plContainer.innerHTML = uniquePlaylists.map(pl => 
             `<div class="playlist-chip" data-val="${pl}" onclick="this.classList.toggle('selected')">${pl}</div>`
         ).join('');
         
-        if (mode === 'edit' && id) {
-            titleEl.innerText = 'Edit Song';
-            const song = songs.find(s => String(s.id) === String(id));
-            if (song) {
-                document.getElementById('in-id').value = song.id;
-                document.getElementById('in-title').value = song.song_title;
-                document.getElementById('in-artist').value = song.artist;
-                document.getElementById('in-mp3').value = song.mp3_url;
-                document.getElementById('in-cover').value = song.cover_url || '';
-                
-                const genreSelect = document.getElementById('in-genre');
-                if (Array.from(genreSelect.options).some(o => o.value === song.genre)) {
-                    genreSelect.value = song.genre;
-                } else if (song.genre) {
-                    genreSelect.value = 'new_genre_option';
-                    const newGenreIn = document.getElementById('in-new-genre');
-                    newGenreIn.style.display = 'block';
-                    newGenreIn.value = song.genre;
-                }
-                
-                const moodSelect = document.getElementById('in-mood');
-                if (Array.from(moodSelect.options).some(o => o.value === song.mood)) {
-                    moodSelect.value = song.mood;
-                } else if (song.mood) {
-                    moodSelect.value = 'new_mood_option';
-                    const newMoodIn = document.getElementById('in-new-mood');
-                    newMoodIn.style.display = 'block';
-                    newMoodIn.value = song.mood;
-                }
-
-                Array.from(plContainer.children).forEach(chip => {
-                    if (song.playlists && song.playlists.includes(chip.dataset.val)) {
-                        chip.classList.add('selected');
-                    }
-                });
-            }
-        } else {
-            titleEl.innerText = 'Add New Song';
-        }
         modal.classList.add('open');
+    }
+
+    function addBulkPlaylistChip(name) {
+        name = name.trim();
+        if (!name) return;
+        const plContainer = document.getElementById('bulk-playlist-selector');
         
-        if (activeSongMenu) {
-            activeSongMenu.classList.remove('show');
-            activeSongMenu.closest('.song-actions').style.opacity = '';
-            activeSongMenu = null;
+        const existing = Array.from(plContainer.children).find(c => c.dataset.val === name);
+        if (existing) {
+            existing.classList.add('selected');
+        } else {
+            const chip = document.createElement('div');
+            chip.className = 'playlist-chip selected';
+            chip.dataset.val = name;
+            chip.innerText = name;
+            chip.onclick = function() { this.classList.toggle('selected'); };
+            plContainer.appendChild(chip);
         }
     }
 
-    function closeModal() {
-        document.getElementById('upload-modal').classList.remove('open');
-    }
-
-    function deleteSong(id, e) {
-        if (e) e.stopPropagation();
-        
-        if (activeSongMenu) {
-            activeSongMenu.classList.remove('show');
-            activeSongMenu.closest('.song-actions').style.opacity = '';
-            activeSongMenu = null;
+    async function submitBulkPlaylist() {
+        const selectedPlaylists = [...document.getElementById('bulk-playlist-selector').children]
+            .filter(c => c.classList.contains('selected'))
+            .map(c => c.dataset.val);
+            
+        if (selectedPlaylists.length === 0) {
+            showToast("Select at least one playlist", "info");
+            return;
         }
-
-        showConfirm('Are you sure you want to delete this song?', async () => {
-            const { error } = await _supabase.from('songs').delete().eq('id', id);
-            if (error) {
-                showToast("Error deleting song: " + error.message, "error");
-            } else {
-                showToast("Song deleted", "success");
-                fetchSongs();
+        
+        const idsToUpdate = Array.from(selectedSongs);
+        const btn = document.getElementById('bulk-pl-save-btn');
+        btn.disabled = true;
+        btn.innerText = 'Saving...';
+        
+        try {
+            let updates = [];
+            idsToUpdate.forEach(id => {
+                const song = songs.find(s => String(s.id) === String(id));
+                if (song) {
+                    let currentPls = song.playlists || ['General'];
+                    let newPls = [...new Set([...currentPls, ...selectedPlaylists])];
+                    updates.push(async () => {
+                        await _supabase.from('songs').update({ playlist: JSON.stringify(newPls) }).eq('id', id);
+                    });
+                }
+            });
+            
+            for (let task of updates) {
+                await task();
             }
+            
+            showToast(`Added ${idsToUpdate.length} songs to playlists`, "success");
+            closeBulkModals();
+            cancelBulkSelect();
+            
+            const slContainer = document.getElementById('song-list');
+            const slPos = slContainer ? slContainer.scrollTop : 0;
+            await fetchSongs();
+            if (slContainer) slContainer.scrollTop = slPos;
+            
+        } catch (e) {
+            showToast("Error updating playlists", "error");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = 'Save';
+        }
+    }
+
+    function openBulkMoodModal() {
+        if (selectedSongs.size === 0) return;
+        const modal = document.getElementById('bulk-mood-modal');
+        
+        const uniqueMoods = [...new Set(songs.map(s => s.mood).filter(Boolean))];
+        const select = document.getElementById('bulk-in-mood');
+        select.innerHTML = '<option value="">None (Clear Mood)</option>' + 
+            uniqueMoods.map(m => `<option value="${m}">${m}</option>`).join('') +
+            '<option value="new_mood_option">+ Create New...</option>';
+            
+        document.getElementById('bulk-new-mood').style.display = 'none';
+        modal.classList.add('open');
+    }
+
+    async function submitBulkMood() {
+        let mood = document.getElementById('bulk-in-mood').value;
+        if (mood === 'new_mood_option') mood = document.getElementById('bulk-new-mood').value.trim();
+        
+        const idsToUpdate = Array.from(selectedSongs);
+        const btn = document.getElementById('bulk-mood-save-btn');
+        btn.disabled = true;
+        btn.innerText = 'Saving...';
+        
+        const { error } = await _supabase.from('songs').update({ mood: mood }).in('id', idsToUpdate);
+        
+        btn.disabled = false;
+        btn.innerText = 'Assign';
+        
+        if (error) {
+            showToast("Error updating mood: " + error.message, "error");
+        } else {
+            showToast(`Assigned mood to ${idsToUpdate.length} songs`, "success");
+            closeBulkModals();
+            cancelBulkSelect();
+            const slContainer = document.getElementById('song-list');
+            const slPos = slContainer ? slContainer.scrollTop : 0;
+            await fetchSongs();
+            if (slContainer) slContainer.scrollTop = slPos;
+        }
+    }
+
+    function openBulkGenreModal() {
+        if (selectedSongs.size === 0) return;
+        const modal = document.getElementById('bulk-genre-modal');
+        
+        const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(Boolean))];
+        const select = document.getElementById('bulk-in-genre');
+        select.innerHTML = '<option value="">None (Clear Genre)</option>' + 
+            uniqueGenres.map(g => `<option value="${g}">${g}</option>`).join('') +
+            '<option value="new_genre_option">+ Create New...</option>';
+            
+        document.getElementById('bulk-new-genre').style.display = 'none';
+        modal.classList.add('open');
+    }
+
+    async function submitBulkGenre() {
+        let genre = document.getElementById('bulk-in-genre').value;
+        if (genre === 'new_genre_option') genre = document.getElementById('bulk-new-genre').value.trim();
+        
+        const idsToUpdate = Array.from(selectedSongs);
+        const btn = document.getElementById('bulk-genre-save-btn');
+        btn.disabled = true;
+        btn.innerText = 'Saving...';
+        
+        const { error } = await _supabase.from('songs').update({ genre: genre }).in('id', idsToUpdate);
+        
+        btn.disabled = false;
+        btn.innerText = 'Assign';
+        
+        if (error) {
+            showToast("Error updating genre: " + error.message, "error");
+        } else {
+            showToast(`Assigned genre to ${idsToUpdate.length} songs`, "success");
+            closeBulkModals();
+            cancelBulkSelect();
+            const slContainer = document.getElementById('song-list');
+            const slPos = slContainer ? slContainer.scrollTop : 0;
+            await fetchSongs();
+            if (slContainer) slContainer.scrollTop = slPos;
+        }
+    }
+
+    async function bulkDelete() {
+        if (selectedSongs.size === 0) return;
+        
+        showConfirm(`Are you sure you want to permanently delete ${selectedSongs.size} selected song(s)?`, async () => {
+            showToast("Deleting songs...", "info");
+            const idsToDelete = Array.from(selectedSongs);
+            
+            const { error } = await _supabase.from('songs').delete().in('id', idsToDelete);
+            
+            if (error) {
+                showToast("Error deleting songs: " + error.message, "error");
+                return;
+            }
+            
+            const currentSong = songs[currentIndex];
+            if (currentSong && selectedSongs.has(String(currentSong.id))) {
+                audio.pause();
+                audio.src = '';
+                isPlaying = false;
+                updatePlayIcons();
+                // Player state clears out safely on next load or remains paused
+            }
+            
+            showToast(`${idsToDelete.length} song(s) deleted`, "success");
+            cancelBulkSelect();
+            
+            const slContainer = document.getElementById('song-list');
+            const slPos = slContainer ? slContainer.scrollTop : 0;
+            await fetchSongs();
+            if (slContainer) slContainer.scrollTop = slPos;
         });
     }
 
-    function toggleSongMenu(id, e, isArtistPage = false) {
-        e.stopPropagation();
-        const menuId = isArtistPage ? `artist-song-menu-${id}` : `song-menu-${id}`;
-        const menu = document.getElementById(menuId);
-        
-        if (activeSongMenu && activeSongMenu !== menu) {
-            activeSongMenu.classList.remove('show');
-            activeSongMenu.closest('.song-actions').style.opacity = '';
-        }
-        
-        if (menu.classList.contains('show')) {
-            menu.classList.remove('show');
-            menu.closest('.song-actions').style.opacity = '';
-            activeSongMenu = null;
-        } else {
-            menu.classList.add('show');
-            menu.closest('.song-actions').style.opacity = '1';
-            activeSongMenu = menu;
-        }
+    function closeBulkModals() {
+        document.getElementById('bulk-playlist-modal').classList.remove('open');
+        document.getElementById('bulk-mood-modal').classList.remove('open');
+        document.getElementById('bulk-genre-modal').classList.remove('open');
     }
-    
-    document.addEventListener('click', () => {
-        if (activeSongMenu) {
-            activeSongMenu.classList.remove('show');
-            activeSongMenu.closest('.song-actions').style.opacity = '';
-            activeSongMenu = null;
-        }
-    });
-    
+
     function checkNewGenre(select) {
         document.getElementById('in-new-genre').style.display = select.value === 'new_genre_option' ? 'block' : 'none';
     }
@@ -4083,7 +4479,10 @@
         `).join('');
 
         artists.forEach((artist, idx) => {
-            fetchArtistImageJSONP(artist.name, `tab-artist-img-${idx}`);
+            // Staggered loading: 120ms delay sequentially to bypass rate limits elegantly
+            setTimeout(() => {
+                fetchArtistImageJSONP(artist.name, `tab-artist-img-${idx}`);
+            }, idx * 120);
         });
     }
 
@@ -4462,141 +4861,6 @@
         modal.classList.add('open');
     }
 
-    function closeRelatedModal() {
-        document.getElementById('related-modal').classList.remove('open');
-    }
-
-    function openMobilePlayer() {
-        document.getElementById('mobile-player').classList.add('active');
-    }
-
-    function closeMobilePlayer() {
-        document.getElementById('mobile-player').classList.remove('active');
-    }
-
-    async function openArtistPage(artistName, event) {
-        if (event) event.stopPropagation();
-        
-        if (activeSongMenu) {
-            activeSongMenu.classList.remove('show');
-            activeSongMenu.closest('.song-actions').style.opacity = '';
-            activeSongMenu = null;
-        }
-        
-        const modal = document.getElementById('artist-modal');
-        const imgEl = document.getElementById('artist-hero-img');
-        const nameEl = document.getElementById('artist-name-display');
-        const listEl = document.getElementById('artist-song-list');
-        const modalContent = modal.querySelector('.modal');
-        
-        modalContent.scrollTop = 0;
-        
-        nameEl.innerText = artistName;
-        imgEl.src = 'https://via.placeholder.com/1000/00030F/ffffff?text=Artist';
-        listEl.innerHTML = '<div class="loading-container"><div class="loading-spinner" style="display:block"></div></div>';
-        document.getElementById('artist-more-section').style.display = 'none';
-        
-        modal.classList.add('open');
-        
-        const normalizeArtist = (name) => name.replace(/\s+/g, ' ').trim().toLowerCase();
-        const normTarget = normalizeArtist(artistName);
-        
-        currentArtistSongs = songs.filter(s => normalizeArtist(s.artist) === normTarget);
-        
-        imgEl.onerror = function() {
-            this.onerror = null;
-            this.src = 'https://via.placeholder.com/1000/00030F/ffffff?text=Artist';
-        };
-        
-        fetchArtistImageJSONP(artistName, 'artist-hero-img');
-        
-        renderArtistSongs(currentArtistSongs);
-        renderMoreArtists(artistName);
-    }
-    
-    function fetchArtistImageJSONP(artistName, imgElementId) {
-        const normTarget = artistName.replace(/\s+/g, ' ').trim().toLowerCase();
-        const safeId = imgElementId.replace(/[^a-zA-Z0-9]/g, '_');
-        const callbackName = 'deezer_cb_' + Math.round(Math.random() * 1000000) + '_' + safeId;
-        
-        window[callbackName] = function(data) {
-            if (data && data.data && data.data.length > 0) {
-                let artistData = data.data.find(a => a.name.toLowerCase() === normTarget) || data.data[0];
-                const newSrc = artistData.picture_xl || artistData.picture_medium || artistData.picture;
-                if (newSrc) {
-                    const imgEl = document.getElementById(imgElementId);
-                    if (imgEl) imgEl.src = newSrc;
-                }
-            }
-            delete window[callbackName];
-            const scriptEl = document.getElementById(callbackName);
-            if (scriptEl) document.body.removeChild(scriptEl);
-        };
-
-        const script = document.createElement('script');
-        script.id = callbackName;
-        script.src = `https://api.deezer.com/search/artist?q=${encodeURIComponent(normTarget)}&output=jsonp&callback=${callbackName}`;
-        script.onerror = function() {
-            console.warn(`Could not fetch artist image for ${artistName}.`);
-            delete window[callbackName];
-            if (script.parentNode) script.parentNode.removeChild(script);
-        };
-        document.body.appendChild(script);
-    }
-    
-    function renderMoreArtists(currentArtistName) {
-        const moreContainer = document.getElementById('artist-carousel');
-        const moreSection = document.getElementById('artist-more-section');
-        if (!moreContainer || !moreSection) return;
-        
-        const normCurrent = currentArtistName.replace(/\s+/g, ' ').trim().toLowerCase();
-        
-        const uniqueArtistsSet = new Set();
-        songs.forEach(s => {
-            if (s.artist) {
-                const norm = s.artist.replace(/\s+/g, ' ').trim().toLowerCase();
-                if (norm !== normCurrent) {
-                    uniqueArtistsSet.add(s.artist);
-                }
-            }
-        });
-        
-        const uniqueArtists = [];
-        const seenNorms = new Set();
-        for (let artist of uniqueArtistsSet) {
-            const norm = artist.replace(/\s+/g, ' ').trim().toLowerCase();
-            if (!seenNorms.has(norm)) {
-                seenNorms.add(norm);
-                uniqueArtists.push(artist);
-            }
-        }
-        
-        if (uniqueArtists.length === 0) {
-            moreSection.style.display = 'none';
-            return;
-        }
-        
-        uniqueArtists.sort(() => 0.5 - Math.random());
-        const selectedArtists = uniqueArtists.slice(0, 10);
-        
-        moreSection.style.display = 'block';
-        
-        moreContainer.innerHTML = selectedArtists.map((artist, idx) => `
-            <div class="artist-carousel-item" onclick="openArtistPage('${escapeHtml(artist).replace(/&#039;/g, "\\'")}', event)">
-                <img id="carousel-img-${idx}" src="https://via.placeholder.com/300/00030F/ffffff?text=Artist" alt="${escapeHtml(artist)}" onerror="this.onerror=null; this.src='https://via.placeholder.com/300/00030F/ffffff?text=Artist';">
-                <span>${escapeHtml(artist)}</span>
-            </div>
-        `).join('');
-        
-        selectedArtists.forEach((artist, idx) => {
-            fetchArtistImageJSONP(artist, `carousel-img-${idx}`);
-        });
-    }
-
-    function closeArtistModal() {
-        document.getElementById('artist-modal').classList.remove('open');
-    }
-
     function renderArtistSongs(artistSongs) {
         const listEl = document.getElementById('artist-song-list');
         if (!artistSongs || artistSongs.length === 0) {
@@ -4606,11 +4870,21 @@
 
         listEl.innerHTML = artistSongs.map((song) => {
             const isCurrent = currentIndex !== -1 && songs[currentIndex]?.id === song.id;
+            const actualIndex = songs.findIndex(s => s.id === song.id);
             const coverSrc = song.cover_url || extractedCoversCache[song.id] || 'https://via.placeholder.com/150/00030F/ffffff?text=Music';
             const isFav = song.playlists.includes('Favorites');
             
+            const checkboxHtml = isMultiSelectMode ? 
+                `<div class="song-checkbox">
+                    <i class="fas ${selectedSongs.has(String(song.id)) ? 'fa-check-square' : 'fa-square'}"></i>
+                </div>` : '';
+            
             return `
-                <div class="song-item ${isCurrent ? 'active' : ''}" onclick="playSongActionById('${song.id}')">
+                <div class="song-item ${isCurrent ? 'active' : ''} ${selectedSongs.has(String(song.id)) ? 'selected-bulk' : ''}" 
+                     ontouchstart="startPress('${song.id}', event)" ontouchend="endPress()" ontouchmove="movePress(event)"
+                     onmousedown="startPress('${song.id}', event)" onmouseup="endPress()" onmouseleave="endPress()"
+                     onclick="handleSongClick('${song.id}', ${actualIndex}, event)">
+                    ${checkboxHtml}
                     <button class="star-btn ${isFav ? 'active' : ''}" onclick="toggleFavorite('${song.id}', event)" title="${isFav ? 'Remove Favorite' : 'Mark Favorite'}">
                         <i class="${isFav ? 'fas' : 'far'} fa-star"></i>
                     </button>
@@ -4628,6 +4902,9 @@
                             <i class="fas fa-ellipsis-v"></i>
                         </button>
                         <div class="song-menu-dropdown" id="artist-song-menu-${song.id}">
+                            <button onclick="addToQueue('${song.id}', event)">
+                                <i class="fas fa-list"></i> Add to Queue
+                            </button>
                             <button onclick="openModal('edit', '${song.id}', event)">
                                 <i class="fas fa-pencil-alt"></i> Edit
                             </button>
@@ -4675,6 +4952,9 @@
         if (index < 0 || index >= songs.length) return;
         
         if (currentIndex !== index) {
+            if (currentIndex !== -1) {
+                playHistory.push(currentIndex);
+            }
             loadSong(index);
         }
         
@@ -4691,6 +4971,271 @@
         if (actualIndex !== -1) {
             playSongAction(actualIndex);
         }
+    }
+
+    function toggleSongMenu(songId, event, isArtistModal = false) {
+        if (event) event.stopPropagation();
+        
+        const prefix = isArtistModal ? 'artist-song-menu-' : 'song-menu-';
+        const menuId = prefix + songId;
+        const menu = document.getElementById(menuId);
+        
+        // Close previously active menu
+        if (activeSongMenu && activeSongMenu !== menu) {
+            activeSongMenu.classList.remove('show');
+            if (activeSongMenu.closest('.song-actions')) {
+                activeSongMenu.closest('.song-actions').style.opacity = '';
+            }
+        }
+        
+        if (menu) {
+            if (menu.classList.contains('show')) {
+                menu.classList.remove('show');
+                if (menu.closest('.song-actions')) menu.closest('.song-actions').style.opacity = '';
+                activeSongMenu = null;
+            } else {
+                menu.classList.add('show');
+                if (menu.closest('.song-actions')) menu.closest('.song-actions').style.opacity = '1';
+                activeSongMenu = menu;
+            }
+        }
+    }
+
+    // Close song menu when clicking anywhere else
+    document.addEventListener('click', (e) => {
+        if (activeSongMenu && !e.target.closest('.song-actions')) {
+            activeSongMenu.classList.remove('show');
+            if (activeSongMenu.closest('.song-actions')) activeSongMenu.closest('.song-actions').style.opacity = '';
+            activeSongMenu = null;
+        }
+    });
+
+    function deleteSong(id, event) {
+        if (event) event.stopPropagation();
+        if (activeSongMenu) {
+            activeSongMenu.classList.remove('show');
+            if (activeSongMenu.closest('.song-actions')) activeSongMenu.closest('.song-actions').style.opacity = '';
+            activeSongMenu = null;
+        }
+        
+        showConfirm("Are you sure you want to delete this song?", async () => {
+            const { error } = await _supabase.from('songs').delete().eq('id', id);
+            if (error) {
+                showToast("Error deleting song", "error");
+            } else {
+                showToast("Song deleted", "success");
+                if (currentIndex !== -1 && songs[currentIndex] && String(songs[currentIndex].id) === String(id)) {
+                    audio.pause();
+                    audio.src = '';
+                    isPlaying = false;
+                    updatePlayIcons();
+                }
+                fetchSongs();
+            }
+        });
+    }
+
+    async function toggleFavorite(songId, event) {
+        if (event) event.stopPropagation();
+        
+        const song = songs.find(s => String(s.id) === String(songId));
+        if (!song) return;
+        
+        let currentPls = song.playlists || ['General'];
+        let isFav = currentPls.includes('Favorites');
+        
+        if (isFav) {
+            currentPls = currentPls.filter(p => p !== 'Favorites');
+        } else {
+            currentPls.push('Favorites');
+        }
+        if (currentPls.length === 0) currentPls.push('General');
+        
+        // Optimistic UI update
+        song.playlists = currentPls;
+        renderAllSongLists();
+        renderPlaylistsTab();
+        
+        const { error } = await _supabase.from('songs').update({ playlist: JSON.stringify(currentPls) }).eq('id', song.id);
+        if (error) {
+            showToast("Error updating favorite", "error");
+            // Revert changes on error
+            if (isFav) {
+                song.playlists.push('Favorites');
+            } else {
+                song.playlists = song.playlists.filter(p => p !== 'Favorites');
+            }
+            renderAllSongLists();
+            renderPlaylistsTab();
+        } else {
+            showToast(isFav ? "Removed from Favorites" : "Added to Favorites", "success");
+        }
+    }
+
+    function openModal(mode, id = null, event = null) {
+        if (event) event.stopPropagation();
+        
+        const modal = document.getElementById('upload-modal');
+        if (!modal) return;
+        
+        const titleEl = document.getElementById('modal-title');
+        const form = document.getElementById('upload-form');
+        
+        const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(Boolean))];
+        const uniqueMoods = [...new Set(songs.map(s => s.mood).filter(Boolean))];
+        const allLists = songs.flatMap(s => s.playlists || []);
+        const uniquePlaylists = [...new Set([...allLists, ...dbPlaylists, ...sessionPlaylists].filter(p => p !== 'General' && p !== 'Favorites'))];
+        
+        const genreSelect = document.getElementById('in-genre');
+        if (genreSelect) {
+            genreSelect.innerHTML = '<option value="">None</option>' + 
+                uniqueGenres.map(g => `<option value="${g}">${g}</option>`).join('') +
+                '<option value="new_genre_option">+ Create New...</option>';
+        }
+        
+        const moodSelect = document.getElementById('in-mood');
+        if (moodSelect) {
+            moodSelect.innerHTML = '<option value="">None</option>' + 
+                uniqueMoods.map(m => `<option value="${m}">${m}</option>`).join('') +
+                '<option value="new_mood_option">+ Create New...</option>';
+        }
+        
+        const plContainer = document.getElementById('playlist-selector');
+        if (plContainer) plContainer.innerHTML = '';
+        
+        if (activeSongMenu) {
+            activeSongMenu.classList.remove('show');
+            if (activeSongMenu.closest('.song-actions')) activeSongMenu.closest('.song-actions').style.opacity = '';
+            activeSongMenu = null;
+        }
+
+        form.reset();
+        const newGenreIn = document.getElementById('in-new-genre');
+        const newMoodIn = document.getElementById('in-new-mood');
+        if(newGenreIn) newGenreIn.style.display = 'none';
+        if(newMoodIn) newMoodIn.style.display = 'none';
+        
+        const idIn = document.getElementById('in-id');
+        if (idIn) idIn.value = '';
+
+        if (mode === 'edit' && id) {
+            if (titleEl) titleEl.innerText = 'Edit Song';
+            const song = songs.find(s => s.id === id);
+            if (song) {
+                if(idIn) idIn.value = song.id;
+                const tIn = document.getElementById('in-title'); if(tIn) tIn.value = song.song_title || '';
+                const aIn = document.getElementById('in-artist'); if(aIn) aIn.value = song.artist || '';
+                const mIn = document.getElementById('in-mp3'); if(mIn) mIn.value = song.mp3_url || '';
+                const cIn = document.getElementById('in-cover'); if(cIn) cIn.value = song.cover_url || '';
+                
+                if (song.genre && genreSelect) {
+                    if (uniqueGenres.includes(song.genre)) {
+                        genreSelect.value = song.genre;
+                    } else {
+                        genreSelect.value = 'new_genre_option';
+                        if(newGenreIn) {
+                            newGenreIn.style.display = 'block';
+                            newGenreIn.value = song.genre;
+                        }
+                    }
+                }
+                
+                if (song.mood && moodSelect) {
+                    if (uniqueMoods.includes(song.mood)) {
+                        moodSelect.value = song.mood;
+                    } else {
+                        moodSelect.value = 'new_mood_option';
+                        if(newMoodIn) {
+                            newMoodIn.style.display = 'block';
+                            newMoodIn.value = song.mood;
+                        }
+                    }
+                }
+                
+                const pls = song.playlists || ['General'];
+                if (plContainer) {
+                    uniquePlaylists.forEach(pl => {
+                        const chip = document.createElement('div');
+                        chip.className = 'playlist-chip' + (pls.includes(pl) ? ' selected' : '');
+                        chip.dataset.val = pl;
+                        chip.innerText = pl;
+                        chip.onclick = function() { this.classList.toggle('selected'); };
+                        plContainer.appendChild(chip);
+                    });
+                }
+            }
+        } else {
+            if (titleEl) titleEl.innerText = 'Upload Song';
+            if (plContainer) {
+                uniquePlaylists.forEach(pl => {
+                    const chip = document.createElement('div');
+                    chip.className = 'playlist-chip';
+                    chip.dataset.val = pl;
+                    chip.innerText = pl;
+                    chip.onclick = function() { this.classList.toggle('selected'); };
+                    plContainer.appendChild(chip);
+                });
+            }
+        }
+        modal.classList.add('open');
+    }
+
+    function closeModal() {
+        const modal = document.getElementById('upload-modal');
+        if (modal) modal.classList.remove('open');
+    }
+
+    function openArtistPage(artistName, event) {
+        if (event) event.stopPropagation();
+        const modal = document.getElementById('artist-modal');
+        const nameDisplay = document.getElementById('artist-name-display');
+        const heroImg = document.getElementById('artist-hero-img');
+        const carousel = document.getElementById('artist-carousel');
+        const moreSection = document.getElementById('artist-more-section');
+        
+        if (nameDisplay) nameDisplay.innerText = artistName;
+        
+        currentArtistSongs = songs.filter(s => s.artist === artistName);
+        renderArtistSongs(currentArtistSongs);
+        
+        if (heroImg) {
+            heroImg.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(artistName)}&background=1F2937&color=fff&size=512`;
+            if (typeof fetchArtistImageJSONP === 'function') {
+                fetchArtistImageJSONP(artistName, 'artist-hero-img');
+            }
+        }
+        
+        const uniqueArtists = [...new Set(songs.map(s => s.artist))].filter(a => a !== artistName);
+        if (uniqueArtists.length > 0 && carousel && moreSection) {
+            moreSection.style.display = 'block';
+            carousel.innerHTML = uniqueArtists.sort(() => 0.5 - Math.random()).slice(0, 10).map((a, idx) => `
+                <div class="artist-carousel-item" onclick="openArtistPage('${escapeHtml(a).replace(/&#039;/g, "\\'")}', event)">
+                    <img id="artist-carousel-img-${idx}" src="https://ui-avatars.com/api/?name=${encodeURIComponent(a)}&background=1F2937&color=fff&size=150" alt="${escapeHtml(a)}">
+                    <span>${escapeHtml(a)}</span>
+                </div>
+            `).join('');
+            
+            if (typeof fetchArtistImageJSONP === 'function') {
+                uniqueArtists.slice(0, 10).forEach((a, idx) => {
+                    setTimeout(() => fetchArtistImageJSONP(a, `artist-carousel-img-${idx}`), idx * 100);
+                });
+            }
+        } else if (moreSection) {
+            moreSection.style.display = 'none';
+        }
+        
+        if (modal) modal.classList.add('open');
+    }
+
+    function closeArtistModal() {
+        const modal = document.getElementById('artist-modal');
+        if (modal) modal.classList.remove('open');
+        cancelBulkSelect(); 
+    }
+
+    function closeRelatedModal() {
+        const modal = document.getElementById('related-modal');
+        if (modal) modal.classList.remove('open');
     }
 </script>
 </body>
