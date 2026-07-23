@@ -3026,6 +3026,27 @@
         }
     }
 
+    function base64ToBlobUrl(base64Data, contentType) {
+        contentType = contentType || '';
+        const sliceSize = 1024;
+        const byteCharacters = atob(base64Data);
+        const bytesLength = byteCharacters.length;
+        const slicesCount = Math.ceil(bytesLength / sliceSize);
+        const byteArrays = new Array(slicesCount);
+
+        for (let sliceIndex = 0; sliceIndex < slicesCount; ++sliceIndex) {
+            const begin = sliceIndex * sliceSize;
+            const end = Math.min(begin + sliceSize, bytesLength);
+
+            const bytes = new Array(end - begin);
+            for (let offset = begin, i = 0; offset < end; ++i, ++offset) {
+                bytes[i] = byteCharacters[offset].charCodeAt(0);
+            }
+            byteArrays[sliceIndex] = new Uint8Array(bytes);
+        }
+        return URL.createObjectURL(new Blob(byteArrays, { type: contentType }));
+    }
+
     function nextSong() {
         if (isShuffle) {
             let nextIdx;
@@ -3121,18 +3142,8 @@
             audio.currentTime = customLoopStart;
         }
         
-        if ('mediaSession' in navigator && !isNaN(duration)) {
-            try {
-                navigator.mediaSession.setPositionState({
-                    duration: duration,
-                    playbackRate: audio.playbackRate,
-                    position: current
-                });
-            } catch (e) {
-                // Ignore errors if position state is unsupported or invalid
-            }
-        }
-
+        // Remove constant mediaSession position updates from here, they freeze iOS Control Center
+        
         if (isSyncedLyrics && parsedLyricsArray.length > 0) {
             const nextLineIndex = parsedLyricsArray.findIndex(line => line.time > current);
             let activeIndex = nextLineIndex === -1 ? parsedLyricsArray.length - 1 : nextLineIndex - 1;
@@ -3169,21 +3180,50 @@
         const clickX = e.clientX - rect.left;
         const percent = clickX / rect.width;
         audio.currentTime = percent * audio.duration;
+        updateMediaSessionPosition();
     }
     
+    function updateMediaSessionPosition() {
+        if ('mediaSession' in navigator && !isNaN(audio.duration)) {
+            try {
+                navigator.mediaSession.setPositionState({
+                    duration: audio.duration,
+                    playbackRate: audio.playbackRate,
+                    position: audio.currentTime
+                });
+            } catch (e) {
+                // Ignore errors if position state is unsupported or invalid
+            }
+        }
+    }
+
     function updateMediaSession(song, coverSrc) {
         if ('mediaSession' in navigator) {
+            
+            // Check if coverSrc is a raw base64 string, iOS Safari blocks these in the lock screen
+            let safeArtworkSrc = coverSrc;
+            if (coverSrc && coverSrc.startsWith('data:image')) {
+                try {
+                    const parts = coverSrc.split(';');
+                    const mime = parts[0].split(':')[1];
+                    const base64Data = parts[1].split(',')[1];
+                    safeArtworkSrc = base64ToBlobUrl(base64Data, mime);
+                } catch(e) {
+                    console.warn("Could not convert base64 to blob for Media Session", e);
+                }
+            }
+
             navigator.mediaSession.metadata = new MediaMetadata({
                 title: song.song_title,
                 artist: song.artist,
                 album: 'Modern Music Streamer',
                 artwork: [
-                    { src: coverSrc, sizes: '96x96', type: 'image/jpeg' },
-                    { src: coverSrc, sizes: '128x128', type: 'image/jpeg' },
-                    { src: coverSrc, sizes: '192x192', type: 'image/jpeg' },
-                    { src: coverSrc, sizes: '256x256', type: 'image/jpeg' },
-                    { src: coverSrc, sizes: '384x384', type: 'image/jpeg' },
-                    { src: coverSrc, sizes: '512x512', type: 'image/jpeg' }
+                    { src: safeArtworkSrc, sizes: '96x96', type: 'image/jpeg' },
+                    { src: safeArtworkSrc, sizes: '128x128', type: 'image/jpeg' },
+                    { src: safeArtworkSrc, sizes: '192x192', type: 'image/jpeg' },
+                    { src: safeArtworkSrc, sizes: '256x256', type: 'image/jpeg' },
+                    { src: safeArtworkSrc, sizes: '384x384', type: 'image/jpeg' },
+                    { src: safeArtworkSrc, sizes: '512x512', type: 'image/jpeg' }
                 ]
             });
 
@@ -3193,6 +3233,23 @@
             });
             navigator.mediaSession.setActionHandler('previoustrack', prevSong);
             navigator.mediaSession.setActionHandler('nexttrack', nextSong);
+            
+            navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+                skipTime(-(details.seekOffset || 10));
+                updateMediaSessionPosition();
+            });
+            navigator.mediaSession.setActionHandler('seekforward', (details) => {
+                skipTime(details.seekOffset || 10);
+                updateMediaSessionPosition();
+            });
+            navigator.mediaSession.setActionHandler('seekto', (details) => {
+                if (details.fastSeek && 'fastSeek' in audio) {
+                  audio.fastSeek(details.seekTime);
+                } else {
+                  audio.currentTime = details.seekTime;
+                }
+                updateMediaSessionPosition();
+            });
         }
     }
 
