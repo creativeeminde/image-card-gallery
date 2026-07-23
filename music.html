@@ -196,7 +196,7 @@
             flex-shrink: 0;
         }
 
-        .artists-grid, .playlists-grid, .moods-grid {
+        .artists-grid, .playlists-grid, .moods-grid, .genres-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
             gap: 1.5rem;
@@ -221,7 +221,10 @@
             background: var(--glass-highlight);
         }
         .artist-card-tab img {
-            width: 130px; height: 130px;
+            width: 100%;
+            max-width: 130px;
+            aspect-ratio: 1;
+            height: auto;
             border-radius: 50%;
             object-fit: cover;
             margin-bottom: 0.8rem;
@@ -1608,14 +1611,18 @@
             }
             .view-header .btn-primary { width: 100%; justify-content: center; padding: 0.8rem; }
             
-            .artists-grid, .playlists-grid, .moods-grid {
+            .artists-grid, .playlists-grid, .moods-grid, .genres-grid {
                 grid-template-columns: repeat(2, 1fr);
                 gap: 1rem;
             }
 
+            .artist-card-tab {
+                padding: 0.8rem;
+            }
+
             .app-container {
                 display: block;
-                width: 100vw;
+                width: 100%;
                 height: auto !important;
                 min-height: 100vh;
                 border-radius: 0;
@@ -1683,21 +1690,21 @@
                 flex-shrink: 0;
             }
 
-            .current-track-info h2 { 
-                font-size: 1.1rem; 
-                white-space: normal;
+            .top-nav-tabs {
+                position: -webkit-sticky;
+                position: sticky;
+                top: 0;
+                z-index: 40;
+                background: var(--bg-color);
+                margin: -1rem -1rem 1rem -1rem;
+                padding: 1rem 1rem 0.5rem 1rem;
+                gap: 1.5rem;
+                justify-content: flex-start;
+                overflow-x: auto;
+                border-bottom: 1px solid var(--glass-border);
             }
-
-            .main-content {
-                display: block;
-                height: auto !important;
-                overflow: visible !important;
-                padding: 1rem;
-                padding-bottom: 0;
-                width: 100%;
-                grid-column: auto;
-                grid-row: auto;
-            }
+            .top-nav-tabs::-webkit-scrollbar { display: none; }
+            .tab-item { font-size: 0.95rem; white-space: nowrap; flex-shrink: 0; }
 
             .tab-views-container {
                 align-items: flex-start;
@@ -2222,6 +2229,7 @@
             <div class="tab-item" onclick="switchMainTab(1)">Artists</div>
             <div class="tab-item" onclick="switchMainTab(2)">Playlists</div>
             <div class="tab-item" onclick="switchMainTab(3)">Moods</div>
+            <div class="tab-item" onclick="switchMainTab(4)">Genres</div>
             <div class="tab-indicator" id="tab-indicator"></div>
         </nav>
 
@@ -2279,6 +2287,14 @@
                     <h2 style="font-size:1.3rem; font-weight:600;">Your Moods</h2>
                 </div>
                 <div class="moods-grid" id="moods-tab-list"></div>
+            </div>
+
+            <!-- Genres Tab -->
+            <div class="tab-view" id="view-genres">
+                <div class="view-header">
+                    <h2 style="font-size:1.3rem; font-weight:600;">Your Genres</h2>
+                </div>
+                <div class="genres-grid" id="genres-tab-list"></div>
             </div>
         </div>
     </main>
@@ -2650,6 +2666,7 @@
     let currentPlaylist = 'All';
     let searchQuery = '';
     let currentMood = 'All'; 
+    let currentGenre = 'All';
     let currentIndex = -1;
     let isPlaying = false;
     let isShuffle = false;
@@ -3947,6 +3964,7 @@
         renderArtistsTab();
         renderPlaylistsTab();
         renderMoodsTab();
+        renderGenresTab();
         
         applyFilters();
 
@@ -4026,11 +4044,18 @@
         if (type === 'Playlist') {
             currentPlaylist = name;
             currentMood = 'All';
+            currentGenre = 'All';
             document.getElementById('active-filter-text').innerText = `Playlist: ${name}`;
         } else if (type === 'Mood') {
             currentMood = name;
             currentPlaylist = 'All';
+            currentGenre = 'All';
             document.getElementById('active-filter-text').innerText = `Mood: ${name}`;
+        } else if (type === 'Genre') {
+            currentGenre = name;
+            currentPlaylist = 'All';
+            currentMood = 'All';
+            document.getElementById('active-filter-text').innerText = `Genre: ${name}`;
         }
         document.getElementById('active-filter-banner').style.display = 'flex';
         switchMainTab(0);
@@ -4040,6 +4065,7 @@
     function clearCollectionFilter() {
         currentPlaylist = 'All';
         currentMood = 'All';
+        currentGenre = 'All';
         document.getElementById('active-filter-banner').style.display = 'none';
         applyFilters();
     }
@@ -4168,6 +4194,41 @@
         }).join('');
     }
 
+    function renderGenresTab() {
+        const list = document.getElementById('genres-tab-list');
+        if(!list) return;
+        const uniqueGenres = [...new Set(songs.map(s => s.genre).filter(Boolean))];
+        
+        if (uniqueGenres.length === 0) {
+            list.innerHTML = '<div class="empty-state" style="grid-column: 1/-1;">No genres added yet.</div>';
+            return;
+        }
+
+        list.innerHTML = uniqueGenres.map(g => {
+            const gSongs = songs.filter(s => s.genre === g);
+            const count = gSongs.length;
+            
+            let cover = 'https://via.placeholder.com/150/00030F/ffffff?text=Genre';
+            if (gSongs.length > 0) {
+                if (gSongs[0].cover_url) {
+                    cover = gSongs[0].cover_url;
+                } else if (extractedCoversCache[gSongs[0].id]) {
+                    cover = extractedCoversCache[gSongs[0].id];
+                }
+            }
+
+            return `
+                <div class="collection-card" onclick="openCollectionModal('Genre', '${escapeHtml(g).replace(/&#039;/g, "\\'")}')">
+                    <img src="${cover}" alt="cover">
+                    <div>
+                        <h4>${escapeHtml(g)}</h4>
+                        <p>${count} songs</p>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
     function handleMoodFilter(mood) {
         currentMood = mood;
         applyFilters();
@@ -4182,8 +4243,9 @@
                                  song.artist.toLowerCase().includes(searchQuery);
 
             const matchesMood = currentMood === 'All' ? true : song.mood === currentMood;
+            const matchesGenre = currentGenre === 'All' ? true : song.genre === currentGenre;
 
-            return matchesPlaylist && matchesSearch && matchesMood;
+            return matchesPlaylist && matchesSearch && matchesMood && matchesGenre;
         });
 
         renderSongList();
