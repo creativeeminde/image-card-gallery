@@ -2706,7 +2706,6 @@
     function msWarn(...args) { console.warn('[MediaSession]', ...args); }
     function msError(...args) { console.error('[MediaSession]', ...args); }
 
-    let mediaSessionHandlersRegistered = false;
     let lastPositionStateUpdate = 0;
 
     function logMediaSessionEnvironment() {
@@ -2735,37 +2734,36 @@
         return true;
     }
 
-    // Register every action handler exactly once. Re-registering per
-    // track is unnecessary and was previously masking whether a
-    // given track-change path actually re-armed the handlers.
+    // iOS Safari notoriously drops Media Session handlers when the audio src changes
+    // or when the lock screen engages. We must aggressively re-register the exact 
+    // handlers we want (and ONLY the ones we want) on every track load.
     function registerMediaSessionActionHandlers() {
         if (!('mediaSession' in navigator)) return;
-        if (mediaSessionHandlersRegistered) {
-            msLog('Action handlers already registered - skipping duplicate registration.');
-            return;
+
+        try {
+            navigator.mediaSession.setActionHandler('play', () => { msLog('OS action: play'); playAudio(); });
+            navigator.mediaSession.setActionHandler('pause', () => { msLog('OS action: pause'); audio.pause(); });
+            navigator.mediaSession.setActionHandler('previoustrack', () => { msLog('OS action: previoustrack'); prevSong(); });
+            navigator.mediaSession.setActionHandler('nexttrack', () => { msLog('OS action: nexttrack'); nextSong(); });
+            
+            // Adding seekto enables the interactive scrubber bar on the iOS lock screen!
+            navigator.mediaSession.setActionHandler('seekto', (details) => {
+                msLog('OS action: seekto', details.seekTime);
+                if (details.fastSeek && ('fastSeek' in audio)) {
+                    audio.fastSeek(details.seekTime);
+                } else {
+                    audio.currentTime = details.seekTime;
+                }
+                updateMediaSessionPosition(true);
+            });
+            
+            // DELIBERATELY OMIT seekbackward and seekforward. 
+            // Setting them to null or empty functions triggers an iOS fallback bug.
+        } catch (err) {
+            msWarn('Action handler registration error (safe to ignore on some platforms):', err);
         }
 
-        const handlers = [
-            ['play', () => { msLog('OS action received: play'); playAudio(); }],
-            ['pause', () => { msLog('OS action received: pause'); audio.pause(); }],
-            ['previoustrack', () => { msLog('OS action received: previoustrack'); prevSong(); }],
-            ['nexttrack', () => { msLog('OS action received: nexttrack'); nextSong(); }],
-            ['seekbackward', null], /* Explicitly clear seek backward to force iOS to show the Previous Track icon */
-            ['seekforward', null],  /* Explicitly clear seek forward to force iOS to show the Next Track icon */
-            ['seekto', null]        /* Completely unregister seekto to prevent iOS from forcing skip buttons */
-        ];
-
-        handlers.forEach(([action, handler]) => {
-            try {
-                navigator.mediaSession.setActionHandler(action, handler);
-                msLog(`Registered action handler: "${action}"`);
-            } catch (err) {
-                msWarn(`Action "${action}" is not supported on this platform (this is normal for some actions on iOS).`, err);
-            }
-        });
-
-        mediaSessionHandlersRegistered = true;
-        msLog('Finished registering all action handlers (one-time setup).');
+        msLog('MediaSession handlers mapped successfully.');
     }
 
     function setMediaSessionPlaybackState(state) {
@@ -2989,6 +2987,9 @@
             renderSongList();
             setMediaSessionPlaybackState('playing');
             updateMediaSessionPosition(true);
+            
+            // Aggressively re-assert handlers to iOS when playback natively starts
+            registerMediaSessionActionHandlers();
         });
         audio.addEventListener('pause', () => {
             console.log("[Audio] pause event fired");
@@ -3222,6 +3223,9 @@
         // so it's guaranteed fresh inside the click's call stack too.
         setMediaSessionMetadata(song, coverSrc);
         setMediaSessionPlaybackState(audio.paused ? 'paused' : 'playing');
+        
+        // Forcefully bind handlers immediately after changing the audio source
+        registerMediaSessionActionHandlers();
 
         renderSongList();
         
