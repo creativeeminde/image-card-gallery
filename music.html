@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="manifest" href="manifest-music.json">
-    <meta name="theme-color" content="#4CAF50">
+    <meta name="theme-color" content="#00030F">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Musicstreamer">
@@ -1775,19 +1775,21 @@
                 align-items: flex-start;
                 height: auto !important;
                 overflow-y: visible !important;
+                overflow-x: visible !important;
             }
 
             .tab-view {
                 height: auto !important;
                 overflow-y: visible !important;
+                overflow-x: visible !important;
                 display: block;
                 padding-right: 0;
-                touch-action: pan-y;
             }
 
             .song-list-container {
                 height: auto !important;
                 overflow-y: visible !important;
+                overflow-x: visible !important;
                 padding-right: 0;
             }
             
@@ -2165,19 +2167,8 @@
                 gap: 5px;
                 position: relative;
                 z-index: 10;
-                padding: 0 1.5rem 1rem 1.5rem;
+                padding: 0 1.5rem calc(1.5rem + env(safe-area-inset-bottom)) 1.5rem;
                 text-shadow: 0 2px 10px rgba(0,0,0,0.5);
-            }
-            
-            .mobile-volume-container {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 1rem;
-                padding: 0 2rem calc(1rem + env(safe-area-inset-bottom)) 2rem;
-                position: relative;
-                z-index: 10;
-                width: 100%;
             }
 
             #lyrics-modal.modal-overlay { background: var(--bg-color); }
@@ -2528,12 +2519,6 @@
             <i class="fas fa-chevron-up" style="color: var(--text-main); font-size: 1.2rem;"></i>
             <span style="font-weight: 600; color: var(--text-main); font-size: 1rem;">Lyrics</span>
         </div>
-        
-        <div class="mobile-volume-container">
-            <i class="fas fa-volume-down" style="color: var(--text-muted);"></i>
-            <input type="range" class="volume-slider" min="0" max="1" step="0.01" value="0.8" oninput="setVolume(this.value, this)" aria-label="Volume Slider">
-            <i class="fas fa-volume-up" style="color: var(--text-muted);"></i>
-        </div>
     </div>
 
     <!-- Player Bar -->
@@ -2543,9 +2528,13 @@
             <button class="ctrl-btn" id="loop-btn" onclick="toggleLoop()" title="Loop Song" aria-label="Loop Song"><i class="fas fa-repeat"></i></button>
             <button class="ctrl-btn" onclick="prevSong()" title="Previous Song" aria-label="Previous Song"><i class="fas fa-step-backward"></i></button>
             
+            <button class="ctrl-btn skip-btn" onclick="seekAudio(-10)" title="Rewind 10 Seconds" aria-label="Rewind 10 Seconds">-10s</button>
+            
             <button class="play-pause-btn" onclick="togglePlay()" title="Play or Pause" aria-label="Play or Pause">
                 <i class="fas fa-play" id="play-icon"></i>
             </button>
+            
+            <button class="ctrl-btn skip-btn" onclick="seekAudio(10)" title="Skip 10 Seconds" aria-label="Skip 10 Seconds">+10s</button>
             
             <button class="ctrl-btn" onclick="nextSong()" title="Next Song" aria-label="Next Song"><i class="fas fa-step-forward"></i></button>
             
@@ -3046,11 +3035,11 @@
                 break;
             case 'ArrowRight':
                 event.preventDefault();
-                nextSong();
+                nextSong(true);
                 break;
             case 'ArrowLeft':
                 event.preventDefault();
-                prevSong();
+                prevSong(true);
                 break;
             case 'ArrowUp':
                 event.preventDefault();
@@ -3620,12 +3609,14 @@
         if (wasPlaying) playAudio();
     }
 
-    function prevSong() {
+    function prevSong(forcePlay = false) {
+        const wasPlaying = !audio.paused || forcePlay;
+        
         if (audio.currentTime > 3) {
             audio.currentTime = 0;
+            if (wasPlaying) playAudio();
             return;
         }
-        const wasPlaying = !audio.paused;
         
         if (playHistory.length > 0) {
             const prevIdx = playHistory.pop();
@@ -3673,6 +3664,16 @@
                 slider.value = val;
             }
         });
+    }
+
+    function seekAudio(seconds) {
+        if (!audio.src || isNaN(audio.duration)) return;
+        let newTime = audio.currentTime + seconds;
+        if (newTime < 0) newTime = 0;
+        if (newTime > audio.duration) newTime = audio.duration;
+        audio.currentTime = newTime;
+        updateProgress();
+        updateMediaSessionPosition(true);
     }
 
     function updateProgress() {
