@@ -7,18 +7,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
     <link rel="manifest" href="manifest-movie.json">
-
-    <meta name="theme-color" content="#4CAF50">
-
+    <meta name="theme-color" content="#ffffff">
     <meta name="apple-mobile-web-app-capable" content="yes">
-
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-
-    <meta name="apple-mobile-web-app-title" content="Visual Gallery">
-    <link rel="apple-touch-startup-image" href="icons/movie-750x1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
-    <link rel="apple-touch-startup-image" href="icons/movie-1334-750.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)">
-    <link rel="apple-touch-icon" href="icons/movie-180x180.png">
-   
+    <meta name="apple-mobile-web-app-title" content="MovieGather">
     
     <!-- Dynamic SVG Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='25' fill='%23000'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='central' text-anchor='middle' font-family='Inter, sans-serif' font-weight='900' font-size='50' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
@@ -62,15 +54,12 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
-
-        .fade-enter {
-            opacity: 0;
-            transform: scale(1.05);
-        }
-        .fade-enter-active {
-            opacity: 1;
-            transform: scale(1);
-            transition: opacity 700ms, transform 700ms;
+        
+        .line-clamp-3 {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
         /* Glassmorphism utility */
@@ -81,19 +70,15 @@
         }
 
         /* --- TOUCH AND MOBILE UI OPTIMIZATIONS --- */
-        
-        /* Eliminate 300ms double-tap delay on all interactive elements & remove native touch highlight on iOS */
         a, button, select, input, textarea, [role="button"], .cursor-pointer {
             touch-action: manipulation;
             -webkit-tap-highlight-color: transparent;
         }
 
-        /* Smooth scrollable lists with touch deceleration physics */
         .overflow-x-auto, .overflow-y-auto {
             -webkit-overflow-scrolling: touch;
         }
 
-        /* Crucial Tap Fix for Touch Screens */
         @media (hover: none) {
             .hover\:-translate-y-1:hover,
             .hover\:-translate-y-1:active,
@@ -269,7 +254,250 @@
             };
         };
 
-        // --- SUB-COMPONENTS ---
+        // --- NEW MOBILE EPISODE DETAILS VIEW ---
+        function MobileEpisodeDetailsView({ showId, seasonNum, episodeNum, goBack, goToShow, trackedItems, updateTvProgress }) {
+            const [epData, setEpData] = useState(null);
+            const [showData, setShowData] = useState(null);
+            const [isLoading, setIsLoading] = useState(true);
+
+            useEffect(() => {
+                let active = true;
+                setIsLoading(true);
+                const fetchAll = async () => {
+                    try {
+                        const [showRes, epRes] = await Promise.all([
+                            fetch(`${TMDB_BASE_URL}/tv/${showId}?api_key=${TMDB_API_KEY}`),
+                            fetch(`${TMDB_BASE_URL}/tv/${showId}/season/${seasonNum}/episode/${episodeNum}?api_key=${TMDB_API_KEY}`)
+                        ]);
+                        if (active) {
+                            setShowData(await showRes.json());
+                            setEpData(await epRes.json());
+                            setIsLoading(false);
+                        }
+                    } catch (e) {
+                        console.error("Failed to fetch episode details", e);
+                    }
+                };
+                fetchAll();
+                return () => { active = false; };
+            }, [showId, seasonNum, episodeNum]);
+
+            const { prevEp, nextEp } = useMemo(() => {
+                if (!showData?.seasons) return { prevEp: null, nextEp: null };
+                const regularSeasons = showData.seasons.filter(s => s.season_number > 0).sort((a, b) => a.season_number - b.season_number);
+                const sIdx = regularSeasons.findIndex(s => s.season_number === seasonNum);
+                if (sIdx === -1) return { prevEp: null, nextEp: null };
+
+                const currentSeason = regularSeasons[sIdx];
+                let prev = null;
+                let next = null;
+
+                if (episodeNum > 1) {
+                    prev = { season: seasonNum, episode: episodeNum - 1 };
+                } else if (sIdx > 0) {
+                    const prevSeason = regularSeasons[sIdx - 1];
+                    prev = { season: prevSeason.season_number, episode: prevSeason.episode_count };
+                }
+
+                if (episodeNum < currentSeason.episode_count) {
+                    next = { season: seasonNum, episode: episodeNum + 1 };
+                } else if (sIdx < regularSeasons.length - 1) {
+                    const nextSeason = regularSeasons[sIdx + 1];
+                    if (nextSeason.episode_count > 0) {
+                        next = { season: nextSeason.season_number, episode: 1 };
+                    }
+                }
+                return { prevEp: prev, nextEp: next };
+            }, [showData, seasonNum, episodeNum]);
+
+            const trackedShow = trackedItems.find(t => Number(t.media_id) === Number(showId) && t.media_type === 'tv');
+            let watchedMap = {};
+            if (trackedShow?.progress) {
+                const prog = typeof trackedShow.progress === 'string' ? JSON.parse(trackedShow.progress) : trackedShow.progress;
+                watchedMap = prog.watched_episodes || {};
+            }
+            const isWatched = watchedMap[`${seasonNum}_${episodeNum}`] === true;
+
+            const handleToggleWatched = () => {
+                const updated = { ...watchedMap };
+                updated[`${seasonNum}_${episodeNum}`] = !isWatched;
+                
+                const regularSeasons = showData?.seasons?.filter(s => s.season_number > 0) || [];
+                const totalEp = regularSeasons.reduce((acc, s) => acc + (s.episode_count || 0), 0);
+                
+                updateTvProgress(showId, updated, totalEp, showData);
+            };
+
+            const formatAirDate = (dateString) => {
+                if (!dateString) return 'Unknown Air Date';
+                return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            };
+
+            const navigateTo = (s, e) => {
+                window.history.replaceState(
+                    { ...window.history.state, selectedEpisode: { season: s, episode: e } }, 
+                    ''
+                );
+                window.dispatchEvent(new Event('popstate'));
+            };
+
+            if (isLoading) {
+                return (
+                    <div className="fixed inset-0 z-[150] bg-[#0a0a0c] flex items-center justify-center">
+                        <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-700 border-t-green-500"></div>
+                    </div>
+                );
+            }
+
+            if (!epData) return null;
+
+            const backdropUrl = epData.still_path 
+                ? `https://image.tmdb.org/t/p/w780${epData.still_path}`
+                : showData?.backdrop_path 
+                    ? `https://image.tmdb.org/t/p/w780${showData.backdrop_path}` 
+                    : 'https://via.placeholder.com/780x439?text=No+Image';
+
+            return (
+                <div className="fixed inset-0 z-[150] bg-[#0a0a0c] text-white overflow-y-auto no-scrollbar pb-24">
+                    {/* Header Image & Actions */}
+                    <div className="relative w-full aspect-[4/3] bg-gray-900">
+                        <img src={backdropUrl} className="absolute inset-0 w-full h-full object-cover opacity-90" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0c] via-[#0a0a0c]/40 to-transparent"></div>
+                        
+                        <button 
+                            onClick={goBack} 
+                            className="absolute top-4 left-4 h-10 w-10 flex items-center justify-center rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white z-10 active:scale-90 transition-transform"
+                        >
+                            <Icon name="ArrowLeft" className="h-5 w-5" />
+                        </button>
+                    </div>
+
+                    {/* Content Body */}
+                    <div className="px-5 -mt-12 relative z-10">
+                        <p 
+                            onClick={goToShow}
+                            className="text-green-500 font-extrabold text-[11px] uppercase tracking-widest mb-1.5 cursor-pointer hover:text-green-400 w-max"
+                        >
+                            {showData?.name || 'Show Details'}
+                        </p>
+                        
+                        <h1 className="text-2xl font-black text-white leading-tight mb-2">
+                            S{String(seasonNum).padStart(2, '0')} · E{String(episodeNum).padStart(2, '0')} · {epData.name || 'Untitled Episode'}
+                        </h1>
+                        
+                        <p className="text-gray-400 text-xs font-semibold mb-6">
+                            Aired {formatAirDate(epData.air_date)}
+                        </p>
+
+                        {/* Prev / Next Navigation */}
+                        <div className="flex bg-white/5 rounded-2xl p-1 mb-8 border border-white/10">
+                            <button 
+                                onClick={() => prevEp && navigateTo(prevEp.season, prevEp.episode)}
+                                disabled={!prevEp}
+                                className={`flex-1 flex flex-col items-center justify-center py-2.5 rounded-xl transition-all ${prevEp ? 'active:bg-white/10 hover:bg-white/5' : 'opacity-30'}`}
+                            >
+                                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">Previous</span>
+                                <span className="text-sm font-black text-white">
+                                    {prevEp ? `S${String(prevEp.season).padStart(2, '0')} E${String(prevEp.episode).padStart(2, '0')}` : '--'}
+                                </span>
+                            </button>
+                            <div className="w-[1px] bg-white/10 my-2 mx-1"></div>
+                            <button 
+                                onClick={() => nextEp && navigateTo(nextEp.season, nextEp.episode)}
+                                disabled={!nextEp}
+                                className={`flex-1 flex flex-col items-center justify-center py-2.5 rounded-xl transition-all ${nextEp ? 'active:bg-white/10 hover:bg-white/5' : 'opacity-30'}`}
+                            >
+                                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">Next</span>
+                                <span className="text-sm font-black text-white">
+                                    {nextEp ? `S${String(nextEp.season).padStart(2, '0')} E${String(nextEp.episode).padStart(2, '0')}` : '--'}
+                                </span>
+                            </button>
+                        </div>
+
+                        {/* Watch Action & Rating */}
+                        <div className="flex items-center gap-4 mb-8">
+                            <button 
+                                onClick={handleToggleWatched}
+                                className={`flex-1 py-3.5 rounded-2xl flex items-center justify-center gap-2 font-black text-sm transition-all active:scale-95 ${
+                                    isWatched 
+                                    ? 'bg-green-600/20 text-green-500 border border-green-600/30' 
+                                    : 'bg-white text-black'
+                                }`}
+                            >
+                                {isWatched ? (
+                                    <>
+                                        <Icon name="CheckCircle2" className="h-5 w-5" />
+                                        <span>Finished</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Icon name="Plus" className="h-5 w-5" />
+                                        <span>Mark Finished</span>
+                                    </>
+                                )}
+                            </button>
+
+                            <div className="flex flex-col items-center justify-center bg-white/5 border border-white/10 rounded-2xl px-5 py-2.5 h-full">
+                                <span className="text-white font-black text-sm flex items-center gap-1.5">
+                                    <Icon name="Star" className="h-4 w-4 fill-green-500 text-green-500" />
+                                    {(epData.vote_average || 0).toFixed(1)}
+                                </span>
+                                <span className="text-[10px] text-gray-500 font-bold mt-0.5">{epData.vote_count || 0} Votes</span>
+                            </div>
+                        </div>
+
+                        {/* Synopsis */}
+                        <div className="mb-8">
+                            <h2 className="text-white font-black text-lg mb-3">Synopsis</h2>
+                            <p className="text-gray-400 text-sm leading-relaxed">
+                                {epData.overview || <span className="italic">No synopsis available for this episode.</span>}
+                            </p>
+                        </div>
+
+                        {/* Mock Rating Chart */}
+                        <div className="mb-8 p-5 bg-white/5 rounded-2xl border border-white/10">
+                            <div className="flex justify-between items-end mb-4">
+                                <h3 className="text-sm font-bold text-gray-300">Audience Rating</h3>
+                                <span className="text-xl font-black text-white">{(epData.vote_average || 0).toFixed(1)}</span>
+                            </div>
+                            <div className="flex items-end gap-1 h-12 w-full mt-2">
+                                {[15, 20, 10, 5, 8, 25, 45, 75, 100, 60].map((h, i) => (
+                                    <div key={i} className="flex-1 bg-white/10 rounded-t-sm" style={{ height: `${h}%` }}></div>
+                                ))}
+                            </div>
+                            <div className="flex justify-between text-[9px] font-bold text-gray-500 uppercase mt-2">
+                                <span>Poor</span>
+                                <span>Excellent</span>
+                            </div>
+                        </div>
+
+                        {/* Details Table */}
+                        <div>
+                            <h2 className="text-white font-black text-lg mb-3">Details</h2>
+                            <div className="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
+                                <div className="flex justify-between p-4 border-b border-white/10">
+                                    <span className="text-gray-400 text-xs font-semibold">Air Date</span>
+                                    <span className="text-white text-xs font-bold">{formatAirDate(epData.air_date)}</span>
+                                </div>
+                                <div className="flex justify-between p-4 border-b border-white/10">
+                                    <span className="text-gray-400 text-xs font-semibold">Episode</span>
+                                    <span className="text-white text-xs font-bold">{episodeNum}</span>
+                                </div>
+                                <div className="flex justify-between p-4 border-b border-white/10">
+                                    <span className="text-gray-400 text-xs font-semibold">Season</span>
+                                    <span className="text-white text-xs font-bold">{seasonNum}</span>
+                                </div>
+                                <div className="flex justify-between p-4">
+                                    <span className="text-gray-400 text-xs font-semibold">Runtime</span>
+                                    <span className="text-white text-xs font-bold">{epData.runtime ? `${epData.runtime} min` : '--'}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         function Section({ title, items, onSelect, isLoading }) {
             const scrollContainerRef = useRef(null);
             const scroll = (direction) => {
@@ -346,46 +574,106 @@
 
             const comingSoon = movieDetails && isFutureRelease(movieDetails.release_date);
 
-            return (
-                <React.Fragment>
-                    {/* DESKTOP CARD (Untouched) */}
+            // DESKTOP LAYOUT (Unchanged)
+            const desktopCard = (
+                <div 
+                    onClick={() => openDetails(item.media_id, 'movie')}
+                    className="hidden md:flex group relative flex-col bg-white/60 hover:bg-white backdrop-blur-md rounded-3xl border border-gray-100 p-3.5 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 active:scale-98 cursor-pointer select-none"
+                >
+                    <div className="aspect-[2/3] w-full rounded-2xl overflow-hidden mb-3.5 relative shadow-inner">
+                        <img 
+                            src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} 
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-60"></div>
+                        <span className="absolute top-2 left-2 rounded-full bg-black/60 backdrop-blur-md px-2.5 py-0.5 text-[9px] font-black tracking-widest uppercase border border-white/10 text-white">
+                            MOVIE
+                        </span>
+                        {comingSoon && (
+                            <span className="absolute top-2 right-2 rounded-full bg-amber-500/95 backdrop-blur-md px-2 py-0.5 text-[8px] font-black tracking-widest uppercase border border-amber-400 text-white flex items-center gap-1 shadow-lg animate-pulse">
+                                <Icon name="Calendar" className="h-2.5 w-2.5" /> Coming Soon
+                            </span>
+                        )}
+                        <span className="absolute bottom-2 left-2 text-[10px] font-bold text-white tracking-wide">
+                            ★ {item.rating} TMDb
+                        </span>
+                    </div>
+                    <div className="flex-1 flex flex-col justify-between">
+                        <div>
+                            <h3 className="text-[15px] font-extrabold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1 mb-1">
+                                {item.title}
+                            </h3>
+                            <p className="text-[11px] text-gray-500 font-semibold truncate mb-3">
+                                {item.genres || 'Uncategorized'}
+                            </p>
+                        </div>
+                        <div className="pt-3 border-t border-gray-100/80 flex items-center justify-between gap-3">
+                            <select 
+                                value={item.status} 
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => handleTrackItem(item, e.target.value)}
+                                className="text-[11px] font-bold text-gray-600 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 outline-none cursor-pointer focus:bg-white transition-all flex-1 min-w-0"
+                            >
+                                <option value="Watching">Watching</option>
+                                <option value="Watched">Watched</option>
+                                <option value="Plan to Watch">Plan to Watch</option>
+                                <option value="On Hold">On Hold</option>
+                                <option value="Dropped">Dropped</option>
+                            </select>
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); handleRemoveTracking(item.media_id, 'movie'); }}
+                                className="p-1.5 text-red-500 hover:bg-red-50 rounded-xl border border-transparent hover:border-red-100 transition-all shrink-0"
+                                title="Remove from Library"
+                            >
+                                <Icon name="Trash" className="h-4 w-4" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            // MOBILE REDESIGNED LAYOUT
+            const mobileCard = (
+                <div className="md:hidden flex gap-4 p-3 mb-4 bg-white rounded-2xl border border-gray-100 shadow-sm relative">
+                    {/* Poster */}
                     <div 
                         onClick={() => openDetails(item.media_id, 'movie')}
-                        className="hidden md:flex group relative flex-col bg-white/60 hover:bg-white backdrop-blur-md rounded-3xl border border-gray-100 p-3.5 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 active:scale-98 cursor-pointer select-none"
+                        className="w-[85px] h-[125px] shrink-0 rounded-xl overflow-hidden relative shadow-sm cursor-pointer"
                     >
-                        <div className="aspect-[2/3] w-full rounded-2xl overflow-hidden mb-3.5 relative shadow-inner">
-                            <img 
-                                src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} 
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-60"></div>
-                            <span className="absolute top-2 left-2 rounded-full bg-black/60 backdrop-blur-md px-2.5 py-0.5 text-[9px] font-black tracking-widest uppercase border border-white/10 text-white">
-                                MOVIE
+                        <img 
+                            src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} 
+                            className="w-full h-full object-cover" 
+                        />
+                        <span className="absolute top-1 left-1 rounded-sm bg-black/70 backdrop-blur-md px-1 py-0.5 text-[7px] font-black tracking-widest uppercase border border-white/20 text-white shadow-sm">
+                            MOVIE
+                        </span>
+                        {comingSoon && (
+                            <span className="absolute bottom-1 left-1 rounded-sm bg-amber-500/95 backdrop-blur-md px-1 py-0.5 text-[7px] font-black tracking-widest uppercase text-white shadow-sm">
+                                Soon
                             </span>
-                            {comingSoon && (
-                                <span className="absolute top-2 right-2 rounded-full bg-amber-500/95 backdrop-blur-md px-2 py-0.5 text-[8px] font-black tracking-widest uppercase border border-amber-400 text-white flex items-center gap-1 shadow-lg animate-pulse">
-                                    <Icon name="Calendar" className="h-2.5 w-2.5" /> Coming Soon
-                                </span>
-                            )}
-                            <span className="absolute bottom-2 left-2 text-[10px] font-bold text-white tracking-wide">
-                                ★ {item.rating} TMDb
-                            </span>
+                        )}
+                    </div>
+                    
+                    {/* Info */}
+                    <div className="flex-1 flex flex-col justify-between py-1 min-w-0">
+                        <div>
+                            <h3 
+                                onClick={() => openDetails(item.media_id, 'movie')}
+                                className="text-sm font-black text-gray-900 leading-tight mb-1 truncate cursor-pointer"
+                            >
+                                {item.title}
+                            </h3>
+                            <p className="text-[10px] text-gray-500 font-semibold truncate">
+                                {item.genres || 'Uncategorized'}
+                            </p>
                         </div>
-                        <div className="flex-1 flex flex-col justify-between">
-                            <div>
-                                <h3 className="text-[15px] font-extrabold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1 mb-1">
-                                    {item.title}
-                                </h3>
-                                <p className="text-[11px] text-gray-500 font-semibold truncate mb-3">
-                                    {item.genres || 'Uncategorized'}
-                                </p>
-                            </div>
-                            <div className="pt-3 border-t border-gray-100/80 flex items-center justify-between gap-3">
+                        
+                        <div className="flex flex-col gap-2 mt-auto pt-2">
+                            <div className="flex items-center gap-2">
                                 <select 
                                     value={item.status} 
-                                    onClick={(e) => e.stopPropagation()}
                                     onChange={(e) => handleTrackItem(item, e.target.value)}
-                                    className="text-[11px] font-bold text-gray-600 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 outline-none cursor-pointer focus:bg-white transition-all flex-1 min-w-0"
+                                    className="text-[10px] font-bold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 outline-none cursor-pointer flex-1"
                                 >
                                     <option value="Watching">Watching</option>
                                     <option value="Watched">Watched</option>
@@ -394,67 +682,26 @@
                                     <option value="Dropped">Dropped</option>
                                 </select>
                                 <button 
-                                    onClick={(e) => { e.stopPropagation(); handleRemoveTracking(item.media_id, 'movie'); }}
-                                    className="p-1.5 text-red-500 hover:bg-red-50 rounded-xl border border-transparent hover:border-red-100 transition-all shrink-0"
-                                    title="Remove from Library"
+                                    onClick={() => handleRemoveTracking(item.media_id, 'movie')}
+                                    className="p-1 text-gray-400 hover:text-red-500 bg-gray-50 rounded-lg border border-gray-200 shrink-0 transition-colors"
                                 >
-                                    <Icon name="Trash" className="h-4 w-4" />
+                                    <Icon name="MoreVertical" className="h-4 w-4" />
                                 </button>
                             </div>
                         </div>
                     </div>
+                </div>
+            );
 
-                    {/* MOBILE CARD (Reference App Style Redesign) */}
-                    <div 
-                        onClick={() => openDetails(item.media_id, 'movie')}
-                        className="md:hidden group flex flex-row py-4 border-b border-gray-100/70 cursor-pointer select-none"
-                    >
-                        <div className="w-[90px] aspect-[2/3] rounded-xl overflow-hidden mr-4 shrink-0 shadow-sm relative">
-                            <img 
-                                src={`https://image.tmdb.org/t/p/w342${item.poster_path}`} 
-                                className="w-full h-full object-cover" 
-                            />
-                            {comingSoon && (
-                                <span className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-amber-500 px-1.5 py-0.5 text-[7px] font-black uppercase text-white shadow">
-                                    Soon
-                                </span>
-                            )}
-                        </div>
-
-                        <div className="flex-1 flex flex-col justify-center min-w-0 py-1">
-                            <div className="flex justify-between items-start mb-1">
-                                <h3 className="text-[17px] font-bold text-gray-900 leading-snug line-clamp-2 pr-2">
-                                    {item.title}
-                                </h3>
-                                <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
-                                    <select 
-                                        value={item.status} 
-                                        onChange={(e) => handleTrackItem(item, e.target.value)}
-                                        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                                    >
-                                        <option value="Watching">Watching</option>
-                                        <option value="Watched">Watched</option>
-                                        <option value="Plan to Watch">Plan to Watch</option>
-                                        <option value="On Hold">On Hold</option>
-                                        <option value="Dropped">Dropped</option>
-                                    </select>
-                                    <Icon name="MoreHorizontal" className="h-5 w-5 text-gray-400" />
-                                </div>
-                            </div>
-                            
-                            <p className="text-[12px] text-gray-500 font-medium truncate mb-2">
-                                {item.genres || 'Uncategorized'}
-                            </p>
-                            <p className="text-[11px] font-bold text-gray-400 mt-auto">
-                                ★ {item.rating} TMDb
-                            </p>
-                        </div>
-                    </div>
-                </React.Fragment>
+            return (
+                <>
+                    {desktopCard}
+                    {mobileCard}
+                </>
             );
         }
 
-        function LibraryTvCard({ item, openDetails, handleRemoveTracking, handleTrackItem, updateTvProgress }) {
+        function LibraryTvCard({ item, openDetails, handleRemoveTracking, handleTrackItem, updateTvProgress, openEpisodeDetails }) {
             const [tvDetails, setTvDetails] = useState(null);
             const [seasonData, setSeasonData] = useState(null);
             const [isCardLoading, setIsCardLoading] = useState(true);
@@ -503,16 +750,22 @@
                 if (!tvDetails) return { nextS: 1, nextE: 1, totalEpisodes: 0, watchedCount: 0, foundNext: false };
                 const regularSeasons = tvDetails.seasons?.filter(s => s.season_number > 0) || [];
                 const totalEpisodes = regularSeasons.reduce((acc, s) => acc + (s.episode_count || 0), 0);
-
                 const sortedSeasons = [...regularSeasons].sort((a, b) => a.season_number - b.season_number);
+                
                 let nextS = 1;
                 let nextE = 1;
                 let foundNext = false;
+                let lastWatchedS = 1;
+                let lastWatchedE = 1;
 
+                // Find next unwatched episode, or track the last watched episode
                 for (const s of sortedSeasons) {
                     for (let ep = 1; ep <= s.episode_count; ep++) {
                         const key = `${s.season_number}_${ep}`;
-                        if (!progressInfo.watched_episodes[key]) {
+                        if (progressInfo.watched_episodes[key]) {
+                            lastWatchedS = s.season_number;
+                            lastWatchedE = ep;
+                        } else if (!foundNext) {
                             nextS = s.season_number;
                             nextE = ep;
                             foundNext = true;
@@ -520,6 +773,12 @@
                         }
                     }
                     if (foundNext) break;
+                }
+
+                // If fully caught up, target the last watched episode for thumbnail/details
+                if (!foundNext) {
+                    nextS = lastWatchedS;
+                    nextE = lastWatchedE;
                 }
 
                 const watchedCount = Object.keys(progressInfo.watched_episodes).filter(k => progressInfo.watched_episodes[k] === true).length;
@@ -553,9 +812,9 @@
             }, [tvDetails, computedProgress.nextS]);
 
             const nextEpisodeInfo = useMemo(() => {
-                if (!seasonData) return { title: 'Loading...', isPremiere: false, isFinale: false, isNew: false, still_path: null };
+                if (!seasonData) return { title: 'Loading...', isPremiere: false, isFinale: false, isNew: false, thumbnail: null };
                 const ep = seasonData.episodes?.find(e => e.episode_number === computedProgress.nextE);
-                if (!ep) return { title: `Episode ${computedProgress.nextE}`, isPremiere: false, isFinale: false, isNew: false, still_path: null };
+                if (!ep) return { title: `Episode ${computedProgress.nextE}`, isPremiere: false, isFinale: false, isNew: false, thumbnail: null };
 
                 const isPremiere = computedProgress.nextE === 1;
                 const isFinale = computedProgress.nextE === seasonData.episodes.length;
@@ -574,7 +833,7 @@
                     isPremiere,
                     isFinale,
                     isNew,
-                    still_path: ep.still_path
+                    thumbnail: ep.still_path ? `https://image.tmdb.org/t/p/w300${ep.still_path}` : null
                 };
             }, [seasonData, computedProgress.nextE]);
 
@@ -584,218 +843,249 @@
 
             const handleMarkWatched = (e) => {
                 e.stopPropagation();
+                if (!computedProgress.foundNext) return;
                 const epKey = `${computedProgress.nextS}_${computedProgress.nextE}`;
                 const updatedWatched = { ...progressInfo.watched_episodes, [epKey]: true };
-                updateTvProgress(item.media_id, updatedWatched, computedProgress.totalEpisodes);
+                updateTvProgress(item.media_id, updatedWatched, computedProgress.totalEpisodes, tvDetails);
             };
 
             if (isCardLoading) {
                 return (
-                    <React.Fragment>
-                        <div className="hidden md:block bg-white/40 backdrop-blur-md rounded-2xl border border-white/20 p-4 shadow-sm animate-pulse h-[340px]">
-                            <div className="bg-gray-200 h-48 rounded-xl mb-4" />
-                            <div className="bg-gray-200 h-4 w-3/4 rounded mb-2" />
-                            <div className="bg-gray-200 h-3 w-1/2 rounded" />
-                        </div>
-                        <div className="md:hidden flex flex-row py-4 border-b border-gray-100/80 animate-pulse">
-                            <div className="w-[90px] aspect-[2/3] bg-gray-200 rounded-xl mr-4 shrink-0" />
-                            <div className="flex-1 py-1 flex flex-col">
-                                <div className="h-5 bg-gray-200 rounded w-1/2 mb-4" />
-                                <div className="h-[46px] bg-gray-100 rounded-xl w-full mb-3" />
-                                <div className="h-1.5 bg-gray-200 rounded w-full mt-auto" />
-                            </div>
-                        </div>
-                    </React.Fragment>
+                    <div className="bg-white/40 backdrop-blur-md rounded-2xl border border-white/20 p-4 shadow-sm animate-pulse h-[340px] hidden md:block">
+                        <div className="bg-gray-200 h-48 rounded-xl mb-4" />
+                        <div className="bg-gray-200 h-4 w-3/4 rounded mb-2" />
+                        <div className="bg-gray-200 h-3 w-1/2 rounded" />
+                    </div>
                 );
             }
 
             const comingSoon = tvDetails && isFutureRelease(tvDetails.first_air_date);
 
-            return (
-                <React.Fragment>
-                    {/* DESKTOP CARD (Untouched) */}
-                    <div 
-                        onClick={() => openDetails(item.media_id, 'tv')}
-                        className="hidden md:flex group relative flex-col bg-white/60 hover:bg-white backdrop-blur-md rounded-3xl border border-gray-100 p-3.5 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 active:scale-98 cursor-pointer select-none overflow-hidden"
-                    >
-                        <div className="aspect-[2/3] w-full rounded-2xl overflow-hidden mb-3.5 relative shadow-inner">
-                            <img 
-                                src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} 
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-60"></div>
-                            <span className="absolute top-2 left-2 rounded-full bg-black/60 backdrop-blur-md px-2.5 py-0.5 text-[9px] font-black tracking-widest uppercase border border-white/10 text-white">
-                                TV SHOW
+            // DESKTOP LAYOUT (Unchanged)
+            const desktopCard = (
+                <div className="hidden md:flex group relative flex-col bg-white/60 hover:bg-white backdrop-blur-md rounded-3xl border border-gray-100 p-3.5 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 active:scale-98 select-none overflow-hidden">
+                    <div onClick={() => openDetails(item.media_id, 'tv')} className="cursor-pointer aspect-[2/3] w-full rounded-2xl overflow-hidden mb-3.5 relative shadow-inner">
+                        <img 
+                            src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} 
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-60"></div>
+                        <span className="absolute top-2 left-2 rounded-full bg-black/60 backdrop-blur-md px-2.5 py-0.5 text-[9px] font-black tracking-widest uppercase border border-white/10 text-white">
+                            TV SHOW
+                        </span>
+                        {comingSoon ? (
+                            <span className="absolute top-2 right-2 rounded-full bg-amber-500/95 backdrop-blur-md px-2 py-0.5 text-[8px] font-black tracking-widest uppercase border border-amber-400 text-white flex items-center gap-1 shadow-lg animate-pulse">
+                                <Icon name="Calendar" className="h-2.5 w-2.5" /> Coming Soon
                             </span>
-                            {comingSoon ? (
-                                <span className="absolute top-2 right-2 rounded-full bg-amber-500/95 backdrop-blur-md px-2 py-0.5 text-[8px] font-black tracking-widest uppercase border border-amber-400 text-white flex items-center gap-1 shadow-lg animate-pulse">
-                                    <Icon name="Calendar" className="h-2.5 w-2.5" /> Coming Soon
-                                </span>
-                            ) : (
-                                tvDetails && tvDetails.status && (
-                                    (() => {
-                                        const statusInfo = getSeriesStatusInfo(tvDetails.status, tvDetails.next_episode_to_air, true);
-                                        return (
-                                            <span className={`absolute top-2 right-2 rounded-full px-2 py-0.5 text-[8px] font-black tracking-widest uppercase border backdrop-blur-md shadow-sm ${statusInfo.colorClass}`}>
-                                                {statusInfo.label}
-                                            </span>
-                                        );
-                                    })()
-                                )
-                            )}
-                            <span className="absolute bottom-2 left-2 text-[10px] font-bold text-white tracking-wide">
-                                {computedProgress.watchedCount}/{computedProgress.totalEpisodes} Episodes ({percentage}%)
-                            </span>
-                        </div>
-
-                        <div className="flex-1 flex flex-col justify-between">
-                            <div>
-                                <h3 className="text-[15px] font-extrabold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1 mb-2">
-                                    {item.title}
-                                </h3>
-
-                                <div key={`${computedProgress.nextS}_${computedProgress.nextE}`} className="bg-gray-50/70 border border-gray-100/50 rounded-2xl p-2.5 flex items-center justify-between gap-3 animate-in fade-in duration-300 min-h-[58px]">
-                                    <div className="overflow-hidden flex-1 min-w-0">
-                                        <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                                            <span className="text-[11px] font-black text-blue-600 uppercase tracking-wider">
-                                                S{String(computedProgress.nextS).padStart(2, '0')} • E{String(computedProgress.nextE).padStart(2, '0')}
-                                            </span>
-                                            
-                                            {computedProgress.foundNext && nextEpisodeInfo.isPremiere && (
-                                                <span className="text-[8px] font-black bg-emerald-50 text-green-600 border border-emerald-100 px-1.5 py-0.5 rounded-md uppercase tracking-wider">Premiere</span>
-                                            )}
-                                            {computedProgress.foundNext && nextEpisodeInfo.isFinale && (
-                                                <span className="text-[8px] font-black bg-rose-50 text-red-600 border border-rose-100 px-1.5 py-0.5 rounded-md uppercase tracking-wider">Finale</span>
-                                            )}
-                                            {computedProgress.foundNext && nextEpisodeInfo.isNew && (
-                                                <span className="text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded-md uppercase tracking-wider">New</span>
-                                            )}
-                                        </div>
-                                        <p className="text-xs font-semibold text-gray-700 truncate">
-                                            {computedProgress.foundNext ? nextEpisodeInfo.title : 'All Caught Up! 🎉'}
-                                        </p>
-                                    </div>
-
-                                    {computedProgress.foundNext && (
-                                        <button 
-                                            onClick={handleMarkWatched}
-                                            className="w-10 h-10 shrink-0 rounded-full border border-blue-100 bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all duration-300 shadow-sm active:scale-90"
-                                            title="Mark episode as watched"
-                                        >
-                                            <Icon name="Check" className="h-5 w-5 stroke-[2.5]" />
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="mt-3.5 pt-3 border-t border-gray-100/80">
-                                <div className="w-full bg-gray-100 h-1 rounded-full overflow-hidden mb-3">
-                                    <div className="bg-blue-600 h-full transition-all duration-500" style={{ width: `${percentage}%` }} />
-                                </div>
-                                <div className="flex items-center justify-between gap-3">
-                                    <select 
-                                        value={item.status} 
-                                        onClick={(e) => e.stopPropagation()}
-                                        onChange={(e) => handleTrackItem(item, e.target.value)}
-                                        className="text-[11px] font-bold text-gray-600 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 outline-none cursor-pointer focus:bg-white transition-all flex-1 min-w-0"
-                                    >
-                                        <option value="Watching">Watching</option>
-                                        <option value="Watched">Watched</option>
-                                        <option value="Plan to Watch">Plan to Watch</option>
-                                        <option value="On Hold">On Hold</option>
-                                        <option value="Dropped">Dropped</option>
-                                    </select>
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); handleRemoveTracking(item.media_id, 'tv'); }}
-                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded-xl border border-transparent hover:border-red-100 transition-all shrink-0"
-                                        title="Remove from Library"
-                                    >
-                                        <Icon name="Trash" className="h-4 w-4" />
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+                        ) : (
+                            tvDetails && tvDetails.status && (
+                                (() => {
+                                    const statusInfo = getSeriesStatusInfo(tvDetails.status, tvDetails.next_episode_to_air, true);
+                                    return (
+                                        <span className={`absolute top-2 right-2 rounded-full px-2 py-0.5 text-[8px] font-black tracking-widest uppercase border backdrop-blur-md shadow-sm ${statusInfo.colorClass}`}>
+                                            {statusInfo.label}
+                                        </span>
+                                    );
+                                })()
+                            )
+                        )}
+                        <span className="absolute bottom-2 left-2 text-[10px] font-bold text-white tracking-wide">
+                            {computedProgress.watchedCount}/{computedProgress.totalEpisodes} Episodes ({percentage}%)
+                        </span>
                     </div>
 
-                    {/* MOBILE CARD (Reference App Style Redesign) */}
-                    <div 
-                        onClick={() => openDetails(item.media_id, 'tv')}
-                        className="md:hidden group flex flex-row py-4 border-b border-gray-100/70 cursor-pointer select-none"
-                    >
-                        <div className="w-[90px] aspect-[2/3] rounded-xl overflow-hidden mr-4 shrink-0 shadow-sm relative">
-                            <img 
-                                src={`https://image.tmdb.org/t/p/w342${item.poster_path}`} 
-                                className="w-full h-full object-cover" 
-                            />
-                        </div>
+                    <div className="flex-1 flex flex-col justify-between">
+                        <div>
+                            <h3 onClick={() => openDetails(item.media_id, 'tv')} className="cursor-pointer text-[15px] font-extrabold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1 mb-2">
+                                {item.title}
+                            </h3>
 
-                        <div className="flex-1 flex flex-col min-w-0">
-                            {/* Title & Dots */}
-                            <div className="flex justify-between items-start mb-2">
-                                <h3 className="text-[17px] font-bold text-gray-900 leading-snug line-clamp-1 pr-2">
-                                    {item.title}
-                                </h3>
-                                <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
-                                    <select 
-                                        value={item.status} 
-                                        onChange={(e) => handleTrackItem(item, e.target.value)}
-                                        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                                    >
-                                        <option value="Watching">Watching</option>
-                                        <option value="Watched">Watched</option>
-                                        <option value="Plan to Watch">Plan to Watch</option>
-                                        <option value="On Hold">On Hold</option>
-                                        <option value="Dropped">Dropped</option>
-                                    </select>
-                                    <Icon name="MoreHorizontal" className="h-5 w-5 text-gray-400" />
-                                </div>
-                            </div>
-
-                            {/* Next Episode Box */}
-                            <div className="flex items-center bg-white border border-gray-200/80 rounded-[14px] p-1.5 mb-4 gap-2.5 shadow-sm">
-                                <div className="w-[52px] h-[34px] bg-gray-100 rounded-[8px] overflow-hidden shrink-0">
-                                    {computedProgress.foundNext && nextEpisodeInfo.still_path ? (
-                                        <img src={`https://image.tmdb.org/t/p/w185${nextEpisodeInfo.still_path}`} className="w-full h-full object-cover" />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center">
-                                            <Icon name="Film" className="h-3.5 w-3.5 text-gray-300" />
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex-1 min-w-0 pr-1 py-0.5 flex flex-col justify-center">
-                                    <p className="text-[10px] font-black text-gray-900 tracking-tight leading-tight mb-0.5">
-                                        S{String(computedProgress.nextS).padStart(2, '0')} • E{String(computedProgress.nextE).padStart(2, '0')}
-                                    </p>
-                                    <p className="text-[10px] text-gray-500 truncate font-medium leading-none">
-                                        {computedProgress.foundNext ? nextEpisodeInfo.title : 'Caught Up'}
+                            <div 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    openEpisodeDetails(item.media_id, computedProgress.nextS, computedProgress.nextE);
+                                }}
+                                key={`${computedProgress.nextS}_${computedProgress.nextE}`} 
+                                className="cursor-pointer bg-gray-50/70 border border-gray-100/50 rounded-2xl p-2.5 flex items-center justify-between gap-3 hover:bg-gray-100/80 transition-colors duration-200 min-h-[58px]"
+                            >
+                                <div className="overflow-hidden flex-1 min-w-0">
+                                    <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                                        <span className="text-[11px] font-black text-blue-600 uppercase tracking-wider">
+                                            S{String(computedProgress.nextS).padStart(2, '0')} • E{String(computedProgress.nextE).padStart(2, '0')}
+                                        </span>
+                                        
+                                        {computedProgress.foundNext && nextEpisodeInfo.isPremiere && (
+                                            <span className="text-[8px] font-black bg-emerald-50 text-green-600 border border-emerald-100 px-1.5 py-0.5 rounded-md uppercase tracking-wider">Premiere</span>
+                                        )}
+                                        {computedProgress.foundNext && nextEpisodeInfo.isFinale && (
+                                            <span className="text-[8px] font-black bg-rose-50 text-red-600 border border-rose-100 px-1.5 py-0.5 rounded-md uppercase tracking-wider">Finale</span>
+                                        )}
+                                        {computedProgress.foundNext && nextEpisodeInfo.isNew && (
+                                            <span className="text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded-md uppercase tracking-wider">New</span>
+                                        )}
+                                    </div>
+                                    <p className="text-xs font-semibold text-gray-700 truncate">
+                                        {computedProgress.foundNext ? nextEpisodeInfo.title : 'Finished! 🎉'}
                                     </p>
                                 </div>
+
                                 {computedProgress.foundNext && (
                                     <button 
                                         onClick={handleMarkWatched}
-                                        className="w-7 h-7 rounded-full border-2 border-gray-300 flex items-center justify-center shrink-0 active:scale-90 bg-transparent transition-colors hover:bg-gray-100 mr-1"
+                                        className="w-10 h-10 shrink-0 rounded-full border border-blue-100 bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all duration-300 shadow-sm active:scale-90"
+                                        title="Mark episode as watched"
                                     >
-                                        {/* Empty circle mimicking reference check UI */}
+                                        <Icon name="Check" className="h-5 w-5 stroke-[2.5]" />
                                     </button>
                                 )}
                             </div>
+                        </div>
 
-                            {/* Progress Row */}
-                            <div className="mt-auto flex items-center gap-3 w-full pb-0.5">
-                                <div className="flex-1 bg-gray-200 h-1.5 rounded-full overflow-hidden">
-                                    <div className="bg-gray-900 h-full transition-all duration-500" style={{ width: `${percentage}%` }} />
+                        <div className="mt-3.5 pt-3 border-t border-gray-100/80">
+                            <div className="w-full bg-gray-100 h-1 rounded-full overflow-hidden mb-3">
+                                <div className="bg-blue-600 h-full transition-all duration-500" style={{ width: `${percentage}%` }} />
+                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                                <select 
+                                    value={item.status} 
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => handleTrackItem(item, e.target.value)}
+                                    className="text-[11px] font-bold text-gray-600 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 outline-none cursor-pointer focus:bg-white transition-all flex-1 min-w-0"
+                                >
+                                    <option value="Watching">Watching</option>
+                                    <option value="Watched">Watched</option>
+                                    <option value="Plan to Watch">Plan to Watch</option>
+                                    <option value="On Hold">On Hold</option>
+                                    <option value="Dropped">Dropped</option>
+                                </select>
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); handleRemoveTracking(item.media_id, 'tv'); }}
+                                    className="p-1.5 text-red-500 hover:bg-red-50 rounded-xl border border-transparent hover:border-red-100 transition-all shrink-0"
+                                    title="Remove from Library"
+                                >
+                                    <Icon name="Trash" className="h-4 w-4" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            // MOBILE REDESIGNED LAYOUT
+            const mobileCard = (
+                <div className="md:hidden flex gap-4 p-3 mb-4 bg-white rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden">
+                    {/* Poster */}
+                    <div 
+                        onClick={() => openDetails(item.media_id, 'tv')}
+                        className="w-[85px] h-[125px] shrink-0 rounded-xl overflow-hidden relative shadow-sm cursor-pointer"
+                    >
+                        <img 
+                            src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} 
+                            className="w-full h-full object-cover" 
+                        />
+                        <span className="absolute top-1 left-1 rounded-sm bg-black/70 backdrop-blur-md px-1 py-0.5 text-[7px] font-black tracking-widest uppercase border border-white/20 text-white shadow-sm">
+                            TV
+                        </span>
+                        {comingSoon ? (
+                            <span className="absolute bottom-1 left-1 rounded-sm bg-amber-500/95 backdrop-blur-md px-1 py-0.5 text-[7px] font-black tracking-widest uppercase text-white shadow-sm">
+                                Soon
+                            </span>
+                        ) : (
+                            tvDetails && tvDetails.status && (
+                                (() => {
+                                    const statusInfo = getSeriesStatusInfo(tvDetails.status, tvDetails.next_episode_to_air, true);
+                                    return (
+                                        <span className={`absolute bottom-1 left-1 rounded-sm px-1 py-0.5 text-[7px] font-black tracking-widest uppercase border shadow-sm ${statusInfo.colorClass}`}>
+                                            {statusInfo.label}
+                                        </span>
+                                    );
+                                })()
+                            )
+                        )}
+                    </div>
+                    
+                    {/* Info */}
+                    <div className="flex-1 flex flex-col justify-between py-1 min-w-0">
+                        {/* Title & Progress bar inline */}
+                        <div className="mb-2">
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                                <h3 
+                                    onClick={() => openDetails(item.media_id, 'tv')}
+                                    className="text-sm font-black text-gray-900 leading-tight truncate cursor-pointer"
+                                >
+                                    {item.title}
+                                </h3>
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); handleRemoveTracking(item.media_id, 'tv'); }}
+                                    className="text-gray-400 hover:text-red-500 p-0.5"
+                                >
+                                    <Icon name="MoreHorizontal" className="h-4 w-4" />
+                                </button>
+                            </div>
+                            
+                            {/* Inline Progress Bar */}
+                            <div className="flex items-center gap-2">
+                                <div className="flex-1 bg-gray-100 h-1.5 rounded-full overflow-hidden">
+                                    <div className="bg-blue-600 h-full rounded-full transition-all duration-500" style={{ width: `${percentage}%` }} />
                                 </div>
-                                <span className="text-[10px] font-bold text-gray-500 tracking-wide shrink-0">
+                                <span className="text-[9px] font-bold text-gray-500 shrink-0">
                                     {computedProgress.watchedCount}/{computedProgress.totalEpisodes}
                                 </span>
                             </div>
                         </div>
+                        
+                        {/* Interactive Episode Bar */}
+                        <div 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                openEpisodeDetails(item.media_id, computedProgress.nextS, computedProgress.nextE);
+                            }}
+                            className="bg-gray-50 border border-gray-100 rounded-xl p-1.5 flex items-center gap-2.5 cursor-pointer mt-auto"
+                        >
+                            <div className="w-12 h-10 shrink-0 rounded-lg overflow-hidden bg-gray-200 relative shadow-inner">
+                                {nextEpisodeInfo.thumbnail ? (
+                                    <img src={nextEpisodeInfo.thumbnail} className="w-full h-full object-cover opacity-90" />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                        <Icon name="Film" className="h-4 w-4" />
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-black text-gray-900 uppercase tracking-wider mb-0.5">
+                                    S{String(computedProgress.nextS).padStart(2, '0')} • E{String(computedProgress.nextE).padStart(2, '0')}
+                                </p>
+                                <p className="text-[10px] text-gray-500 font-semibold truncate leading-tight">
+                                    {computedProgress.foundNext ? nextEpisodeInfo.title : 'Finished Series'}
+                                </p>
+                            </div>
+                            
+                            {computedProgress.foundNext ? (
+                                <button 
+                                    onClick={handleMarkWatched}
+                                    className="w-8 h-8 shrink-0 rounded-full border border-gray-200 bg-white text-gray-600 flex items-center justify-center hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors shadow-sm"
+                                >
+                                    <Icon name="Check" className="h-4 w-4" />
+                                </button>
+                            ) : (
+                                <div className="w-8 h-8 shrink-0 rounded-full border border-green-200 bg-green-50 text-green-600 flex items-center justify-center shadow-sm">
+                                    <Icon name="CheckCircle2" className="h-4 w-4" />
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </React.Fragment>
+                </div>
+            );
+
+            return (
+                <>
+                    {desktopCard}
+                    {mobileCard}
+                </>
             );
         }
 
-        // --- MAIN APP ---
         function App() {
             const [activeTab, setActiveTab] = useState('BOARD');
             const [isTrailerModalOpen, setIsTrailerModalOpen] = useState(false);
@@ -828,19 +1118,20 @@
             const [searchQuery, setSearchQuery] = useState('');
 
             const [selectedItem, setSelectedItem] = useState(null);
+            const [selectedEpisode, setSelectedEpisode] = useState(null);
             const [detailsData, setDetailsData] = useState(null);
             const [isDetailsLoading, setIsDetailsLoading] = useState(false);
 
             const [selectedPerson, setSelectedPerson] = useState(null);
             const [personData, setPersonData] = useState(null);
             const [isPersonLoading, setIsPersonLoading] = useState(false);
-            const [actorSort, setActorSort] = useState('popularity');
+            const [actorSort, setActorSort] = useState('popularity'); // popularity, newest, oldest
             
             const castScrollRef = useRef(null);
 
             // --- FAVORITES STATES ---
             const [favorites, setFavorites] = useState([]);
-            const [favFilter, setFavFilter] = useState('all');
+            const [favFilter, setFavFilter] = useState('all'); // all, movie, tv
             const [favGenreFilter, setFavGenreFilter] = useState('All'); 
             const [isFavLoading, setIsFavLoading] = useState(false);
             const [isActionInProgress, setIsActionInProgress] = useState(false);
@@ -850,23 +1141,24 @@
             const [isTrackLoading, setIsTrackLoading] = useState(false);
             const [isTrackMenuOpen, setIsTrackMenuOpen] = useState(false);
             
+            // Defers the default state from 'All' to 'Watching' for every fresh Library session
             const [libraryFilter, setLibraryFilter] = useState('Watching'); 
             const [userChangedFilter, setUserChangedFilter] = useState(false);
             
-            const [libraryTypeFilter, setLibraryTypeFilter] = useState('All');
+            const [libraryTypeFilter, setLibraryTypeFilter] = useState('All'); // All, movie, tv
             const [libraryGenreFilter, setLibraryGenreFilter] = useState('All');
 
+            // Collapsible state for seasons checklist
             const [expandedSeasons, setExpandedSeasons] = useState({});
             const [seasonEpisodesMap, setSeasonEpisodesMap] = useState({});
 
-            // --- BROWSER HISTORY ROUTING ENHANCEMENT ---
             const isRestoringRef = useRef(false);
             const stateRef = useRef();
 
             stateRef.current = {
                 activeTab, fetchedShows, page, randomPageOffset,
                 filterYear, filterGenre, filterCountry, filterTimeframe,
-                boardGenre, searchInput, searchQuery, selectedItem, selectedPerson,
+                boardGenre, searchInput, searchQuery, selectedItem, selectedPerson, selectedEpisode,
                 favFilter, favGenreFilter, libraryFilter, libraryTypeFilter, libraryGenreFilter
             };
 
@@ -901,6 +1193,7 @@
                 if (snapshot.searchQuery !== undefined) setSearchQuery(snapshot.searchQuery);
                 if (snapshot.selectedItem !== undefined) setSelectedItem(snapshot.selectedItem);
                 if (snapshot.selectedPerson !== undefined) setSelectedPerson(snapshot.selectedPerson);
+                if (snapshot.selectedEpisode !== undefined) setSelectedEpisode(snapshot.selectedEpisode);
                 if (snapshot.favFilter !== undefined) setFavFilter(snapshot.favFilter);
                 if (snapshot.favGenreFilter !== undefined) setFavGenreFilter(snapshot.favGenreFilter);
                 if (snapshot.libraryFilter !== undefined) setLibraryFilter(snapshot.libraryFilter);
@@ -926,7 +1219,7 @@
                 const nextState = {
                     ...stateRef.current,
                     ...updatedFields,
-                    scrollPosition: 0 
+                    scrollPosition: 0
                 };
 
                 if (replaceStateDebounceRef.current) {
@@ -952,7 +1245,7 @@
             }, [
                 activeTab, fetchedShows, page, randomPageOffset,
                 filterYear, filterGenre, filterCountry, filterTimeframe,
-                boardGenre, searchInput, searchQuery, selectedItem, selectedPerson,
+                boardGenre, searchInput, searchQuery, selectedItem, selectedPerson, selectedEpisode,
                 favFilter, favGenreFilter, libraryFilter, libraryTypeFilter, libraryGenreFilter
             ]);
 
@@ -1060,6 +1353,7 @@
                     filterTimeframe: '60',
                     selectedItem: null,
                     selectedPerson: null,
+                    selectedEpisode: null,
                     favGenreFilter: 'All',
                     libraryGenreFilter: 'All',
                     libraryFilter: userChangedFilter ? stateRef.current.libraryFilter : 'Watching',
@@ -1073,14 +1367,26 @@
                 const numericId = typeof id === 'string' ? id.split('-')[0] : id;
                 navigateToState({
                     selectedItem: { id: numericId, type },
-                    selectedPerson: null
+                    selectedPerson: null,
+                    selectedEpisode: null
                 });
+            };
+
+            const openEpisodeDetails = (showId, seasonNum, episodeNum) => {
+                if (window.innerWidth < 768) {
+                    navigateToState({
+                        selectedItem: { id: showId, type: 'tv' },
+                        selectedEpisode: { season: seasonNum, episode: episodeNum },
+                        selectedPerson: null
+                    });
+                }
             };
 
             const openPersonDetails = (personId) => {
                 navigateToState({
                     selectedPerson: personId,
-                    selectedItem: null
+                    selectedItem: null,
+                    selectedEpisode: null
                 });
             };
 
@@ -1092,7 +1398,8 @@
                         page: 1,
                         fetchedShows: [],
                         selectedItem: null,
-                        selectedPerson: null
+                        selectedPerson: null,
+                        selectedEpisode: null
                     });
                 }
             };
@@ -1189,7 +1496,7 @@
                     }
                 }
             };
-            
+
             const fetchTracking = async () => {
                 setIsTrackLoading(true);
                 try {
@@ -1325,10 +1632,11 @@
                 };
             };
 
-            const updateTvProgress = async (mediaId, newWatchedEpisodes, totalCount) => {
+            const updateTvProgress = async (mediaId, newWatchedEpisodes, totalCount, activeShowData = null) => {
                 if (isActionInProgress) return;
                 setIsActionInProgress(true);
 
+                const sourceData = activeShowData || detailsData;
                 const numericId = Number(mediaId);
                 const foundItem = trackedItems.find(t => Number(t.media_id) === numericId && t.media_type === 'tv');
                 const watchedCount = Object.keys(newWatchedEpisodes).filter(k => newWatchedEpisodes[k] === true).length;
@@ -1351,10 +1659,10 @@
                 const payload = {
                     media_id: numericId,
                     media_type: 'tv',
-                    title: detailsData?.name || foundItem?.title || 'Unknown',
-                    poster_path: detailsData?.poster_path || foundItem?.poster_path || '',
-                    rating: (detailsData?.vote_average || Number(foundItem?.rating) || 0).toFixed(1),
-                    genres: detailsData?.genres ? detailsData.genres.map(g => g.name).join(', ') : (foundItem?.genres || 'Uncategorized'),
+                    title: sourceData?.name || foundItem?.title || 'Unknown',
+                    poster_path: sourceData?.poster_path || foundItem?.poster_path || '',
+                    rating: (sourceData?.vote_average || Number(foundItem?.rating) || 0).toFixed(1),
+                    genres: sourceData?.genres ? sourceData.genres.map(g => g.name).join(', ') : (foundItem?.genres || 'Uncategorized'),
                     status: targetStatus,
                     progress: progressPayload,
                     updated_at: new Date().toISOString()
@@ -1450,17 +1758,17 @@
             }, [trackedItems, libraryFilter, libraryTypeFilter, libraryGenreFilter]);
 
             useEffect(() => {
-                if (activeTab === 'BOARD' && comingSoonItems.length > 0 && !selectedItem && !selectedPerson) {
+                if (activeTab === 'BOARD' && comingSoonItems.length > 0 && !selectedItem && !selectedPerson && !selectedEpisode) {
                     const timer = setInterval(() => {
                         setCurrentHeroIndex(prev => (prev + 1) % comingSoonItems.length);
                     }, 5000);
                     return () => clearInterval(timer);
                 }
-            }, [activeTab, comingSoonItems.length, selectedItem, selectedPerson]);
+            }, [activeTab, comingSoonItems.length, selectedItem, selectedPerson, selectedEpisode]);
 
             useEffect(() => {
                 const handleScroll = () => {
-                    if (selectedItem || selectedPerson || activeTab === 'FAVORITES' || activeTab === 'LIBRARY') return; 
+                    if (selectedItem || selectedPerson || selectedEpisode || activeTab === 'FAVORITES' || activeTab === 'LIBRARY') return; 
                     if (window.innerHeight + document.documentElement.scrollTop + 100 >= document.documentElement.offsetHeight) {
                         if (!isLoading && (['MOVIES', 'SERIES', 'NEW', 'SEARCH'].includes(activeTab))) {
                             setPage((prevPage) => prevPage + 1);
@@ -1469,7 +1777,7 @@
                 };
                 window.addEventListener('scroll', handleScroll);
                 return () => window.removeEventListener('scroll', handleScroll);
-            }, [isLoading, activeTab, selectedItem, selectedPerson]);
+            }, [isLoading, activeTab, selectedItem, selectedPerson, selectedEpisode]);
 
             useEffect(() => {
                 if (!selectedItem) {
@@ -1722,7 +2030,7 @@
                 const trackedItem = trackedItems.find(t => Number(t.media_id) === Number(selectedItem.id) && t.media_type === 'tv');
                 const { watched_episodes } = getTvProgress(trackedItem);
 
-                let nextEpStr = 'All Caught Up!';
+                let nextEpStr = 'Finished Series';
                 let foundNext = false;
                 const sortedSeasons = [...regularSeasons].sort((a, b) => a.season_number - b.season_number);
                 for (const s of sortedSeasons) {
@@ -1801,14 +2109,16 @@
             };
 
             return (
-                <div className="min-h-screen pb-28 md:pb-10 overflow-x-hidden relative">
-                    {/* Responsive Header */}
+                <div className="min-h-screen pb-[calc(env(safe-area-inset-bottom)+70px)] md:pb-20 overflow-x-hidden">
+                    {/* Responsive Header - Top on Desktop, Search/Logo only on Mobile */}
                     <header className="sticky top-0 z-[100] flex h-auto md:h-20 flex-col md:flex-row items-center justify-between px-4 md:px-8 py-3 md:py-0 bg-white/40 backdrop-blur-md border-b border-white/20">
-                        <div className="flex w-full md:w-auto items-center justify-between mb-1 md:mb-0">
+                        <div className="flex w-full md:w-auto items-center justify-between mb-0 md:mb-0">
                             <div className="flex flex-col items-center justify-center pt-1 cursor-pointer" onClick={() => handleTabChange('BOARD')}>
                                 <span className="text-xs md:text-sm font-black tracking-[0.3em] leading-none">M O V I E</span>
                                 <span className="text-[8px] md:text-[10px] font-bold tracking-[0.15em] leading-tight text-gray-800">G A T H E R</span>
                             </div>
+                            
+                            {/* Mobile User/Favorites Button */}
                             <div onClick={() => handleTabChange('FAVORITES')} className="relative cursor-pointer md:hidden flex items-center gap-2">
                                 <div className="h-9 w-9 rounded-xl bg-black flex items-center justify-center border-2 border-white shadow-sm transition-transform">
                                     <span className="text-white font-black text-base select-none">M</span>
@@ -1821,8 +2131,8 @@
                             </div>
                         </div>
 
-                        {/* Desktop Only Navigation */}
-                        <nav className="hidden md:flex w-full md:w-auto space-x-4 md:space-x-10 overflow-x-auto no-scrollbar md:overflow-visible pb-2 md:pb-0 justify-center">
+                        {/* Top Nav - Hidden on Mobile */}
+                        <nav className="hidden md:flex w-full md:w-auto space-x-4 md:space-x-10 pb-2 md:pb-0 justify-center">
                             {['BOARD', 'NEW', 'MOVIES', 'SERIES', 'LIBRARY'].map((tab) => (
                                 <button key={tab} onClick={() => handleTabChange(tab)} className={`relative py-1 md:py-2 text-[10px] md:text-xs font-extrabold tracking-widest uppercase transition-colors shrink-0 ${activeTab === tab ? 'text-black' : 'text-gray-500 hover:text-black'}`}>
                                     {tab}{activeTab === tab && <div className="absolute bottom-0 left-0 right-0 h-[2px] md:h-[3px] bg-black rounded-t-sm" />}
@@ -1830,7 +2140,6 @@
                             ))}
                         </nav>
 
-                        {/* Desktop Search & Favorites */}
                         <div className="hidden md:flex items-center space-x-6">
                             <div className="relative">
                                 <input type="text" placeholder="Search..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} onKeyDown={handleSearch} className="h-10 w-48 lg:w-64 rounded-full border border-gray-300 bg-white/60 px-5 text-sm outline-none focus:bg-white shadow-sm focus:shadow-md transition-all" />
@@ -1854,6 +2163,34 @@
                             <Icon name="Search" onClick={handleSearch} className="absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-black" />
                         </div>
                     </header>
+
+                    {/* Fixed Bottom Navigation (Mobile Only) */}
+                    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-gray-200 z-[110] pb-[env(safe-area-inset-bottom)]">
+                        <div className="flex justify-around items-center h-[60px] px-2">
+                            {[
+                                { id: 'BOARD', label: 'Board', icon: 'LayoutGrid' },
+                                { id: 'NEW', label: 'New', icon: 'Sparkles' },
+                                { id: 'MOVIES', label: 'Movies', icon: 'Film' },
+                                { id: 'SERIES', label: 'Series', icon: 'Tv' },
+                                { id: 'LIBRARY', label: 'Library', icon: 'Bookmark' }
+                            ].map((tab) => {
+                                const isActive = activeTab === tab.id;
+                                return (
+                                    <button 
+                                        key={tab.id}
+                                        onClick={() => handleTabChange(tab.id)}
+                                        className={`flex flex-col items-center justify-center w-16 h-full space-y-1 transition-colors ${isActive ? 'text-black' : 'text-gray-400'}`}
+                                    >
+                                        <div className="relative">
+                                            <Icon name={tab.icon} className={`h-[22px] w-[22px] ${isActive ? 'stroke-[2.5]' : 'stroke-2'}`} />
+                                            {isActive && <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 bg-black rounded-full" />}
+                                        </div>
+                                        <span className="text-[9px] font-bold tracking-wide">{tab.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
 
                     <main className="mx-auto max-w-[1500px] px-4 md:px-8 py-4 md:py-8">
                         {selectedPerson ? (
@@ -1928,326 +2265,351 @@
                                 )}
                             </div>
                         ) : selectedItem ? (
-                            <div className="animate-in fade-in duration-500">
-                                {isDetailsLoading || !detailsData ? (
-                                    <div className="flex h-[60vh] items-center justify-center"><div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-300 border-t-black"></div></div>
-                                ) : (
-                                    <div className="flex flex-col gap-6 md:gap-10">
-                                        <div className="flex flex-wrap justify-between items-center gap-4">
-                                            <button onClick={() => window.history.back()} className="flex w-max items-center space-x-2 rounded-full bg-white px-4 py-2 text-sm font-bold shadow-sm border border-gray-200">
-                                                <Icon name="ArrowLeft" /> <span>Back</span>
-                                            </button>
-                                            <div className="flex items-center flex-wrap gap-2">
-                                                {trailerKey && (
-                                                    <button 
-                                                        onClick={() => setIsTrailerModalOpen(true)}
-                                                        className="flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition-all bg-red-600 hover:bg-red-700 text-white shadow-sm hover:scale-105 active:scale-95 animate-in slide-in-from-right-2 duration-300"
-                                                    >
-                                                        <Icon name="Play" className="h-4 w-4 fill-white" />
-                                                        <span>Watch Trailer</span>
-                                                    </button>
-                                                )}
-
-                                                <button 
-                                                    disabled={isActionInProgress}
-                                                    onClick={() => toggleFavorite({
-                                                        id: selectedItem.id,
-                                                        type: selectedItem.type,
-                                                        title: detailsData.title || detailsData.name,
-                                                        poster_path: detailsData.poster_path,
-                                                        vote_average: detailsData.vote_average,
-                                                        genres: detailsData.genres 
-                                                    })}
-                                                    className={`flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition-all shadow-sm ${isActionInProgress ? 'opacity-50 cursor-not-allowed' : ''} ${isFavorited(selectedItem.id, selectedItem.type) ? 'bg-red-500 text-white' : 'bg-white text-gray-900 border border-gray-200 hover:bg-gray-50'}`}
-                                                >
-                                                    <Icon name="Heart" className={`h-4 w-4 ${isFavorited(selectedItem.id, selectedItem.type) ? 'fill-current' : ''}`} />
-                                                    <span>{isFavorited(selectedItem.id, selectedItem.type) ? 'Favorited' : 'Add Favorite'}</span>
-                                                </button>
-
-                                                <div className="track-menu-container relative">
-                                                    <button 
-                                                        onClick={() => setIsTrackMenuOpen(!isTrackMenuOpen)}
-                                                        className={`flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition-all shadow-sm ${
-                                                            getTrackingStatus(selectedItem.id, selectedItem.type) 
-                                                            ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                                                            : 'bg-white text-gray-900 border border-gray-200 hover:bg-gray-50'
-                                                        }`}
-                                                    >
-                                                        <Icon name="Plus" className="h-4 w-4" />
-                                                        <span>{getTrackingStatus(selectedItem.id, selectedItem.type) || 'Track'}</span>
-                                                        <Icon name="ChevronDown" className="h-3 w-3 ml-1 text-current opacity-80" />
-                                                    </button>
-                                                    {isTrackMenuOpen && (
-                                                        <div className="absolute left-0 sm:left-auto right-auto sm:right-0 mt-2 w-48 rounded-2xl bg-white shadow-xl border border-gray-100 py-1.5 z-[120] animate-in fade-in slide-in-from-top-2 duration-200">
-                                                            <p className="px-4 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-50 mb-1">Set Status</p>
-                                                            {['Watching', 'Watched', 'Plan to Watch', 'On Hold', 'Dropped'].map((status) => (
-                                                                <button
-                                                                    key={status}
-                                                                    onClick={() => {
-                                                                        handleTrackItem(selectedItem, status);
-                                                                        setIsTrackMenuOpen(false);
-                                                                    }}
-                                                                    className={`w-full text-left px-4 py-2.5 text-xs font-semibold transition-colors flex items-center justify-between ${
-                                                                        getTrackingStatus(selectedItem.id, selectedItem.type) === status 
-                                                                        ? 'bg-black text-white' 
-                                                                        : 'text-gray-700 hover:bg-gray-50'
-                                                                    }`}
-                                                                >
-                                                                    <span>{status}</span>
-                                                                    {getTrackingStatus(selectedItem.id, selectedItem.type) === status && <Icon name="Check" className="h-3.5 w-3.5" />}
-                                                                </button>
-                                                            ))}
-                                                            {getTrackingStatus(selectedItem.id, selectedItem.type) && (
-                                                                <div className="border-t border-gray-100 mt-1 pt-1">
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            handleRemoveTracking(selectedItem.id, selectedItem.type);
-                                                                            setIsTrackMenuOpen(false);
-                                                                        }}
-                                                                        className="w-full text-left px-4 py-2.5 text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors flex items-center gap-2"
-                                                                    >
-                                                                        <Icon name="Trash" className="h-3.5 w-3.5" />
-                                                                        <span>Remove tracking</span>
-                                                                    </button>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="relative h-[250px] md:h-[480px] w-full overflow-hidden rounded-[2rem] md:rounded-[3rem] shadow-2xl">
-                                            <img src={`https://image.tmdb.org/t/p/original${detailsData.backdrop_path || detailsData.poster_path}`} className="absolute inset-0 h-full w-full object-cover" />
-                                            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent"></div>
-                                            <div className="absolute bottom-6 md:bottom-12 left-6 md:left-12 right-6 md:right-12 flex flex-col items-start text-white">
-                                                <div className="max-w-4xl">
-                                                    <div className="flex flex-wrap items-center gap-2 mb-2 md:mb-4">
-                                                        <span className="rounded-full bg-white/20 backdrop-blur-md px-2 py-0.5 text-[8px] md:text-[10px] font-black tracking-widest uppercase border border-white/20">
-                                                            {selectedItem.type === 'movie' ? 'Movie' : 'TV'}
-                                                        </span>
-                                                        {selectedItem.type === 'tv' && detailsData.status && (
-                                                            (() => {
-                                                                const statusInfo = getSeriesStatusInfo(detailsData.status, detailsData.next_episode_to_air);
-                                                                return (
-                                                                    <span className={`rounded-full px-2.5 py-0.5 text-[8px] md:text-[10px] font-black tracking-widest uppercase border ${statusInfo.colorClass}`}>
-                                                                        {statusInfo.label}
-                                                                    </span>
-                                                                );
-                                                            })()
-                                                        )}
-                                                        {isFutureRelease(detailsData.release_date || detailsData.first_air_date) && (
-                                                            <span className="rounded-full bg-amber-500 text-white px-2.5 py-0.5 text-[8px] md:text-[10px] font-black tracking-widest uppercase border border-amber-400/50 flex items-center gap-1 shadow-md animate-pulse">
-                                                                <Icon name="Calendar" className="h-3 w-3 stroke-[2.5]" /> Coming Soon
-                                                            </span>
-                                                        )}
-                                                        {detailsData.genres?.slice(0, 3).map(g => (
-                                                            <span key={g.id} className="text-[10px] md:text-xs font-bold text-white/80">{g.name}</span>
-                                                        ))}
-                                                    </div>
-                                                    <h1 className="text-2xl md:text-6xl font-black mb-2 md:mb-4 drop-shadow-lg leading-tight">{detailsData.title || detailsData.name}</h1>
-                                                    <div className="flex flex-wrap items-center gap-4 md:gap-8 text-[10px] md:text-sm font-bold opacity-90">
-                                                        <span className="flex items-center gap-1"><Icon name="Calendar" className="h-3 w-3" /> {detailsData.release_date?.split('-')[0] || detailsData.first_air_date?.split('-')[0]}</span>
-                                                        <span className="flex items-center gap-1"><Icon name="Star" className="h-3 w-3 fill-white" /> {detailsData.vote_average?.toFixed(1)}</span>
-                                                        {selectedItem.type === 'movie' ? (
-                                                            <span className="flex items-center gap-1"><Icon name="Clock" className="h-3 w-3" /> {detailsData.runtime}m</span>
-                                                        ) : (
-                                                            <React.Fragment>
-                                                                <span className="flex items-center gap-1"><Icon name="Layers" className="h-3 w-3" /> {detailsData.number_of_seasons}S / {detailsData.number_of_episodes}E</span>
-                                                                {detailsData.status && (
-                                                                    <span className="flex items-center gap-1"><Icon name="Activity" className="h-3 w-3" /> {getSeriesStatusInfo(detailsData.status, detailsData.next_episode_to_air).label}</span>
-                                                                )}
-                                                            </React.Fragment>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        
-                                        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
-                                            <div className="hidden md:block col-span-4 xl:col-span-3">
-                                                <img src={`https://image.tmdb.org/t/p/w500${detailsData.poster_path}`} className="w-full rounded-[2rem] shadow-lg" />
-                                            </div>
-                                            <div className="md:col-span-8 xl:col-span-9">
-                                                <h2 className="text-xl md:text-2xl font-black mb-4">Synopsis</h2>
-                                                <p className="text-base md:text-lg text-gray-600 mb-8 md:mb-10 leading-relaxed">{detailsData.overview}</p>
-
-                                                {selectedItem.type === 'tv' && (
-                                                    <div className="bg-white/60 border border-gray-100 rounded-3xl p-4 sm:p-6 md:p-8 mb-8 backdrop-blur-sm shadow-sm animate-in fade-in duration-300">
-                                                        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-6">
-                                                            <div>
-                                                                <h2 className="text-xl md:text-2xl font-extrabold flex items-center gap-2 text-gray-950">
-                                                                    <Icon name="Activity" className="text-blue-600 h-5.5 w-5.5 stroke-[2.5]" /> Your Progress
-                                                                </h2>
-                                                                <p className="text-xs text-gray-500 font-semibold mt-0.5">Keep track of your watched episodes</p>
-                                                            </div>
-                                                            <div className="flex items-center gap-2 w-full lg:w-auto">
-                                                                <button 
-                                                                    onClick={() => markAllWatched(true)} 
-                                                                    className="flex-1 lg:flex-none px-4 py-2 text-xs font-black bg-black text-white rounded-full flex items-center justify-center gap-1.5 shadow-sm hover:scale-105 transition-transform"
-                                                                >
-                                                                    <Icon name="CheckSquare" className="h-3.5 w-3.5" /> Mark All Watched
-                                                                </button>
-                                                                <button 
-                                                                    onClick={() => markAllWatched(false)} 
-                                                                    className="flex-1 lg:flex-none px-4 py-2 text-xs font-black bg-white text-gray-700 border border-gray-200 rounded-full flex items-center justify-center gap-1.5 hover:bg-gray-50 transition-all"
-                                                                >
-                                                                    <Icon name="RotateCcw" className="h-3.5 w-3.5" /> Reset
-                                                                </button>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 mb-6">
-                                                            <div className="bg-white/80 rounded-2xl p-4 border border-gray-100 shadow-xs">
-                                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-0.5">Watched</p>
-                                                                <p className="text-base sm:text-xl font-black text-gray-900">{tvWatchedCount} / {tvTotalEpisodes} Ep</p>
-                                                            </div>
-                                                            <div className="bg-white/80 rounded-2xl p-4 border border-gray-100 shadow-xs">
-                                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-0.5">Remaining</p>
-                                                                <p className="text-base sm:text-xl font-black text-gray-900">{Math.max(0, tvTotalEpisodes - tvWatchedCount)} Ep</p>
-                                                            </div>
-                                                            <div className="bg-white/80 rounded-2xl p-4 border border-gray-100 shadow-xs">
-                                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-0.5">Completed</p>
-                                                                <p className="text-base sm:text-xl font-black text-gray-900">{tvProgressPercent}%</p>
-                                                            </div>
-                                                            <div className="bg-white/80 rounded-2xl p-4 border border-gray-100 shadow-xs">
-                                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-0.5">Next Up</p>
-                                                                <p className="text-base sm:text-xl font-black text-blue-600 truncate">{tvNextEpisode}</p>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden mb-8">
-                                                            <div className="bg-blue-600 h-full transition-all duration-500" style={{ width: `${tvProgressPercent}%` }}></div>
-                                                        </div>
-
-                                                        <div className="space-y-4">
-                                                            {detailsData.seasons?.filter(s => s.season_number > 0).map((season) => {
-                                                                const seasonWatchedCount = Object.keys(tvWatchedEpisodes)
-                                                                    .filter(k => k.startsWith(`${season.season_number}_`) && tvWatchedEpisodes[k] === true).length;
-                                                                const isFullyWatched = seasonWatchedCount === season.episode_count;
-
-                                                                return (
-                                                                    <div key={season.id} className="border border-gray-100/80 bg-white/70 rounded-2xl overflow-hidden shadow-xs hover:border-gray-200 transition-all duration-200">
-                                                                        <div 
-                                                                            onClick={() => toggleSeasonExpand(season.season_number)}
-                                                                            className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 gap-3.5 bg-gray-50/50 cursor-pointer select-none transition-colors hover:bg-gray-50/80"
-                                                                        >
-                                                                            <div className="flex-1 flex items-start gap-3 min-w-0">
-                                                                                <div className="pt-0.5 sm:pt-0 shrink-0">
-                                                                                    <Icon name={expandedSeasons[season.season_number] ? 'ChevronDown' : 'ChevronRight'} className="text-gray-500 w-5 h-5" />
-                                                                                </div>
-                                                                                <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 flex-1 min-w-0">
-                                                                                    <span className="font-extrabold text-sm sm:text-base text-gray-900 leading-tight truncate">{season.name}</span>
-                                                                                    <span className="w-max shrink-0 text-[9px] sm:text-[10px] font-black bg-blue-50 text-blue-600 px-2.5 py-0.5 sm:py-1 rounded-full border border-blue-100 uppercase tracking-wider">
-                                                                                        {seasonWatchedCount} / {season.episode_count} Ep
-                                                                                    </span>
-                                                                                </div>
-                                                                            </div>
-                                                                            <div onClick={(e) => e.stopPropagation()} className="flex items-center pl-8 sm:pl-0 shrink-0 w-full sm:w-auto">
-                                                                                <button 
-                                                                                    onClick={() => markSeasonWatched(season.season_number, season.episode_count, !isFullyWatched)}
-                                                                                    className={`w-full sm:w-auto px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center justify-center gap-1.5 shadow-xs active:scale-95 ${
-                                                                                        isFullyWatched 
-                                                                                        ? 'bg-green-600 text-white hover:bg-green-700' 
-                                                                                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-                                                                                    }`}
-                                                                                >
-                                                                                    <Icon name="Check" className="h-3.5 w-3.5 stroke-[2.5]" />
-                                                                                    <span>{isFullyWatched ? 'Season Watched' : 'Mark Season'}</span>
-                                                                                </button>
-                                                                            </div>
-                                                                        </div>
-
-                                                                        {expandedSeasons[season.season_number] && (
-                                                                            <div className="border-t border-gray-100 p-4 space-y-4 bg-white divide-y divide-gray-100/70">
-                                                                                {!seasonEpisodesMap[season.season_number] ? (
-                                                                                    <div className="flex items-center justify-center py-8">
-                                                                                        <div className="w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin" />
-                                                                                    </div>
-                                                                                ) : seasonEpisodesMap[season.season_number].length === 0 ? (
-                                                                                    <p className="text-xs text-gray-400 font-bold text-center py-4">No episode details available.</p>
-                                                                                ) : (
-                                                                                    seasonEpisodesMap[season.season_number].map((episode) => {
-                                                                                        const isWatched = tvWatchedEpisodes[`${season.season_number}_${episode.episode_number}`] === true;
-                                                                                        return (
-                                                                                            <div key={episode.id} className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-4 pb-1 first:pt-0 border-b border-gray-50 last:border-b-0">
-                                                                                                <div className="flex flex-col sm:flex-row items-start gap-4 flex-1 min-w-0">
-                                                                                                    {episode.still_path ? (
-                                                                                                        <div className="relative w-full sm:w-36 aspect-video rounded-xl overflow-hidden shrink-0 shadow-xs bg-gray-100">
-                                                                                                            <img src={`https://image.tmdb.org/t/p/w185${episode.still_path}`} className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />
-                                                                                                        </div>
-                                                                                                    ) : (
-                                                                                                        <div className="w-full sm:w-36 aspect-video bg-gray-50 rounded-xl flex items-center justify-center shrink-0 border border-gray-200/50">
-                                                                                                            <Icon name="Film" className="text-gray-400 w-6 h-6" />
-                                                                                                        </div>
-                                                                                                    )}
-                                                                                                    <div className="flex-1 min-w-0 pt-0.5">
-                                                                                                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                                                                                                            <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 border border-blue-100 uppercase tracking-wider">
-                                                                                                                EP {episode.episode_number}
-                                                                                                            </span>
-                                                                                                            <span className="text-[10px] text-gray-400 font-bold">
-                                                                                                                {episode.air_date ? new Date(episode.air_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'No Air Date'}
-                                                                                                            </span>
-                                                                                                        </div>
-                                                                                                        <h4 className="text-sm font-bold text-gray-900 mb-1.5 leading-snug truncate">
-                                                                                                            {episode.name || 'Untitled Episode'}
-                                                                                                        </h4>
-                                                                                                        {episode.overview ? (
-                                                                                                            <p className="text-xs text-gray-500 leading-relaxed line-clamp-2 md:line-clamp-3">
-                                                                                                                {episode.overview}
-                                                                                                            </p>
-                                                                                                        ) : (
-                                                                                                            <p className="text-xs text-gray-400 italic">No description available for this episode.</p>
-                                                                                                        )}
-                                                                                                    </div>
-                                                                                                </div>
-                                                                                                
-                                                                                                <div className="flex items-center sm:self-end md:self-center shrink-0 pt-2 sm:pt-0 w-full md:w-auto">
-                                                                                                    <button 
-                                                                                                        onClick={() => toggleEpisodeWatched(season.season_number, episode.episode_number)}
-                                                                                                        className={`w-full md:w-auto px-5 py-2.5 rounded-xl border flex items-center justify-center gap-2 text-xs font-black transition-all shadow-xs active:scale-95 ${
-                                                                                                            isWatched 
-                                                                                                            ? 'bg-green-600 border-green-600 text-white hover:bg-green-700 shadow-sm' 
-                                                                                                            : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300'
-                                                                                                        }`}
-                                                                                                    >
-                                                                                                        <Icon name={isWatched ? 'Check' : 'Plus'} className="h-4 w-4 stroke-[2.5]" />
-                                                                                                        <span>{isWatched ? 'Watched' : 'Mark Watched'}</span>
-                                                                                                    </button>
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        );
-                                                                                    })
-                                                                                )}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                <div className="flex items-center justify-between mb-6">
-                                                    <h2 className="text-xl md:text-2xl font-black">Top Cast</h2>
-                                                    <div className="flex space-x-2">
-                                                        <button onClick={() => scrollCast('left')} className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 bg-white shadow-sm"><Icon name="ChevronLeft" /></button>
-                                                        <button onClick={() => scrollCast('right')} className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 bg-white shadow-sm"><Icon name="ChevronRight" /></button>
-                                                    </div>
-                                                </div>
-                                                <div ref={castScrollRef} className="flex gap-4 md:gap-6 overflow-x-auto no-scrollbar pb-4 scroll-smooth">
-                                                    {detailsData.credits?.cast?.map(person => (
-                                                        <div key={person.id} onClick={() => openPersonDetails(person.id)} className="w-24 md:w-32 flex-shrink-0 text-center group pointer-events-auto cursor-pointer">
-                                                            <img src={person.profile_path ? `https://image.tmdb.org/t/p/w185${person.profile_path}` : 'https://via.placeholder.com/185'} className="h-24 w-24 md:h-32 md:w-32 rounded-full object-cover mb-3 mx-auto border-2 border-white shadow-sm group-hover:scale-110 transition-transform" />
-                                                            <p className="text-[10px] md:text-xs font-black line-clamp-1">{person.name}</p>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
+                            <React.Fragment>
+                                {/* Mobile Episode Details View (Overlay/Replacement on Mobile Only) */}
+                                {selectedEpisode && (
+                                    <div className="md:hidden animate-in fade-in slide-in-from-right-4 duration-300">
+                                        <MobileEpisodeDetailsView 
+                                            showId={selectedItem.id} 
+                                            seasonNum={selectedEpisode.season} 
+                                            episodeNum={selectedEpisode.episode}
+                                            goBack={() => window.history.back()}
+                                            goToShow={() => navigateToState({ selectedEpisode: null })}
+                                            trackedItems={trackedItems}
+                                            updateTvProgress={updateTvProgress}
+                                        />
                                     </div>
                                 )}
-                            </div>
+
+                                {/* Desktop Show Details View (Hidden on mobile if selectedEpisode is active) */}
+                                <div className={`animate-in fade-in duration-500 ${selectedEpisode ? 'hidden md:block' : 'block'}`}>
+                                    {isDetailsLoading || !detailsData ? (
+                                        <div className="flex h-[60vh] items-center justify-center"><div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-300 border-t-black"></div></div>
+                                    ) : (
+                                        <div className="flex flex-col gap-6 md:gap-10">
+                                            <div className="flex flex-wrap justify-between items-center gap-4">
+                                                <button onClick={() => window.history.back()} className="flex w-max items-center space-x-2 rounded-full bg-white px-4 py-2 text-sm font-bold shadow-sm border border-gray-200">
+                                                    <Icon name="ArrowLeft" /> <span>Back</span>
+                                                </button>
+                                                <div className="flex items-center flex-wrap gap-2">
+                                                    {trailerKey && (
+                                                        <button 
+                                                            onClick={() => setIsTrailerModalOpen(true)}
+                                                            className="flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition-all bg-red-600 hover:bg-red-700 text-white shadow-sm hover:scale-105 active:scale-95 animate-in slide-in-from-right-2 duration-300"
+                                                        >
+                                                            <Icon name="Play" className="h-4 w-4 fill-white" />
+                                                            <span>Watch Trailer</span>
+                                                        </button>
+                                                    )}
+
+                                                    <button 
+                                                        disabled={isActionInProgress}
+                                                        onClick={() => toggleFavorite({
+                                                            id: selectedItem.id,
+                                                            type: selectedItem.type,
+                                                            title: detailsData.title || detailsData.name,
+                                                            poster_path: detailsData.poster_path,
+                                                            vote_average: detailsData.vote_average,
+                                                            genres: detailsData.genres 
+                                                        })}
+                                                        className={`flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition-all shadow-sm ${isActionInProgress ? 'opacity-50 cursor-not-allowed' : ''} ${isFavorited(selectedItem.id, selectedItem.type) ? 'bg-red-500 text-white' : 'bg-white text-gray-900 border border-gray-200 hover:bg-gray-50'}`}
+                                                    >
+                                                        <Icon name="Heart" className={`h-4 w-4 ${isFavorited(selectedItem.id, selectedItem.type) ? 'fill-current' : ''}`} />
+                                                        <span>{isFavorited(selectedItem.id, selectedItem.type) ? 'Favorited' : 'Add Favorite'}</span>
+                                                    </button>
+
+                                                    <div className="track-menu-container relative">
+                                                        <button 
+                                                            onClick={() => setIsTrackMenuOpen(!isTrackMenuOpen)}
+                                                            className={`flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition-all shadow-sm ${
+                                                                getTrackingStatus(selectedItem.id, selectedItem.type) 
+                                                                ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                                                : 'bg-white text-gray-900 border border-gray-200 hover:bg-gray-50'
+                                                            }`}
+                                                        >
+                                                            <Icon name="Plus" className="h-4 w-4" />
+                                                            <span>{getTrackingStatus(selectedItem.id, selectedItem.type) || 'Track'}</span>
+                                                            <Icon name="ChevronDown" className="h-3 w-3 ml-1 text-current opacity-80" />
+                                                        </button>
+                                                        {isTrackMenuOpen && (
+                                                            <div className="absolute left-0 sm:left-auto right-auto sm:right-0 mt-2 w-48 rounded-2xl bg-white shadow-xl border border-gray-100 py-1.5 z-[120] animate-in fade-in slide-in-from-top-2 duration-200">
+                                                                <p className="px-4 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-50 mb-1">Set Status</p>
+                                                                {['Watching', 'Watched', 'Plan to Watch', 'On Hold', 'Dropped'].map((status) => (
+                                                                    <button
+                                                                        key={status}
+                                                                        onClick={() => {
+                                                                            handleTrackItem(selectedItem, status);
+                                                                            setIsTrackMenuOpen(false);
+                                                                        }}
+                                                                        className={`w-full text-left px-4 py-2.5 text-xs font-semibold transition-colors flex items-center justify-between ${
+                                                                            getTrackingStatus(selectedItem.id, selectedItem.type) === status 
+                                                                            ? 'bg-black text-white' 
+                                                                            : 'text-gray-700 hover:bg-gray-50'
+                                                                        }`}
+                                                                    >
+                                                                        <span>{status}</span>
+                                                                        {getTrackingStatus(selectedItem.id, selectedItem.type) === status && <Icon name="Check" className="h-3.5 w-3.5" />}
+                                                                    </button>
+                                                                ))}
+                                                                {getTrackingStatus(selectedItem.id, selectedItem.type) && (
+                                                                    <div className="border-t border-gray-100 mt-1 pt-1">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                handleRemoveTracking(selectedItem.id, selectedItem.type);
+                                                                                setIsTrackMenuOpen(false);
+                                                                            }}
+                                                                            className="w-full text-left px-4 py-2.5 text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors flex items-center gap-2"
+                                                                        >
+                                                                            <Icon name="Trash" className="h-3.5 w-3.5" />
+                                                                            <span>Remove tracking</span>
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="relative h-[250px] md:h-[480px] w-full overflow-hidden rounded-[2rem] md:rounded-[3rem] shadow-2xl">
+                                                <img src={`https://image.tmdb.org/t/p/original${detailsData.backdrop_path || detailsData.poster_path}`} className="absolute inset-0 h-full w-full object-cover" />
+                                                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent"></div>
+                                                <div className="absolute bottom-6 md:bottom-12 left-6 md:left-12 right-6 md:left-12 flex flex-col items-start text-white">
+                                                    <div className="max-w-4xl">
+                                                        <div className="flex flex-wrap items-center gap-2 mb-2 md:mb-4">
+                                                            <span className="rounded-full bg-white/20 backdrop-blur-md px-2 py-0.5 text-[8px] md:text-[10px] font-black tracking-widest uppercase border border-white/20">
+                                                                {selectedItem.type === 'movie' ? 'Movie' : 'TV'}
+                                                            </span>
+                                                            {selectedItem.type === 'tv' && detailsData.status && (
+                                                                (() => {
+                                                                    const statusInfo = getSeriesStatusInfo(detailsData.status, detailsData.next_episode_to_air);
+                                                                    return (
+                                                                        <span className={`rounded-full px-2.5 py-0.5 text-[8px] md:text-[10px] font-black tracking-widest uppercase border ${statusInfo.colorClass}`}>
+                                                                            {statusInfo.label}
+                                                                        </span>
+                                                                    );
+                                                                })()
+                                                            )}
+                                                            {isFutureRelease(detailsData.release_date || detailsData.first_air_date) && (
+                                                                <span className="rounded-full bg-amber-500 text-white px-2.5 py-0.5 text-[8px] md:text-[10px] font-black tracking-widest uppercase border border-amber-400/50 flex items-center gap-1 shadow-md animate-pulse">
+                                                                    <Icon name="Calendar" className="h-3 w-3 stroke-[2.5]" /> Coming Soon
+                                                                </span>
+                                                            )}
+                                                            {detailsData.genres?.slice(0, 3).map(g => (
+                                                                <span key={g.id} className="text-[10px] md:text-xs font-bold text-white/80">{g.name}</span>
+                                                            ))}
+                                                        </div>
+                                                        <h1 className="text-2xl md:text-6xl font-black mb-2 md:mb-4 drop-shadow-lg leading-tight">{detailsData.title || detailsData.name}</h1>
+                                                        <div className="flex flex-wrap items-center gap-4 md:gap-8 text-[10px] md:text-sm font-bold opacity-90">
+                                                            <span className="flex items-center gap-1"><Icon name="Calendar" className="h-3 w-3" /> {detailsData.release_date?.split('-')[0] || detailsData.first_air_date?.split('-')[0]}</span>
+                                                            <span className="flex items-center gap-1"><Icon name="Star" className="h-3 w-3 fill-white" /> {detailsData.vote_average?.toFixed(1)}</span>
+                                                            {selectedItem.type === 'movie' ? (
+                                                                <span className="flex items-center gap-1"><Icon name="Clock" className="h-3 w-3" /> {detailsData.runtime}m</span>
+                                                            ) : (
+                                                                <React.Fragment>
+                                                                    <span className="flex items-center gap-1"><Icon name="Layers" className="h-3 w-3" /> {detailsData.number_of_seasons}S / {detailsData.number_of_episodes}E</span>
+                                                                    {detailsData.status && (
+                                                                        <span className="flex items-center gap-1"><Icon name="Activity" className="h-3 w-3" /> {getSeriesStatusInfo(detailsData.status, detailsData.next_episode_to_air).label}</span>
+                                                                    )}
+                                                                </React.Fragment>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
+                                                <div className="hidden md:block col-span-4 xl:col-span-3">
+                                                    <img src={`https://image.tmdb.org/t/p/w500${detailsData.poster_path}`} className="w-full rounded-[2rem] shadow-lg" />
+                                                </div>
+                                                <div className="md:col-span-8 xl:col-span-9">
+                                                    <h2 className="text-xl md:text-2xl font-black mb-4">Synopsis</h2>
+                                                    <p className="text-base md:text-lg text-gray-600 mb-8 md:mb-10 leading-relaxed">{detailsData.overview}</p>
+
+                                                    {selectedItem.type === 'tv' && (
+                                                        <div className="bg-white/60 border border-gray-100 rounded-3xl p-4 sm:p-6 md:p-8 mb-8 backdrop-blur-sm shadow-sm animate-in fade-in duration-300">
+                                                            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-6">
+                                                                <div>
+                                                                    <h2 className="text-xl md:text-2xl font-extrabold flex items-center gap-2 text-gray-950">
+                                                                        <Icon name="Activity" className="text-blue-600 h-5.5 w-5.5 stroke-[2.5]" /> Your Progress
+                                                                    </h2>
+                                                                    <p className="text-xs text-gray-500 font-semibold mt-0.5">Keep track of your watched episodes</p>
+                                                                </div>
+                                                                <div className="flex items-center gap-2 w-full lg:w-auto">
+                                                                    <button 
+                                                                        onClick={() => markAllWatched(true)} 
+                                                                        className="flex-1 lg:flex-none px-4 py-2 text-xs font-black bg-black text-white rounded-full flex items-center justify-center gap-1.5 shadow-sm hover:scale-105 transition-transform"
+                                                                    >
+                                                                        <Icon name="CheckSquare" className="h-3.5 w-3.5" /> Mark All Watched
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={() => markAllWatched(false)} 
+                                                                        className="flex-1 lg:flex-none px-4 py-2 text-xs font-black bg-white text-gray-700 border border-gray-200 rounded-full flex items-center justify-center gap-1.5 hover:bg-gray-50 transition-all"
+                                                                    >
+                                                                        <Icon name="RotateCcw" className="h-3.5 w-3.5" /> Reset
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 mb-6">
+                                                                <div className="bg-white/80 rounded-2xl p-4 border border-gray-100 shadow-xs">
+                                                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-0.5">Watched</p>
+                                                                    <p className="text-base sm:text-xl font-black text-gray-900">{tvWatchedCount} / {tvTotalEpisodes} Ep</p>
+                                                                </div>
+                                                                <div className="bg-white/80 rounded-2xl p-4 border border-gray-100 shadow-xs">
+                                                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-0.5">Remaining</p>
+                                                                    <p className="text-base sm:text-xl font-black text-gray-900">{Math.max(0, tvTotalEpisodes - tvWatchedCount)} Ep</p>
+                                                                </div>
+                                                                <div className="bg-white/80 rounded-2xl p-4 border border-gray-100 shadow-xs">
+                                                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-0.5">Completed</p>
+                                                                    <p className="text-base sm:text-xl font-black text-gray-900">{tvProgressPercent}%</p>
+                                                                </div>
+                                                                <div className="bg-white/80 rounded-2xl p-4 border border-gray-100 shadow-xs">
+                                                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-0.5">Next Up</p>
+                                                                    <p className="text-base sm:text-xl font-black text-blue-600 truncate">{tvNextEpisode}</p>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden mb-8">
+                                                                <div className="bg-blue-600 h-full transition-all duration-500" style={{ width: `${tvProgressPercent}%` }}></div>
+                                                            </div>
+
+                                                            <div className="space-y-4">
+                                                                {detailsData.seasons?.filter(s => s.season_number > 0).map((season) => {
+                                                                    const seasonWatchedCount = Object.keys(tvWatchedEpisodes)
+                                                                        .filter(k => k.startsWith(`${season.season_number}_`) && tvWatchedEpisodes[k] === true).length;
+                                                                    const isFullyWatched = seasonWatchedCount === season.episode_count;
+
+                                                                    return (
+                                                                        <div key={season.id} className="border border-gray-100/80 bg-white/70 rounded-2xl overflow-hidden shadow-xs hover:border-gray-200 transition-all duration-200">
+                                                                            <div 
+                                                                                onClick={() => toggleSeasonExpand(season.season_number)}
+                                                                                className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 gap-3.5 bg-gray-50/50 cursor-pointer select-none transition-colors hover:bg-gray-50/80"
+                                                                            >
+                                                                                <div className="flex-1 flex items-start gap-3 min-w-0">
+                                                                                    <div className="pt-0.5 sm:pt-0 shrink-0">
+                                                                                        <Icon name={expandedSeasons[season.season_number] ? 'ChevronDown' : 'ChevronRight'} className="text-gray-500 w-5 h-5" />
+                                                                                    </div>
+                                                                                    <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 flex-1 min-w-0">
+                                                                                        <span className="font-extrabold text-sm sm:text-base text-gray-900 leading-tight truncate">{season.name}</span>
+                                                                                        <span className="w-max shrink-0 text-[9px] sm:text-[10px] font-black bg-blue-50 text-blue-600 px-2.5 py-0.5 sm:py-1 rounded-full border border-blue-100 uppercase tracking-wider">
+                                                                                            {seasonWatchedCount} / {season.episode_count} Ep
+                                                                                        </span>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div onClick={(e) => e.stopPropagation()} className="flex items-center pl-8 sm:pl-0 shrink-0 w-full sm:w-auto">
+                                                                                    <button 
+                                                                                        onClick={() => markSeasonWatched(season.season_number, season.episode_count, !isFullyWatched)}
+                                                                                        className={`w-full sm:w-auto px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center justify-center gap-1.5 shadow-xs active:scale-95 ${
+                                                                                            isFullyWatched 
+                                                                                            ? 'bg-green-600 text-white hover:bg-green-700' 
+                                                                                            : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                                                                                        }`}
+                                                                                    >
+                                                                                        <Icon name="Check" className="h-3.5 w-3.5 stroke-[2.5]" />
+                                                                                        <span>{isFullyWatched ? 'Season Watched' : 'Mark Season'}</span>
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
+
+                                                                            {expandedSeasons[season.season_number] && (
+                                                                                <div className="border-t border-gray-100 p-4 space-y-4 bg-white divide-y divide-gray-100/70">
+                                                                                    {!seasonEpisodesMap[season.season_number] ? (
+                                                                                        <div className="flex items-center justify-center py-8">
+                                                                                            <div className="w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin" />
+                                                                                        </div>
+                                                                                    ) : seasonEpisodesMap[season.season_number].length === 0 ? (
+                                                                                        <p className="text-xs text-gray-400 font-bold text-center py-4">No episode details available.</p>
+                                                                                    ) : (
+                                                                                        seasonEpisodesMap[season.season_number].map((episode) => {
+                                                                                            const isWatched = tvWatchedEpisodes[`${season.season_number}_${episode.episode_number}`] === true;
+                                                                                            return (
+                                                                                                <div 
+                                                                                                    key={episode.id} 
+                                                                                                    onClick={() => openEpisodeDetails(selectedItem.id, season.season_number, episode.episode_number)}
+                                                                                                    className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-4 pb-1 first:pt-0 border-b border-gray-50 last:border-b-0 cursor-pointer md:cursor-default hover:bg-gray-50/50 transition-colors p-2 -mx-2 rounded-xl"
+                                                                                                >
+                                                                                                    <div className="flex flex-col sm:flex-row items-start gap-4 flex-1 min-w-0 pointer-events-none md:pointer-events-auto">
+                                                                                                        {episode.still_path ? (
+                                                                                                            <div className="relative w-full sm:w-36 aspect-video rounded-xl overflow-hidden shrink-0 shadow-xs bg-gray-100">
+                                                                                                                <img src={`https://image.tmdb.org/t/p/w185${episode.still_path}`} className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />
+                                                                                                            </div>
+                                                                                                        ) : (
+                                                                                                            <div className="w-full sm:w-36 aspect-video bg-gray-50 rounded-xl flex items-center justify-center shrink-0 border border-gray-200/50">
+                                                                                                                <Icon name="Film" className="text-gray-400 w-6 h-6" />
+                                                                                                            </div>
+                                                                                                        )}
+                                                                                                        <div className="flex-1 min-w-0 pt-0.5">
+                                                                                                            <div className="flex flex-wrap items-center gap-2 mb-1">
+                                                                                                                <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 border border-blue-100 uppercase tracking-wider">
+                                                                                                                    EP {episode.episode_number}
+                                                                                                                </span>
+                                                                                                                <span className="text-[10px] text-gray-400 font-bold">
+                                                                                                                    {episode.air_date ? new Date(episode.air_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'No Air Date'}
+                                                                                                                </span>
+                                                                                                            </div>
+                                                                                                            <h4 className="text-sm font-bold text-gray-900 mb-1.5 leading-snug truncate">
+                                                                                                                {episode.name || 'Untitled Episode'}
+                                                                                                            </h4>
+                                                                                                            {episode.overview ? (
+                                                                                                                <p className="text-xs text-gray-500 leading-relaxed line-clamp-2 md:line-clamp-3">
+                                                                                                                    {episode.overview}
+                                                                                                                </p>
+                                                                                                            ) : (
+                                                                                                                <p className="text-xs text-gray-400 italic">No description available for this episode.</p>
+                                                                                                            )}
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                    
+                                                                                                    <div className="flex items-center sm:self-end md:self-center shrink-0 pt-2 sm:pt-0 w-full md:w-auto">
+                                                                                                        <button 
+                                                                                                            onClick={(e) => {
+                                                                                                                e.stopPropagation();
+                                                                                                                toggleEpisodeWatched(season.season_number, episode.episode_number);
+                                                                                                            }}
+                                                                                                            className={`w-full md:w-auto px-5 py-2.5 rounded-xl border flex items-center justify-center gap-2 text-xs font-black transition-all shadow-xs active:scale-95 ${
+                                                                                                                isWatched 
+                                                                                                                ? 'bg-green-600 border-green-600 text-white hover:bg-green-700 shadow-sm' 
+                                                                                                                : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300'
+                                                                                                            }`}
+                                                                                                        >
+                                                                                                            <Icon name={isWatched ? 'Check' : 'Plus'} className="h-4 w-4 stroke-[2.5]" />
+                                                                                                            <span>{isWatched ? 'Watched' : 'Mark Watched'}</span>
+                                                                                                        </button>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            );
+                                                                                        })
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    <div className="flex items-center justify-between mb-6">
+                                                        <h2 className="text-xl md:text-2xl font-black">Top Cast</h2>
+                                                        <div className="flex space-x-2">
+                                                            <button onClick={() => scrollCast('left')} className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 bg-white shadow-sm"><Icon name="ChevronLeft" /></button>
+                                                            <button onClick={() => scrollCast('right')} className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 bg-white shadow-sm"><Icon name="ChevronRight" /></button>
+                                                        </div>
+                                                    </div>
+                                                    <div ref={castScrollRef} className="flex gap-4 md:gap-6 overflow-x-auto no-scrollbar pb-4 scroll-smooth">
+                                                        {detailsData.credits?.cast?.map(person => (
+                                                            <div key={person.id} onClick={() => openPersonDetails(person.id)} className="w-24 md:w-32 flex-shrink-0 text-center group pointer-events-auto cursor-pointer">
+                                                                <img src={person.profile_path ? `https://image.tmdb.org/t/p/w185${person.profile_path}` : 'https://via.placeholder.com/185'} className="h-24 w-24 md:h-32 md:w-32 rounded-full object-cover mb-3 mx-auto border-2 border-white shadow-sm group-hover:scale-110 transition-transform" />
+                                                                <p className="text-[10px] md:text-xs font-black line-clamp-1">{person.name}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </React.Fragment>
                         ) : activeTab === 'FAVORITES' ? (
                             <div className="animate-in fade-in duration-500">
                                 <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 md:mb-8 gap-4">
@@ -2321,12 +2683,16 @@
                             </div>
                         ) : activeTab === 'LIBRARY' ? (
                             <div className="animate-in fade-in duration-500">
-                                {/* Desktop Header (Untouched) */}
-                                <div className="hidden md:flex flex-col md:flex-row md:items-center justify-between mb-6 md:mb-8 gap-4">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 md:mb-8 gap-4">
                                     <div>
-                                        <h1 className="text-2xl md:text-3xl font-black mb-1 md:mb-2 flex items-center gap-3">
+                                        {/* Mobile Title */}
+                                        <h1 className="md:hidden text-4xl font-black mb-2 flex items-center gap-3">
+                                            Library
+                                        </h1>
+                                        {/* Desktop Title */}
+                                        <h1 className="hidden md:flex text-3xl font-black mb-2 items-center gap-3">
                                             My Library
-                                            <span className="text-[10px] md:text-sm font-bold bg-white px-2 py-0.5 md:px-3 md:py-1 rounded-full shadow-sm text-gray-500 border border-gray-100">
+                                            <span className="text-sm font-bold bg-white px-3 py-1 rounded-full shadow-sm text-gray-500 border border-gray-100">
                                                 {trackedItems.length}
                                             </span>
                                         </h1>
@@ -2344,24 +2710,8 @@
                                     </div>
                                 </div>
 
-                                {/* Mobile Header (Reference Style) */}
-                                <div className="flex flex-col md:hidden mb-2 pt-1">
-                                    <div className="flex items-center gap-4 overflow-x-auto no-scrollbar py-2">
-                                        {['All', 'movie', 'tv'].map(type => (
-                                            <button 
-                                                key={type} 
-                                                onClick={() => navigateToState({ libraryTypeFilter: type, libraryGenreFilter: 'All' })} 
-                                                className={`text-[26px] font-extrabold capitalize tracking-tight whitespace-nowrap transition-colors ${libraryTypeFilter === type ? 'text-gray-900' : 'text-gray-400'}`}
-                                            >
-                                                {type === 'All' ? 'Watchlist' : type === 'movie' ? 'Movies' : 'Series'}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Desktop Status Filters (Untouched) */}
                                 {trackedItems.length > 0 && (
-                                    <div className="hidden md:block mb-6 overflow-x-auto no-scrollbar py-2">
+                                    <div className="mb-6 overflow-x-auto no-scrollbar py-2">
                                         <div className="flex gap-2">
                                             {['All', 'Watching', 'Watched', 'Plan to Watch', 'On Hold', 'Dropped'].map(status => (
                                                 <button
@@ -2376,49 +2726,15 @@
                                                         : 'bg-white text-gray-900 border-gray-100 hover:bg-white'
                                                     }`}
                                                 >
-                                                    {status}
+                                                    {status === 'Watched' ? 'Finished' : status}
                                                 </button>
                                             ))}
                                         </div>
                                     </div>
                                 )}
 
-                                {/* Mobile Status Filters (Reference Style) */}
                                 {trackedItems.length > 0 && (
-                                    <div className="md:hidden mb-4 flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-                                        <div className="shrink-0 h-[32px] w-[32px] rounded-full border border-gray-200 bg-white flex items-center justify-center shadow-sm mr-1">
-                                            <Icon name="SlidersHorizontal" className="h-3.5 w-3.5 text-gray-800" />
-                                        </div>
-                                        {['All', 'Watching', 'Watched', 'Plan to Watch', 'On Hold', 'Dropped'].map(status => {
-                                            // Optional mapping of labels to match screenshot exactly, 
-                                            // but keeping native values linked logically
-                                            let displayStatus = status;
-                                            if (status === 'Plan to Watch') displayStatus = 'Not started';
-                                            if (status === 'Watched') displayStatus = 'Caught up';
-
-                                            return (
-                                                <button
-                                                    key={status}
-                                                    onClick={() => {
-                                                        setUserChangedFilter(true);
-                                                        navigateToState({ libraryFilter: status });
-                                                    }}
-                                                    className={`shrink-0 px-4 py-1.5 rounded-full text-[11px] font-bold transition-all border shadow-sm ${
-                                                        libraryFilter === status 
-                                                        ? 'bg-gray-900 text-white border-gray-900' 
-                                                        : 'bg-white text-gray-700 border-gray-200'
-                                                    }`}
-                                                >
-                                                    {displayStatus}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-
-                                {/* Desktop Genre Filters (Hidden on Mobile for cleaner reference look) */}
-                                {trackedItems.length > 0 && (
-                                    <div className="hidden md:block mb-8">
+                                    <div className="mb-8">
                                         <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-2 scroll-smooth">
                                             {availableTrackedGenres.map(genre => (
                                                 <button 
@@ -2436,10 +2752,10 @@
                                 {isTrackLoading ? (
                                     <div className="flex justify-center py-20"><div className="w-10 h-10 border-4 border-gray-300 border-t-black rounded-full animate-spin"></div></div>
                                 ) : trackedItems.length === 0 ? (
-                                    <div className="py-20 md:py-32 text-center glass rounded-[2rem] md:rounded-[3rem] border-2 border-dashed border-gray-300 mx-2 md:mx-0">
+                                    <div className="py-20 md:py-32 text-center glass rounded-[2rem] md:rounded-[3rem] border-2 border-dashed border-gray-300">
                                         <Icon name="PlusCircle" className="h-12 w-12 md:h-16 md:w-16 mx-auto mb-6 text-gray-300" />
                                         <p className="text-lg md:text-xl font-bold text-gray-400">Your library is empty.</p>
-                                        <p className="text-xs md:text-sm text-gray-400 mt-1 max-w-sm mx-auto px-4">Track shows as 'Watching', 'Watched', or 'Plan to Watch' to start compiling your collection!</p>
+                                        <p className="text-xs md:text-sm text-gray-400 mt-1 max-w-sm mx-auto px-4">Track shows as 'Watching', 'Finished', or 'Plan to Watch' to start compiling your collection!</p>
                                         <button onClick={() => handleTabChange('BOARD')} className="mt-6 px-6 md:px-8 py-2 md:py-3 bg-black text-white rounded-full font-bold hover:scale-105 transition-transform shadow-lg">Start Exploring</button>
                                     </div>
                                 ) : (
@@ -2447,7 +2763,7 @@
                                         {filteredLibraryItems.length === 0 ? (
                                             <div className="py-20 text-center font-bold text-gray-400">No tracked items matches.</div>
                                         ) : (
-                                            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-0 md:gap-6 px-2 md:px-0">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-0 md:gap-6">
                                                 {filteredLibraryItems.map(item => {
                                                     if (item.media_type === 'tv') {
                                                         return (
@@ -2458,6 +2774,7 @@
                                                                 handleRemoveTracking={handleRemoveTracking} 
                                                                 handleTrackItem={handleTrackItem}
                                                                 updateTvProgress={updateTvProgress}
+                                                                openEpisodeDetails={openEpisodeDetails}
                                                             />
                                                         );
                                                     } else {
@@ -2612,39 +2929,6 @@
                             </div>
                         </div>
                     )}
-
-                    {}
-                    {/* Fixed Mobile Bottom Navigation */}
-                    <nav 
-                        className="fixed bottom-0 left-0 right-0 z-[120] flex md:hidden justify-between items-center bg-white/95 backdrop-blur-xl border-t border-gray-200 pt-3 px-6 shadow-[0_-10px_40px_rgba(0,0,0,0.06)] pb-[calc(env(safe-area-inset-bottom,0px)+12px)]"
-                    >
-                        {[
-                            { id: 'BOARD', label: 'Board', icon: 'LayoutGrid' },
-                            { id: 'NEW', label: 'New', icon: 'Sparkles' },
-                            { id: 'MOVIES', label: 'Movies', icon: 'Film' },
-                            { id: 'SERIES', label: 'Series', icon: 'Tv' },
-                            { id: 'LIBRARY', label: 'Library', icon: 'Bookmark' }
-                        ].map((tab) => {
-                            const isActive = activeTab === tab.id;
-                            return (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => handleTabChange(tab.id)}
-                                    className="relative flex flex-col items-center justify-center gap-1 min-w-[50px] group"
-                                >
-                                    <div className={`flex items-center justify-center transition-transform duration-300 ${isActive ? 'scale-110 text-black' : 'text-gray-400 group-hover:text-gray-600'}`}>
-                                        <Icon name={tab.icon} className={`h-[22px] w-[22px] ${isActive ? 'stroke-[2.5]' : 'stroke-2'}`} />
-                                    </div>
-                                    <span className={`text-[10px] font-bold tracking-wide transition-colors duration-300 ${isActive ? 'text-black' : 'text-gray-400 group-hover:text-gray-600'}`}>
-                                        {tab.label}
-                                    </span>
-                                    {isActive && (
-                                        <span className="absolute -bottom-3 left-1/2 -translate-x-1/2 h-1 w-1 rounded-full bg-black animate-in zoom-in duration-300"></span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </nav>
                 </div>
             );
         }
