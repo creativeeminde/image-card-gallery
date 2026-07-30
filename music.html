@@ -2229,6 +2229,8 @@
     let isSyncedLyrics = false;
     let lyricsRequestToken = 0;
     
+    let syncAnimationFrame = null;
+    
     let sessionPlaylists = [];
     let dbPlaylists = [];
     
@@ -2342,6 +2344,24 @@
             });
         } catch (err) {
             msWarn('Failed to assign MediaMetadata:', err);
+        }
+    }
+
+    function startSyncLoop() {
+        if (syncAnimationFrame) cancelAnimationFrame(syncAnimationFrame);
+        const loop = () => {
+            updateProgress();
+            if (isPlaying) {
+                syncAnimationFrame = requestAnimationFrame(loop);
+            }
+        };
+        syncAnimationFrame = requestAnimationFrame(loop);
+    }
+
+    function stopSyncLoop() {
+        if (syncAnimationFrame) {
+            cancelAnimationFrame(syncAnimationFrame);
+            syncAnimationFrame = null;
         }
     }
 
@@ -2504,7 +2524,7 @@
         registerMediaSessionActionHandlers();
 
         audio.addEventListener('timeupdate', () => {
-            updateProgress();
+            if (!isPlaying) updateProgress(); // Update scrub position when paused
             updateMediaSessionPosition(false); 
         });
         audio.addEventListener('ended', () => nextSong(true));
@@ -2517,6 +2537,7 @@
             setMediaSessionPlaybackState('playing');
             updateMediaSessionPosition(true);
             registerMediaSessionActionHandlers(); 
+            startSyncLoop();
         });
         
         audio.addEventListener('pause', () => {
@@ -2525,6 +2546,7 @@
             renderSongList();
             setMediaSessionPlaybackState('paused');
             updateMediaSessionPosition(true);
+            stopSyncLoop();
         });
         
         audio.addEventListener('seeked', () => updateMediaSessionPosition(true));
@@ -3440,6 +3462,7 @@
                     }
                 };
                 
+                // Update both the main lyrics modal and the fullscreen container
                 updateContainerSync('fs-lyrics-container');
                 updateContainerSync('lyrics-content');
             }
@@ -4248,16 +4271,29 @@
     function parseLRC(lrcText) {
         const lines = lrcText.split('\n');
         const parsed = [];
-        const timeRegex = /\[(\d{2}):(\d{2}\.\d{2,3})\]/;
+        // Robust regex catching [00:15.22], [00:15], [00:15:22], [1:15.2]
+        const timeRegex = /\[(\d+):(\d+)(?:[:.](\d+))?\]/g;
         
         lines.forEach(line => {
-            const match = timeRegex.exec(line);
-            if (match) {
-                const min = parseInt(match[1]);
-                const sec = parseFloat(match[2]);
-                const time = min * 60 + sec;
-                const text = line.replace(/\[\d{2}:\d{2}\.\d{2,3}\]/g, '').trim();
-                if (text) parsed.push({ time, text });
+            let match;
+            const text = line.replace(/\[\d+:\d+(?:[:.]\d+)?\]/g, '').trim();
+            
+            while ((match = timeRegex.exec(line)) !== null) {
+                const min = parseInt(match[1], 10);
+                const sec = parseInt(match[2], 10);
+                let ms = 0;
+                
+                if (match[3]) {
+                    const msStr = match[3];
+                    if (msStr.length === 1) ms = parseInt(msStr) * 100;
+                    else if (msStr.length === 2) ms = parseInt(msStr) * 10;
+                    else if (msStr.length === 3) ms = parseInt(msStr);
+                    else ms = parseInt(msStr.substring(0,3)); // Truncate extra precision
+                }
+                
+                const time = min * 60 + sec + (ms / 1000);
+                // Retain empty lines as musical note spacers (pauses in vocals)
+                parsed.push({ time, text: text === '' ? '♪' : text });
             }
         });
         return parsed.sort((a, b) => a.time - b.time);
@@ -4282,11 +4318,14 @@
         const titleEl = document.getElementById('lyrics-title');
         const fsContainer = document.getElementById('fs-lyrics-container');
         
-        if (titleEl) titleEl.innerText = title;
+        const safeArtist = (artist || '').trim();
+        const safeTitle = (title || '').trim();
+        
+        if (titleEl) titleEl.innerText = safeTitle;
         if (contentEl) contentEl.innerHTML = '<div class="loading-spinner" style="display:block; margin: 2rem auto;"></div>';
         if (fsContainer) fsContainer.innerHTML = '<div class="loading-spinner" style="display:block; margin: auto;"></div>';
 
-        const cacheKey = `${artist}-${title}`;
+        const cacheKey = `${safeArtist}-${safeTitle}`;
         isSyncedLyrics = false; parsedLyricsArray = []; currentLyricIndex = -1;
 
         if (lyricsCache[cacheKey]) {
@@ -4298,39 +4337,83 @@
             return;
         }
 
+        // Helper function to enforce a strict timeout on fetch requests
+        const fetchWithTimeout = async (url, ms = 3500) => {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), ms);
+            try {
+                const response = await fetch(url, { signal: controller.signal });
+                clearTimeout(id);
+                return response;
+            } catch (error) {
+                clearTimeout(id);
+                throw error;
+            }
+        };
+
         try {
             const currentToken = ++lyricsRequestToken;
+            let finalData = null;
             
-            const lrclibRes = await fetch(`https://lrclib.net/api/get?artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(title)}`);
+            // 1. Try exact match on lrclib with a strict timeout
+            try {
+                const lrclibRes = await fetchWithTimeout(`https://lrclib.net/api/get?artist_name=${encodeURIComponent(safeArtist)}&track_name=${encodeURIComponent(safeTitle)}`, 3500);
+                if (lrclibRes.ok) {
+                    finalData = await lrclibRes.json();
+                }
+            } catch (err) { console.warn("lrclib get timeout/error:", err); }
+
             if (currentToken !== lyricsRequestToken) return;
 
-            if (lrclibRes.ok) {
-                const data = await lrclibRes.json();
-                if (data.syncedLyrics) {
-                    parsedLyricsArray = parseLRC(data.syncedLyrics);
+            // 2. Try fuzzy search on lrclib if exact match fails
+            if (!finalData) {
+                try {
+                    const searchRes = await fetchWithTimeout(`https://lrclib.net/api/search?q=${encodeURIComponent(safeArtist + ' ' + safeTitle)}`, 3500);
+                    if (searchRes.ok) {
+                        const searchData = await searchRes.json();
+                        if (searchData && searchData.length > 0) {
+                            finalData = searchData[0];
+                        }
+                    }
+                } catch (err) { console.warn("lrclib search timeout/error:", err); }
+            }
+            
+            if (currentToken !== lyricsRequestToken) return;
+
+            // Process lrclib data
+            if (finalData) {
+                if (finalData.syncedLyrics) {
+                    parsedLyricsArray = parseLRC(finalData.syncedLyrics);
                     isSyncedLyrics = true;
-                    lyricsCache[cacheKey] = { text: data.syncedLyrics, type: 'synced', parsed: parsedLyricsArray };
+                    lyricsCache[cacheKey] = { text: finalData.syncedLyrics, type: 'synced', parsed: parsedLyricsArray };
                     renderLyrics(lyricsCache[cacheKey]); updateProgress();
                     return;
-                } else if (data.plainLyrics) {
-                    lyricsCache[cacheKey] = { text: data.plainLyrics, type: 'plain' };
+                } else if (finalData.plainLyrics) {
+                    lyricsCache[cacheKey] = { text: finalData.plainLyrics, type: 'plain' };
                     renderLyrics(lyricsCache[cacheKey]);
                     return;
                 }
             }
 
-            const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`);
-            if (currentToken !== lyricsRequestToken) return;
+            // 3. Fallback to lyrics.ovh (wrapped with timeout to prevent 2-minute hangs)
+            try {
+                const res = await fetchWithTimeout(`https://api.lyrics.ovh/v1/${encodeURIComponent(safeArtist)}/${encodeURIComponent(safeTitle)}`, 3500);
+                if (currentToken !== lyricsRequestToken) return;
 
-            if (res.ok) {
-                const data = await res.json();
-                lyricsCache[cacheKey] = { text: data.lyrics, type: 'plain' };
-                renderLyrics(lyricsCache[cacheKey]);
-            } else {
-                lyricsCache[cacheKey] = { text: 'Lyrics not found.', type: 'plain' };
-                renderLyrics(lyricsCache[cacheKey]);
-            }
+                if (res.ok) {
+                    const data = await res.json();
+                    lyricsCache[cacheKey] = { text: data.lyrics, type: 'plain' };
+                    renderLyrics(lyricsCache[cacheKey]);
+                    return;
+                }
+            } catch (err) { console.warn("lyrics.ovh timeout/error:", err); }
+
+            // 4. No lyrics found at all
+            lyricsCache[cacheKey] = { text: 'Lyrics not found.', type: 'plain' };
+            renderLyrics(lyricsCache[cacheKey]);
+
         } catch (e) {
+            console.error(e);
             lyricsCache[cacheKey] = { text: 'Error fetching lyrics.', type: 'plain' };
             renderLyrics(lyricsCache[cacheKey]);
         }
@@ -4339,16 +4422,20 @@
     function renderLyrics(data) {
         const contentEl = document.getElementById('lyrics-content');
         const fsContainer = document.getElementById('fs-lyrics-container');
+        const fsBadge = document.querySelector('.fs-lyrics-badge');
+        
         let html = '';
         
         if (data.type === 'synced') {
-            html = data.parsed.map((line) => `<div class="fs-lyric-line" onclick="seekToLyric(${line.time})">${escapeHtml(line.text)}</div>`).join('');
+            if (fsBadge) fsBadge.innerText = 'Synced Lyrics';
+            html = data.parsed.map((line, idx) => `<div class="fs-lyric-line" id="lyric-line-${idx}" onclick="seekToLyric(${line.time})">${escapeHtml(line.text)}</div>`).join('');
             if (contentEl) {
                 contentEl.style.display = 'flex'; contentEl.style.flexDirection = 'column';
                 contentEl.style.gap = '1.2rem'; contentEl.style.padding = '20vh 1rem';
                 contentEl.style.position = 'relative'; contentEl.style.scrollBehavior = 'smooth';
             }
         } else {
+            if (fsBadge) fsBadge.innerText = 'Plain Lyrics';
             html = `<div class="fs-lyrics-plain">${escapeHtml(data.text)}</div>`;
             if (contentEl) {
                 contentEl.style.display = ''; contentEl.style.flexDirection = '';
