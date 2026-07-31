@@ -12,6 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
     <title>Modern Music Streamer</title>
+    
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%233b82f6'%3E%3Cpath d='M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z'/%3E%3C/svg%3E">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -259,6 +260,7 @@
             background: var(--bg-color);
             box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         }
+        
         .collection-card h4 { font-size: 1.05rem; font-weight: 600; color: var(--text-main); margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .collection-card p { font-size: 0.85rem; color: var(--text-muted); margin:0; margin-top: 2px; }
 
@@ -1119,6 +1121,7 @@
             font-size: 1rem;
             white-space: pre-wrap;
             text-align: center;
+            position: relative;
         }
         
         .lyrics-content::-webkit-scrollbar { width: 6px; }
@@ -1566,7 +1569,7 @@
             #related-modal.modal-overlay { top: -100px; height: calc(100% + 100px); height: calc(100dvh + 100px); }
             #related-modal .modal { padding-top: calc(4rem + 100px); }
             #related-modal .close-lyrics-absolute { top: calc(1rem + 100px); }
-            #lyrics-modal .lyrics-content { flex: 1; background: transparent; padding: 0 0 2rem 0; font-size: 1.2rem; text-align: left; max-height: none; }
+            #lyrics-modal .lyrics-content { flex: 1; background: transparent; padding: 0 0 2rem 0; font-size: 1.2rem; text-align: left; max-height: none; position: relative; }
             
             #related-list { padding-bottom: 2rem; }
             #lyrics-modal .modal-actions { display: none; }
@@ -1848,13 +1851,13 @@
                 <img id="artist-hero-img" class="artist-hero-img" src="https://via.placeholder.com/1000/1e293b/ffffff?text=Artist" alt="Artist Profile">
                 <div class="artist-hero-gradient"></div>
                 <div class="artist-hero-top">
-                <button class="hero-btn pill" onclick="closeArtistModal()"><i class="fas fa-arrow-left"></i> Back</button>
-                <div style="display: flex; gap: 0.5rem;">
-                    <button class="hero-btn round toggle-select-btn" onclick="toggleMultiSelectMode()" title="Select Songs"><i class="fas fa-check-square"></i></button>
-                    <button class="hero-btn round" onclick="if(currentArtistSongs.length > 0) playSongActionById(currentArtistSongs[0].id);" title="Play Top Song"><i class="fas fa-play"></i></button>
+                    <button class="hero-btn pill" onclick="closeArtistModal()"><i class="fas fa-arrow-left"></i> Back</button>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="hero-btn round toggle-select-btn" onclick="toggleMultiSelectMode()" title="Select Songs"><i class="fas fa-check-square"></i></button>
+                        <button class="hero-btn round" onclick="if(currentArtistSongs.length > 0) playSongActionById(currentArtistSongs[0].id);" title="Play Top Song"><i class="fas fa-play"></i></button>
+                    </div>
                 </div>
-            </div>
-            <div class="artist-hero-content">
+                <div class="artist-hero-content">
                     <h2 id="artist-name-display">Artist Name</h2>
                 </div>
             </div>
@@ -2098,7 +2101,6 @@
         <form id="upload-form" onsubmit="handleUpload(event)">
             <input type="hidden" id="in-id">
             <div class="form-grid">
-                <!-- UPDATED MP3 URL input with extraction functionality -->
                 <div class="form-group full-width">
                     <label style="display: flex; justify-content: space-between; align-items: center;">
                         MP3 / Audio URL
@@ -2118,7 +2120,6 @@
                     <input type="text" id="in-artist" required>
                 </div>
                 
-                <!-- UPDATED Cover URL with preview -->
                 <div class="form-group full-width" style="display: flex; gap: 1rem; align-items: flex-end;">
                     <div style="flex: 1;">
                         <label>Cover Art URL</label>
@@ -2269,6 +2270,7 @@
                 } else {
                     audio.currentTime = details.seekTime;
                 }
+                updateProgress();
                 updateMediaSessionPosition(true);
             });
         } catch (err) {
@@ -2549,7 +2551,10 @@
             stopSyncLoop();
         });
         
-        audio.addEventListener('seeked', () => updateMediaSessionPosition(true));
+        audio.addEventListener('seeked', () => {
+            updateProgress();
+            updateMediaSessionPosition(true);
+        });
 
         if (progressContainer) progressContainer.addEventListener('click', setProgress);
         if (mobileProgressContainer) mobileProgressContainer.addEventListener('click', setProgress);
@@ -3438,11 +3443,20 @@
             audio.currentTime = customLoopStart;
         }
         
+        // Accurate real-time lyrics synchronization logic
         if (isSyncedLyrics && parsedLyricsArray.length > 0) {
-            const nextLineIndex = parsedLyricsArray.findIndex(line => line.time > current);
-            let activeIndex = nextLineIndex === -1 ? parsedLyricsArray.length - 1 : nextLineIndex - 1;
+            let activeIndex = -1;
             
-            if (activeIndex !== currentLyricIndex && activeIndex >= 0) {
+            // Loop through timestamps to find the correct line based on actual play time
+            for (let i = 0; i < parsedLyricsArray.length; i++) {
+                if (current >= parsedLyricsArray[i].time) {
+                    activeIndex = i;
+                } else {
+                    break;
+                }
+            }
+
+            if (activeIndex !== currentLyricIndex) {
                 currentLyricIndex = activeIndex;
                 
                 const updateContainerSync = (containerId) => {
@@ -3451,18 +3465,27 @@
                     
                     const lines = container.querySelectorAll('.fs-lyric-line');
                     lines.forEach((line, index) => {
-                        line.classList.toggle('active', index === currentLyricIndex);
+                        if (index === currentLyricIndex) {
+                            line.classList.add('active');
+                        } else {
+                            line.classList.remove('active');
+                        }
                     });
                     
-                    const activeLine = lines[currentLyricIndex];
-                    if (activeLine) {
-                        const containerHeight = container.clientHeight;
-                        const scrollPos = activeLine.offsetTop - (containerHeight / 2) + (activeLine.clientHeight / 2);
-                        container.scrollTo({ top: scrollPos, behavior: 'smooth' });
+                    if (currentLyricIndex >= 0) {
+                        const activeLine = lines[currentLyricIndex];
+                        if (activeLine) {
+                            const containerHeight = container.clientHeight;
+                            // Smoothly center the active line
+                            const scrollPos = activeLine.offsetTop - (containerHeight / 2) + (activeLine.clientHeight / 2);
+                            container.scrollTo({ top: scrollPos, behavior: 'smooth' });
+                        }
+                    } else {
+                        // Scroll top before first lyric starts
+                        container.scrollTo({ top: 0, behavior: 'smooth' });
                     }
                 };
                 
-                // Update both the main lyrics modal and the fullscreen container
                 updateContainerSync('fs-lyrics-container');
                 updateContainerSync('lyrics-content');
             }
@@ -3475,6 +3498,7 @@
         const clickX = e.clientX - rect.left;
         const percent = clickX / rect.width;
         audio.currentTime = percent * audio.duration;
+        updateProgress(); // Force sync immediately after seeking
     }
 
     async function fetchPlaylists() {
@@ -4302,6 +4326,7 @@
     function seekToLyric(time) {
         audio.currentTime = time;
         if (audio.paused) playAudio();
+        updateProgress();
     }
 
     function openLyricsModal() {
@@ -4386,7 +4411,8 @@
                     parsedLyricsArray = parseLRC(finalData.syncedLyrics);
                     isSyncedLyrics = true;
                     lyricsCache[cacheKey] = { text: finalData.syncedLyrics, type: 'synced', parsed: parsedLyricsArray };
-                    renderLyrics(lyricsCache[cacheKey]); updateProgress();
+                    renderLyrics(lyricsCache[cacheKey]); 
+                    updateProgress(); // Initial sync
                     return;
                 } else if (finalData.plainLyrics) {
                     lyricsCache[cacheKey] = { text: finalData.plainLyrics, type: 'plain' };
