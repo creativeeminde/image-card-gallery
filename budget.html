@@ -666,6 +666,11 @@
                             </tfoot>
                         </table>
                     </div>
+                    
+                    <!-- Load More Button -->
+                    <div id="sales-load-more-container" class="mt-6 flex justify-center hidden">
+                        <button onclick="loadMoreSales()" class="px-6 py-2 border border-parchment-300 dark:border-gray-700 rounded-full text-xs font-bold text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-parchment-200 dark:hover:bg-gray-700 transition-all shadow-sm">Load More</button>
+                    </div>
                 </div>
 
                 <!-- Refunds Log Card -->
@@ -729,6 +734,11 @@
                                 </tr>
                             </tfoot>
                         </table>
+                    </div>
+                    
+                    <!-- Load More Button -->
+                    <div id="refunds-load-more-container" class="mt-6 flex justify-center hidden">
+                        <button onclick="loadMoreRefunds()" class="px-6 py-2 border border-parchment-300 dark:border-gray-700 rounded-full text-xs font-bold text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-parchment-200 dark:hover:bg-gray-700 transition-all shadow-sm">Load More</button>
                     </div>
                 </div>
 
@@ -1547,6 +1557,8 @@
         let loadedRefundEntries = [];
         let loadedReturnEntries = [];
         let activeSalesMonthFilter = 'all';
+        let salesDisplayCount = 10;
+        let refundsDisplayCount = 10;
 
         async function fetchSalesData() {
             try {
@@ -1630,6 +1642,8 @@
         function applySalesMonthFilter() {
             const sel = document.getElementById('sales-month-filter');
             activeSalesMonthFilter = sel ? sel.value : 'all';
+            salesDisplayCount = 10;
+            refundsDisplayCount = 10;
             renderSalesTable();
             renderRefundsTable();
             renderReturnsTable();
@@ -1640,18 +1654,25 @@
             return loadedSalesEntries.filter(e => e.sale_date && e.sale_date.slice(0, 7) === activeSalesMonthFilter);
         }
 
+        function loadMoreSales() {
+            salesDisplayCount += 10;
+            renderSalesTable();
+        }
+
         function renderSalesTable() {
             const tbody = document.getElementById('sales-tbody');
             const tfoot = document.getElementById('sales-tfoot');
             const emptyRow = document.getElementById('sales-empty-row');
+            const loadMoreContainer = document.getElementById('sales-load-more-container');
             if (!tbody) return;
 
-            const entries = getFilteredSalesEntries();
+            const allEntries = getFilteredSalesEntries();
+            const entries = allEntries.slice(0, salesDisplayCount);
 
             // Clear existing data rows
             Array.from(tbody.querySelectorAll('tr.sales-row')).forEach(r => r.remove());
 
-            if (entries.length === 0) {
+            if (allEntries.length === 0) {
                 if (emptyRow) {
                     emptyRow.classList.remove('hidden');
                     emptyRow.querySelector('td').innerHTML = `
@@ -1659,7 +1680,8 @@
                         ${activeSalesMonthFilter === 'all' ? 'No sales entries yet. Add your first entry above.' : 'No entries for this month.'}`;
                 }
                 if (tfoot) tfoot.classList.add('hidden');
-                updateSalesKPIs(entries);
+                if (loadMoreContainer) loadMoreContainer.classList.add('hidden');
+                updateSalesKPIs(allEntries);
                 return;
             }
 
@@ -1687,8 +1709,16 @@
                 tbody.appendChild(tr);
             });
 
-            updateSalesKPIs(entries);
-            updateSalesFooter(entries);
+            if (loadMoreContainer) {
+                if (allEntries.length > salesDisplayCount) {
+                    loadMoreContainer.classList.remove('hidden');
+                } else {
+                    loadMoreContainer.classList.add('hidden');
+                }
+            }
+
+            updateSalesKPIs(allEntries);
+            updateSalesFooter(allEntries);
         }
 
         function updateSalesKPIs(entries) {
@@ -1896,10 +1926,16 @@
             updateSalesKPIs();
         }
 
+        function loadMoreRefunds() {
+            refundsDisplayCount += 10;
+            renderRefundsTable();
+        }
+
         function renderRefundsTable() {
             const tbody = document.getElementById('refunds-tbody');
             const tfoot = document.getElementById('refunds-tfoot');
             const emptyRow = document.getElementById('refunds-empty-row');
+            const loadMoreContainer = document.getElementById('refunds-load-more-container');
             if (!tbody) return;
 
             let refundList = loadedRefundEntries;
@@ -1907,17 +1943,20 @@
                 refundList = loadedRefundEntries.filter(r => r.refund_date && r.refund_date.slice(0, 7) === activeSalesMonthFilter);
             }
 
+            const entries = refundList.slice(0, refundsDisplayCount);
+
             Array.from(tbody.querySelectorAll('tr.refund-row')).forEach(r => r.remove());
 
             if (refundList.length === 0) {
                 if (emptyRow) emptyRow.classList.remove('hidden');
                 if (tfoot) tfoot.classList.add('hidden');
+                if (loadMoreContainer) loadMoreContainer.classList.add('hidden');
                 return;
             }
             if (emptyRow) emptyRow.classList.add('hidden');
             if (tfoot) tfoot.classList.remove('hidden');
 
-            refundList.forEach(refund => {
+            entries.forEach(refund => {
                 const tr = document.createElement('tr');
                 tr.className = 'refund-row border-b dark:border-gray-700 hover:bg-orange-50/40 dark:hover:bg-orange-900/10 transition-colors';
                 const formattedDate = refund.refund_date
@@ -1935,6 +1974,14 @@
                     </td>`;
                 tbody.appendChild(tr);
             });
+            
+            if (loadMoreContainer) {
+                if (refundList.length > refundsDisplayCount) {
+                    loadMoreContainer.classList.remove('hidden');
+                } else {
+                    loadMoreContainer.classList.add('hidden');
+                }
+            }
 
             const total = refundList.reduce((s, r) => s + Number(r.amount || 0), 0);
             const ft = document.getElementById('refunds-foot-total');
