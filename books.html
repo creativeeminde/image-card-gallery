@@ -413,6 +413,27 @@
             </div>
         </div>
 
+        <!-- ================= AUTHOR VIEW ================= -->
+        <div id="view-author" class="hidden flex-col gap-6">
+            <div class="bg-brand-card border border-brand-border rounded-3xl p-5 sm:p-8 shadow-sm min-h-[500px] transition-colors">
+                <div class="flex items-center justify-between mb-6 sm:mb-8 border-b border-brand-border pb-4 relative pt-8 sm:pt-0">
+                    <button onclick="closeAuthorPage()" class="text-brand-muted hover:text-brand-text transition-colors flex items-center gap-2 text-sm font-medium absolute top-0 left-0 sm:relative focus:outline-none">
+                        <i data-lucide="arrow-left" class="w-4 h-4"></i> Back
+                    </button>
+                    <h2 id="author-page-title" class="font-semibold text-base sm:text-lg text-brand-text text-center flex-1 w-full mt-1 sm:mt-0 px-2 sm:px-0">Author Name</h2>
+                    <div class="w-24 hidden sm:block"></div>
+                </div>
+                <div id="author-loading" class="hidden flex justify-center items-center py-20">
+                    <svg class="animate-spin h-8 w-8 text-brand-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                </div>
+                <div id="author-empty" class="hidden flex-col items-center justify-center py-20 text-brand-muted">
+                    <i data-lucide="user-x" class="w-12 h-12 mb-4 opacity-50"></i>
+                    <p class="text-sm">No books found for this author.</p>
+                </div>
+                <div id="author-books-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6"></div>
+            </div>
+        </div>
+
         <!-- ================= STATS VIEW ================= -->
         <div id="view-stats" class="hidden flex-col gap-8">
             <div class="bg-brand-card border border-brand-border rounded-3xl p-5 sm:p-8 shadow-sm w-full flex flex-col transition-colors">
@@ -626,6 +647,8 @@
         let currentSearchPage = 1;
         let totalSearchPages = 1;
 
+        let visibleElementsBeforeAuthor = [];
+
         let globalCombinedLibrary = [];
         let currentBooksListPage = 1;
         const BOOKS_PER_PAGE = 10;
@@ -702,7 +725,7 @@
             if(activeEl) activeEl.className = 'tab-active px-4 sm:px-6 py-2 -mb-2 relative z-20 whitespace-nowrap';
             const activeView = document.getElementById(`view-${tabId}`);
             if(activeView) { activeView.classList.remove('hidden'); activeView.classList.add(tabId === 'home' ? 'grid' : 'flex'); }
-            ['view-recommendations', 'view-trending', 'book-details-section', 'view-all-genres', 'view-genre-books', 'view-single-list', 'view-dedicated-notes'].forEach(id => { const v = document.getElementById(id); if (v) v.classList.add('hidden'); });
+            ['view-recommendations', 'view-trending', 'book-details-section', 'view-all-genres', 'view-genre-books', 'view-single-list', 'view-dedicated-notes', 'view-author'].forEach(id => { const v = document.getElementById(id); if (v) v.classList.add('hidden'); });
             lastActiveTab = tabId;
         }
 
@@ -715,6 +738,117 @@
             container.appendChild(toast);
             setTimeout(() => { toast.classList.remove('opacity-0', 'scale-95'); toast.classList.add('opacity-100', 'scale-100'); }, 10);
             setTimeout(() => { toast.classList.remove('opacity-100', 'scale-100'); toast.classList.add('opacity-0', 'scale-95'); setTimeout(() => toast.remove(), 300); }, 3000);
+        }
+
+        // Helper function for rendering clickable author links properly formatted and event-handled
+        function renderAuthorLink(authorName) {
+            if (!authorName || authorName === 'Unknown Author') return `by ${authorName || 'Unknown Author'}`;
+            const safeName = String(authorName).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            return `<span class="relative z-10 hover:text-brand-primary cursor-pointer transition-colors inline" onclick="openAuthorPage('${safeName}', event)">by ${authorName}</span>`;
+        }
+
+        async function openAuthorPage(authorName, event) {
+            if(event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            if(!authorName || authorName === 'Unknown Author') return;
+
+            // Track what to hide so we can safely restore it when clicking back
+            const elementsToCheck = [
+                'view-home', 'view-books', 'view-explore', 'view-stats', 'view-notes',
+                'view-recommendations', 'view-trending', 'view-all-genres', 'view-genre-books',
+                'view-single-list', 'view-dedicated-notes', 'book-details-section',
+                'search-results-section', 'explore-default-content'
+            ];
+
+            visibleElementsBeforeAuthor = elementsToCheck.filter(id => {
+                const el = document.getElementById(id);
+                return el && !el.classList.contains('hidden');
+            });
+
+            // Hide them all
+            elementsToCheck.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+            });
+
+            // Show author view
+            const authorView = document.getElementById('view-author');
+            authorView.classList.remove('hidden');
+            authorView.classList.add('flex');
+
+            document.getElementById('author-page-title').textContent = authorName;
+
+            const grid = document.getElementById('author-books-grid');
+            const loading = document.getElementById('author-loading');
+            const empty = document.getElementById('author-empty');
+
+            grid.innerHTML = '';
+            empty.classList.add('hidden');
+            empty.classList.remove('flex');
+            loading.classList.remove('hidden');
+
+            try {
+                const res = await fetchWithRetry(`https://openlibrary.org/search.json?author=${encodeURIComponent(authorName)}&limit=20`);
+                const data = await res.json();
+                loading.classList.add('hidden');
+
+                const validBooks = (data.docs || []).filter(b => b.title && b.cover_i);
+
+                if (validBooks.length === 0) {
+                    empty.classList.remove('hidden');
+                    empty.classList.add('flex');
+                    return;
+                }
+
+                validBooks.forEach(book => {
+                    const title = book.title || 'Unknown Title';
+                    const bookAuthor = book.author_name ? book.author_name[0] : authorName;
+                    const year = book.first_publish_year || 'N/A';
+                    const coverUrl = book.cover_i ? `https://covers.openlibrary.org/b/id/${book.cover_i}-M.jpg` : "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='150' style='background:%23fde9d9'></svg>";
+                    const totalPages = book.number_of_pages_median || 300;
+
+                    const cardHTML = document.createElement('div');
+                    cardHTML.className = "book-card flex flex-col gap-2 group cursor-pointer h-full relative";
+                    cardHTML.setAttribute('data-book-title', title);
+                    cardHTML.setAttribute('data-book-author', bookAuthor);
+                    cardHTML.onclick = () => openDetailedView({ title, author_name: [bookAuthor], cover_i: book.cover_i, key: book.key, coverUrl, total_pages: totalPages }, 'author');
+
+                    cardHTML.innerHTML = `
+                        <div class="relative w-full aspect-[2/3]">
+                            <img src="${coverUrl}" alt="${title}" class="w-full h-full object-cover rounded-md book-shadow transition-transform group-hover:-translate-y-1">
+                            ${getLibraryBadgeHTML(title, bookAuthor)}
+                        </div>
+                        <div class="flex flex-col mt-1 flex-1">
+                            <h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug">${title}</h4>
+                            <p class="text-[11px] text-brand-muted mt-1 truncate">${renderAuthorLink(bookAuthor)}</p>
+                            <p class="text-[10px] text-brand-primary mt-auto pt-1">First published: ${year}</p>
+                        </div>
+                    `;
+                    grid.appendChild(cardHTML);
+                });
+                if(window.lucide) lucide.createIcons();
+            } catch(e) {
+                loading.classList.add('hidden');
+                empty.innerHTML = `<i data-lucide="alert-circle" class="w-12 h-12 mb-4 opacity-50 text-red-500"></i><p class="text-sm text-red-500">Failed to load author books. Please try again.</p>`;
+                empty.classList.remove('hidden');
+                empty.classList.add('flex');
+                if(window.lucide) lucide.createIcons();
+            }
+        }
+
+        function closeAuthorPage() {
+            document.getElementById('view-author').classList.add('hidden');
+            document.getElementById('view-author').classList.remove('flex');
+
+            visibleElementsBeforeAuthor.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.classList.remove('hidden');
+                }
+            });
+            visibleElementsBeforeAuthor = [];
         }
 
         async function ensureSingleStatus(title, author, targetTable) {
@@ -932,7 +1066,7 @@
             const list = globalCustomLists.find(l => String(l.id) === String(listId));
             if (!list) return;
 
-            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'all-genres', 'genre-books', 'dedicated-notes'].forEach(id => { 
+            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'all-genres', 'genre-books', 'dedicated-notes', 'author'].forEach(id => { 
                 const view = document.getElementById(`view-${id}`); 
                 if (view) { view.classList.add('hidden'); view.classList.remove('flex'); }
             });
@@ -982,7 +1116,7 @@
                         </div>
                         <div class="flex flex-col mt-1 flex-1">
                             <h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug group-hover:text-brand-primary transition-colors">${title}</h4>
-                            <p class="text-[11px] text-brand-muted mt-1 truncate">by ${author}</p>
+                            <p class="text-[11px] text-brand-muted mt-1 truncate">${renderAuthorLink(author)}</p>
                         </div>
                     `;
                     div.onclick = () => openDetailedView({ title, author_name: [author], coverUrl, key: item.book_key }, 'single-list'); 
@@ -1073,7 +1207,7 @@
             const booksToShow = (!sectionExpanded[tableName] && books.length > 6) ? books.slice(0, 6) : books;
             booksToShow.forEach(book => {
                 const bookEl = document.createElement('div'); bookEl.className = 'flex flex-col items-center group cursor-pointer'; bookEl.onclick = () => openDetailedView({ title: book.title, author_name: [book.author], coverUrl: book.coverUrl, key: typeof book.id === 'string' && book.id.startsWith('/') ? book.id : null }, 'home');
-                bookEl.innerHTML = `<div class="relative w-full"><img src="${book.coverUrl}" alt="${book.title}" class="w-full aspect-[2/3] object-cover rounded-md mb-3 book-shadow transition-transform group-hover:-translate-y-1">${getCardMenuHTML(book.id, tableName)}</div><h4 class="font-semibold text-xs text-brand-text text-center line-clamp-1 w-full" title="${book.title}">${book.title}</h4><p class="text-[10px] text-brand-muted text-center line-clamp-1 w-full mt-0.5">by ${book.author}</p>`;
+                bookEl.innerHTML = `<div class="relative w-full"><img src="${book.coverUrl}" alt="${book.title}" class="w-full aspect-[2/3] object-cover rounded-md mb-3 book-shadow transition-transform group-hover:-translate-y-1">${getCardMenuHTML(book.id, tableName)}</div><h4 class="font-semibold text-xs text-brand-text text-center line-clamp-1 w-full" title="${book.title}">${book.title}</h4><p class="text-[10px] text-brand-muted text-center line-clamp-1 w-full mt-0.5">${renderAuthorLink(book.author)}</p>`;
                 container.appendChild(bookEl);
             });
             updateSeeMoreButton(container.parentElement, tableName, books.length);
@@ -1083,7 +1217,7 @@
             const container = document.getElementById('recommended-container'); if(!container) return; container.innerHTML = '';
             books.forEach((book) => {
                 const bookEl = document.createElement('div'); bookEl.className = 'book-card flex gap-4 items-center group cursor-pointer relative'; bookEl.setAttribute('data-book-title', book.title); bookEl.setAttribute('data-book-author', book.author); bookEl.onclick = () => openDetailedView({ title: book.title, author_name: [book.author], coverUrl: book.coverUrl, key: typeof book.id === 'string' && book.id.startsWith('/') ? book.id : null }, 'home');
-                bookEl.innerHTML = `<div class="relative shrink-0"><img src="${book.coverUrl}" alt="${book.title}" class="w-16 h-24 object-cover rounded-md book-shadow transition-transform group-hover:scale-105">${getLibraryBadgeHTML(book.title, book.author)}</div><div class="flex flex-col"><h3 class="font-semibold text-sm text-brand-text mb-0.5">${book.title}</h3><p class="text-xs text-brand-muted mb-2">by ${book.author}</p><div class="flex items-center text-xs text-brand-muted"><i data-lucide="star" class="w-3 h-3 text-brand-primary fill-brand-primary mr-1"></i><span>${book.rating?.toFixed(2) || '4.00'}</span></div></div>`;
+                bookEl.innerHTML = `<div class="relative shrink-0"><img src="${book.coverUrl}" alt="${book.title}" class="w-16 h-24 object-cover rounded-md book-shadow transition-transform group-hover:scale-105">${getLibraryBadgeHTML(book.title, book.author)}</div><div class="flex flex-col"><h3 class="font-semibold text-sm text-brand-text mb-0.5">${book.title}</h3><p class="text-xs text-brand-muted mb-2 w-fit relative z-10">${renderAuthorLink(book.author)}</p><div class="flex items-center text-xs text-brand-muted"><i data-lucide="star" class="w-3 h-3 text-brand-primary fill-brand-primary mr-1"></i><span>${book.rating?.toFixed(2) || '4.00'}</span></div></div>`;
                 container.appendChild(bookEl);
             });
             if(window.lucide) lucide.createIcons();
@@ -1107,7 +1241,7 @@
             booksToShow.forEach(book => { 
                 const bookEl = document.createElement('div'); bookEl.className = 'flex items-center gap-4 w-[280px] shrink-0 cursor-pointer group snap-center'; bookEl.onclick = () => openDetailedView({ title: book.title, author_name: [book.author], coverUrl: book.coverUrl, key: typeof book.id === 'string' && book.id.startsWith('/') ? book.id : null, total_pages: book.total_pages }, 'books');
                 const currentPage = book.current_page || 0; const totalPages = book.total_pages || 300; const progressPct = book.progress || Math.round((currentPage / totalPages) * 100) || 0;
-                bookEl.innerHTML = `<div class="relative h-full"><img src="${book.coverUrl}" alt="${book.title}" class="w-16 h-[6.5rem] object-cover rounded-md book-shadow shrink-0 transition-transform group-hover:scale-105">${getCardMenuHTML(book.id, 'currently_reading')}</div><div class="flex flex-col flex-1 min-w-0"><h4 class="font-semibold text-sm text-brand-text truncate group-hover:text-brand-primary transition-colors">${book.title}</h4><p class="text-[10px] text-brand-muted mb-2 truncate">by ${book.author}</p><div class="flex items-center gap-2 mb-2"><div class="w-full relative progress-container flex items-center"><div class="bg-brand-primary h-[10px] rounded-full" style="width: ${progressPct}%;"></div></div><span class="text-[10px] text-brand-muted font-medium">${progressPct}%</span></div><button onclick="openProgressModal('${book.id}', ${currentPage}, ${totalPages}); event.stopPropagation();" class="border border-brand-primaryLight text-brand-primary hover:bg-brand-primary hover:text-white transition-colors rounded-full px-4 py-1 text-[10px] font-semibold w-fit mx-auto mt-1">Update progress</button></div>`; 
+                bookEl.innerHTML = `<div class="relative h-full"><img src="${book.coverUrl}" alt="${book.title}" class="w-16 h-[6.5rem] object-cover rounded-md book-shadow shrink-0 transition-transform group-hover:scale-105">${getCardMenuHTML(book.id, 'currently_reading')}</div><div class="flex flex-col flex-1 min-w-0"><h4 class="font-semibold text-sm text-brand-text truncate group-hover:text-brand-primary transition-colors">${book.title}</h4><p class="text-[10px] text-brand-muted mb-2 truncate">${renderAuthorLink(book.author)}</p><div class="flex items-center gap-2 mb-2"><div class="w-full relative progress-container flex items-center"><div class="bg-brand-primary h-[10px] rounded-full" style="width: ${progressPct}%;"></div></div><span class="text-[10px] text-brand-muted font-medium">${progressPct}%</span></div><button onclick="openProgressModal('${book.id}', ${currentPage}, ${totalPages}); event.stopPropagation();" class="border border-brand-primaryLight text-brand-primary hover:bg-brand-primary hover:text-white transition-colors rounded-full px-4 py-1 text-[10px] font-semibold w-fit mx-auto mt-1">Update progress</button></div>`; 
                 container.appendChild(bookEl); 
             }); 
             if (dotsContainer && booksToShow.length > 0) {
@@ -1125,11 +1259,11 @@
             if (booksToShow.length === 0) { container.innerHTML = `<p class="text-center text-brand-muted py-8">Your library is currently empty.</p>`; } else {
                 booksToShow.forEach(book => { 
                     const bookEl = document.createElement('div'); bookEl.className = 'flex flex-col sm:flex-row gap-6 py-6 sm:py-8 border-b border-brand-border last:border-0 cursor-pointer group'; 
-                    bookEl.onclick = (e) => { if(e.target.closest('button') || e.target.closest('.card-menu')) return; openDetailedView({ title: book.title, author_name: [book.author], coverUrl: book.coverUrl, key: typeof book.id === 'string' && book.id.startsWith('/') ? book.id : null, total_pages: book.total_pages }, 'books'); };
+                    bookEl.onclick = (e) => { if(e.target.closest('button') || e.target.closest('.card-menu') || e.target.closest('span.hover\\:text-brand-primary')) return; openDetailedView({ title: book.title, author_name: [book.author], coverUrl: book.coverUrl, key: typeof book.id === 'string' && book.id.startsWith('/') ? book.id : null, total_pages: book.total_pages }, 'books'); };
                     let rightSideHTML = ''; 
                     if (book.status === 'Currently reading') { const currentPage = book.current_page || 0; const totalPages = book.total_pages || 300; const progressPct = book.progress || Math.round((currentPage / totalPages) * 100) || 0; rightSideHTML = `<div class="w-full max-w-[130px] sm:max-w-none relative progress-container flex items-center"><div class="bg-brand-primary h-[10px] rounded-full" style="width: ${progressPct}%;"></div></div><div class="flex justify-between items-center w-full max-w-[130px] sm:max-w-none px-1 mt-1"><span class="text-[10px] text-brand-muted font-medium">${progressPct}%</span><button onclick="openProgressModal('${book.id}', ${currentPage}, ${totalPages}); event.stopPropagation();" class="text-brand-muted hover:text-brand-primary transition-colors p-1 -mr-1"><i data-lucide="edit-2" class="w-3 h-3"></i></button></div>`; } 
                     else if (book.status === 'Read') { rightSideHTML = `<div class="text-[10px] text-brand-muted text-right">Added:<br>${book.readDates || 'Recently'}</div>`; } 
-                    bookEl.innerHTML = `<div class="flex flex-col sm:flex-row gap-4 sm:gap-6 w-full flex-1 items-center sm:items-start text-center sm:text-left"><img src="${book.coverUrl}" alt="${book.title}" class="w-24 sm:w-[5.5rem] h-auto sm:h-[8.5rem] object-cover rounded-md book-shadow shrink-0 transition-transform group-hover:-translate-y-1 mx-auto sm:mx-0"><div class="flex-1 flex flex-col min-w-0"><h3 class="text-base sm:text-lg font-semibold text-brand-text mb-0.5 group-hover:text-brand-primary transition-colors line-clamp-2">${book.title}</h3><p class="text-xs sm:text-sm text-brand-muted mb-2 sm:mb-3 truncate">by ${book.author}</p><p class="text-xs sm:text-sm text-brand-text leading-relaxed line-clamp-3 sm:line-clamp-3 mb-2 sm:mb-3">${book.description}</p><div class="flex items-center justify-center sm:justify-start text-xs sm:text-sm font-semibold text-brand-text mt-auto"><i data-lucide="star" class="w-3 h-3 sm:w-4 sm:h-4 text-brand-primary fill-brand-primary mr-1"></i> ${book.rating.toFixed(2)}</div></div></div><div class="relative z-10 w-full sm:w-40 flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start shrink-0 mt-6 sm:mt-0 border-t border-brand-border sm:border-0 pt-6 sm:pt-0" onclick="event.stopPropagation()"><button onclick="toggleMenu('list-menu-${book.id}', event)" class="whitespace-nowrap shrink-0 w-auto sm:w-full flex items-center justify-between border border-brand-border rounded-full px-5 py-2 sm:py-1.5 text-xs font-semibold text-brand-text hover:bg-brand-surface transition-colors focus:outline-none bg-brand-card">${book.status} <i data-lucide="chevron-down" class="w-3 h-3 ml-2 text-brand-muted"></i></button><div id="list-menu-${book.id}" class="card-menu hidden absolute top-[56px] sm:top-[36px] left-0 sm:left-auto right-auto sm:right-0 w-48 sm:w-40 bg-brand-card border border-brand-border rounded-xl shadow-lg py-1 overflow-hidden z-50"><button onclick="openAddToListModalForId('${book.id}', '${book.tableName}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors">Add to List...</button><button onclick="moveBook('${book.id}', '${book.tableName}', 'currently_reading')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${book.tableName==='currently_reading'?'hidden':''}">Move to Reading</button><button onclick="moveBook('${book.id}', '${book.tableName}', 'reading_later')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${book.tableName==='reading_later'?'hidden':''}">Move to Later</button><button onclick="moveBook('${book.id}', '${book.tableName}', 'read_books')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${book.tableName==='read_books'?'hidden':''}">Move to Read</button><button onclick="deleteBook('${book.id}', '${book.tableName}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-red-500 hover:bg-red-500/10 transition-colors border-t border-brand-border">Remove from library</button></div><div class="flex flex-col items-end sm:mt-3 flex-1 sm:w-full pl-4 sm:pl-0">${rightSideHTML}</div></div>`; 
+                    bookEl.innerHTML = `<div class="flex flex-col sm:flex-row gap-4 sm:gap-6 w-full flex-1 items-center sm:items-start text-center sm:text-left"><img src="${book.coverUrl}" alt="${book.title}" class="w-24 sm:w-[5.5rem] h-auto sm:h-[8.5rem] object-cover rounded-md book-shadow shrink-0 transition-transform group-hover:-translate-y-1 mx-auto sm:mx-0"><div class="flex-1 flex flex-col min-w-0"><h3 class="text-base sm:text-lg font-semibold text-brand-text mb-0.5 group-hover:text-brand-primary transition-colors line-clamp-2">${book.title}</h3><p class="text-xs sm:text-sm text-brand-muted mb-2 sm:mb-3 truncate">${renderAuthorLink(book.author)}</p><p class="text-xs sm:text-sm text-brand-text leading-relaxed line-clamp-3 sm:line-clamp-3 mb-2 sm:mb-3">${book.description}</p><div class="flex items-center justify-center sm:justify-start text-xs sm:text-sm font-semibold text-brand-text mt-auto"><i data-lucide="star" class="w-3 h-3 sm:w-4 sm:h-4 text-brand-primary fill-brand-primary mr-1"></i> ${book.rating.toFixed(2)}</div></div></div><div class="relative z-10 w-full sm:w-40 flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start shrink-0 mt-6 sm:mt-0 border-t border-brand-border sm:border-0 pt-6 sm:pt-0" onclick="event.stopPropagation()"><button onclick="toggleMenu('list-menu-${book.id}', event)" class="whitespace-nowrap shrink-0 w-auto sm:w-full flex items-center justify-between border border-brand-border rounded-full px-5 py-2 sm:py-1.5 text-xs font-semibold text-brand-text hover:bg-brand-surface transition-colors focus:outline-none bg-brand-card">${book.status} <i data-lucide="chevron-down" class="w-3 h-3 ml-2 text-brand-muted"></i></button><div id="list-menu-${book.id}" class="card-menu hidden absolute top-[56px] sm:top-[36px] left-0 sm:left-auto right-auto sm:right-0 w-48 sm:w-40 bg-brand-card border border-brand-border rounded-xl shadow-lg py-1 overflow-hidden z-50"><button onclick="openAddToListModalForId('${book.id}', '${book.tableName}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors">Add to List...</button><button onclick="moveBook('${book.id}', '${book.tableName}', 'currently_reading')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${book.tableName==='currently_reading'?'hidden':''}">Move to Reading</button><button onclick="moveBook('${book.id}', '${book.tableName}', 'reading_later')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${book.tableName==='reading_later'?'hidden':''}">Move to Later</button><button onclick="moveBook('${book.id}', '${book.tableName}', 'read_books')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${book.tableName==='read_books'?'hidden':''}">Move to Read</button><button onclick="deleteBook('${book.id}', '${book.tableName}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-red-500 hover:bg-red-500/10 transition-colors border-t border-brand-border">Remove from library</button></div><div class="flex flex-col items-end sm:mt-3 flex-1 sm:w-full pl-4 sm:pl-0">${rightSideHTML}</div></div>`; 
                     container.appendChild(bookEl); 
                 }); 
                 if(window.lucide) lucide.createIcons(); 
@@ -1164,7 +1298,7 @@
         }
 
         async function showAllRecommendations() {
-            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'all-genres', 'view-single-list', 'view-dedicated-notes'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); });
+            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'all-genres', 'view-single-list', 'view-dedicated-notes', 'view-author'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); });
             document.getElementById('book-details-section').classList.add('hidden'); document.getElementById('view-genre-books').classList.add('hidden'); document.getElementById('view-recommendations').classList.remove('hidden');
             const grid = document.getElementById('recs-grid'); const loading = document.getElementById('recs-loading'); grid.innerHTML = ''; loading.classList.remove('hidden');
             let authorsToSearch = globalUserAuthors.length > 0 ? [...globalUserAuthors].sort(() => 0.5 - Math.random()).slice(0, 4) : ['Stephen King', 'J.K. Rowling', 'Agatha Christie'];
@@ -1178,14 +1312,14 @@
             finalRecs.forEach(book => {
                 const title = book.title || 'Unknown Title'; const author = book.author_name ? book.author_name[0] : 'Unknown Author'; const year = book.first_publish_year || 'N/A'; const coverUrl = `https://covers.openlibrary.org/b/id/${book.cover_i}-M.jpg`; const totalPages = book.number_of_pages_median || 300;
                 const cardHTML = document.createElement('div'); cardHTML.className = "book-card flex flex-col gap-2 group cursor-pointer h-full relative"; cardHTML.setAttribute('data-book-title', title); cardHTML.setAttribute('data-book-author', author); cardHTML.onclick = () => openDetailedView({ title, author_name: [author], cover_i: book.cover_i, key: book.key, coverUrl, total_pages: totalPages }, 'recommendations');
-                cardHTML.innerHTML = `<div class="relative w-full aspect-[2/3]"><img src="${coverUrl}" alt="${title}" class="w-full h-full object-cover rounded-md book-shadow transition-transform group-hover:-translate-y-1">${getLibraryBadgeHTML(title, author)}</div><div class="flex flex-col mt-1 flex-1"><h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug">${title}</h4><p class="text-[11px] text-brand-muted mt-1 truncate">by ${author}</p><p class="text-[10px] text-brand-primary mt-auto pt-1">First published: ${year}</p></div>`;
+                cardHTML.innerHTML = `<div class="relative w-full aspect-[2/3]"><img src="${coverUrl}" alt="${title}" class="w-full h-full object-cover rounded-md book-shadow transition-transform group-hover:-translate-y-1">${getLibraryBadgeHTML(title, author)}</div><div class="flex flex-col mt-1 flex-1"><h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug">${title}</h4><p class="text-[11px] text-brand-muted mt-1 truncate">${renderAuthorLink(author)}</p><p class="text-[10px] text-brand-primary mt-auto pt-1">First published: ${year}</p></div>`;
                 grid.appendChild(cardHTML);
             });
             if(window.lucide) lucide.createIcons();
         }
 
         async function showAllTrending() {
-            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'all-genres', 'view-single-list', 'view-dedicated-notes'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); });
+            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'all-genres', 'view-single-list', 'view-dedicated-notes', 'view-author'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); });
             document.getElementById('book-details-section').classList.add('hidden'); document.getElementById('explore-default-content').classList.add('hidden'); document.getElementById('view-genre-books').classList.add('hidden'); document.getElementById('view-trending').classList.remove('hidden');
             const grid = document.getElementById('trending-grid'); const loading = document.getElementById('trending-loading'); grid.innerHTML = '';
             if (globalTrendingBooks.length === 0) { loading.classList.remove('hidden'); await fetchInitialTrending(); }
@@ -1193,7 +1327,7 @@
             booksToRender.forEach(book => {
                 const title = book.title || 'Unknown Title'; const author = book.author_name ? book.author_name[0] : 'Unknown Author'; const year = book.first_publish_year || 'N/A';
                 const cardHTML = document.createElement('div'); cardHTML.className = "book-card flex flex-col gap-2 group cursor-pointer h-full relative"; cardHTML.setAttribute('data-book-title', title); cardHTML.setAttribute('data-book-author', author); cardHTML.onclick = () => openDetailedView(book, 'trending');
-                cardHTML.innerHTML = `<div class="relative w-full aspect-[2/3]"><img src="${book.coverUrl}" alt="${title}" class="w-full h-full object-cover rounded-md book-shadow transition-transform group-hover:-translate-y-1">${getLibraryBadgeHTML(title, author)}</div><div class="flex flex-col mt-1 flex-1"><h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug">${title}</h4><p class="text-[11px] text-brand-muted mt-1 truncate">by ${author}</p><p class="text-[10px] text-brand-primary mt-auto pt-1">First published: ${year}</p></div>`;
+                cardHTML.innerHTML = `<div class="relative w-full aspect-[2/3]"><img src="${book.coverUrl}" alt="${title}" class="w-full h-full object-cover rounded-md book-shadow transition-transform group-hover:-translate-y-1">${getLibraryBadgeHTML(title, author)}</div><div class="flex flex-col mt-1 flex-1"><h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug">${title}</h4><p class="text-[11px] text-brand-muted mt-1 truncate">${renderAuthorLink(author)}</p><p class="text-[10px] text-brand-primary mt-auto pt-1">First published: ${year}</p></div>`;
                 grid.appendChild(cardHTML);
             });
             if(window.lucide) lucide.createIcons();
@@ -1203,14 +1337,14 @@
             let query = page === 1 ? document.getElementById('searchInput').value.trim() : currentSearchQuery;
             if (page === 1) currentSearchQuery = query; if (!query) return; currentSearchPage = page;
             const defaultContent = document.getElementById('explore-default-content'); const resultsSection = document.getElementById('search-results-section'); const resultsGrid = document.getElementById('search-results-grid'); const searchStatus = document.getElementById('search-status'); const searchSpinner = document.getElementById('search-spinner'); const paginationContainer = document.getElementById('search-pagination');
-            defaultContent.classList.add('hidden'); document.getElementById('book-details-section').classList.add('hidden'); document.getElementById('view-dedicated-notes').classList.add('hidden'); resultsSection.classList.remove('hidden'); searchSpinner.classList.remove('hidden'); resultsGrid.innerHTML = ''; searchStatus.textContent = ''; searchStatus.classList.add('hidden'); paginationContainer.classList.add('hidden');
+            defaultContent.classList.add('hidden'); document.getElementById('book-details-section').classList.add('hidden'); document.getElementById('view-dedicated-notes').classList.add('hidden'); document.getElementById('view-author').classList.add('hidden'); resultsSection.classList.remove('hidden'); searchSpinner.classList.remove('hidden'); resultsGrid.innerHTML = ''; searchStatus.textContent = ''; searchStatus.classList.add('hidden'); paginationContainer.classList.add('hidden');
             try {
                 const response = await fetchWithRetry(`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=15&page=${page}`); const data = await response.json(); searchSpinner.classList.add('hidden');
                 if (!data.docs || data.docs.length === 0) { searchStatus.textContent = `No results found for "${query}". Try another title or author.`; searchStatus.classList.remove('hidden'); return; }
                 data.docs.forEach((book) => {
                     const title = book.title || 'Unknown Title'; const author = book.author_name ? book.author_name[0] : 'Unknown Author'; const year = book.first_publish_year || 'N/A'; const coverUrl = book.cover_i ? `https://covers.openlibrary.org/b/id/${book.cover_i}-M.jpg` : ''; book.coverUrl = coverUrl; book.total_pages = book.number_of_pages_median || 300;
                     const cardHTML = document.createElement('div'); cardHTML.className = "book-card flex flex-col gap-2 group cursor-pointer h-full relative"; cardHTML.setAttribute('data-book-title', title); cardHTML.setAttribute('data-book-author', author); cardHTML.onclick = () => openDetailedView(book, 'search-results');
-                    cardHTML.innerHTML = `<div class="relative w-full aspect-[2/3]"><img src="${coverUrl || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='150' style='background:%23fde9d9'></svg>"}" alt="${title}" class="w-full h-full object-cover rounded-md book-shadow transition-transform group-hover:-translate-y-1">${getLibraryBadgeHTML(title, author)}</div><div class="flex flex-col mt-1 flex-1"><h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug">${title}</h4><p class="text-[11px] text-brand-muted mt-1 truncate">by ${author}</p><p class="text-[10px] text-brand-primary mt-auto pt-1">First published: ${year}</p></div>`;
+                    cardHTML.innerHTML = `<div class="relative w-full aspect-[2/3]"><img src="${coverUrl || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='150' style='background:%23fde9d9'></svg>"}" alt="${title}" class="w-full h-full object-cover rounded-md book-shadow transition-transform group-hover:-translate-y-1">${getLibraryBadgeHTML(title, author)}</div><div class="flex flex-col mt-1 flex-1"><h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug">${title}</h4><p class="text-[11px] text-brand-muted mt-1 truncate">${renderAuthorLink(author)}</p><p class="text-[10px] text-brand-primary mt-auto pt-1">First published: ${year}</p></div>`;
                     resultsGrid.appendChild(cardHTML);
                 });
                 totalSearchPages = Math.ceil(data.numFound / 15); if (totalSearchPages > 1) renderPaginationControls(paginationContainer);
@@ -1356,7 +1490,7 @@
 
         async function openDetailedView(book, sourceContext = 'home') {
             if (!book) return; currentlyViewingBook = book; lastViewBeforeDetails = sourceContext;
-            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'view-single-list', 'all-genres', 'genre-books', 'view-dedicated-notes'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); });
+            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'view-single-list', 'all-genres', 'genre-books', 'view-dedicated-notes', 'view-author'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); });
             document.getElementById('search-results-section').classList.add('hidden'); document.getElementById('explore-default-content').classList.add('hidden'); document.getElementById('book-details-section').classList.remove('hidden');
             const contentDiv = document.getElementById('book-details-content'); const loadingDiv = document.getElementById('book-details-loading'); contentDiv.innerHTML = ''; loadingDiv.classList.remove('hidden');
             const title = book.title || 'Unknown Title'; const author = book.author_name ? book.author_name[0] : (book.author || 'Unknown Author'); const coverUrl = book.coverUrl || (book.cover_i ? `https://covers.openlibrary.org/b/id/${book.cover_i}-L.jpg` : `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='300' style='background:%23fde9d9'></svg>`);
@@ -1364,18 +1498,36 @@
             try {
                 const fetchPromises = [];
                 if (book.key && typeof book.key === 'string' && book.key.startsWith('/')) { fetchPromises.push(fetchWithRetry(`https://openlibrary.org${book.key}.json`).then(res => res.json()).then(data => { if (data.description) description = typeof data.description === 'string' ? data.description : data.description.value; }).catch(err => {})); }
-                if (author !== 'Unknown Author') { fetchPromises.push(fetchWithRetry(`https://openlibrary.org/search.json?author=${encodeURIComponent(author)}&limit=10`).then(res => res.json()).then(data => { const simBooks = (data.docs || []).filter(b => b.title !== title && b.key !== book.key).slice(0, 3); if (simBooks.length > 0) { const cardsHTML = simBooks.map((simBook) => { const simTitle = simBook.title || 'Unknown Title'; const simAuthor = simBook.author_name ? simBook.author_name[0] : author; const simCover = simBook.cover_i ? `https://covers.openlibrary.org/b/id/${simBook.cover_i}-S.jpg` : ''; const simRating = (Math.random() * (4.9 - 3.5) + 3.5).toFixed(2); const stringifiedSim = JSON.stringify({ title: simTitle, author_name: [simAuthor], cover_i: simBook.cover_i, key: simBook.key, coverUrl: simCover, total_pages: simBook.number_of_pages_median || 300 }).replace(/"/g, '&quot;'); return `<div class="flex items-center gap-3 w-full max-w-[200px] cursor-pointer group" onclick="openDetailedView(${stringifiedSim}, '${sourceContext}')"><img src="${simCover || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='72' style='background:%23e2e8f0'></svg>"}" alt="${simTitle}" class="w-12 h-18 object-cover rounded shadow-sm group-hover:scale-105 transition-transform"><div class="flex flex-col overflow-hidden"><h5 class="text-xs font-semibold text-brand-text truncate group-hover:text-brand-primary transition-colors">${simTitle}</h5><span class="text-[10px] text-brand-muted truncate">by ${simAuthor}</span><div class="flex items-center text-[10px] font-semibold text-brand-text mt-1"><i data-lucide="star" class="w-3 h-3 text-brand-primary fill-brand-primary mr-1"></i> ${simRating}</div></div></div>`; }).join(''); similarBooksHTML = `<hr class="border-brand-border"><div class="w-full max-w-4xl mx-auto"><h3 class="text-center font-semibold text-brand-text mb-8">Other books you might enjoy</h3><div class="grid grid-cols-1 sm:grid-cols-3 gap-6 justify-items-center">${cardsHTML}</div></div>`; } }).catch(err => {})); }
+                if (author !== 'Unknown Author') { fetchPromises.push(fetchWithRetry(`https://openlibrary.org/search.json?author=${encodeURIComponent(author)}&limit=10`).then(res => res.json()).then(data => { const simBooks = (data.docs || []).filter(b => b.title !== title && b.key !== book.key).slice(0, 3); if (simBooks.length > 0) { const cardsHTML = simBooks.map((simBook) => { const simTitle = simBook.title || 'Unknown Title'; const simAuthor = simBook.author_name ? simBook.author_name[0] : author; const simCover = simBook.cover_i ? `https://covers.openlibrary.org/b/id/${simBook.cover_i}-S.jpg` : ''; const simRating = (Math.random() * (4.9 - 3.5) + 3.5).toFixed(2); const stringifiedSim = JSON.stringify({ title: simTitle, author_name: [simAuthor], cover_i: simBook.cover_i, key: simBook.key, coverUrl: simCover, total_pages: simBook.number_of_pages_median || 300 }).replace(/"/g, '&quot;'); return `<div class="flex items-center gap-3 w-full max-w-[200px] cursor-pointer group" onclick="openDetailedView(${stringifiedSim}, '${sourceContext}')"><img src="${simCover || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='72' style='background:%23e2e8f0'></svg>"}" alt="${simTitle}" class="w-12 h-18 object-cover rounded shadow-sm group-hover:scale-105 transition-transform"><div class="flex flex-col overflow-hidden"><h5 class="text-xs font-semibold text-brand-text truncate group-hover:text-brand-primary transition-colors">${simTitle}</h5><span class="text-[10px] text-brand-muted truncate">${renderAuthorLink(simAuthor)}</span><div class="flex items-center text-[10px] font-semibold text-brand-text mt-1"><i data-lucide="star" class="w-3 h-3 text-brand-primary fill-brand-primary mr-1"></i> ${simRating}</div></div></div>`; }).join(''); similarBooksHTML = `<hr class="border-brand-border"><div class="w-full max-w-4xl mx-auto"><h3 class="text-center font-semibold text-brand-text mb-8">Other books you might enjoy</h3><div class="grid grid-cols-1 sm:grid-cols-3 gap-6 justify-items-center">${cardsHTML}</div></div>`; } }).catch(err => {})); }
                 await Promise.all(fetchPromises);
             } catch (err) {}
             loadingDiv.classList.add('hidden'); const rating = (Math.random() * (4.9 - 3.5) + 3.5).toFixed(2); const formattedDescription = description.split('\n').filter(p => p.trim() !== '').map(p => `<p class="mb-3">${p}</p>`).join(''); const bookKeyForNotes = book.key || title;
-            contentDiv.innerHTML = `<div class="flex flex-col md:flex-row gap-6 sm:gap-8 lg:gap-12"><img src="${coverUrl}" alt="${title}" class="w-40 sm:w-48 md:w-56 lg:w-64 h-auto object-cover rounded-xl shadow-lg shrink-0 mx-auto md:mx-0"><div class="flex flex-col items-center md:items-start text-center md:text-left"><h2 class="text-xl sm:text-2xl md:text-3xl font-bold text-brand-text mb-2">${title}</h2><p class="text-sm md:text-base text-brand-muted mb-3">by ${author}</p><div class="flex items-center text-sm font-semibold text-brand-text mb-6"><i data-lucide="star" class="w-4 h-4 text-brand-primary fill-brand-primary mr-1"></i> ${rating}</div><div class="flex flex-col sm:flex-row flex-wrap justify-center md:justify-start gap-3 mb-8 w-full"><div id="detailed-library-action-container" class="relative group z-40"></div><button onclick="openAddToListModal()" class="flex items-center justify-center bg-brand-card border border-brand-border rounded-full px-5 py-2.5 text-xs font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors shadow-sm focus:outline-none w-full sm:w-auto"><i data-lucide="plus" class="w-3 h-3 mr-2"></i> Add to List</button></div><div class="text-sm text-brand-text leading-relaxed opacity-90 max-w-3xl text-left">${formattedDescription}</div></div></div><div class="mt-8 border-t border-brand-border pt-8 w-full" id="book-notes-container"><h3 class="font-semibold text-lg text-brand-text mb-4">Notes & Quotes</h3><div class="flex flex-col gap-3 mb-8 max-w-4xl"><textarea id="new-note-content" rows="3" class="w-full bg-brand-bg border border-brand-border rounded-xl p-4 text-sm text-brand-text focus:ring-2 focus:ring-brand-primaryLight outline-none shadow-sm resize-none custom-scrollbar" placeholder="Save a bookmarked sentence, quote, or personal thought..."></textarea><button onclick="saveNote('${bookKeyForNotes}', 'new-note-content')" class="bg-brand-primary text-white font-semibold py-2 px-6 rounded-full shadow-sm hover:bg-brand-primaryDark transition-colors self-end flex items-center justify-center sm:justify-start gap-2 text-sm w-full sm:w-fit"><i data-lucide="plus" class="w-4 h-4"></i> Add Note</button></div><div id="book-notes-list" class="flex flex-col gap-4 max-w-4xl"></div></div>${similarBooksHTML}`;
+            contentDiv.innerHTML = `<div class="flex flex-col md:flex-row gap-6 sm:gap-8 lg:gap-12"><img src="${coverUrl}" alt="${title}" class="w-40 sm:w-48 md:w-56 lg:w-64 h-auto object-cover rounded-xl shadow-lg shrink-0 mx-auto md:mx-0"><div class="flex flex-col items-center md:items-start text-center md:text-left"><h2 class="text-xl sm:text-2xl md:text-3xl font-bold text-brand-text mb-2">${title}</h2><p class="text-sm md:text-base text-brand-muted mb-3 w-fit">${renderAuthorLink(author)}</p><div class="flex items-center text-sm font-semibold text-brand-text mb-6"><i data-lucide="star" class="w-4 h-4 text-brand-primary fill-brand-primary mr-1"></i> ${rating}</div><div class="flex flex-col sm:flex-row flex-wrap justify-center md:justify-start gap-3 mb-8 w-full"><div id="detailed-library-action-container" class="relative group z-40"></div><button onclick="openAddToListModal()" class="flex items-center justify-center bg-brand-card border border-brand-border rounded-full px-5 py-2.5 text-xs font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors shadow-sm focus:outline-none w-full sm:w-auto"><i data-lucide="plus" class="w-3 h-3 mr-2"></i> Add to List</button></div><div class="text-sm text-brand-text leading-relaxed opacity-90 max-w-3xl text-left">${formattedDescription}</div></div></div><div class="mt-8 border-t border-brand-border pt-8 w-full" id="book-notes-container"><h3 class="font-semibold text-lg text-brand-text mb-4">Notes & Quotes</h3><div class="flex flex-col gap-3 mb-8 max-w-4xl"><textarea id="new-note-content" rows="3" class="w-full bg-brand-bg border border-brand-border rounded-xl p-4 text-sm text-brand-text focus:ring-2 focus:ring-brand-primaryLight outline-none shadow-sm resize-none custom-scrollbar" placeholder="Save a bookmarked sentence, quote, or personal thought..."></textarea><button onclick="saveNote('${bookKeyForNotes}', 'new-note-content')" class="bg-brand-primary text-white font-semibold py-2 px-6 rounded-full shadow-sm hover:bg-brand-primaryDark transition-colors self-end flex items-center justify-center sm:justify-start gap-2 text-sm w-full sm:w-fit"><i data-lucide="plus" class="w-4 h-4"></i> Add Note</button></div><div id="book-notes-list" class="flex flex-col gap-4 max-w-4xl"></div></div>${similarBooksHTML}`;
             renderDetailedLibraryAction(); renderBookNotesList(bookKeyForNotes); if(window.lucide) lucide.createIcons(); document.getElementById('book-details-section').scrollIntoView({ behavior: 'smooth' });
         }
-        function closeBookDetails() { document.getElementById('book-details-section').classList.add('hidden'); if (lastViewBeforeDetails === 'search-results') { document.getElementById('view-explore').classList.remove('hidden'); document.getElementById('search-results-section').classList.remove('hidden'); } else if (lastViewBeforeDetails === 'recommendations') document.getElementById('view-recommendations').classList.remove('hidden'); else if (lastViewBeforeDetails === 'trending') document.getElementById('view-trending').classList.remove('hidden'); else if (lastViewBeforeDetails === 'genre-books') document.getElementById('view-genre-books').classList.remove('hidden'); else if (lastViewBeforeDetails === 'single-list') document.getElementById('view-single-list').classList.remove('hidden'); else if (lastViewBeforeDetails === 'notes') document.getElementById('view-notes').classList.remove('hidden'); else if (lastViewBeforeDetails === 'explore') { document.getElementById('view-explore').classList.remove('hidden'); document.getElementById('explore-default-content').classList.remove('hidden'); } else switchTab(lastActiveTab); }
+        function closeBookDetails() { 
+            document.getElementById('book-details-section').classList.add('hidden'); 
+            if (lastViewBeforeDetails === 'search-results') { 
+                document.getElementById('view-explore').classList.remove('hidden'); 
+                document.getElementById('search-results-section').classList.remove('hidden'); 
+            } else if (lastViewBeforeDetails === 'recommendations') document.getElementById('view-recommendations').classList.remove('hidden'); 
+            else if (lastViewBeforeDetails === 'trending') document.getElementById('view-trending').classList.remove('hidden'); 
+            else if (lastViewBeforeDetails === 'genre-books') document.getElementById('view-genre-books').classList.remove('hidden'); 
+            else if (lastViewBeforeDetails === 'single-list') document.getElementById('view-single-list').classList.remove('hidden'); 
+            else if (lastViewBeforeDetails === 'notes') document.getElementById('view-notes').classList.remove('hidden'); 
+            else if (lastViewBeforeDetails === 'author') {
+                document.getElementById('view-author').classList.remove('hidden');
+                document.getElementById('view-author').classList.add('flex');
+            }
+            else if (lastViewBeforeDetails === 'explore') { 
+                document.getElementById('view-explore').classList.remove('hidden'); 
+                document.getElementById('explore-default-content').classList.remove('hidden'); 
+            } else switchTab(lastActiveTab); 
+        }
 
         function openDedicatedNotes(bookKey, title, author, coverUrl) {
             currentlyViewingBook = { key: bookKey, title: title, author_name: [author], coverUrl: coverUrl };
-            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'view-single-list', 'all-genres', 'genre-books', 'view-dedicated-notes'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); });
+            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'view-single-list', 'all-genres', 'genre-books', 'view-dedicated-notes', 'view-author'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); });
             document.getElementById('book-details-section').classList.add('hidden');
             document.getElementById('search-results-section').classList.add('hidden');
             document.getElementById('explore-default-content').classList.add('hidden');
@@ -1385,7 +1537,7 @@
             viewDedicated.classList.add('flex');
             
             document.getElementById('dedicated-notes-title').textContent = title;
-            document.getElementById('dedicated-notes-author').textContent = `by ${author}`;
+            document.getElementById('dedicated-notes-author').innerHTML = renderAuthorLink(author);
             document.getElementById('dedicated-notes-cover').src = coverUrl;
             
             const saveBtn = document.getElementById('dedicated-save-note-btn');
@@ -1401,12 +1553,12 @@
             switchTab('notes');
         }
 
-        function showAllGenres() { ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); }); document.getElementById('book-details-section').classList.add('hidden'); document.getElementById('view-genre-books').classList.add('hidden'); document.getElementById('view-single-list').classList.add('hidden'); document.getElementById('view-dedicated-notes').classList.add('hidden'); document.getElementById('view-all-genres').classList.remove('hidden'); const grid = document.getElementById('all-genres-grid'); if (grid.children.length === 0) { ALL_GENRES.forEach(g => { const btn = document.createElement('button'); btn.className = "bg-brand-surface border border-brand-border text-brand-text rounded-xl py-4 px-2 text-sm font-semibold hover:bg-brand-primary hover:border-brand-primary hover:text-white transition-all shadow-sm transform hover:-translate-y-1"; btn.textContent = g.name; btn.onclick = () => fetchGenreBooks(g.id, g.name, 'all-genres'); grid.appendChild(btn); }); } }
+        function showAllGenres() { ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'view-author'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); }); document.getElementById('book-details-section').classList.add('hidden'); document.getElementById('view-genre-books').classList.add('hidden'); document.getElementById('view-single-list').classList.add('hidden'); document.getElementById('view-dedicated-notes').classList.add('hidden'); document.getElementById('view-all-genres').classList.remove('hidden'); const grid = document.getElementById('all-genres-grid'); if (grid.children.length === 0) { ALL_GENRES.forEach(g => { const btn = document.createElement('button'); btn.className = "bg-brand-surface border border-brand-border text-brand-text rounded-xl py-4 px-2 text-sm font-semibold hover:bg-brand-primary hover:border-brand-primary hover:text-white transition-all shadow-sm transform hover:-translate-y-1"; btn.textContent = g.name; btn.onclick = () => fetchGenreBooks(g.id, g.name, 'all-genres'); grid.appendChild(btn); }); } }
         async function fetchGenreBooks(genreId, genreName, source = 'explore') {
-            lastGenreViewContext = source; ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'all-genres', 'view-single-list', 'view-dedicated-notes'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); }); document.getElementById('book-details-section').classList.add('hidden');
+            lastGenreViewContext = source; ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'all-genres', 'view-single-list', 'view-dedicated-notes', 'view-author'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); }); document.getElementById('book-details-section').classList.add('hidden');
             const viewGenre = document.getElementById('view-genre-books'); viewGenre.classList.remove('hidden'); document.getElementById('genre-books-title').textContent = `${genreName} Books`;
             const grid = document.getElementById('genre-books-grid'); const loading = document.getElementById('genre-loading'); grid.innerHTML = ''; loading.classList.remove('hidden');
-            try { const randomOffset = Math.floor(Math.random() * 50); const res = await fetchWithRetry(`https://openlibrary.org/subjects/${genreId.toLowerCase()}.json?limit=30&offset=${randomOffset}`); const data = await res.json(); loading.classList.add('hidden'); if (!data.works || data.works.length === 0) { grid.innerHTML = '<p class="col-span-full text-center text-brand-muted py-8">No books found for this genre.</p>'; return; } const randomizedWorks = data.works.sort(() => 0.5 - Math.random()).slice(0, 15); randomizedWorks.forEach(work => { const title = work.title || 'Unknown Title'; const author = work.authors && work.authors.length > 0 ? work.authors[0].name : 'Unknown Author'; const year = work.first_publish_year || 'N/A'; const cover_i = work.cover_id; const coverUrl = cover_i ? `https://covers.openlibrary.org/b/id/${cover_i}-M.jpg` : ''; const cardHTML = document.createElement('div'); cardHTML.className = "book-card flex flex-col gap-2 group cursor-pointer h-full relative"; cardHTML.setAttribute('data-book-title', title); cardHTML.setAttribute('data-book-author', author); cardHTML.onclick = () => openDetailedView({ title, author_name: [author], cover_i, key: work.key, coverUrl }, 'genre-books'); cardHTML.innerHTML = `<div class="relative w-full aspect-[2/3]"><img src="${coverUrl || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='150' style='background:%23fde9d9'></svg>"}" alt="${title}" class="w-full h-full object-cover rounded-md book-shadow transition-transform group-hover:-translate-y-1">${getLibraryBadgeHTML(title, author)}</div><div class="flex flex-col mt-1 flex-1"><h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug">${title}</h4><p class="text-[11px] text-brand-muted mt-1 truncate">by ${author}</p><p class="text-[10px] text-brand-primary mt-auto pt-1">First published: ${year}</p></div>`; grid.appendChild(cardHTML); }); } catch (err) { loading.classList.add('hidden'); grid.innerHTML = '<p class="col-span-full text-center text-red-500 py-8">Error loading genres. Please try again later.</p>'; }
+            try { const randomOffset = Math.floor(Math.random() * 50); const res = await fetchWithRetry(`https://openlibrary.org/subjects/${genreId.toLowerCase()}.json?limit=30&offset=${randomOffset}`); const data = await res.json(); loading.classList.add('hidden'); if (!data.works || data.works.length === 0) { grid.innerHTML = '<p class="col-span-full text-center text-brand-muted py-8">No books found for this genre.</p>'; return; } const randomizedWorks = data.works.sort(() => 0.5 - Math.random()).slice(0, 15); randomizedWorks.forEach(work => { const title = work.title || 'Unknown Title'; const author = work.authors && work.authors.length > 0 ? work.authors[0].name : 'Unknown Author'; const year = work.first_publish_year || 'N/A'; const cover_i = work.cover_id; const coverUrl = cover_i ? `https://covers.openlibrary.org/b/id/${cover_i}-M.jpg` : ''; const cardHTML = document.createElement('div'); cardHTML.className = "book-card flex flex-col gap-2 group cursor-pointer h-full relative"; cardHTML.setAttribute('data-book-title', title); cardHTML.setAttribute('data-book-author', author); cardHTML.onclick = () => openDetailedView({ title, author_name: [author], cover_i, key: work.key, coverUrl }, 'genre-books'); cardHTML.innerHTML = `<div class="relative w-full aspect-[2/3]"><img src="${coverUrl || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='150' style='background:%23fde9d9'></svg>"}" alt="${title}" class="w-full h-full object-cover rounded-md book-shadow transition-transform group-hover:-translate-y-1">${getLibraryBadgeHTML(title, author)}</div><div class="flex flex-col mt-1 flex-1"><h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug">${title}</h4><p class="text-[11px] text-brand-muted mt-1 truncate">${renderAuthorLink(author)}</p><p class="text-[10px] text-brand-primary mt-auto pt-1">First published: ${year}</p></div>`; grid.appendChild(cardHTML); }); } catch (err) { loading.classList.add('hidden'); grid.innerHTML = '<p class="col-span-full text-center text-red-500 py-8">Error loading genres. Please try again later.</p>'; }
         }
         function closeGenreBooks() { document.getElementById('view-genre-books').classList.add('hidden'); if (lastGenreViewContext === 'all-genres') { document.getElementById('view-all-genres').classList.remove('hidden'); } else { document.getElementById('view-explore').classList.remove('hidden'); document.getElementById('explore-default-content').classList.remove('hidden'); } }
 
@@ -1487,7 +1639,7 @@
             uniqueBooks.forEach(book => { 
                 const cardHTML = document.createElement('div'); cardHTML.className = "flex flex-col gap-2 group cursor-pointer h-full relative"; 
                 cardHTML.onclick = () => openDedicatedNotes(book.key, book.title, book.author, book.coverUrl); 
-                cardHTML.innerHTML = `<div class="relative w-full aspect-[2/3]"><img src="${book.coverUrl}" alt="${book.title}" class="w-full h-full object-cover rounded-md book-shadow transition-transform group-hover:-translate-y-1"><div class="absolute -top-2 -right-2 bg-brand-primary text-white text-[10px] font-bold w-6 h-6 flex items-center justify-center rounded-full shadow-md z-20 border-2 border-brand-card">${book.noteCount}</div></div><div class="flex flex-col mt-1 flex-1"><h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug group-hover:text-brand-primary transition-colors">${book.title}</h4><p class="text-[11px] text-brand-muted mt-1 truncate">by ${book.author}</p></div>`; 
+                cardHTML.innerHTML = `<div class="relative w-full aspect-[2/3]"><img src="${book.coverUrl}" alt="${book.title}" class="w-full h-full object-cover rounded-md book-shadow transition-transform group-hover:-translate-y-1"><div class="absolute -top-2 -right-2 bg-brand-primary text-white text-[10px] font-bold w-6 h-6 flex items-center justify-center rounded-full shadow-md z-20 border-2 border-brand-card">${book.noteCount}</div></div><div class="flex flex-col mt-1 flex-1"><h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug group-hover:text-brand-primary transition-colors">${book.title}</h4><p class="text-[11px] text-brand-muted mt-1 truncate">${renderAuthorLink(book.author)}</p></div>`; 
                 grid.appendChild(cardHTML); 
             }); 
             if(window.lucide) lucide.createIcons(); 
