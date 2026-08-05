@@ -835,19 +835,122 @@
             if(window.lucide) lucide.createIcons(); modal.classList.remove('hidden');
         }
         function closeAddToListModal() { document.getElementById('add-to-list-modal').classList.add('hidden'); currentlyAddingBook = null; }
+        
         async function addBookToCustomList(listId) {
             if (!currentlyAddingBook) return; const book = currentlyAddingBook; const title = book.title || 'Unknown Title'; const author = book.author_name ? book.author_name[0] : 'Unknown Author'; const coverUrl = book.coverUrl || (book.cover_i ? `https://covers.openlibrary.org/b/id/${book.cover_i}-M.jpg` : ''); const bookKey = book.key || title;
             if (globalListItems.some(item => String(item.list_id) === String(listId) && String(item.book_key) === String(bookKey))) return showToast('Book is already in this list.', 'error');
             if (String(listId).startsWith('local_')) { globalListItems.push({ id: 'local_item_'+Date.now(), list_id: listId, book_key: bookKey, title, author, coverUrl }); showToast('Book added locally', 'success'); openAddToListModal(); return; }
             try { const { error } = await supabaseClient.from('list_items').insert([{ list_id: parseInt(listId), book_key: bookKey, title, author, coverUrl }]); if (error) throw error; showToast('Book added to list!'); globalListItems.push({ list_id: listId, book_key: bookKey, title, author, coverUrl }); openAddToListModal(); } catch (err) { globalListItems.push({ id: 'local_item_'+Date.now(), list_id: listId, book_key: bookKey, title, author, coverUrl }); showToast('Book added locally (DB fallback)', 'success'); openAddToListModal(); }
         }
+        
         async function deleteCustomList(listId = currentViewedListId) { if (!listId || !confirm('Are you sure you want to delete this list?')) return; if (String(listId).startsWith('local_')) { globalCustomLists = globalCustomLists.filter(l => String(l.id) !== String(listId)); showToast('List deleted locally.'); switchTab('books'); renderCustomLists(); return; } try { const { error } = await supabaseClient.from('custom_lists').delete().eq('id', listId); if (error) throw error; showToast('List deleted.'); switchTab('books'); fetchSupabaseData(); } catch (e) { globalCustomLists = globalCustomLists.filter(l => String(l.id) !== String(listId)); showToast('List deleted locally.'); switchTab('books'); renderCustomLists(); } }
-        async function removeBookFromCustomList(itemId, event) { if(event) event.stopPropagation(); if (String(itemId).startsWith('local_')) { globalListItems = globalListItems.filter(i => String(i.id) !== String(itemId)); showToast('Book removed locally.'); if (currentViewedListId) openSingleList(currentViewedListId); return; } try { const { error } = await supabaseClient.from('list_items').delete().eq('id', itemId); if (error) throw error; showToast('Book removed.'); globalListItems = globalListItems.filter(i => String(i.id) !== String(itemId)); if (currentViewedListId) openSingleList(currentViewedListId); } catch (e) { globalListItems = globalListItems.filter(i => String(i.id) !== String(itemId)); showToast('Book removed locally.'); if (currentViewedListId) openSingleList(currentViewedListId); } }
-        function renderCustomLists() { const container = document.getElementById('custom-lists-container'); if(!container) return; container.innerHTML = ''; if (globalCustomLists.length === 0) { container.innerHTML = `<p class="col-span-full text-center text-sm text-brand-muted py-6">You haven't created any lists yet.</p>`; return; } globalCustomLists.forEach(list => { const itemCount = globalListItems.filter(item => String(item.list_id) === String(list.id)).length; const div = document.createElement('div'); div.className = "bg-brand-card border border-brand-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer group flex flex-col h-full"; div.onclick = () => openSingleList(list.id); div.innerHTML = `<div class="flex items-start justify-between mb-3"><div class="bg-brand-surface p-2 rounded-lg text-brand-primary group-hover:scale-110 transition-transform"><i data-lucide="library" class="w-5 h-5"></i></div><span class="bg-brand-surface border border-brand-border text-brand-muted text-[10px] font-bold px-2 py-1 rounded-full">${itemCount} Books</span></div><h4 class="font-semibold text-sm text-brand-text mb-1 group-hover:text-brand-primary transition-colors line-clamp-1">${list.name}</h4><p class="text-[11px] text-brand-muted line-clamp-2 mt-auto leading-relaxed">${list.description || 'No description provided.'}</p>`; container.appendChild(div); }); if(window.lucide) lucide.createIcons(); }
+        
+        async function removeBookFromCustomList(itemId, event) { 
+            if(event) event.stopPropagation(); 
+            if (String(itemId).startsWith('local_')) { 
+                globalListItems = globalListItems.filter(i => String(i.id) !== String(itemId)); 
+                showToast('Book removed locally.'); 
+                if (currentViewedListId) openSingleList(currentViewedListId); 
+                return; 
+            } 
+            try { 
+                const { error } = await supabaseClient.from('list_items').delete().eq('id', itemId); 
+                if (error) throw error; 
+                showToast('Book removed.'); 
+                globalListItems = globalListItems.filter(i => String(i.id) !== String(itemId)); 
+                if (currentViewedListId) openSingleList(currentViewedListId); 
+            } catch (e) { 
+                globalListItems = globalListItems.filter(i => String(i.id) !== String(itemId)); 
+                showToast('Book removed locally.'); 
+                if (currentViewedListId) openSingleList(currentViewedListId); 
+            } 
+        }
+
+        function renderCustomLists() { 
+            const container = document.getElementById('custom-lists-container'); if(!container) return; container.innerHTML = ''; 
+            if (globalCustomLists.length === 0) { container.innerHTML = `<p class="col-span-full text-center text-sm text-brand-muted py-6">You haven't created any lists yet.</p>`; return; } 
+            globalCustomLists.forEach(list => { 
+                const itemCount = globalListItems.filter(item => String(item.list_id) === String(list.id)).length; 
+                const div = document.createElement('div'); div.className = "bg-brand-card border border-brand-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer group flex flex-col h-full"; 
+                div.onclick = () => openSingleList(list.id); 
+                div.innerHTML = `<div class="flex items-start justify-between mb-3"><div class="bg-brand-surface p-2 rounded-lg text-brand-primary group-hover:scale-110 transition-transform"><i data-lucide="library" class="w-5 h-5"></i></div><span class="bg-brand-surface border border-brand-border text-brand-muted text-[10px] font-bold px-2 py-1 rounded-full">${itemCount} Books</span></div><h4 class="font-semibold text-sm text-brand-text mb-1 group-hover:text-brand-primary transition-colors line-clamp-1">${list.name}</h4><p class="text-[11px] text-brand-muted line-clamp-2 mt-auto leading-relaxed">${list.description || 'No description provided.'}</p>`; 
+                container.appendChild(div); 
+            }); 
+            if(window.lucide) lucide.createIcons(); 
+        }
+
+        function openSingleList(listId) {
+            currentViewedListId = listId;
+            const list = globalCustomLists.find(l => String(l.id) === String(listId));
+            if (!list) return;
+
+            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'all-genres', 'genre-books'].forEach(id => {
+                const view = document.getElementById(`view-${id}`);
+                if (view) view.classList.add('hidden');
+            });
+            document.getElementById('book-details-section').classList.add('hidden');
+            
+            const viewSingle = document.getElementById('view-single-list');
+            viewSingle.classList.remove('hidden');
+            
+            document.getElementById('single-list-title').textContent = list.name;
+            const items = globalListItems.filter(item => String(item.list_id) === String(listId));
+            
+            document.getElementById('single-list-desc').innerHTML = `${list.description ? list.description + '<br>' : ''}<span class="inline-block mt-3 font-semibold text-brand-primary bg-brand-primary/10 border border-brand-primaryLight px-3 py-1 rounded-full text-xs">${items.length} Book${items.length !== 1 ? 's' : ''}</span>`;
+
+            const grid = document.getElementById('single-list-grid');
+            const emptyState = document.getElementById('single-list-empty');
+            grid.innerHTML = '';
+
+            if (items.length === 0) {
+                grid.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+            } else {
+                grid.classList.remove('hidden');
+                emptyState.classList.add('hidden');
+                emptyState.classList.remove('flex');
+                
+                items.forEach(item => {
+                    const cardHTML = document.createElement('div');
+                    cardHTML.className = "book-card flex flex-col gap-2 group cursor-pointer h-full relative";
+                    
+                    const menuHTML = `
+                        <button onclick="removeBookFromCustomList('${item.id}', event)" class="absolute top-2 right-2 bg-brand-card/95 text-red-500 border border-red-500/20 p-1.5 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity z-20 hover:bg-red-50 focus:outline-none" title="Remove from list">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    `;
+
+                    cardHTML.onclick = (e) => {
+                        if(e.target.closest('button')) return;
+                        openDetailedView({ 
+                            title: item.title, 
+                            author_name: [item.author], 
+                            coverUrl: item.coverUrl, 
+                            key: item.book_key 
+                        }, 'single-list');
+                    };
+                    
+                    cardHTML.innerHTML = `
+                        <div class="relative w-full aspect-[2/3]">
+                            <img src="${item.coverUrl || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='150' style='background:%23fde9d9'></svg>"}" alt="${item.title}" class="w-full h-full object-cover rounded-md book-shadow transition-transform group-hover:-translate-y-1">
+                            ${menuHTML}
+                        </div>
+                        <div class="flex flex-col mt-1 flex-1">
+                            <h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug group-hover:text-brand-primary transition-colors">${item.title}</h4>
+                            <p class="text-[11px] text-brand-muted mt-1 truncate">by ${item.author}</p>
+                        </div>
+                    `;
+                    grid.appendChild(cardHTML);
+                });
+                if (window.lucide) lucide.createIcons();
+            }
+        }
 
         function toggleMenu(menuId, event) { event.stopPropagation(); const menu = document.getElementById(menuId); const isHidden = menu.classList.contains('hidden'); document.querySelectorAll('.card-menu').forEach(el => el.classList.add('hidden')); if (isHidden) menu.classList.remove('hidden'); }
         document.addEventListener('click', () => { document.querySelectorAll('.card-menu').forEach(el => el.classList.add('hidden')); });
         function getCardMenuHTML(bookId, currentTable) { return `<button onclick="toggleMenu('menu-${currentTable}-${bookId}', event)" class="absolute top-1 right-1 bg-brand-card/90 border border-brand-border p-1.5 rounded-full shadow-sm backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all z-20 hover:bg-brand-surface hover:text-brand-primary text-brand-muted focus:outline-none" title="Manage book"><i data-lucide="more-vertical" class="w-[14px] h-[14px]"></i></button><div id="menu-${currentTable}-${bookId}" class="card-menu hidden absolute top-8 right-1 w-36 bg-brand-card border border-brand-border rounded-xl shadow-lg py-1 z-30 text-left cursor-default" onclick="event.stopPropagation()"><button onclick="openAddToListModalForId('${bookId}', '${currentTable}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors">Add to List...</button><button onclick="moveBook('${bookId}', '${currentTable}', 'currently_reading')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${currentTable==='currently_reading'?'hidden':''}">Move to Reading</button><button onclick="moveBook('${bookId}', '${currentTable}', 'reading_later')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${currentTable==='reading_later'?'hidden':''}">Move to Later</button><button onclick="moveBook('${bookId}', '${currentTable}', 'read_books')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${currentTable==='read_books'?'hidden':''}">Move to Read</button><button onclick="deleteBook('${bookId}', '${currentTable}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-red-500 hover:bg-red-500/10 transition-colors border-t border-brand-border">Remove</button></div>`; }
+        
         function openProgressModal(bookId, currentPg = 0, totalPgs = 300) { currentlyEditingBookId = bookId; document.getElementById('progress-current').value = currentPg; document.getElementById('progress-total').value = totalPgs; document.getElementById('progress-modal').classList.remove('hidden'); }
         function closeProgressModal() { document.getElementById('progress-modal').classList.add('hidden'); currentlyEditingBookId = null; }
         async function saveProgress() { if(!currentlyEditingBookId) return; const current = parseInt(document.getElementById('progress-current').value) || 0; const total = parseInt(document.getElementById('progress-total').value) || 1; const pct = Math.min(100, Math.round((current / total) * 100)); try { const { error } = await supabaseClient.from('currently_reading').update({ current_page: current, total_pages: total, progress: pct }).eq('id', currentlyEditingBookId); if (error) throw error; showToast('Progress saved!'); const book = globalLibrary.find(b => b.id === currentlyEditingBookId); if(book) { book.current_page = current; book.total_pages = total; book.progress = pct; } renderCurrentlyReading(globalCurrentlyReading); renderBooksViewCarousel(globalCurrentlyReading); renderBooksList(); } catch(e) { showToast('Failed to save progress.', 'error'); } closeProgressModal(); }
