@@ -435,28 +435,37 @@
                 </div>
             </div>
 
-            <div class="bg-brand-card border border-brand-border rounded-3xl p-5 sm:p-8 shadow-sm w-full flex flex-col transition-colors">
+            <div class="bg-brand-card border border-brand-border rounded-3xl p-5 sm:p-8 shadow-sm w-full flex flex-col transition-colors relative min-h-[400px]">
                 <h2 class="font-semibold text-xl text-brand-text mb-8 border-b border-brand-border pb-6 flex items-center gap-2">
                     <i data-lucide="bar-chart-2" class="w-6 h-6 text-brand-primary"></i> Reading Insights
                 </h2>
-                <div class="w-full flex flex-col items-center mb-16">
-                    <h3 class="font-semibold text-md mb-6 text-brand-text">Books vs Pages Read</h3>
-                    <div class="w-full max-w-4xl h-64 relative mb-8">
-                        <canvas id="statsPageDualLine"></canvas>
-                    </div>
-                    <div class="flex flex-wrap justify-center gap-4 sm:gap-6 mt-2 text-sm font-medium text-brand-text">
-                        <div class="flex items-center gap-2"><div class="w-8 h-3 rounded-full bg-brand-primaryDark"></div> Pages read</div>
-                        <div class="flex items-center gap-2"><div class="w-8 h-3 rounded-full bg-brand-primaryLight"></div> Books read</div>
-                    </div>
+                
+                <div id="stats-empty-state" class="hidden absolute inset-0 top-[80px] flex flex-col items-center justify-center bg-brand-card rounded-b-3xl z-10 text-brand-muted">
+                    <i data-lucide="bar-chart-2" class="w-12 h-12 mb-4 opacity-50"></i>
+                    <p class="text-sm font-medium">No reading data available yet.</p>
+                    <p class="text-xs mt-1">Start adding books to your read list to see insights!</p>
                 </div>
-                <div class="w-full grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-16">
-                    <div class="w-full flex flex-col items-center">
-                        <h3 class="font-semibold text-md mb-6 text-brand-text text-center">Top Genres</h3>
-                        <div class="h-[250px] w-full max-w-sm"><canvas id="statsPageGenres"></canvas></div>
+
+                <div id="stats-content-wrapper" class="w-full flex flex-col opacity-100 transition-opacity">
+                    <div class="w-full flex flex-col items-center mb-16">
+                        <h3 class="font-semibold text-md mb-6 text-brand-text">Books vs Pages Read</h3>
+                        <div class="w-full max-w-4xl h-64 relative mb-8">
+                            <canvas id="statsPageDualLine"></canvas>
+                        </div>
+                        <div class="flex flex-wrap justify-center gap-4 sm:gap-6 mt-2 text-sm font-medium text-brand-text">
+                            <div class="flex items-center gap-2"><div class="w-8 h-3 rounded-full bg-brand-primaryDark"></div> Pages read</div>
+                            <div class="flex items-center gap-2"><div class="w-8 h-3 rounded-full bg-brand-primaryLight"></div> Books read</div>
+                        </div>
                     </div>
-                    <div class="w-full flex flex-col items-center">
-                        <h3 class="font-semibold text-md mb-6 text-brand-text text-center">Top Languages</h3>
-                        <div class="h-[250px] w-full max-w-sm"><canvas id="statsPageLanguages"></canvas></div>
+                    <div class="w-full grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-16">
+                        <div class="w-full flex flex-col items-center">
+                            <h3 class="font-semibold text-md mb-6 text-brand-text text-center">Top Genres</h3>
+                            <div class="h-[250px] w-full max-w-sm"><canvas id="statsPageGenres"></canvas></div>
+                        </div>
+                        <div class="w-full flex flex-col items-center">
+                            <h3 class="font-semibold text-md mb-6 text-brand-text text-center">Top Languages</h3>
+                            <div class="h-[250px] w-full max-w-sm"><canvas id="statsPageLanguages"></canvas></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -845,39 +854,9 @@
         
         async function deleteCustomList(listId = currentViewedListId) { if (!listId || !confirm('Are you sure you want to delete this list?')) return; if (String(listId).startsWith('local_')) { globalCustomLists = globalCustomLists.filter(l => String(l.id) !== String(listId)); showToast('List deleted locally.'); switchTab('books'); renderCustomLists(); return; } try { const { error } = await supabaseClient.from('custom_lists').delete().eq('id', listId); if (error) throw error; showToast('List deleted.'); switchTab('books'); fetchSupabaseData(); } catch (e) { globalCustomLists = globalCustomLists.filter(l => String(l.id) !== String(listId)); showToast('List deleted locally.'); switchTab('books'); renderCustomLists(); } }
         
-        async function removeBookFromCustomList(itemId, event) { 
-            if(event) event.stopPropagation(); 
-            if (String(itemId).startsWith('local_')) { 
-                globalListItems = globalListItems.filter(i => String(i.id) !== String(itemId)); 
-                showToast('Book removed locally.'); 
-                if (currentViewedListId) openSingleList(currentViewedListId); 
-                return; 
-            } 
-            try { 
-                const { error } = await supabaseClient.from('list_items').delete().eq('id', itemId); 
-                if (error) throw error; 
-                showToast('Book removed.'); 
-                globalListItems = globalListItems.filter(i => String(i.id) !== String(itemId)); 
-                if (currentViewedListId) openSingleList(currentViewedListId); 
-            } catch (e) { 
-                globalListItems = globalListItems.filter(i => String(i.id) !== String(itemId)); 
-                showToast('Book removed locally.'); 
-                if (currentViewedListId) openSingleList(currentViewedListId); 
-            } 
-        }
-
-        function renderCustomLists() { 
-            const container = document.getElementById('custom-lists-container'); if(!container) return; container.innerHTML = ''; 
-            if (globalCustomLists.length === 0) { container.innerHTML = `<p class="col-span-full text-center text-sm text-brand-muted py-6">You haven't created any lists yet.</p>`; return; } 
-            globalCustomLists.forEach(list => { 
-                const itemCount = globalListItems.filter(item => String(item.list_id) === String(list.id)).length; 
-                const div = document.createElement('div'); div.className = "bg-brand-card border border-brand-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer group flex flex-col h-full"; 
-                div.onclick = () => openSingleList(list.id); 
-                div.innerHTML = `<div class="flex items-start justify-between mb-3"><div class="bg-brand-surface p-2 rounded-lg text-brand-primary group-hover:scale-110 transition-transform"><i data-lucide="library" class="w-5 h-5"></i></div><span class="bg-brand-surface border border-brand-border text-brand-muted text-[10px] font-bold px-2 py-1 rounded-full">${itemCount} Books</span></div><h4 class="font-semibold text-sm text-brand-text mb-1 group-hover:text-brand-primary transition-colors line-clamp-1">${list.name}</h4><p class="text-[11px] text-brand-muted line-clamp-2 mt-auto leading-relaxed">${list.description || 'No description provided.'}</p>`; 
-                container.appendChild(div); 
-            }); 
-            if(window.lucide) lucide.createIcons(); 
-        }
+        async function removeBookFromCustomList(itemId, event) { if(event) event.stopPropagation(); if (String(itemId).startsWith('local_')) { globalListItems = globalListItems.filter(i => String(i.id) !== String(itemId)); showToast('Book removed locally.'); if (currentViewedListId) openSingleList(currentViewedListId); return; } try { const { error } = await supabaseClient.from('list_items').delete().eq('id', itemId); if (error) throw error; showToast('Book removed.'); globalListItems = globalListItems.filter(i => String(i.id) !== String(itemId)); if (currentViewedListId) openSingleList(currentViewedListId); } catch (e) { globalListItems = globalListItems.filter(i => String(i.id) !== String(itemId)); showToast('Book removed locally.'); if (currentViewedListId) openSingleList(currentViewedListId); } }
+        
+        function renderCustomLists() { const container = document.getElementById('custom-lists-container'); if(!container) return; container.innerHTML = ''; if (globalCustomLists.length === 0) { container.innerHTML = `<p class="col-span-full text-center text-sm text-brand-muted py-6">You haven't created any lists yet.</p>`; return; } globalCustomLists.forEach(list => { const itemCount = globalListItems.filter(item => String(item.list_id) === String(list.id)).length; const div = document.createElement('div'); div.className = "bg-brand-card border border-brand-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer group flex flex-col h-full"; div.onclick = () => openSingleList(list.id); div.innerHTML = `<div class="flex items-start justify-between mb-3"><div class="bg-brand-surface p-2 rounded-lg text-brand-primary group-hover:scale-110 transition-transform"><i data-lucide="library" class="w-5 h-5"></i></div><span class="bg-brand-surface border border-brand-border text-brand-muted text-[10px] font-bold px-2 py-1 rounded-full">${itemCount} Books</span></div><h4 class="font-semibold text-sm text-brand-text mb-1 group-hover:text-brand-primary transition-colors line-clamp-1">${list.name}</h4><p class="text-[11px] text-brand-muted line-clamp-2 mt-auto leading-relaxed">${list.description || 'No description provided.'}</p>`; container.appendChild(div); }); if(window.lucide) lucide.createIcons(); }
 
         function openSingleList(listId) {
             currentViewedListId = listId;
@@ -953,7 +932,24 @@
         
         function openProgressModal(bookId, currentPg = 0, totalPgs = 300) { currentlyEditingBookId = bookId; document.getElementById('progress-current').value = currentPg; document.getElementById('progress-total').value = totalPgs; document.getElementById('progress-modal').classList.remove('hidden'); }
         function closeProgressModal() { document.getElementById('progress-modal').classList.add('hidden'); currentlyEditingBookId = null; }
-        async function saveProgress() { if(!currentlyEditingBookId) return; const current = parseInt(document.getElementById('progress-current').value) || 0; const total = parseInt(document.getElementById('progress-total').value) || 1; const pct = Math.min(100, Math.round((current / total) * 100)); try { const { error } = await supabaseClient.from('currently_reading').update({ current_page: current, total_pages: total, progress: pct }).eq('id', currentlyEditingBookId); if (error) throw error; showToast('Progress saved!'); const book = globalLibrary.find(b => b.id === currentlyEditingBookId); if(book) { book.current_page = current; book.total_pages = total; book.progress = pct; } renderCurrentlyReading(globalCurrentlyReading); renderBooksViewCarousel(globalCurrentlyReading); renderBooksList(); } catch(e) { showToast('Failed to save progress.', 'error'); } closeProgressModal(); }
+        async function saveProgress() { 
+            if(!currentlyEditingBookId) return; 
+            const current = parseInt(document.getElementById('progress-current').value) || 0; 
+            const total = parseInt(document.getElementById('progress-total').value) || 1; 
+            const pct = Math.min(100, Math.round((current / total) * 100)); 
+            try { 
+                const { error } = await supabaseClient.from('currently_reading').update({ current_page: current, total_pages: total, progress: pct }).eq('id', currentlyEditingBookId); 
+                if (error) throw error; 
+                showToast('Progress saved!'); 
+                const book = globalLibrary.find(b => b.id === currentlyEditingBookId); 
+                if(book) { book.current_page = current; book.total_pages = total; book.progress = pct; } 
+                renderCurrentlyReading(globalCurrentlyReading); renderBooksViewCarousel(globalCurrentlyReading); renderBooksList(); 
+                
+                const lineStats = calculateLibraryStats();
+                renderHomeChart(lineStats.monthlyBooks); renderFullStatsGraphs(lineStats);
+            } catch(e) { showToast('Failed to save progress.', 'error'); } 
+            closeProgressModal(); 
+        }
         
         async function saveBookToLibrary(statusTable) {
             const book = currentlyViewingBook; if (!book) return;
@@ -965,23 +961,52 @@
             try {
                 const payload = { title, author, coverUrl }; if (statusTable === 'currently_reading') { payload.progress = 0; payload.current_page = 0; payload.total_pages = book.total_pages || 300; }
                 localDeduplicate(title, author, statusTable);
-                globalLibrary.push({ ...payload, id: tempId, tableName: statusTable, status: statusTable === 'currently_reading' ? 'Currently reading' : (statusTable === 'reading_later' ? 'Reading later' : 'Read') });
+                globalLibrary.push({ ...payload, id: tempId, tableName: statusTable, status: statusTable === 'currently_reading' ? 'Currently reading' : (statusTable === 'reading_later' ? 'Reading later' : 'Read'), created_at: new Date().toISOString() });
                 syncLibraryBadges(); renderDetailedLibraryAction(); await ensureSingleStatus(title, author, statusTable);
                 const { error } = await supabaseClient.from(statusTable).insert([payload]); if (error) throw error;
-                showToast(`Added to ${statusTable.replace('_', ' ')}!`); fetchSupabaseData();
+                showToast(`Added to ${statusTable.replace('_', ' ')}!`); 
+                
+                const lineStats = calculateLibraryStats();
+                renderHomeChart(lineStats.monthlyBooks); renderFullStatsGraphs(lineStats);
+                fetchRealGenresAndLanguages().then(glStats => updateBarCharts(glStats));
+
+                fetchSupabaseData();
             } catch (err) { globalLibrary = globalLibrary.filter(b => b.id !== tempId); syncLibraryBadges(); renderDetailedLibraryAction(); fetchSupabaseData(); showToast('Failed to add book.', 'error'); }
         }
         async function moveBook(bookId, currentTable, newTable) {
             if (currentTable === newTable) return; const book = globalLibrary.find(b => String(b.id) === String(bookId) && b.tableName === currentTable); if (!book) return;
             const oldStatus = book.status; const oldTable = book.tableName; localDeduplicate(book.title, book.author, newTable);
             book.tableName = newTable; book.status = newTable === 'currently_reading' ? 'Currently reading' : (newTable === 'reading_later' ? 'Reading later' : 'Read');
+            book.created_at = new Date().toISOString(); 
             syncLibraryBadges(); renderDetailedLibraryAction();
             const payload = { title: book.title, author: book.author, coverUrl: book.coverUrl }; if (newTable === 'currently_reading') { payload.progress = book.progress || 0; payload.current_page = book.current_page || 0; payload.total_pages = book.total_pages || 300; }
-            try { const { error: deleteErr } = await supabaseClient.from(currentTable).delete().eq('id', book.id); if (deleteErr) throw deleteErr; await ensureSingleStatus(book.title, book.author, newTable); const { error: insertErr } = await supabaseClient.from(newTable).insert([payload]); if (insertErr) { await supabaseClient.from(currentTable).insert([payload]); throw insertErr; } showToast(`Moved to ${newTable.replace('_', ' ')}!`); fetchSupabaseData(); } catch (e) { book.tableName = oldTable; book.status = oldStatus; syncLibraryBadges(); renderDetailedLibraryAction(); fetchSupabaseData(); showToast('Failed to move book.', 'error'); }
+            try { 
+                const { error: deleteErr } = await supabaseClient.from(currentTable).delete().eq('id', book.id); if (deleteErr) throw deleteErr; 
+                await ensureSingleStatus(book.title, book.author, newTable); 
+                const { error: insertErr } = await supabaseClient.from(newTable).insert([payload]); 
+                if (insertErr) { await supabaseClient.from(currentTable).insert([payload]); throw insertErr; } 
+                showToast(`Moved to ${newTable.replace('_', ' ')}!`); 
+                
+                const lineStats = calculateLibraryStats();
+                renderHomeChart(lineStats.monthlyBooks); renderFullStatsGraphs(lineStats);
+                fetchRealGenresAndLanguages().then(glStats => updateBarCharts(glStats));
+
+                fetchSupabaseData(); 
+            } catch (e) { book.tableName = oldTable; book.status = oldStatus; syncLibraryBadges(); renderDetailedLibraryAction(); fetchSupabaseData(); showToast('Failed to move book.', 'error'); }
         }
         async function deleteBook(bookId, currentTable) {
             const bookToRestore = globalLibrary.find(b => String(b.id) === String(bookId)); globalLibrary = globalLibrary.filter(b => String(b.id) !== String(bookId)); syncLibraryBadges(); renderDetailedLibraryAction();
-            try { const { error } = await supabaseClient.from(currentTable).delete().eq('id', bookId); if (error) throw error; showToast('Book removed from library.'); fetchSupabaseData(); } catch (e) { if (bookToRestore) globalLibrary.push(bookToRestore); syncLibraryBadges(); renderDetailedLibraryAction(); fetchSupabaseData(); showToast('Failed to remove book.', 'error'); }
+            try { 
+                const { error } = await supabaseClient.from(currentTable).delete().eq('id', bookId); 
+                if (error) throw error; 
+                showToast('Book removed from library.'); 
+                
+                const lineStats = calculateLibraryStats();
+                renderHomeChart(lineStats.monthlyBooks); renderFullStatsGraphs(lineStats);
+                fetchRealGenresAndLanguages().then(glStats => updateBarCharts(glStats));
+
+                fetchSupabaseData(); 
+            } catch (e) { if (bookToRestore) globalLibrary.push(bookToRestore); syncLibraryBadges(); renderDetailedLibraryAction(); fetchSupabaseData(); showToast('Failed to remove book.', 'error'); }
         }
         async function deleteBookFromDetails(id, tableName) { const dropdown = document.getElementById('dropdown-details'); if(dropdown) dropdown.classList.add('hidden'); await deleteBook(id, tableName); }
 
@@ -1185,30 +1210,123 @@
 
         function calculateLibraryStats() {
             const currentYear = new Date().getFullYear(); const monthlyBooks = new Array(12).fill(0); const monthlyPages = new Array(12).fill(0);
-            globalLibrary.forEach(book => { if (book.tableName === 'read_books') { const d = book.created_at ? new Date(book.created_at) : new Date(); if (d.getFullYear() === currentYear) { const m = d.getMonth(); monthlyBooks[m] += 1; monthlyPages[m] += (book.total_pages || 300); } } });
-            return { monthlyBooks, monthlyPages };
+            let hasData = false;
+            globalLibrary.forEach(book => { 
+                const d = book.created_at ? new Date(book.created_at) : new Date(); 
+                if (d.getFullYear() === currentYear) { 
+                    const m = d.getMonth(); 
+                    if (book.tableName === 'read_books') {
+                        monthlyBooks[m] += 1; 
+                        monthlyPages[m] += (book.total_pages || 300); 
+                        hasData = true;
+                    } else if (book.tableName === 'currently_reading') {
+                        const currentPg = parseInt(book.current_page) || 0;
+                        const totalPg = parseInt(book.total_pages) || 300;
+                        if (currentPg > 0) {
+                            monthlyPages[m] += currentPg;
+                            monthlyBooks[m] += Number((currentPg / Math.max(totalPg, 1)).toFixed(2));
+                            hasData = true;
+                        }
+                    }
+                } 
+            });
+            return { monthlyBooks, monthlyPages, hasData };
         }
+        
         async function fetchRealGenresAndLanguages() {
-            const genreCounts = {}; const langCounts = {}; const sampleBooks = globalLibrary.slice(0, 10);
+            const genreCounts = {}; const langCounts = {}; const sampleBooks = globalLibrary.filter(b => b.tableName === 'read_books' || b.tableName === 'currently_reading').slice(0, 20);
             if (sampleBooks.length === 0) return { genres: { labels: ['No Data'], data: [0] }, languages: { labels: ['No Data'], data: [0] } };
-            const fetchPromises = sampleBooks.map(b => fetchWithRetry(`https://openlibrary.org/search.json?title=${encodeURIComponent(b.title)}&limit=1`).then(res => res.json()).then(data => { if (data.docs && data.docs.length > 0) { const doc = data.docs[0]; if (doc.subject) doc.subject.slice(0, 3).forEach(s => { const cleanS = s.split(',')[0].trim(); const finalS = cleanS.charAt(0).toUpperCase() + cleanS.slice(1); genreCounts[finalS] = (genreCounts[finalS] || 0) + 1; }); if (doc.language) doc.language.forEach(l => { langCounts[l] = (langCounts[l] || 0) + 1; }); } }).catch(e => console.warn(e)));
+            
+            const fetchPromises = sampleBooks.map(b => fetchWithRetry(`https://openlibrary.org/search.json?title=${encodeURIComponent(b.title)}&limit=1`).then(res => res.json()).then(data => { 
+                if (data.docs && data.docs.length > 0) { 
+                    const doc = data.docs[0]; 
+                    if (doc.subject) doc.subject.slice(0, 3).forEach(s => { const cleanS = s.split(',')[0].trim(); const finalS = cleanS.charAt(0).toUpperCase() + cleanS.slice(1); genreCounts[finalS] = (genreCounts[finalS] || 0) + 1; }); 
+                    if (doc.language) doc.language.forEach(l => { langCounts[l] = (langCounts[l] || 0) + 1; }); 
+                } 
+            }).catch(e => console.warn(e)));
+            
             await Promise.all(fetchPromises);
+            
             const langMap = { 'eng': 'English', 'fre': 'French', 'spa': 'Spanish', 'ger': 'German', 'ita': 'Italian', 'rus': 'Russian', 'pol': 'Polish', 'ukr': 'Ukrainian', 'por': 'Portuguese', 'dut': 'Dutch', 'chi': 'Chinese', 'jpn': 'Japanese', 'ara': 'Arabic', 'hin': 'Hindi' };
             const mappedLangCounts = {}; for (const [code, count] of Object.entries(langCounts)) { const name = langMap[code.toLowerCase()] || code.toUpperCase(); mappedLangCounts[name] = (mappedLangCounts[name] || 0) + count; }
+            
             if (Object.keys(genreCounts).length === 0) genreCounts['Unknown'] = 1; if (Object.keys(mappedLangCounts).length === 0) mappedLangCounts['Unknown'] = 1;
+            
             const sortedGenres = Object.entries(genreCounts).sort((a,b) => b[1]-a[1]).slice(0, 5); const sortedLangs = Object.entries(mappedLangCounts).sort((a,b) => b[1]-a[1]).slice(0, 5);
             return { genres: { labels: sortedGenres.map(i => i[0]), data: sortedGenres.map(i => i[1]) }, languages: { labels: sortedLangs.map(i => i[0]), data: sortedLangs.map(i => i[1]) } };
         }
-        function updateBarCharts(glStats) { if (charts['statsPageGenres']) { charts['statsPageGenres'].data.labels = glStats.genres.labels; charts['statsPageGenres'].data.datasets[0].data = glStats.genres.data; charts['statsPageGenres'].update(); } if (charts['statsPageLanguages']) { charts['statsPageLanguages'].data.labels = glStats.languages.labels; charts['statsPageLanguages'].data.datasets[0].data = glStats.languages.data; charts['statsPageLanguages'].update(); } }
+        function updateBarCharts(glStats) { 
+            if (charts['statsPageGenres']) { 
+                charts['statsPageGenres'].data.labels = glStats.genres.labels; 
+                charts['statsPageGenres'].data.datasets[0].data = glStats.genres.data; 
+                charts['statsPageGenres'].update(); 
+            } 
+            if (charts['statsPageLanguages']) { 
+                charts['statsPageLanguages'].data.labels = glStats.languages.labels; 
+                charts['statsPageLanguages'].data.datasets[0].data = glStats.languages.data; 
+                charts['statsPageLanguages'].update(); 
+            } 
+        }
         function getCssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#a0aec0'; }
         function createChart(ctxId, config) { const canvas = document.getElementById(ctxId); if (!canvas) return; if (charts[ctxId]) charts[ctxId].destroy(); const ctx = canvas.getContext('2d'); charts[ctxId] = new Chart(ctx, config); }
-        function renderHomeChart(dataPoints) { createChart('statsChart', { type: 'line', data: { labels: ['1','2','3','4','5','6','7','8','9','10','11','12'], datasets: [{ data: dataPoints, borderColor: '#f97316', backgroundColor: '#f97316', borderWidth: 1.5, pointBackgroundColor: '#f97316', pointBorderColor: '#fff', pointBorderWidth: 2, pointRadius: (ctx) => ctx.raw > 0 ? 4 : 0, tension: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { min: 1, max: 5, ticks: { stepSize: 1, color: getCssVar('--color-text'), font: { size: 10 } }, border: { display: false }, grid: { color: getCssVar('--color-border'), drawTicks: false }, title: { display: true, text: 'Books', align: 'end', color: getCssVar('--color-muted'), font: { size: 10 }, padding: { bottom: -15 } } }, x: { ticks: { color: getCssVar('--color-text'), font: { size: 10 } }, border: { display: false }, grid: { display: false }, title: { display: true, text: 'Months', align: 'end', color: getCssVar('--color-muted'), font: { size: 10 } } } } } }); }
+        
+        function renderHomeChart(dataPoints) { 
+            const maxVal = Math.ceil(Math.max(...dataPoints, 5));
+            createChart('statsChart', { 
+                type: 'line', 
+                data: { labels: ['1','2','3','4','5','6','7','8','9','10','11','12'], datasets: [{ data: dataPoints, borderColor: '#f97316', backgroundColor: '#f97316', borderWidth: 1.5, pointBackgroundColor: '#f97316', pointBorderColor: '#fff', pointBorderWidth: 2, pointRadius: (ctx) => ctx.raw > 0 ? 4 : 0, tension: 0 }] }, 
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    layout: { padding: { left: 10, right: 10, top: 15, bottom: 10 } },
+                    plugins: { legend: { display: false } }, 
+                    scales: { 
+                        y: { min: 0, max: maxVal, ticks: { stepSize: 1, color: getCssVar('--color-text'), font: { size: 10 } }, border: { display: false }, grid: { color: getCssVar('--color-border'), drawTicks: false }, title: { display: true, text: 'Books', align: 'end', color: getCssVar('--color-muted'), font: { size: 10 }, padding: { bottom: 8 } } }, 
+                        x: { ticks: { color: getCssVar('--color-text'), font: { size: 10 } }, border: { display: false }, grid: { display: false }, title: { display: true, text: 'Months', align: 'end', color: getCssVar('--color-muted'), font: { size: 10 }, padding: { top: 10 } } } 
+                    } 
+                } 
+            }); 
+        }
+
         function renderFullStatsGraphs(lineStats) {
-            createChart('statsPageDualLine', { type: 'line', data: { labels: ['1','2','3','4','5','6','7','8','9','10','11','12'], datasets: [ { label: 'Pages read', data: lineStats.monthlyPages, borderColor: '#d97706', backgroundColor: '#d97706', yAxisID: 'yPages', pointBackgroundColor: '#d97706', pointBorderColor: '#fff', pointBorderWidth: 2, pointRadius: (ctx) => ctx.raw > 0 ? 4 : 0, tension: 0 }, { label: 'Books read', data: lineStats.monthlyBooks, borderColor: '#fdba74', backgroundColor: '#fdba74', yAxisID: 'yBooks', pointBackgroundColor: '#fdba74', pointBorderColor: '#fff', pointBorderWidth: 2, pointRadius: (ctx) => ctx.raw > 0 ? 4 : 0, tension: 0 } ] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: getCssVar('--color-text'), font: { size: 10 } }, grid: { display: false }, border: { display: false }, title: { display: true, text: 'Months', align: 'end', color: getCssVar('--color-muted'), font: { size: 10 } } }, yBooks: { type: 'linear', position: 'left', min: 1, ticks: { stepSize: 1, color: getCssVar('--color-text'), font: { size: 10 } }, grid: { color: getCssVar('--color-border'), drawTicks: false }, border: { display: false }, title: { display: true, text: 'Books', align: 'end', color: getCssVar('--color-muted'), font: { size: 10 }, padding: { bottom: -15 } } }, yPages: { type: 'linear', position: 'right', min: 100, ticks: { stepSize: 100, color: getCssVar('--color-text'), font: { size: 10 } }, grid: { display: false }, border: { display: false }, title: { display: true, text: 'Pages', align: 'end', color: getCssVar('--color-muted'), font: { size: 10 }, padding: { bottom: -15 } } } } } });
+            const emptyState = document.getElementById('stats-empty-state');
+            const contentWrapper = document.getElementById('stats-content-wrapper');
+            
+            if (!lineStats.hasData && globalLibrary.length === 0) {
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+                contentWrapper.classList.add('opacity-0', 'pointer-events-none');
+                return;
+            } else {
+                emptyState.classList.add('hidden');
+                emptyState.classList.remove('flex');
+                contentWrapper.classList.remove('opacity-0', 'pointer-events-none');
+            }
+
+            const maxBooks = Math.ceil(Math.max(...lineStats.monthlyBooks, 5));
+            const maxPages = Math.ceil(Math.max(...lineStats.monthlyPages, 500));
+
+            createChart('statsPageDualLine', { 
+                type: 'line', 
+                data: { labels: ['1','2','3','4','5','6','7','8','9','10','11','12'], datasets: [ { label: 'Pages read', data: lineStats.monthlyPages, borderColor: '#d97706', backgroundColor: '#d97706', yAxisID: 'yPages', pointBackgroundColor: '#d97706', pointBorderColor: '#fff', pointBorderWidth: 2, pointRadius: (ctx) => ctx.raw > 0 ? 4 : 0, tension: 0 }, { label: 'Books read', data: lineStats.monthlyBooks, borderColor: '#fdba74', backgroundColor: '#fdba74', yAxisID: 'yBooks', pointBackgroundColor: '#fdba74', pointBorderColor: '#fff', pointBorderWidth: 2, pointRadius: (ctx) => ctx.raw > 0 ? 4 : 0, tension: 0 } ] }, 
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    layout: { padding: { left: 15, right: 15, top: 20, bottom: 10 } },
+                    plugins: { legend: { display: false } }, 
+                    scales: { 
+                        x: { ticks: { color: getCssVar('--color-text'), font: { size: 10 } }, grid: { display: false }, border: { display: false }, title: { display: true, text: 'Months', align: 'end', color: getCssVar('--color-muted'), font: { size: 10 }, padding: { top: 10 } } }, 
+                        yBooks: { type: 'linear', position: 'left', min: 0, max: maxBooks, ticks: { stepSize: Math.ceil(maxBooks/5), color: getCssVar('--color-text'), font: { size: 10 } }, grid: { color: getCssVar('--color-border'), drawTicks: false }, border: { display: false }, title: { display: true, text: 'Books', align: 'end', color: getCssVar('--color-muted'), font: { size: 10 }, padding: { bottom: 12 } } }, 
+                        yPages: { type: 'linear', position: 'right', min: 0, max: maxPages, ticks: { stepSize: Math.ceil(maxPages/5), color: getCssVar('--color-text'), font: { size: 10 } }, grid: { display: false }, border: { display: false }, title: { display: true, text: 'Pages', align: 'end', color: getCssVar('--color-muted'), font: { size: 10 }, padding: { bottom: 12 } } } 
+                    } 
+                } 
+            });
+            
             const barOptions = { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { min: 0, ticks: { stepSize: 1, color: getCssVar('--color-text'), font: { size: 10 } }, grid: { display: false }, border: { color: getCssVar('--color-border') } }, y: { ticks: { color: getCssVar('--color-text'), font: { size: 11 } }, grid: { display: false }, border: { color: getCssVar('--color-border') } } } };
             createChart('statsPageGenres', { type: 'bar', data: { labels: ['Loading...'], datasets: [{ data: [0], backgroundColor: '#f97316', barThickness: 10, borderRadius: 5 }] }, options: barOptions });
             createChart('statsPageLanguages', { type: 'bar', data: { labels: ['Loading...'], datasets: [{ data: [0], backgroundColor: '#f97316', barThickness: 10, borderRadius: 5 }] }, options: barOptions });
         }
+        
         function updateChartsTheme() {
             const textColor = getCssVar('--color-text'); const gridColor = getCssVar('--color-border'); const mutedColor = getCssVar('--color-muted');
             for (const key in charts) { const chart = charts[key]; if (chart.options.scales) { if (chart.options.scales.x) { if(chart.options.scales.x.ticks) chart.options.scales.x.ticks.color = textColor; if(chart.options.scales.x.grid) chart.options.scales.x.grid.color = gridColor; if(chart.options.scales.x.title) chart.options.scales.x.title.color = mutedColor; if(chart.options.scales.x.border) chart.options.scales.x.border.color = gridColor; } if (chart.options.scales.y) { if(chart.options.scales.y.ticks) chart.options.scales.y.ticks.color = textColor; if(chart.options.scales.y.grid) chart.options.scales.y.grid.color = gridColor; if(chart.options.scales.y.title) chart.options.scales.y.title.color = mutedColor; if(chart.options.scales.y.border) chart.options.scales.y.border.color = gridColor; } if (chart.options.scales.yBooks) { if(chart.options.scales.yBooks.ticks) chart.options.scales.yBooks.ticks.color = textColor; if(chart.options.scales.yBooks.grid) chart.options.scales.yBooks.grid.color = gridColor; if(chart.options.scales.yBooks.title) chart.options.scales.yBooks.title.color = mutedColor; } if (chart.options.scales.yPages) { if(chart.options.scales.yPages.ticks) chart.options.scales.yPages.ticks.color = textColor; if(chart.options.scales.yPages.title) chart.options.scales.yPages.title.color = mutedColor; } } chart.update(); }
