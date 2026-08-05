@@ -27,7 +27,7 @@
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=Lora:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -111,6 +111,7 @@
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--color-muted); }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .progress-ring-circle { transition: stroke-dashoffset 0.8s ease-in-out; }
     </style>
 </head>
 <body class="min-h-screen font-sans flex flex-col items-center pt-4 sm:pt-6 px-3 sm:px-8 transition-colors duration-300">
@@ -540,6 +541,41 @@
             </div>
         </div>
         
+        <!-- ================= DEDICATED NOTES VIEW ================= -->
+        <div id="view-dedicated-notes" class="hidden flex-col gap-6">
+            <div class="bg-brand-card border border-brand-border rounded-3xl p-6 sm:p-10 shadow-sm min-h-[500px] transition-colors w-full">
+                <button onclick="closeDedicatedNotes()" class="text-brand-muted hover:text-brand-text transition-colors flex items-center gap-2 text-sm font-medium w-fit mb-8 focus:outline-none">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to Notes
+                </button>
+                
+                <div class="flex flex-col md:flex-row gap-8 lg:gap-12">
+                    <!-- Sidebar -->
+                    <div class="w-full md:w-1/3 lg:w-1/4 flex flex-col items-center text-center shrink-0">
+                        <img id="dedicated-notes-cover" src="" alt="Book Cover" class="w-40 sm:w-48 h-auto object-cover rounded-xl shadow-lg mb-4">
+                        <h2 id="dedicated-notes-title" class="font-bold text-xl text-brand-text mb-1"></h2>
+                        <p id="dedicated-notes-author" class="text-sm text-brand-muted mb-6"></p>
+                    </div>
+                    
+                    <!-- Main Content -->
+                    <div class="w-full md:w-2/3 lg:w-3/4 flex flex-col gap-6">
+                        <h3 class="font-semibold text-lg text-brand-text border-b border-brand-border pb-3">Notes & Quotes</h3>
+                        
+                        <div class="flex flex-col gap-3">
+                            <textarea id="dedicated-new-note-content" rows="3" class="w-full bg-brand-bg border border-brand-border rounded-xl p-4 text-sm text-brand-text focus:ring-2 focus:ring-brand-primaryLight outline-none shadow-sm resize-none custom-scrollbar" placeholder="Save a bookmarked sentence, quote, or personal thought..."></textarea>
+                            <div class="flex justify-end">
+                                <button id="dedicated-save-note-btn" class="bg-brand-primary text-white font-semibold py-2 px-6 rounded-full shadow-sm hover:bg-brand-primaryDark transition-colors flex items-center justify-center gap-2 text-sm w-full sm:w-fit focus:outline-none">
+                                    <i data-lucide="plus" class="w-4 h-4"></i> Add Note
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="dedicated-notes-list" class="flex flex-col gap-4 mt-2"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= ALL NOTES VIEW ================= -->
         <div id="view-notes" class="hidden flex-col gap-6">
             <div class="bg-brand-card border border-brand-border rounded-3xl p-5 sm:p-8 shadow-sm min-h-[500px] transition-colors">
                 <h2 class="font-semibold text-lg text-brand-text mb-6">Your Notes & Quotes</h2>
@@ -551,7 +587,7 @@
         </div>
 
         <div id="book-details-section" class="hidden flex-col gap-6 w-full bg-brand-card border border-brand-border rounded-3xl p-6 sm:p-8 md:p-12 shadow-sm min-h-[500px] transition-colors">
-            <button onclick="closeBookDetails()" class="text-brand-muted hover:text-brand-text transition-colors flex items-center gap-2 text-sm font-medium w-fit mb-4 md:mb-2"><i data-lucide="arrow-left" class="w-4 h-4"></i> Back</button>
+            <button onclick="closeBookDetails()" class="text-brand-muted hover:text-brand-text transition-colors flex items-center gap-2 text-sm font-medium w-fit mb-4 md:mb-2 focus:outline-none"><i data-lucide="arrow-left" class="w-4 h-4"></i> Back</button>
             <div id="book-details-loading" class="hidden flex justify-center items-center py-20"><svg class="animate-spin h-8 w-8 text-brand-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>
             <div id="book-details-content" class="flex flex-col gap-10"></div>
         </div>
@@ -666,7 +702,7 @@
             if(activeEl) activeEl.className = 'tab-active px-4 sm:px-6 py-2 -mb-2 relative z-20 whitespace-nowrap';
             const activeView = document.getElementById(`view-${tabId}`);
             if(activeView) { activeView.classList.remove('hidden'); activeView.classList.add(tabId === 'home' ? 'grid' : 'flex'); }
-            ['view-recommendations', 'view-trending', 'book-details-section', 'view-all-genres', 'view-genre-books', 'view-single-list'].forEach(id => { const v = document.getElementById(id); if (v) v.classList.add('hidden'); });
+            ['view-recommendations', 'view-trending', 'book-details-section', 'view-all-genres', 'view-genre-books', 'view-single-list', 'view-dedicated-notes'].forEach(id => { const v = document.getElementById(id); if (v) v.classList.add('hidden'); });
             lastActiveTab = tabId;
         }
 
@@ -890,6 +926,72 @@
         }
         async function deleteCustomList(listId = currentViewedListId) { if (!listId || !confirm('Are you sure you want to delete this list?')) return; if (String(listId).startsWith('local_')) { globalCustomLists = globalCustomLists.filter(l => String(l.id) !== String(listId)); showToast('List deleted locally.'); switchTab('books'); renderCustomLists(); return; } try { const { error } = await supabaseClient.from('custom_lists').delete().eq('id', listId); if (error) throw error; showToast('List deleted.'); switchTab('books'); fetchSupabaseData(); } catch (e) { globalCustomLists = globalCustomLists.filter(l => String(l.id) !== String(listId)); showToast('List deleted locally.'); switchTab('books'); renderCustomLists(); } }
         async function removeBookFromCustomList(itemId, event) { if(event) event.stopPropagation(); if (String(itemId).startsWith('local_')) { globalListItems = globalListItems.filter(i => String(i.id) !== String(itemId)); showToast('Book removed locally.'); if (currentViewedListId) openSingleList(currentViewedListId); return; } try { const { error } = await supabaseClient.from('list_items').delete().eq('id', itemId); if (error) throw error; showToast('Book removed.'); globalListItems = globalListItems.filter(i => String(i.id) !== String(itemId)); if (currentViewedListId) openSingleList(currentViewedListId); } catch (e) { globalListItems = globalListItems.filter(i => String(i.id) !== String(itemId)); showToast('Book removed locally.'); if (currentViewedListId) openSingleList(currentViewedListId); } }
+        
+        function openSingleList(listId) {
+            currentViewedListId = listId;
+            const list = globalCustomLists.find(l => String(l.id) === String(listId));
+            if (!list) return;
+
+            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'all-genres', 'genre-books', 'dedicated-notes'].forEach(id => { 
+                const view = document.getElementById(`view-${id}`); 
+                if (view) { view.classList.add('hidden'); view.classList.remove('flex'); }
+            });
+            document.getElementById('book-details-section').classList.add('hidden');
+            document.getElementById('search-results-section').classList.add('hidden');
+            document.getElementById('explore-default-content').classList.add('hidden');
+
+            const viewSingleList = document.getElementById('view-single-list');
+            viewSingleList.classList.remove('hidden');
+            viewSingleList.classList.add('flex');
+
+            document.getElementById('single-list-title').textContent = list.name;
+            document.getElementById('single-list-desc').textContent = list.description || '';
+
+            const grid = document.getElementById('single-list-grid');
+            const emptyState = document.getElementById('single-list-empty');
+            grid.innerHTML = '';
+            
+            const listItems = globalListItems.filter(item => String(item.list_id) === String(listId));
+            
+            if (listItems.length === 0) {
+                grid.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+            } else {
+                grid.classList.remove('hidden');
+                emptyState.classList.add('hidden');
+                emptyState.classList.remove('flex');
+
+                listItems.forEach(item => {
+                    const title = item.title || 'Unknown Title'; 
+                    const author = item.author || 'Unknown Author'; 
+                    const coverUrl = item.coverUrl || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='150' style='background:%23fde9d9'></svg>";
+                    
+                    const div = document.createElement('div'); 
+                    div.className = "book-card w-full h-auto flex flex-col gap-2 relative group cursor-pointer"; 
+                    div.setAttribute('data-book-title', title); 
+                    div.setAttribute('data-book-author', author);
+                    
+                    div.innerHTML = `
+                        <div class="relative w-full aspect-[2/3]">
+                            <img src="${coverUrl}" alt="${title}" class="w-full h-full object-cover rounded-md shadow-sm group-hover:-translate-y-1 transition-transform">
+                            ${getLibraryBadgeHTML(title, author)}
+                            <button onclick="removeBookFromCustomList('${item.id}', event)" class="absolute top-2 left-2 bg-brand-card text-red-500 border border-red-500/30 p-1.5 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 hover:text-white focus:outline-none" title="Remove from list">
+                                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                        <div class="flex flex-col mt-1 flex-1">
+                            <h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug group-hover:text-brand-primary transition-colors">${title}</h4>
+                            <p class="text-[11px] text-brand-muted mt-1 truncate">by ${author}</p>
+                        </div>
+                    `;
+                    div.onclick = () => openDetailedView({ title, author_name: [author], coverUrl, key: item.book_key }, 'single-list'); 
+                    grid.appendChild(div);
+                });
+                if(window.lucide) lucide.createIcons();
+            }
+        }
+
         function renderCustomLists() { const container = document.getElementById('custom-lists-container'); if(!container) return; container.innerHTML = ''; if (globalCustomLists.length === 0) { container.innerHTML = `<p class="col-span-full text-center text-sm text-brand-muted py-6">You haven't created any lists yet.</p>`; return; } globalCustomLists.forEach(list => { const itemCount = globalListItems.filter(item => String(item.list_id) === String(list.id)).length; const div = document.createElement('div'); div.className = "bg-brand-card border border-brand-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer group flex flex-col h-full"; div.onclick = () => openSingleList(list.id); div.innerHTML = `<div class="flex items-start justify-between mb-3"><div class="bg-brand-surface p-2 rounded-lg text-brand-primary group-hover:scale-110 transition-transform"><i data-lucide="library" class="w-5 h-5"></i></div><span class="bg-brand-surface border border-brand-border text-brand-muted text-[10px] font-bold px-2 py-1 rounded-full">${itemCount} Books</span></div><h4 class="font-semibold text-sm text-brand-text mb-1 group-hover:text-brand-primary transition-colors line-clamp-1">${list.name}</h4><p class="text-[11px] text-brand-muted line-clamp-2 mt-auto leading-relaxed">${list.description || 'No description provided.'}</p>`; container.appendChild(div); }); if(window.lucide) lucide.createIcons(); }
 
         function toggleMenu(menuId, event) { event.stopPropagation(); const menu = document.getElementById(menuId); const isHidden = menu.classList.contains('hidden'); document.querySelectorAll('.card-menu').forEach(el => el.classList.add('hidden')); if (isHidden) menu.classList.remove('hidden'); }
@@ -1062,7 +1164,7 @@
         }
 
         async function showAllRecommendations() {
-            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'all-genres', 'view-single-list'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); });
+            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'all-genres', 'view-single-list', 'view-dedicated-notes'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); });
             document.getElementById('book-details-section').classList.add('hidden'); document.getElementById('view-genre-books').classList.add('hidden'); document.getElementById('view-recommendations').classList.remove('hidden');
             const grid = document.getElementById('recs-grid'); const loading = document.getElementById('recs-loading'); grid.innerHTML = ''; loading.classList.remove('hidden');
             let authorsToSearch = globalUserAuthors.length > 0 ? [...globalUserAuthors].sort(() => 0.5 - Math.random()).slice(0, 4) : ['Stephen King', 'J.K. Rowling', 'Agatha Christie'];
@@ -1083,7 +1185,7 @@
         }
 
         async function showAllTrending() {
-            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'all-genres', 'view-single-list'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); });
+            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'all-genres', 'view-single-list', 'view-dedicated-notes'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); });
             document.getElementById('book-details-section').classList.add('hidden'); document.getElementById('explore-default-content').classList.add('hidden'); document.getElementById('view-genre-books').classList.add('hidden'); document.getElementById('view-trending').classList.remove('hidden');
             const grid = document.getElementById('trending-grid'); const loading = document.getElementById('trending-loading'); grid.innerHTML = '';
             if (globalTrendingBooks.length === 0) { loading.classList.remove('hidden'); await fetchInitialTrending(); }
@@ -1101,7 +1203,7 @@
             let query = page === 1 ? document.getElementById('searchInput').value.trim() : currentSearchQuery;
             if (page === 1) currentSearchQuery = query; if (!query) return; currentSearchPage = page;
             const defaultContent = document.getElementById('explore-default-content'); const resultsSection = document.getElementById('search-results-section'); const resultsGrid = document.getElementById('search-results-grid'); const searchStatus = document.getElementById('search-status'); const searchSpinner = document.getElementById('search-spinner'); const paginationContainer = document.getElementById('search-pagination');
-            defaultContent.classList.add('hidden'); document.getElementById('book-details-section').classList.add('hidden'); resultsSection.classList.remove('hidden'); searchSpinner.classList.remove('hidden'); resultsGrid.innerHTML = ''; searchStatus.textContent = ''; searchStatus.classList.add('hidden'); paginationContainer.classList.add('hidden');
+            defaultContent.classList.add('hidden'); document.getElementById('book-details-section').classList.add('hidden'); document.getElementById('view-dedicated-notes').classList.add('hidden'); resultsSection.classList.remove('hidden'); searchSpinner.classList.remove('hidden'); resultsGrid.innerHTML = ''; searchStatus.textContent = ''; searchStatus.classList.add('hidden'); paginationContainer.classList.add('hidden');
             try {
                 const response = await fetchWithRetry(`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=15&page=${page}`); const data = await response.json(); searchSpinner.classList.add('hidden');
                 if (!data.docs || data.docs.length === 0) { searchStatus.textContent = `No results found for "${query}". Try another title or author.`; searchStatus.classList.remove('hidden'); return; }
@@ -1254,7 +1356,7 @@
 
         async function openDetailedView(book, sourceContext = 'home') {
             if (!book) return; currentlyViewingBook = book; lastViewBeforeDetails = sourceContext;
-            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'view-single-list', 'all-genres', 'genre-books'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); });
+            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'view-single-list', 'all-genres', 'genre-books', 'view-dedicated-notes'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); });
             document.getElementById('search-results-section').classList.add('hidden'); document.getElementById('explore-default-content').classList.add('hidden'); document.getElementById('book-details-section').classList.remove('hidden');
             const contentDiv = document.getElementById('book-details-content'); const loadingDiv = document.getElementById('book-details-loading'); contentDiv.innerHTML = ''; loadingDiv.classList.remove('hidden');
             const title = book.title || 'Unknown Title'; const author = book.author_name ? book.author_name[0] : (book.author || 'Unknown Author'); const coverUrl = book.coverUrl || (book.cover_i ? `https://covers.openlibrary.org/b/id/${book.cover_i}-L.jpg` : `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='300' style='background:%23fde9d9'></svg>`);
@@ -1266,24 +1368,130 @@
                 await Promise.all(fetchPromises);
             } catch (err) {}
             loadingDiv.classList.add('hidden'); const rating = (Math.random() * (4.9 - 3.5) + 3.5).toFixed(2); const formattedDescription = description.split('\n').filter(p => p.trim() !== '').map(p => `<p class="mb-3">${p}</p>`).join(''); const bookKeyForNotes = book.key || title;
-            contentDiv.innerHTML = `<div class="flex flex-col md:flex-row gap-6 sm:gap-8 lg:gap-12"><img src="${coverUrl}" alt="${title}" class="w-40 sm:w-48 md:w-56 lg:w-64 h-auto object-cover rounded-xl shadow-lg shrink-0 mx-auto md:mx-0"><div class="flex flex-col items-center md:items-start text-center md:text-left"><h2 class="text-xl sm:text-2xl md:text-3xl font-bold text-brand-text mb-2">${title}</h2><p class="text-sm md:text-base text-brand-muted mb-3">by ${author}</p><div class="flex items-center text-sm font-semibold text-brand-text mb-6"><i data-lucide="star" class="w-4 h-4 text-brand-primary fill-brand-primary mr-1"></i> ${rating}</div><div class="flex flex-col sm:flex-row flex-wrap justify-center md:justify-start gap-3 mb-8 w-full"><div id="detailed-library-action-container" class="relative group z-40"></div><button onclick="openAddToListModal()" class="flex items-center justify-center bg-brand-card border border-brand-border rounded-full px-5 py-2.5 text-xs font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors shadow-sm focus:outline-none w-full sm:w-auto"><i data-lucide="plus" class="w-3 h-3 mr-2"></i> Add to List</button></div><div class="text-sm text-brand-text leading-relaxed opacity-90 max-w-3xl text-left">${formattedDescription}</div></div></div><div class="mt-8 border-t border-brand-border pt-8 w-full" id="book-notes-container"><h3 class="font-semibold text-lg text-brand-text mb-4">Notes & Quotes</h3><div class="flex flex-col gap-3 mb-8 max-w-4xl"><textarea id="new-note-content" rows="3" class="w-full bg-brand-bg border border-brand-border rounded-xl p-4 text-sm text-brand-text focus:ring-2 focus:ring-brand-primaryLight outline-none shadow-sm resize-none custom-scrollbar" placeholder="Save a bookmarked sentence, quote, or personal thought..."></textarea><button onclick="saveNote('${bookKeyForNotes}')" class="bg-brand-primary text-white font-semibold py-2 px-6 rounded-full shadow-sm hover:bg-brand-primaryDark transition-colors self-end flex items-center justify-center sm:justify-start gap-2 text-sm w-full sm:w-fit"><i data-lucide="plus" class="w-4 h-4"></i> Add Note</button></div><div id="book-notes-list" class="flex flex-col gap-4 max-w-4xl"></div></div>${similarBooksHTML}`;
+            contentDiv.innerHTML = `<div class="flex flex-col md:flex-row gap-6 sm:gap-8 lg:gap-12"><img src="${coverUrl}" alt="${title}" class="w-40 sm:w-48 md:w-56 lg:w-64 h-auto object-cover rounded-xl shadow-lg shrink-0 mx-auto md:mx-0"><div class="flex flex-col items-center md:items-start text-center md:text-left"><h2 class="text-xl sm:text-2xl md:text-3xl font-bold text-brand-text mb-2">${title}</h2><p class="text-sm md:text-base text-brand-muted mb-3">by ${author}</p><div class="flex items-center text-sm font-semibold text-brand-text mb-6"><i data-lucide="star" class="w-4 h-4 text-brand-primary fill-brand-primary mr-1"></i> ${rating}</div><div class="flex flex-col sm:flex-row flex-wrap justify-center md:justify-start gap-3 mb-8 w-full"><div id="detailed-library-action-container" class="relative group z-40"></div><button onclick="openAddToListModal()" class="flex items-center justify-center bg-brand-card border border-brand-border rounded-full px-5 py-2.5 text-xs font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors shadow-sm focus:outline-none w-full sm:w-auto"><i data-lucide="plus" class="w-3 h-3 mr-2"></i> Add to List</button></div><div class="text-sm text-brand-text leading-relaxed opacity-90 max-w-3xl text-left">${formattedDescription}</div></div></div><div class="mt-8 border-t border-brand-border pt-8 w-full" id="book-notes-container"><h3 class="font-semibold text-lg text-brand-text mb-4">Notes & Quotes</h3><div class="flex flex-col gap-3 mb-8 max-w-4xl"><textarea id="new-note-content" rows="3" class="w-full bg-brand-bg border border-brand-border rounded-xl p-4 text-sm text-brand-text focus:ring-2 focus:ring-brand-primaryLight outline-none shadow-sm resize-none custom-scrollbar" placeholder="Save a bookmarked sentence, quote, or personal thought..."></textarea><button onclick="saveNote('${bookKeyForNotes}', 'new-note-content')" class="bg-brand-primary text-white font-semibold py-2 px-6 rounded-full shadow-sm hover:bg-brand-primaryDark transition-colors self-end flex items-center justify-center sm:justify-start gap-2 text-sm w-full sm:w-fit"><i data-lucide="plus" class="w-4 h-4"></i> Add Note</button></div><div id="book-notes-list" class="flex flex-col gap-4 max-w-4xl"></div></div>${similarBooksHTML}`;
             renderDetailedLibraryAction(); renderBookNotesList(bookKeyForNotes); if(window.lucide) lucide.createIcons(); document.getElementById('book-details-section').scrollIntoView({ behavior: 'smooth' });
         }
         function closeBookDetails() { document.getElementById('book-details-section').classList.add('hidden'); if (lastViewBeforeDetails === 'search-results') { document.getElementById('view-explore').classList.remove('hidden'); document.getElementById('search-results-section').classList.remove('hidden'); } else if (lastViewBeforeDetails === 'recommendations') document.getElementById('view-recommendations').classList.remove('hidden'); else if (lastViewBeforeDetails === 'trending') document.getElementById('view-trending').classList.remove('hidden'); else if (lastViewBeforeDetails === 'genre-books') document.getElementById('view-genre-books').classList.remove('hidden'); else if (lastViewBeforeDetails === 'single-list') document.getElementById('view-single-list').classList.remove('hidden'); else if (lastViewBeforeDetails === 'notes') document.getElementById('view-notes').classList.remove('hidden'); else if (lastViewBeforeDetails === 'explore') { document.getElementById('view-explore').classList.remove('hidden'); document.getElementById('explore-default-content').classList.remove('hidden'); } else switchTab(lastActiveTab); }
 
-        function showAllGenres() { ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); }); document.getElementById('book-details-section').classList.add('hidden'); document.getElementById('view-genre-books').classList.add('hidden'); document.getElementById('view-single-list').classList.add('hidden'); document.getElementById('view-all-genres').classList.remove('hidden'); const grid = document.getElementById('all-genres-grid'); if (grid.children.length === 0) { ALL_GENRES.forEach(g => { const btn = document.createElement('button'); btn.className = "bg-brand-surface border border-brand-border text-brand-text rounded-xl py-4 px-2 text-sm font-semibold hover:bg-brand-primary hover:border-brand-primary hover:text-white transition-all shadow-sm transform hover:-translate-y-1"; btn.textContent = g.name; btn.onclick = () => fetchGenreBooks(g.id, g.name, 'all-genres'); grid.appendChild(btn); }); } }
+        function openDedicatedNotes(bookKey, title, author, coverUrl) {
+            currentlyViewingBook = { key: bookKey, title: title, author_name: [author], coverUrl: coverUrl };
+            ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'view-single-list', 'all-genres', 'genre-books', 'view-dedicated-notes'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); });
+            document.getElementById('book-details-section').classList.add('hidden');
+            document.getElementById('search-results-section').classList.add('hidden');
+            document.getElementById('explore-default-content').classList.add('hidden');
+            
+            const viewDedicated = document.getElementById('view-dedicated-notes');
+            viewDedicated.classList.remove('hidden');
+            viewDedicated.classList.add('flex');
+            
+            document.getElementById('dedicated-notes-title').textContent = title;
+            document.getElementById('dedicated-notes-author').textContent = `by ${author}`;
+            document.getElementById('dedicated-notes-cover').src = coverUrl;
+            
+            const saveBtn = document.getElementById('dedicated-save-note-btn');
+            saveBtn.onclick = () => saveNote(bookKey, 'dedicated-new-note-content');
+            
+            renderDedicatedNotesList(bookKey);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function closeDedicatedNotes() {
+            document.getElementById('view-dedicated-notes').classList.add('hidden');
+            document.getElementById('view-dedicated-notes').classList.remove('flex');
+            switchTab('notes');
+        }
+
+        function showAllGenres() { ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); }); document.getElementById('book-details-section').classList.add('hidden'); document.getElementById('view-genre-books').classList.add('hidden'); document.getElementById('view-single-list').classList.add('hidden'); document.getElementById('view-dedicated-notes').classList.add('hidden'); document.getElementById('view-all-genres').classList.remove('hidden'); const grid = document.getElementById('all-genres-grid'); if (grid.children.length === 0) { ALL_GENRES.forEach(g => { const btn = document.createElement('button'); btn.className = "bg-brand-surface border border-brand-border text-brand-text rounded-xl py-4 px-2 text-sm font-semibold hover:bg-brand-primary hover:border-brand-primary hover:text-white transition-all shadow-sm transform hover:-translate-y-1"; btn.textContent = g.name; btn.onclick = () => fetchGenreBooks(g.id, g.name, 'all-genres'); grid.appendChild(btn); }); } }
         async function fetchGenreBooks(genreId, genreName, source = 'explore') {
-            lastGenreViewContext = source; ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'all-genres', 'view-single-list'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); }); document.getElementById('book-details-section').classList.add('hidden');
+            lastGenreViewContext = source; ['home', 'books', 'explore', 'stats', 'notes', 'recommendations', 'trending', 'all-genres', 'view-single-list', 'view-dedicated-notes'].forEach(id => { const view = document.getElementById(`view-${id}`); if (view) view.classList.add('hidden'); }); document.getElementById('book-details-section').classList.add('hidden');
             const viewGenre = document.getElementById('view-genre-books'); viewGenre.classList.remove('hidden'); document.getElementById('genre-books-title').textContent = `${genreName} Books`;
             const grid = document.getElementById('genre-books-grid'); const loading = document.getElementById('genre-loading'); grid.innerHTML = ''; loading.classList.remove('hidden');
             try { const randomOffset = Math.floor(Math.random() * 50); const res = await fetchWithRetry(`https://openlibrary.org/subjects/${genreId.toLowerCase()}.json?limit=30&offset=${randomOffset}`); const data = await res.json(); loading.classList.add('hidden'); if (!data.works || data.works.length === 0) { grid.innerHTML = '<p class="col-span-full text-center text-brand-muted py-8">No books found for this genre.</p>'; return; } const randomizedWorks = data.works.sort(() => 0.5 - Math.random()).slice(0, 15); randomizedWorks.forEach(work => { const title = work.title || 'Unknown Title'; const author = work.authors && work.authors.length > 0 ? work.authors[0].name : 'Unknown Author'; const year = work.first_publish_year || 'N/A'; const cover_i = work.cover_id; const coverUrl = cover_i ? `https://covers.openlibrary.org/b/id/${cover_i}-M.jpg` : ''; const cardHTML = document.createElement('div'); cardHTML.className = "book-card flex flex-col gap-2 group cursor-pointer h-full relative"; cardHTML.setAttribute('data-book-title', title); cardHTML.setAttribute('data-book-author', author); cardHTML.onclick = () => openDetailedView({ title, author_name: [author], cover_i, key: work.key, coverUrl }, 'genre-books'); cardHTML.innerHTML = `<div class="relative w-full aspect-[2/3]"><img src="${coverUrl || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='150' style='background:%23fde9d9'></svg>"}" alt="${title}" class="w-full h-full object-cover rounded-md book-shadow transition-transform group-hover:-translate-y-1">${getLibraryBadgeHTML(title, author)}</div><div class="flex flex-col mt-1 flex-1"><h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug">${title}</h4><p class="text-[11px] text-brand-muted mt-1 truncate">by ${author}</p><p class="text-[10px] text-brand-primary mt-auto pt-1">First published: ${year}</p></div>`; grid.appendChild(cardHTML); }); } catch (err) { loading.classList.add('hidden'); grid.innerHTML = '<p class="col-span-full text-center text-red-500 py-8">Error loading genres. Please try again later.</p>'; }
         }
         function closeGenreBooks() { document.getElementById('view-genre-books').classList.add('hidden'); if (lastGenreViewContext === 'all-genres') { document.getElementById('view-all-genres').classList.remove('hidden'); } else { document.getElementById('view-explore').classList.remove('hidden'); document.getElementById('explore-default-content').classList.remove('hidden'); } }
 
-        function renderBookNotesList(bookKey) { const listEl = document.getElementById('book-notes-list'); if(!listEl) return; const bookNotes = globalNotes.filter(n => n.book_key === bookKey).sort((a,b) => new Date(b.created_at) - new Date(a.created_at)); if(bookNotes.length === 0) { listEl.innerHTML = '<p class="text-sm text-brand-muted italic py-4">No notes for this book yet.</p>'; return; } listEl.innerHTML = bookNotes.map(note => `<div class="bg-brand-surface p-5 rounded-xl relative group shadow-sm border border-brand-border"><p class="text-sm text-brand-text whitespace-pre-wrap leading-relaxed">${note.content}</p><div class="flex justify-between items-center mt-4 pt-3 border-t border-brand-border"><span class="text-[10px] font-semibold text-brand-primaryDark">${new Date(note.created_at).toLocaleDateString()}</span><button onclick="deleteNote('${note.id}', '${bookKey}')" class="text-red-400 hover:text-red-600 sm:opacity-0 group-hover:opacity-100 transition-opacity bg-brand-card hover:bg-red-500/10 p-1.5 rounded-full shadow-sm" title="Delete Note"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button></div></div>`).join(''); if(window.lucide) lucide.createIcons(); }
-        async function saveNote(bookKey) { const contentInput = document.getElementById('new-note-content'); const content = contentInput.value.trim(); if(!content) return showToast('Note content cannot be empty', 'error'); const book = currentlyViewingBook; const tempId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'local_note_' + Date.now(); try { let { data, error } = await supabaseClient.from('notes').insert([{ id: tempId, book_key: bookKey, title: book.title || 'Unknown Title', author: book.author_name ? book.author_name[0] : (book.author || 'Unknown Author'), coverurl: book.coverUrl || '', content: content }]).select(); if (error && error.code === '42703') { const retry = await supabaseClient.from('notes').insert([{ id: tempId, book_key: bookKey, title: book.title || 'Unknown Title', author: book.author_name ? book.author_name[0] : (book.author || 'Unknown Author'), coverUrl: book.coverUrl || '', content: content }]).select(); data = retry.data; error = retry.error; } if(error) throw error; const newNote = data[0]; newNote.coverUrl = newNote.coverUrl || newNote.coverurl; globalNotes.push(newNote); contentInput.value = ''; showToast('Note saved!'); } catch(e) { globalNotes.push({ id: tempId, book_key: bookKey, title: book.title || 'Unknown Title', author: book.author_name ? book.author_name[0] : (book.author || 'Unknown Author'), coverUrl: book.coverUrl || '', content: content, created_at: new Date().toISOString() }); contentInput.value = ''; showToast('Note saved locally (DB error)', 'error'); } renderBookNotesList(bookKey); renderNotesTab(); }
-        async function deleteNote(noteId, bookKey) { if(!confirm('Are you sure you want to delete this note?')) return; try { const { error } = await supabaseClient.from('notes').delete().eq('id', noteId); if(error) throw error; globalNotes = globalNotes.filter(n => String(n.id) !== String(noteId)); showToast('Note deleted.'); } catch(e) { globalNotes = globalNotes.filter(n => String(n.id) !== String(noteId)); showToast('Note deleted locally.'); } renderBookNotesList(bookKey); renderNotesTab(); }
-        function renderNotesTab() { const grid = document.getElementById('notes-books-grid'); const empty = document.getElementById('notes-empty'); if(!grid || !empty) return; grid.innerHTML = ''; const booksWithNotesMap = {}; globalNotes.forEach(note => { if(!booksWithNotesMap[note.book_key]) { booksWithNotesMap[note.book_key] = { title: note.title, author: note.author, coverUrl: note.coverUrl, key: note.book_key, noteCount: 0, latestNoteDate: new Date(note.created_at) }; } booksWithNotesMap[note.book_key].noteCount++; const noteDate = new Date(note.created_at); if(noteDate > booksWithNotesMap[note.book_key].latestNoteDate) booksWithNotesMap[note.book_key].latestNoteDate = noteDate; }); const uniqueBooks = Object.values(booksWithNotesMap).sort((a,b) => b.latestNoteDate - a.latestNoteDate); if(uniqueBooks.length === 0) { grid.classList.add('hidden'); empty.classList.remove('hidden'); empty.classList.add('flex'); return; } grid.classList.remove('hidden'); empty.classList.add('hidden'); empty.classList.remove('flex'); uniqueBooks.forEach(book => { const cardHTML = document.createElement('div'); cardHTML.className = "flex flex-col gap-2 group cursor-pointer h-full relative"; cardHTML.onclick = () => openDetailedView({ title: book.title, author_name: [book.author], coverUrl: book.coverUrl, key: book.key }, 'notes'); cardHTML.innerHTML = `<div class="relative w-full aspect-[2/3]"><img src="${book.coverUrl}" alt="${book.title}" class="w-full h-full object-cover rounded-md book-shadow transition-transform group-hover:-translate-y-1"><div class="absolute -top-2 -right-2 bg-brand-primary text-white text-[10px] font-bold w-6 h-6 flex items-center justify-center rounded-full shadow-md z-20 border-2 border-brand-card">${book.noteCount}</div></div><div class="flex flex-col mt-1 flex-1"><h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug group-hover:text-brand-primary transition-colors">${book.title}</h4><p class="text-[11px] text-brand-muted mt-1 truncate">by ${book.author}</p></div>`; grid.appendChild(cardHTML); }); if(window.lucide) lucide.createIcons(); }
+        function renderBookNotesList(bookKey) { 
+            const listEl = document.getElementById('book-notes-list'); if(!listEl) return; 
+            const bookNotes = globalNotes.filter(n => n.book_key === bookKey).sort((a,b) => new Date(b.created_at) - new Date(a.created_at)); 
+            if(bookNotes.length === 0) { listEl.innerHTML = '<p class="text-sm text-brand-muted italic py-4">No notes for this book yet.</p>'; return; } 
+            listEl.innerHTML = bookNotes.map(note => `<div class="bg-brand-surface p-5 rounded-xl relative group shadow-sm border border-brand-border"><p class="text-sm text-brand-text whitespace-pre-wrap leading-relaxed">${note.content}</p><div class="flex justify-between items-center mt-4 pt-3 border-t border-brand-border"><span class="text-[10px] font-semibold text-brand-primaryDark">${new Date(note.created_at).toLocaleDateString()}</span><button onclick="deleteNote('${note.id}', '${bookKey}')" class="text-red-400 hover:text-red-600 sm:opacity-0 group-hover:opacity-100 transition-opacity bg-brand-card hover:bg-red-500/10 p-1.5 rounded-full shadow-sm" title="Delete Note"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button></div></div>`).join(''); 
+            if(window.lucide) lucide.createIcons(); 
+        }
+
+        function renderDedicatedNotesList(bookKey) {
+            const listEl = document.getElementById('dedicated-notes-list'); if(!listEl) return;
+            const bookNotes = globalNotes.filter(n => n.book_key === bookKey).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+            if(bookNotes.length === 0) { 
+                listEl.innerHTML = '<p class="text-sm text-brand-muted italic py-4">No notes for this book yet.</p>'; 
+                return; 
+            }
+            listEl.innerHTML = bookNotes.map(note => `<div class="bg-brand-surface p-5 rounded-xl relative group shadow-sm border border-brand-border"><p class="text-sm text-brand-text whitespace-pre-wrap leading-relaxed">${note.content}</p><div class="flex justify-between items-center mt-4 pt-3 border-t border-brand-border"><span class="text-[10px] font-semibold text-brand-primaryDark">${new Date(note.created_at).toLocaleDateString()}</span><button onclick="deleteNote('${note.id}', '${bookKey}')" class="text-red-400 hover:text-red-600 sm:opacity-0 group-hover:opacity-100 transition-opacity bg-brand-card hover:bg-red-500/10 p-1.5 rounded-full shadow-sm" title="Delete Note"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button></div></div>`).join('');
+            if(window.lucide) lucide.createIcons();
+        }
+
+        async function saveNote(bookKey, inputId = 'new-note-content') { 
+            const contentInput = document.getElementById(inputId); 
+            if(!contentInput) return;
+            const content = contentInput.value.trim(); 
+            if(!content) return showToast('Note content cannot be empty', 'error'); 
+            const book = currentlyViewingBook; 
+            const tempId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'local_note_' + Date.now(); 
+            try { 
+                let { data, error } = await supabaseClient.from('notes').insert([{ id: tempId, book_key: bookKey, title: book.title || 'Unknown Title', author: book.author_name ? book.author_name[0] : (book.author || 'Unknown Author'), coverurl: book.coverUrl || '', content: content }]).select(); 
+                if (error && error.code === '42703') { 
+                    const retry = await supabaseClient.from('notes').insert([{ id: tempId, book_key: bookKey, title: book.title || 'Unknown Title', author: book.author_name ? book.author_name[0] : (book.author || 'Unknown Author'), coverUrl: book.coverUrl || '', content: content }]).select(); 
+                    data = retry.data; error = retry.error; 
+                } 
+                if(error) throw error; 
+                const newNote = data[0]; newNote.coverUrl = newNote.coverUrl || newNote.coverurl; 
+                globalNotes.push(newNote); 
+                contentInput.value = ''; showToast('Note saved!'); 
+            } catch(e) { 
+                globalNotes.push({ id: tempId, book_key: bookKey, title: book.title || 'Unknown Title', author: book.author_name ? book.author_name[0] : (book.author || 'Unknown Author'), coverUrl: book.coverUrl || '', content: content, created_at: new Date().toISOString() }); 
+                contentInput.value = ''; showToast('Note saved locally (DB error)', 'error'); 
+            } 
+            renderBookNotesList(bookKey); 
+            renderDedicatedNotesList(bookKey);
+            renderNotesTab(); 
+        }
+
+        async function deleteNote(noteId, bookKey) { 
+            if(!confirm('Are you sure you want to delete this note?')) return; 
+            try { 
+                const { error } = await supabaseClient.from('notes').delete().eq('id', noteId); 
+                if(error) throw error; 
+                globalNotes = globalNotes.filter(n => String(n.id) !== String(noteId)); 
+                showToast('Note deleted.'); 
+            } catch(e) { 
+                globalNotes = globalNotes.filter(n => String(n.id) !== String(noteId)); 
+                showToast('Note deleted locally.'); 
+            } 
+            renderBookNotesList(bookKey); 
+            renderDedicatedNotesList(bookKey);
+            renderNotesTab(); 
+        }
+
+        function renderNotesTab() { 
+            const grid = document.getElementById('notes-books-grid'); const empty = document.getElementById('notes-empty'); if(!grid || !empty) return; grid.innerHTML = ''; const booksWithNotesMap = {}; 
+            globalNotes.forEach(note => { 
+                if(!booksWithNotesMap[note.book_key]) { 
+                    booksWithNotesMap[note.book_key] = { title: note.title, author: note.author, coverUrl: note.coverUrl, key: note.book_key, noteCount: 0, latestNoteDate: new Date(note.created_at) }; 
+                } 
+                booksWithNotesMap[note.book_key].noteCount++; 
+                const noteDate = new Date(note.created_at); 
+                if(noteDate > booksWithNotesMap[note.book_key].latestNoteDate) booksWithNotesMap[note.book_key].latestNoteDate = noteDate; 
+            }); 
+            const uniqueBooks = Object.values(booksWithNotesMap).sort((a,b) => b.latestNoteDate - a.latestNoteDate); 
+            if(uniqueBooks.length === 0) { grid.classList.add('hidden'); empty.classList.remove('hidden'); empty.classList.add('flex'); return; } 
+            grid.classList.remove('hidden'); empty.classList.add('hidden'); empty.classList.remove('flex'); 
+            uniqueBooks.forEach(book => { 
+                const cardHTML = document.createElement('div'); cardHTML.className = "flex flex-col gap-2 group cursor-pointer h-full relative"; 
+                cardHTML.onclick = () => openDedicatedNotes(book.key, book.title, book.author, book.coverUrl); 
+                cardHTML.innerHTML = `<div class="relative w-full aspect-[2/3]"><img src="${book.coverUrl}" alt="${book.title}" class="w-full h-full object-cover rounded-md book-shadow transition-transform group-hover:-translate-y-1"><div class="absolute -top-2 -right-2 bg-brand-primary text-white text-[10px] font-bold w-6 h-6 flex items-center justify-center rounded-full shadow-md z-20 border-2 border-brand-card">${book.noteCount}</div></div><div class="flex flex-col mt-1 flex-1"><h4 class="font-semibold text-sm text-brand-text line-clamp-2 leading-snug group-hover:text-brand-primary transition-colors">${book.title}</h4><p class="text-[11px] text-brand-muted mt-1 truncate">by ${book.author}</p></div>`; 
+                grid.appendChild(cardHTML); 
+            }); 
+            if(window.lucide) lucide.createIcons(); 
+        }
 
         async function fetchSupabaseData() {
             let activeCurrentlyReading = []; let readingLaterList = []; let readBooksList = [];
