@@ -140,7 +140,9 @@
                                 <span id="picker-year-display" class="font-bold text-sm">2026</span>
                                 <button onclick="changePickerYear(1)" class="p-1 hover:bg-parchment-200 dark:hover:bg-gray-700 rounded-full"><i class="ph ph-caret-right"></i></button>
                             </div>
-                            <div class="grid grid-cols-3 gap-2" id="picker-months-grid"></div>
+                            <div class="grid grid-cols-3 gap-2" id="picker-months-grid">
+                                <!-- Months will be injected here by JS -->
+                            </div>
                         </div>
                     </div>
                     <div class="flex gap-2">
@@ -330,7 +332,9 @@
                                         <span id="budget-picker-year-display" class="font-bold text-sm">2026</span>
                                         <button onclick="changeBudgetPickerYear(1)" class="p-1 hover:bg-parchment-200 dark:hover:bg-gray-700 rounded-full"><i class="ph ph-caret-right"></i></button>
                                     </div>
-                                    <div class="grid grid-cols-3 gap-2" id="budget-picker-months-grid"></div>
+                                    <div class="grid grid-cols-3 gap-2" id="budget-picker-months-grid">
+                                        <!-- Months will be injected here by JS -->
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -961,12 +965,12 @@
 
         // Globals for Sales App
         let loadedProducts = [];
-        let loadedSales = []; // unified list of daily_sales (with or without product_id)
+        let loadedSales = []; 
         let loadedRefunds = [];
         let loadedReturns = [];
         
         let activeSalesMonthFilter = 'all';
-        let activeLogEntryMode = 'sale'; // sale | refund | return
+        let activeLogEntryMode = 'sale'; 
         let logDisplayLimit = 15;
 
         function toggleDropdown(id) { const el = document.getElementById(id); if (el) el.classList.toggle('hidden'); }
@@ -978,10 +982,49 @@
             });
         });
 
-        function toggleMonthPicker() { toggleDropdown('month-picker-dropdown'); }
-        function changePickerYear(dir) { pickerYear += dir; document.getElementById('picker-year-display').innerText = pickerYear; }
-        function toggleBudgetMonthPicker() { toggleDropdown('budget-month-dropdown'); }
-        function changeBudgetPickerYear(dir) { pickerYear += dir; document.getElementById('budget-picker-year-display').innerText = pickerYear; }
+        function populateMonthsGrid(containerId, isBudget = false) {
+            const container = document.getElementById(containerId);
+            if(!container) return;
+            container.innerHTML = '';
+            monthNamesShort.forEach((m, idx) => {
+                const btn = document.createElement('button');
+                btn.className = `py-2 rounded-xl text-xs font-bold transition-colors ${selectedMonth === idx && selectedYear === pickerYear ? 'bg-brand-500 text-white' : 'hover:bg-parchment-200 dark:hover:bg-gray-700'}`;
+                btn.innerText = m;
+                btn.onclick = () => {
+                    selectedMonth = idx;
+                    selectedYear = pickerYear;
+                    document.getElementById(isBudget ? 'budget-month-text' : 'current-month-text').innerText = `${m} ${selectedYear}`;
+                    toggleDropdown(isBudget ? 'budget-month-dropdown' : 'month-picker-dropdown');
+                    if (isBudget) fetchBudgetData(); else fetchDashboardData();
+                };
+                container.appendChild(btn);
+            });
+        }
+
+        function toggleMonthPicker() { 
+            pickerYear = selectedYear;
+            document.getElementById('picker-year-display').innerText = pickerYear;
+            populateMonthsGrid('picker-months-grid');
+            toggleDropdown('month-picker-dropdown'); 
+        }
+        function changePickerYear(dir) { 
+            pickerYear += dir; 
+            document.getElementById('picker-year-display').innerText = pickerYear; 
+            populateMonthsGrid('picker-months-grid');
+        }
+        
+        function toggleBudgetMonthPicker() { 
+            pickerYear = selectedYear;
+            document.getElementById('budget-picker-year-display').innerText = pickerYear;
+            populateMonthsGrid('budget-picker-months-grid', true);
+            toggleDropdown('budget-month-dropdown'); 
+        }
+        function changeBudgetPickerYear(dir) { 
+            pickerYear += dir; 
+            document.getElementById('budget-picker-year-display').innerText = pickerYear; 
+            populateMonthsGrid('budget-picker-months-grid', true);
+        }
+        
         function clearTxDateFilters() { document.getElementById('tx-start-date').value = ''; document.getElementById('tx-end-date').value = ''; fetchFullTransactions(true); }
 
         function cacheTransactions(txs) {
@@ -1072,7 +1115,7 @@
                             <tr class="border-b dark:border-gray-800 hover:bg-parchment-200/50 dark:hover:bg-gray-700/50">
                                 <td class="py-4 px-4 font-semibold text-xs">${tx.date_text}</td>
                                 <td class="py-4 px-2 font-bold text-[10px] text-gray-500"><span class="px-2 py-0.5 rounded bg-parchment-300 dark:bg-gray-700">${accDisplay}</span></td>
-                                <td class="py-4 px-4 font-bold text-right text-xs ${amtColor}">${sign} MAD ${tx.amount}</td>
+                                <td class="py-4 px-4 font-bold text-right text-xs ${amtColor}">${sign} MAD ${Number(tx.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                                 <td class="py-4 px-4 pl-8 font-bold text-xs">${tx.payment_name}</td>
                                 <td class="py-4 px-4 text-xs font-bold text-gray-400">${tx.type==='transfer'? 'Transfer' : tx.method}</td>
                                 <td class="py-4 px-4 text-right"><button onclick="openEditTxModal('${tx.id}')" class="text-gray-400 hover:text-brand-500 transition-colors"><i class="ph ph-pencil-simple text-lg"></i></button></td>
@@ -1187,8 +1230,18 @@
 
             try {
                 if (txId && txId.startsWith('mock-')) throw new Error("Local mock");
-                const res = txId ? await supabaseClient.from('transactions').update(payload).eq('id', txId) : await supabaseClient.from('transactions').insert([payload]);
+                const res = txId 
+                    ? await supabaseClient.from('transactions').update(payload).eq('id', txId).select().single() 
+                    : await supabaseClient.from('transactions').insert([payload]).select().single();
                 if (res.error) throw new Error(res.error.message);
+                
+                if (txId) {
+                    const idx = loadedTransactions.findIndex(t => t.id == txId);
+                    if (idx > -1) loadedTransactions[idx] = res.data;
+                } else {
+                    loadedTransactions.push(res.data);
+                }
+                
                 showToast(txId ? 'Updated successfully' : 'Saved successfully');
             } catch (e) {
                 if (!isNew) {
@@ -1228,7 +1281,7 @@
             }
             const balances = calculateBalances(txs);
             const activeData = balances[walletAccountFilter];
-            const formatNumber = (num) => num.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            const formatNumber = (num) => Number(num).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
             
             document.getElementById('wallet-balance-label').innerText = walletAccountFilter === 'All' ? 'Combined Available Balance' : `${walletAccountFilter} Available Balance`;
             document.getElementById('wallet-total-balance').innerHTML = activeData.bal < 0 ? `-MAD ${formatNumber(Math.abs(activeData.bal))}` : `MAD ${formatNumber(activeData.bal)}`;
@@ -1309,7 +1362,7 @@
                     <tr class="border-b dark:border-gray-700 hover:bg-parchment-200/50 dark:hover:bg-gray-800 transition-colors">
                         <td class="py-5 px-4 font-bold text-xs">${t.date_text}</td>
                         <td class="py-5 px-4 font-bold text-[10px] text-gray-500"><span class="px-2 py-1 rounded bg-parchment-300 dark:bg-gray-800 whitespace-nowrap">${accDisplay}</span></td>
-                        <td class="py-5 px-4 font-bold text-right text-xs ${amtColor}">${sign} MAD ${t.amount}</td>
+                        <td class="py-5 px-4 font-bold text-right text-xs ${amtColor}">${sign} MAD ${Number(t.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                         <td class="py-5 px-4 pl-8 font-bold text-xs">${t.payment_name}</td>
                         <td class="py-5 px-4 text-xs font-bold text-gray-400">${t.type==='transfer'? 'Transfer' : t.method}</td>
                         <td class="py-5 px-4 text-xs font-bold text-gray-400">${t.type==='transfer'? '—' : t.category}</td>
@@ -1537,7 +1590,8 @@
             ['balance', 'income', 'expense'].forEach(t => { const btn = document.getElementById('analytics-tab-' + t); if (!btn) return; btn.className = (t === activeAnalyticsTab) ? "analytics-tab px-5 py-2.5 rounded-full text-sm font-bold transition-all bg-brand-500 text-white shadow-md" : "analytics-tab px-5 py-2.5 rounded-full text-sm font-bold transition-all text-gray-500 dark:text-gray-400 hover:bg-parchment-300 dark:hover:bg-gray-800"; });
             let txs = loadedTransactions;
             if (analyticsAccountFilter !== 'All') txs = txs.filter(t => t.type === 'transfer' ? (t.account === analyticsAccountFilter || t.transfer_to === analyticsAccountFilter) : (t.account === analyticsAccountFilter));
-            const pureTxs = txs.filter(t => t.type !== 'transfer'); const balances = calculateBalances(txs)[analyticsAccountFilter];
+            const pureTxs = txs.filter(t => t.type !== 'transfer'); 
+            const balances = calculateBalances(txs)[analyticsAccountFilter === 'All' ? 'All' : analyticsAccountFilter];
             const fmt = n => Number(n).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
             let html = '';
             if (activeAnalyticsTab === 'balance') {
@@ -1547,10 +1601,10 @@
                     <div class="bg-parchment dark:bg-gray-800 p-6 rounded-[24px] border border-parchment-300 dark:border-gray-800 shadow-sm text-center py-12 text-gray-400"><i class="ph ph-chart-polar text-4xl mb-3"></i><p class="font-bold text-sm">Advanced charting requires more data.</p></div>`;
             } else if (activeAnalyticsTab === 'income') {
                 html = `<div class="bg-parchment dark:bg-gray-800 p-6 rounded-[24px] border border-parchment-300 dark:border-gray-800 shadow-sm"><h3 class="font-bold text-base mb-4 text-gray-900 dark:text-white">Income Sources (${analyticsAccountFilter})</h3><p class="text-xs text-gray-500 mb-4">Note: Internal transfers are excluded.</p>
-                    <div class="space-y-4">${pureTxs.filter(t=>t.type==='income').map(t=>`<div class="flex justify-between items-center border-b border-parchment-300 dark:border-gray-700 pb-2"><span class="text-sm font-bold">${t.payment_name}</span><span class="text-green-500 font-bold">+MAD ${fmt(t.amount)}</span></div>`).join('') || '<p class="text-gray-400 text-xs">No income data.</p>'}</div></div>`;
+                    <div class="space-y-4">${pureTxs.filter(t=>t.type==='income').map(t=>`<div class="flex justify-between items-center border-b border-parchment-300 dark:border-gray-700 pb-2"><span class="text-sm font-bold">${t.payment_name}</span><span class="text-green-500 font-bold">+MAD ${fmt(Number(t.amount))}</span></div>`).join('') || '<p class="text-gray-400 text-xs">No income data.</p>'}</div></div>`;
             } else {
                 html = `<div class="bg-parchment dark:bg-gray-800 p-6 rounded-[24px] border border-parchment-300 dark:border-gray-800 shadow-sm"><h3 class="font-bold text-base mb-4 text-gray-900 dark:text-white">Expense Breakdown (${analyticsAccountFilter})</h3><p class="text-xs text-gray-500 mb-4">Note: Internal transfers are excluded.</p>
-                    <div class="space-y-4">${pureTxs.filter(t=>t.type==='expense').map(t=>`<div class="flex justify-between items-center border-b border-parchment-300 dark:border-gray-700 pb-2"><span class="text-sm font-bold">${t.payment_name}</span><span class="text-red-500 font-bold">-MAD ${fmt(t.amount)}</span></div>`).join('') || '<p class="text-gray-400 text-xs">No expense data.</p>'}</div></div>`;
+                    <div class="space-y-4">${pureTxs.filter(t=>t.type==='expense').map(t=>`<div class="flex justify-between items-center border-b border-parchment-300 dark:border-gray-700 pb-2"><span class="text-sm font-bold">${t.payment_name}</span><span class="text-red-500 font-bold">-MAD ${fmt(Number(t.amount))}</span></div>`).join('') || '<p class="text-gray-400 text-xs">No expense data.</p>'}</div></div>`;
             }
             document.getElementById('analytics-content').innerHTML = html;
         }
@@ -2213,7 +2267,7 @@
         // --- Global Methods ---
         function formatCurrencyHTML(a) { 
             const n = Number(a) || 0; const isNeg = n < 0; const p = Math.abs(n).toFixed(2).split('.'); 
-            return `${isNeg ? '-' : ''}MAD ${parseInt(p[0]).toLocaleString()}<span class="text-gray-400 dark:text-gray-500 font-medium text-2xl">.${p[1]}</span>`; 
+            return `${isNeg ? '-' : ''}MAD ${parseInt(p[0]).toLocaleString()}<span class="text-gray-400 dark:text-gray-500 font-medium text-2xl">.${p[1] || '00'}</span>`; 
         }
 
         function switchView(viewId) {
@@ -2232,7 +2286,12 @@
             if (viewId === 'dashboard') fetchDashboardData();
             if (viewId === 'transactions') fetchFullTransactions();
             if (viewId === 'wallet') fetchWalletData();
-            if (viewId === 'analytics') renderAnalytics();
+            if (viewId === 'analytics') {
+                supabaseClient.from('transactions').select('*').order('created_at', { ascending: false }).then(({data}) => {
+                    if (data) { loadedTransactions = data; renderAnalytics(); }
+                });
+                renderAnalytics();
+            }
             if (viewId === 'sales') fetchSalesTrackerData();
             
             if(window.innerWidth < 1024) toggleSidebar();
@@ -2253,6 +2312,10 @@
         }
 
         window.addEventListener('DOMContentLoaded', () => {
+            // Populate initial grids
+            populateMonthsGrid('picker-months-grid');
+            populateMonthsGrid('budget-picker-months-grid', true);
+
             fetchDashboardData();
             fetchGoalsData();
             fetchBudgetData();
