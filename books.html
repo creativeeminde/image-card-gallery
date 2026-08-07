@@ -144,6 +144,27 @@
             transform: translateY(0);
             display: flex !important;
         }
+
+        /* Mobile/Tablet PDF.js canvas viewer (used when the browser can't
+           reliably render a PDF inside an <iframe>, e.g. iOS Safari / Chrome
+           Android). Desktop keeps using the native iframe viewer below. */
+        #pdf-mobile-viewer {
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+        }
+        #pdf-mobile-viewer .pdf-page-wrapper {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+        #pdf-mobile-viewer canvas {
+            display: block;
+            max-width: 100%;
+            height: auto;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+        }
     </style>
 </head>
 <body class="min-h-screen font-sans flex flex-col items-center pt-4 sm:pt-6 px-3 sm:px-8 transition-colors duration-300">
@@ -174,9 +195,10 @@
             <p class="text-brand-text font-medium animate-pulse">Loading Document...</p>
         </div>
         
-        <!-- Iframe Container -->
+        <!-- Iframe Container (desktop) + PDF.js canvas viewer (mobile/tablet) -->
         <div class="flex-1 w-full h-full relative bg-gray-100 dark:bg-gray-800">
             <iframe id="pdf-iframe" class="w-full h-full border-0 absolute inset-0 z-20" onload="document.getElementById('pdf-reader-loading').classList.add('hidden')" allow="fullscreen"></iframe>
+            <div id="pdf-mobile-viewer" class="hidden w-full h-full absolute inset-0 z-20 overflow-y-auto overflow-x-hidden bg-gray-100 dark:bg-gray-800 py-4 px-2"></div>
         </div>
     </div>
 
@@ -1093,6 +1115,143 @@
             if(window.lucide) lucide.createIcons();
         }
 
+        // ================= MOBILE PDF RENDERING (PDF.js) =================
+        // Many mobile browsers (iOS Safari, Chrome/Android, and most tablet
+        // browsers) do not reliably render a PDF placed inside an <iframe> -
+        // the full-screen reader opens but the document itself stays blank.
+        // Desktop browsers ship a native PDF viewer plugin that iframes can
+        // use, so desktop keeps that exact behavior. On mobile/tablet we
+        // instead fetch the PDF with PDF.js and draw each page onto a
+        // <canvas>, which works consistently across iPhone, Android, and
+        // tablets since it doesn't depend on any browser PDF plugin.
+        let pdfJsLoadPromise = null;
+        function loadPdfJsLibrary() {
+            if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+            if (pdfJsLoadPromise) return pdfJsLoadPromise;
+
+            pdfJsLoadPromise = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+                script.onload = () => {
+                    if (window.pdfjsLib) {
+                        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                        resolve(window.pdfjsLib);
+                    } else {
+                        reject(new Error('PDF engine failed to initialize'));
+                    }
+                };
+                script.onerror = () => reject(new Error('Failed to load PDF engine'));
+                document.head.appendChild(script);
+            });
+            return pdfJsLoadPromise;
+        }
+
+        function isMobileOrTabletDevice() {
+            const ua = navigator.userAgent || navigator.vendor || window.opera || '';
+            const isTouchMac = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1; // iPadOS reports as Mac
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|Tablet/i.test(ua) || isTouchMac;
+        }
+
+        function showMobilePdfFallback(container, loadingEl, url, message) {
+            loadingEl.classList.add('hidden');
+            container.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full text-center px-6 gap-4">
+                    <i data-lucide="file-warning" class="w-10 h-10 text-brand-muted"></i>
+                    <p class="text-brand-text font-medium max-w-xs">${message}</p>
+                    <a href="${url}" target="_blank" rel="noopener" class="bg-brand-primary text-white font-bold py-3 px-6 rounded-full shadow-lg hover:bg-brand-primaryDark transition-all inline-flex items-center gap-2">
+                        <i data-lucide="external-link" class="w-4 h-4"></i> Open PDF
+                    </a>
+                </div>`;
+            if (window.lucide) lucide.createIcons();
+        }
+
+        async function renderPdfWithPdfJs(url, container, loadingEl) {
+            try {
+                const pdfjsLib = await loadPdfJsLibrary();
+                const pdf = await pdfjsLib.getDocument({ url }).promise;
+
+                // Bail out if the reader was closed / a different PDF was
+                // opened while this document was loading.
+                if (currentlyOpenPdfUrl !== url) return;
+
+                loadingEl.classList.add('hidden');
+                container.innerHTML = '';
+
+                const numPages = pdf.numPages;
+                const pageWrappers = [];
+
+                for (let i = 1; i <= numPages; i++) {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'pdf-page-wrapper mb-3';
+                    wrapper.dataset.pageNum = String(i);
+                    wrapper.innerHTML = `<div class="w-full flex items-center justify-center text-brand-muted text-xs py-16">Loading page ${i}...</div>`;
+                    container.appendChild(wrapper);
+                    pageWrappers.push(wrapper);
+                }
+
+                const renderedPages = new Set();
+
+                async function renderPage(pageNum) {
+                    if (renderedPages.has(pageNum) || currentlyOpenPdfUrl !== url) return;
+                    renderedPages.add(pageNum);
+                    const wrapper = pageWrappers[pageNum - 1];
+                    try {
+                        const page = await pdf.getPage(pageNum);
+                        if (currentlyOpenPdfUrl !== url) return;
+
+                        const containerWidth = Math.max(container.clientWidth - 16, 280);
+                        const baseViewport = page.getViewport({ scale: 1 });
+                        const scale = Math.min(containerWidth / baseViewport.width, 2.5) || 1;
+                        const viewport = page.getViewport({ scale });
+
+                        const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        canvas.width = Math.floor(viewport.width * outputScale);
+                        canvas.height = Math.floor(viewport.height * outputScale);
+                        canvas.style.width = Math.floor(viewport.width) + 'px';
+                        canvas.style.height = Math.floor(viewport.height) + 'px';
+
+                        wrapper.innerHTML = '';
+                        wrapper.appendChild(canvas);
+
+                        const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
+                        await page.render({ canvasContext: ctx, viewport, transform }).promise;
+                    } catch (err) {
+                        console.error('Failed to render PDF page', pageNum, err);
+                        renderedPages.delete(pageNum);
+                        if (wrapper) wrapper.innerHTML = `<div class="text-xs text-red-400 text-center py-10">Couldn't load page ${pageNum}</div>`;
+                    }
+                }
+
+                // Render the first couple pages immediately so the reader
+                // never opens visibly blank, then lazily render the rest as
+                // the user scrolls to keep memory/CPU usage reasonable.
+                await renderPage(1);
+                if (pageWrappers[1]) renderPage(2);
+
+                if ('IntersectionObserver' in window) {
+                    const observer = new IntersectionObserver((entries) => {
+                        entries.forEach(entry => {
+                            if (entry.isIntersecting) {
+                                renderPage(parseInt(entry.target.dataset.pageNum, 10));
+                            }
+                        });
+                    }, { root: container, rootMargin: '800px 0px', threshold: 0.01 });
+
+                    pageWrappers.forEach(w => observer.observe(w));
+                    container._pdfObserver = observer;
+                } else {
+                    for (let i = 3; i <= numPages; i++) { renderPage(i); }
+                }
+            } catch (err) {
+                console.error('PDF.js render failed', err);
+                if (currentlyOpenPdfUrl === url) {
+                    showMobilePdfFallback(container, loadingEl, url, "This document couldn't be displayed inline on your device.");
+                }
+            }
+        }
+
         function openPdfReader(bookKey, title) {
             const url = globalBookPdfs[bookKey];
             if (!url) return showToast('No PDF linked for this book.', 'error');
@@ -1101,24 +1260,53 @@
             
             const modal = document.getElementById('pdf-reader-modal');
             const iframe = document.getElementById('pdf-iframe');
+            const mobileViewer = document.getElementById('pdf-mobile-viewer');
             const loading = document.getElementById('pdf-reader-loading');
             const titleEl = document.getElementById('pdf-reader-title');
             
             titleEl.textContent = title || 'Document';
             loading.classList.remove('hidden');
-            
-            iframe.src = url; 
+
+            if (mobileViewer._pdfObserver) {
+                mobileViewer._pdfObserver.disconnect();
+                mobileViewer._pdfObserver = null;
+            }
+            mobileViewer.innerHTML = '';
+
             modal.classList.remove('hidden');
-            
-            setTimeout(() => { iframe.focus(); }, 500);
+
+            if (isMobileOrTabletDevice()) {
+                // Mobile/tablet: render via PDF.js canvases (iframes can't be
+                // trusted to display PDFs on these browsers).
+                iframe.classList.add('hidden');
+                iframe.src = '';
+                mobileViewer.classList.remove('hidden');
+                renderPdfWithPdfJs(url, mobileViewer, loading);
+            } else {
+                // Desktop: unchanged native iframe PDF viewer.
+                mobileViewer.classList.add('hidden');
+                iframe.classList.remove('hidden');
+                iframe.src = url;
+                setTimeout(() => { iframe.focus(); }, 500);
+            }
         }
 
         function closePdfReader() {
             const modal = document.getElementById('pdf-reader-modal');
             const iframe = document.getElementById('pdf-iframe');
-            
+            const mobileViewer = document.getElementById('pdf-mobile-viewer');
+
             modal.classList.add('hidden');
-            iframe.src = ''; 
+            iframe.src = '';
+            iframe.classList.remove('hidden');
+
+            if (mobileViewer._pdfObserver) {
+                mobileViewer._pdfObserver.disconnect();
+                mobileViewer._pdfObserver = null;
+            }
+            mobileViewer.innerHTML = '';
+            mobileViewer.classList.add('hidden');
+
             currentlyOpenPdfUrl = null;
         }
         
