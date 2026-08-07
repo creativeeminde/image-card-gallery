@@ -487,6 +487,17 @@
                     
                     <div class="w-24 hidden sm:block"></div>
                 </div>
+
+                <!-- Author Profile Info -->
+                <div id="author-info-section" class="flex flex-col md:flex-row gap-6 items-center md:items-start mb-8 hidden border-b border-brand-border pb-8">
+                    <img id="author-page-image" src="" alt="Author" class="w-28 h-28 md:w-36 md:h-36 rounded-full object-cover shadow-md border-4 border-brand-card bg-brand-surface shrink-0">
+                    <div class="flex flex-col items-center md:items-start text-center md:text-left flex-1 min-w-0 w-full">
+                        <h3 class="text-sm font-semibold text-brand-muted uppercase tracking-wider mb-2">About the Author</h3>
+                        <div id="author-page-bio" class="text-sm text-brand-text leading-relaxed opacity-90 w-full line-clamp-4 whitespace-pre-wrap"></div>
+                        <button id="author-bio-toggle" class="text-xs text-brand-primary mt-2 font-semibold hover:underline focus:outline-none hidden">Read more</button>
+                    </div>
+                </div>
+
                 <div id="author-loading" class="hidden flex justify-center items-center py-20">
                     <svg class="animate-spin h-8 w-8 text-brand-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                 </div>
@@ -706,6 +717,7 @@
         // NEW STATE FOR FAVORITES
         let globalFavoriteBooks = [];
         let globalFavoriteAuthors = [];
+        let globalAuthorProfileCache = {};
         
         let currentChallengeTab = 'active'; 
         
@@ -997,14 +1009,23 @@
                 globalFavoriteAuthors.forEach(fav => {
                     const safeName = String(fav.name).replace(/'/g, "\\'").replace(/"/g, '&quot;');
                     const initial = fav.name.charAt(0).toUpperCase();
+                    const cache = globalAuthorProfileCache[fav.name];
                     
                     const div = document.createElement('div');
                     div.className = "flex items-center gap-4 bg-brand-surface border border-brand-border rounded-2xl p-4 cursor-pointer group hover:border-brand-primaryLight hover:shadow-md transition-all";
                     div.onclick = (e) => openAuthorPage(fav.name, e);
                     
+                    let imgContent = `<div class="w-full h-full flex items-center justify-center text-lg font-bold text-brand-primary group-hover:text-white transition-colors">${initial}</div>`;
+                    let bgClass = "bg-brand-card group-hover:bg-brand-primary border border-brand-border";
+                    
+                    if (cache && cache.hasRealImage) {
+                        imgContent = `<img src="${cache.imgUrl}" alt="${safeName}" class="w-full h-full object-cover rounded-full">`;
+                        bgClass = "border border-brand-border shadow-sm";
+                    }
+                    
                     div.innerHTML = `
-                        <div class="w-12 h-12 shrink-0 rounded-full bg-brand-card flex items-center justify-center text-lg font-bold text-brand-primary border border-brand-border group-hover:bg-brand-primary group-hover:text-white transition-colors">
-                            ${initial}
+                        <div id="fav-author-img-${fav.id}" class="w-12 h-12 shrink-0 rounded-full flex items-center justify-center transition-colors overflow-hidden ${bgClass}">
+                            ${imgContent}
                         </div>
                         <div class="flex flex-col flex-1 min-w-0">
                             <h4 class="font-semibold text-sm text-brand-text truncate group-hover:text-brand-primary transition-colors">${fav.name}</h4>
@@ -1015,6 +1036,18 @@
                         </button>
                     `;
                     authorsGrid.appendChild(div);
+
+                    if (!cache) {
+                        fetchAuthorProfileCache(fav.name).then(profile => {
+                            if (profile.hasRealImage) {
+                                const imgContainer = document.getElementById(`fav-author-img-${fav.id}`);
+                                if (imgContainer) {
+                                    imgContainer.innerHTML = `<img src="${profile.imgUrl}" alt="${safeName}" class="w-full h-full object-cover rounded-full">`;
+                                    imgContainer.className = "w-12 h-12 shrink-0 rounded-full flex items-center justify-center transition-colors overflow-hidden border border-brand-border shadow-sm";
+                                }
+                            }
+                        });
+                    }
                 });
             }
             if(window.lucide) lucide.createIcons();
@@ -1025,6 +1058,37 @@
             if (!authorName || authorName === 'Unknown Author') return `by ${authorName || 'Unknown Author'}`;
             const safeName = String(authorName).replace(/'/g, "\\'").replace(/"/g, '&quot;');
             return `<span class="relative z-10 hover:text-brand-primary cursor-pointer transition-colors inline" onclick="openAuthorPage('${safeName}', event)">by ${authorName}</span>`;
+        }
+        
+        async function fetchAuthorProfileCache(authorName) {
+            if (globalAuthorProfileCache[authorName]) return globalAuthorProfileCache[authorName];
+            
+            let profileData = { 
+                bio: 'No biography available for this author.', 
+                imgUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' style='background:%23fde9d9' viewBox='0 0 24 24' fill='none' stroke='%23f97316' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/><circle cx='12' cy='7' r='4'/></svg>",
+                hasRealImage: false
+            };
+            try {
+                const res = await fetchWithRetry(`https://openlibrary.org/search.json?author=${encodeURIComponent(authorName)}&limit=1`);
+                const data = await res.json();
+                let authorKey = null;
+                if (data.docs && data.docs.length > 0) {
+                    const docWithAuthor = data.docs.find(d => d.author_key && d.author_key.length > 0);
+                    if (docWithAuthor) authorKey = docWithAuthor.author_key[0];
+                }
+                if (authorKey) {
+                    const authorRes = await fetchWithRetry(`https://openlibrary.org/authors/${authorKey}.json`);
+                    const authorJson = await authorRes.json();
+                    if (authorJson.bio) profileData.bio = typeof authorJson.bio === 'string' ? authorJson.bio : authorJson.bio.value;
+                    if (authorJson.photos && authorJson.photos.length > 0) {
+                        profileData.imgUrl = `https://covers.openlibrary.org/a/id/${authorJson.photos[0]}-L.jpg`;
+                        profileData.hasRealImage = true;
+                    }
+                }
+            } catch(e) { console.warn("Failed to fetch author profile details", e); }
+            
+            globalAuthorProfileCache[authorName] = profileData;
+            return profileData;
         }
 
         async function openAuthorPage(authorName, event) {
@@ -1064,6 +1128,12 @@
             const isFav = globalFavoriteAuthors.some(a => a.name === authorName);
             updateFavoriteAuthorHeart(authorName, isFav);
 
+            const infoSection = document.getElementById('author-info-section');
+            const imgEl = document.getElementById('author-page-image');
+            const bioEl = document.getElementById('author-page-bio');
+            const bioToggle = document.getElementById('author-bio-toggle');
+            infoSection.classList.add('hidden');
+
             const grid = document.getElementById('author-books-grid');
             const loading = document.getElementById('author-loading');
             const empty = document.getElementById('author-empty');
@@ -1076,6 +1146,32 @@
             try {
                 const res = await fetchWithRetry(`https://openlibrary.org/search.json?author=${encodeURIComponent(authorName)}&limit=20`);
                 const data = await res.json();
+                
+                const profile = await fetchAuthorProfileCache(authorName);
+                
+                imgEl.src = profile.imgUrl;
+                bioEl.textContent = profile.bio;
+                bioEl.classList.add('line-clamp-4');
+                bioToggle.textContent = 'Read more';
+                
+                infoSection.classList.remove('hidden');
+                setTimeout(() => {
+                    if (bioEl.scrollHeight > bioEl.clientHeight) {
+                        bioToggle.classList.remove('hidden');
+                        bioToggle.onclick = () => {
+                            if (bioEl.classList.contains('line-clamp-4')) {
+                                bioEl.classList.remove('line-clamp-4');
+                                bioToggle.textContent = 'Show less';
+                            } else {
+                                bioEl.classList.add('line-clamp-4');
+                                bioToggle.textContent = 'Read more';
+                            }
+                        };
+                    } else {
+                        bioToggle.classList.add('hidden');
+                    }
+                }, 10);
+
                 loading.classList.add('hidden');
 
                 const validBooks = (data.docs || []).filter(b => b.title && b.cover_i);
