@@ -305,6 +305,11 @@
                 <h2 class="text-center font-semibold text-lg mb-8 text-brand-text">Read</h2>
                 <div id="read-container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6 flex-grow"></div>
             </section>
+            
+            <section id="dropped-section-wrapper" class="hidden lg:col-span-3 bg-brand-card border border-brand-border rounded-3xl p-5 sm:p-8 shadow-sm flex-col mt-2 transition-colors">
+                <h2 class="text-center font-semibold text-lg mb-8 text-brand-text">Dropped</h2>
+                <div id="dropped-container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6 flex-grow"></div>
+            </section>
 
             <section class="lg:col-span-3 bg-brand-card border border-brand-border rounded-3xl p-5 sm:p-8 shadow-sm flex flex-col md:flex-row items-stretch gap-8 md:gap-10 transition-colors">
                 <div class="w-full md:w-5/12 flex flex-col pl-0 md:pl-6 border-b md:border-b-0 md:border-r border-brand-border pb-6 md:pb-0 md:pr-10">
@@ -379,10 +384,17 @@
             </div>
 
             <div class="bg-brand-card border border-brand-border rounded-3xl p-5 sm:p-8 shadow-sm transition-colors">
-                <div class="mb-6">
-                    <button class="flex items-center gap-2 border border-brand-border rounded-full px-4 py-1.5 text-sm font-medium text-brand-text hover:bg-brand-surface transition-colors">
-                        All books <i data-lucide="chevron-down" class="w-4 h-4 text-brand-muted"></i>
-                    </button>
+                <div class="mb-6 flex justify-between items-center">
+                    <div class="relative">
+                        <select id="books-filter-select" onchange="applyBooksFilter()" class="appearance-none bg-transparent border border-brand-border rounded-full pl-4 pr-10 py-1.5 text-sm font-medium text-brand-text hover:bg-brand-surface transition-colors cursor-pointer outline-none focus:ring-2 focus:ring-brand-primary/50 z-10 relative">
+                            <option value="all">All books</option>
+                            <option value="currently_reading">Currently Reading</option>
+                            <option value="reading_later">Reading Later</option>
+                            <option value="read_books">Read</option>
+                            <option value="dropped_books">Dropped</option>
+                        </select>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-brand-muted absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none z-0"></i>
+                    </div>
                 </div>
                 <div id="books-list-container" class="flex flex-col"></div>
                 <div class="flex justify-between items-center mt-8 pt-6 border-t border-brand-border">
@@ -457,8 +469,14 @@
             </div>
 
             <div class="bg-brand-card border border-brand-border rounded-3xl p-5 sm:p-8 shadow-sm w-full flex flex-col transition-colors relative min-h-[400px]">
-                <h2 class="font-semibold text-xl text-brand-text mb-8 border-b border-brand-border pb-6 flex items-center gap-2">
-                    <i data-lucide="bar-chart-2" class="w-6 h-6 text-brand-primary"></i> Reading Insights
+                <h2 class="font-semibold text-xl text-brand-text mb-8 border-b border-brand-border pb-6 flex items-center gap-2 justify-between">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="bar-chart-2" class="w-6 h-6 text-brand-primary"></i> Reading Insights
+                    </div>
+                    <div class="text-sm text-brand-muted font-normal bg-brand-surface px-4 py-1.5 rounded-full border border-brand-border flex items-center gap-2">
+                         <i data-lucide="book-x" class="w-4 h-4"></i>
+                         <span id="stats-dropped-count">0 dropped</span>
+                    </div>
                 </h2>
                 
                 <div id="stats-empty-state" class="hidden absolute inset-0 top-[80px] flex flex-col items-center justify-center bg-brand-card rounded-b-3xl z-10 text-brand-muted">
@@ -624,6 +642,7 @@
         let globalCurrentlyReading = []; 
         let globalReadingLater = []; 
         let globalReadBooks = []; 
+        let globalDroppedBooks = [];
         let globalLibrary = []; 
         let globalTrendingBooks = []; 
         
@@ -633,7 +652,7 @@
         let globalChallenges = [];
         let currentChallengeTab = 'active'; 
         
-        let sectionExpanded = { currently_reading: false, reading_later: false, read_books: false };
+        let sectionExpanded = { currently_reading: false, reading_later: false, read_books: false, dropped_books: false };
 
         let lastViewBeforeDetails = 'home';
         let lastActiveTab = 'home';
@@ -650,6 +669,7 @@
         let visibleElementsBeforeAuthor = [];
 
         let globalCombinedLibrary = [];
+        let currentBooksFilter = 'all';
         let currentBooksListPage = 1;
         const BOOKS_PER_PAGE = 10;
 
@@ -852,7 +872,7 @@
         }
 
         async function ensureSingleStatus(title, author, targetTable) {
-            const tables = ['currently_reading', 'reading_later', 'read_books'];
+            const tables = ['currently_reading', 'reading_later', 'read_books', 'dropped_books'];
             for (const table of tables) {
                 if (table === targetTable) continue;
                 try { await supabaseClient.from(table).delete().ilike('title', String(title).trim()).ilike('author', String(author).trim()); } catch (e) {}
@@ -1130,7 +1150,19 @@
 
         function toggleMenu(menuId, event) { event.stopPropagation(); const menu = document.getElementById(menuId); const isHidden = menu.classList.contains('hidden'); document.querySelectorAll('.card-menu').forEach(el => el.classList.add('hidden')); if (isHidden) menu.classList.remove('hidden'); }
         document.addEventListener('click', () => { document.querySelectorAll('.card-menu').forEach(el => el.classList.add('hidden')); });
-        function getCardMenuHTML(bookId, currentTable) { return `<button onclick="toggleMenu('menu-${currentTable}-${bookId}', event)" class="absolute top-1 right-1 bg-brand-card/90 border border-brand-border p-1.5 rounded-full shadow-sm backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all z-20 hover:bg-brand-surface hover:text-brand-primary text-brand-muted focus:outline-none" title="Manage book"><i data-lucide="more-vertical" class="w-[14px] h-[14px]"></i></button><div id="menu-${currentTable}-${bookId}" class="card-menu hidden absolute top-8 right-1 w-36 bg-brand-card border border-brand-border rounded-xl shadow-lg py-1 z-30 text-left cursor-default" onclick="event.stopPropagation()"><button onclick="openAddToListModalForId('${bookId}', '${currentTable}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors">Add to List...</button><button onclick="moveBook('${bookId}', '${currentTable}', 'currently_reading')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${currentTable==='currently_reading'?'hidden':''}">Move to Reading</button><button onclick="moveBook('${bookId}', '${currentTable}', 'reading_later')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${currentTable==='reading_later'?'hidden':''}">Move to Later</button><button onclick="moveBook('${bookId}', '${currentTable}', 'read_books')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${currentTable==='read_books'?'hidden':''}">Move to Read</button><button onclick="deleteBook('${bookId}', '${currentTable}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-red-500 hover:bg-red-500/10 transition-colors border-t border-brand-border">Remove</button></div>`; }
+        
+        function getCardMenuHTML(bookId, currentTable) { 
+            return `<button onclick="toggleMenu('menu-${currentTable}-${bookId}', event)" class="absolute top-1 right-1 bg-brand-card/90 border border-brand-border p-1.5 rounded-full shadow-sm backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all z-20 hover:bg-brand-surface hover:text-brand-primary text-brand-muted focus:outline-none" title="Manage book"><i data-lucide="more-vertical" class="w-[14px] h-[14px]"></i></button>
+            <div id="menu-${currentTable}-${bookId}" class="card-menu hidden absolute top-8 right-1 w-36 bg-brand-card border border-brand-border rounded-xl shadow-lg py-1 z-30 text-left cursor-default" onclick="event.stopPropagation()">
+                <button onclick="openAddToListModalForId('${bookId}', '${currentTable}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors">Add to List...</button>
+                <button onclick="moveBook('${bookId}', '${currentTable}', 'currently_reading')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${currentTable==='currently_reading'?'hidden':''}">Move to Reading</button>
+                <button onclick="moveBook('${bookId}', '${currentTable}', 'reading_later')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${currentTable==='reading_later'?'hidden':''}">Move to Later</button>
+                <button onclick="moveBook('${bookId}', '${currentTable}', 'read_books')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${currentTable==='read_books'?'hidden':''}">Move to Read</button>
+                <button onclick="moveBook('${bookId}', '${currentTable}', 'dropped_books')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${currentTable==='dropped_books'?'hidden':''}">Mark as Dropped</button>
+                <button onclick="deleteBook('${bookId}', '${currentTable}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-red-500 hover:bg-red-500/10 transition-colors border-t border-brand-border">Remove</button>
+            </div>`; 
+        }
+
         function openProgressModal(bookId, currentPg = 0, totalPgs = 300) { currentlyEditingBookId = bookId; document.getElementById('progress-current').value = currentPg; document.getElementById('progress-total').value = totalPgs; document.getElementById('progress-modal').classList.remove('hidden'); }
         function closeProgressModal() { document.getElementById('progress-modal').classList.add('hidden'); currentlyEditingBookId = null; }
         async function saveProgress() { if(!currentlyEditingBookId) return; const current = parseInt(document.getElementById('progress-current').value) || 0; const total = parseInt(document.getElementById('progress-total').value) || 1; const pct = Math.min(100, Math.round((current / total) * 100)); try { const { error } = await supabaseClient.from('currently_reading').update({ current_page: current, total_pages: total, progress: pct }).eq('id', currentlyEditingBookId); if (error) throw error; showToast('Progress saved!'); const book = globalLibrary.find(b => b.id === currentlyEditingBookId); if(book) { book.current_page = current; book.total_pages = total; book.progress = pct; } renderCurrentlyReading(globalCurrentlyReading); renderBooksViewCarousel(globalCurrentlyReading); renderBooksList(); const lineStats = calculateLibraryStats(); renderHomeChart(lineStats.monthlyBooks); renderFullStatsGraphs(lineStats); } catch(e) { showToast('Failed to save progress.', 'error'); } closeProgressModal(); }
@@ -1140,26 +1172,136 @@
             const dropdown = document.getElementById('dropdown-details'); if(dropdown) dropdown.classList.add('hidden');
             const title = book.title || 'Unknown Title'; const author = book.author_name ? book.author_name[0] : (book.author || 'Unknown Author'); const coverUrl = book.coverUrl || (book.cover_i ? `https://covers.openlibrary.org/b/id/${book.cover_i}-M.jpg` : ''); 
             const existingBook = globalLibrary.find(b => String(b.title).trim().toLowerCase() === String(title).trim().toLowerCase() && String(b.author).trim().toLowerCase() === String(author).trim().toLowerCase());
+            
             if (existingBook) { if (existingBook.tableName === statusTable) { showToast(`Book is already in ${statusTable.replace('_', ' ')}!`); return; } await moveBook(existingBook.id, existingBook.tableName, statusTable); return; }
             const tempId = 'temp_' + Date.now();
             try {
-                const payload = { title, author, coverUrl }; if (statusTable === 'currently_reading') { payload.progress = 0; payload.current_page = 0; payload.total_pages = book.total_pages || 300; }
+                const payload = { title, author, coverUrl }; 
+                if (statusTable === 'currently_reading' || statusTable === 'dropped_books') { payload.progress = 0; payload.current_page = 0; payload.total_pages = book.total_pages || 300; }
+                
                 localDeduplicate(title, author, statusTable);
-                globalLibrary.push({ ...payload, id: tempId, tableName: statusTable, status: statusTable === 'currently_reading' ? 'Currently reading' : (statusTable === 'reading_later' ? 'Reading later' : 'Read') });
+                const readableStatus = statusTable === 'currently_reading' ? 'Currently reading' : (statusTable === 'reading_later' ? 'Reading later' : (statusTable === 'dropped_books' ? 'Dropped' : 'Read'));
+                const newBook = { ...payload, id: tempId, tableName: statusTable, status: readableStatus };
+                globalLibrary.push(newBook);
+                
                 syncLibraryBadges(); renderDetailedLibraryAction(); await ensureSingleStatus(title, author, statusTable);
-                const { error } = await supabaseClient.from(statusTable).insert([payload]); if (error) throw error;
-                showToast(`Added to ${statusTable.replace('_', ' ')}!`); const lineStats = calculateLibraryStats(); renderHomeChart(lineStats.monthlyBooks); renderFullStatsGraphs(lineStats); fetchRealGenresAndLanguages().then(glStats => updateBarCharts(glStats)); fetchSupabaseData();
+                
+                const { data, error } = await supabaseClient.from(statusTable).insert([payload]).select(); 
+                if (error) { console.error("Save Error:", error); throw error; }
+                
+                if (data && data.length > 0) {
+                    newBook.id = data[0].id; // Replace temp ID with the real database ID
+                }
+                
+                showToast(`Added to ${statusTable.replace('_', ' ')}!`); 
+                const lineStats = calculateLibraryStats(); renderHomeChart(lineStats.monthlyBooks); renderFullStatsGraphs(lineStats); 
+                fetchRealGenresAndLanguages().then(glStats => updateBarCharts(glStats)); fetchSupabaseData();
             } catch (err) { globalLibrary = globalLibrary.filter(b => b.id !== tempId); syncLibraryBadges(); renderDetailedLibraryAction(); fetchSupabaseData(); showToast('Failed to add book.', 'error'); }
         }
+
         async function moveBook(bookId, currentTable, newTable) {
             if (currentTable === newTable) return; const book = globalLibrary.find(b => String(b.id) === String(bookId) && b.tableName === currentTable); if (!book) return;
             const oldStatus = book.status; const oldTable = book.tableName; localDeduplicate(book.title, book.author, newTable);
-            book.tableName = newTable; book.status = newTable === 'currently_reading' ? 'Currently reading' : (newTable === 'reading_later' ? 'Reading later' : 'Read');
+            
+            const readableStatus = newTable === 'currently_reading' ? 'Currently reading' : (newTable === 'reading_later' ? 'Reading later' : (newTable === 'dropped_books' ? 'Dropped' : 'Read'));
+            book.tableName = newTable; book.status = readableStatus;
             book.created_at = new Date().toISOString(); 
+            
             syncLibraryBadges(); renderDetailedLibraryAction();
-            const payload = { title: book.title, author: book.author, coverUrl: book.coverUrl }; if (newTable === 'currently_reading') { payload.progress = book.progress || 0; payload.current_page = book.current_page || 0; payload.total_pages = book.total_pages || 300; }
-            try { const { error: deleteErr } = await supabaseClient.from(currentTable).delete().eq('id', book.id); if (deleteErr) throw deleteErr; await ensureSingleStatus(book.title, book.author, newTable); const { error: insertErr } = await supabaseClient.from(newTable).insert([payload]); if (insertErr) { await supabaseClient.from(currentTable).insert([payload]); throw insertErr; } showToast(`Moved to ${newTable.replace('_', ' ')}!`); const lineStats = calculateLibraryStats(); renderHomeChart(lineStats.monthlyBooks); renderFullStatsGraphs(lineStats); fetchRealGenresAndLanguages().then(glStats => updateBarCharts(glStats)); fetchSupabaseData(); } catch (e) { book.tableName = oldTable; book.status = oldStatus; syncLibraryBadges(); renderDetailedLibraryAction(); fetchSupabaseData(); showToast('Failed to move book.', 'error'); }
+            
+            const payload = { title: book.title, author: book.author, coverUrl: book.coverUrl };
+            if (newTable === 'currently_reading' || newTable === 'dropped_books') {
+                payload.progress = book.progress || 0;
+                payload.current_page = book.current_page || 0;
+                payload.total_pages = book.total_pages || 300;
+            }
+            
+            try { 
+                const isTempId = String(book.id).startsWith('temp_');
+                if (!isTempId) {
+                    const { error: deleteErr } = await supabaseClient.from(currentTable).delete().eq('id', book.id); 
+                    if (deleteErr) { console.error("Delete Error:", deleteErr); throw deleteErr; }
+                }
+                
+                await ensureSingleStatus(book.title, book.author, newTable); 
+                
+                const { data: insertData, error: insertErr } = await supabaseClient.from(newTable).insert([payload]).select(); 
+                if (insertErr) { 
+                    console.error("Move Error:", insertErr);
+                    if (!isTempId) {
+                        const revertPayload = { title: book.title, author: book.author, coverUrl: book.coverUrl };
+                        if (currentTable === 'currently_reading' || currentTable === 'dropped_books') {
+                            revertPayload.progress = book.progress || 0;
+                            revertPayload.current_page = book.current_page || 0;
+                            revertPayload.total_pages = book.total_pages || 300;
+                        }
+                        await supabaseClient.from(currentTable).insert([revertPayload]); 
+                    }
+                    throw insertErr; 
+                } 
+                
+                if (insertData && insertData.length > 0) {
+                    book.id = insertData[0].id; // Assign the newly generated DB ID
+                }
+                
+                showToast(`Moved to ${newTable.replace('_', ' ')}!`); 
+                const lineStats = calculateLibraryStats(); renderHomeChart(lineStats.monthlyBooks); renderFullStatsGraphs(lineStats); 
+                fetchRealGenresAndLanguages().then(glStats => updateBarCharts(glStats)); fetchSupabaseData(); 
+            } catch (e) { 
+                book.tableName = oldTable; book.status = oldStatus; syncLibraryBadges(); renderDetailedLibraryAction(); fetchSupabaseData(); showToast('Failed to move book.', 'error'); 
+            }
         }
+
+        async function deleteBook(bookId, currentTable) {
+            const bookToRestore = globalLibrary.find(b => String(b.id) === String(bookId)); globalLibrary = globalLibrary.filter(b => String(b.id) !== String(bookId)); syncLibraryBadges(); renderDetailedLibraryAction();
+            try { 
+                if (!String(bookId).startsWith('temp_') && !String(bookId).startsWith('local_')) {
+                    const { error } = await supabaseClient.from(currentTable).delete().eq('id', bookId); 
+                    if (error) throw error; 
+                }
+                showToast('Book removed from library.'); const lineStats = calculateLibraryStats(); renderHomeChart(lineStats.monthlyBooks); renderFullStatsGraphs(lineStats); fetchRealGenresAndLanguages().then(glStats => updateBarCharts(glStats)); fetchSupabaseData(); 
+            } catch (e) { if (bookToRestore) globalLibrary.push(bookToRestore); syncLibraryBadges(); renderDetailedLibraryAction(); fetchSupabaseData(); showToast('Failed to remove book.', 'error'); }
+        }
+
+        async function moveBook(bookId, currentTable, newTable) {
+            if (currentTable === newTable) return; const book = globalLibrary.find(b => String(b.id) === String(bookId) && b.tableName === currentTable); if (!book) return;
+            const oldStatus = book.status; const oldTable = book.tableName; localDeduplicate(book.title, book.author, newTable);
+            
+            const readableStatus = newTable === 'currently_reading' ? 'Currently reading' : (newTable === 'reading_later' ? 'Reading later' : (newTable === 'dropped_books' ? 'Dropped' : 'Read'));
+            book.tableName = newTable; book.status = readableStatus;
+            book.created_at = new Date().toISOString(); 
+            
+            syncLibraryBadges(); renderDetailedLibraryAction();
+            
+            const payload = { title: book.title, author: book.author, coverUrl: book.coverUrl };
+            if (newTable === 'currently_reading' || newTable === 'dropped_books') {
+                payload.progress = book.progress || 0;
+                payload.current_page = book.current_page || 0;
+                payload.total_pages = book.total_pages || 300;
+            }
+            
+            try { 
+                const { error: deleteErr } = await supabaseClient.from(currentTable).delete().eq('id', book.id); if (deleteErr) throw deleteErr; 
+                await ensureSingleStatus(book.title, book.author, newTable); 
+                const { error: insertErr } = await supabaseClient.from(newTable).insert([payload]); 
+                if (insertErr) { 
+                    const revertPayload = { title: book.title, author: book.author, coverUrl: book.coverUrl };
+                    if (currentTable === 'currently_reading' || currentTable === 'dropped_books') {
+                        revertPayload.progress = book.progress || 0;
+                        revertPayload.current_page = book.current_page || 0;
+                        revertPayload.total_pages = book.total_pages || 300;
+                    }
+                    await supabaseClient.from(currentTable).insert([revertPayload]); 
+                    throw insertErr; 
+                } 
+                showToast(`Moved to ${newTable.replace('_', ' ')}!`); 
+                const lineStats = calculateLibraryStats(); renderHomeChart(lineStats.monthlyBooks); renderFullStatsGraphs(lineStats); 
+                fetchRealGenresAndLanguages().then(glStats => updateBarCharts(glStats)); fetchSupabaseData(); 
+            } catch (e) { 
+                book.tableName = oldTable; book.status = oldStatus; syncLibraryBadges(); renderDetailedLibraryAction(); fetchSupabaseData(); showToast('Failed to move book.', 'error'); 
+            }
+        }
+
         async function deleteBook(bookId, currentTable) {
             const bookToRestore = globalLibrary.find(b => String(b.id) === String(bookId)); globalLibrary = globalLibrary.filter(b => String(b.id) !== String(bookId)); syncLibraryBadges(); renderDetailedLibraryAction();
             try { const { error } = await supabaseClient.from(currentTable).delete().eq('id', bookId); if (error) throw error; showToast('Book removed from library.'); const lineStats = calculateLibraryStats(); renderHomeChart(lineStats.monthlyBooks); renderFullStatsGraphs(lineStats); fetchRealGenresAndLanguages().then(glStats => updateBarCharts(glStats)); fetchSupabaseData(); } catch (e) { if (bookToRestore) globalLibrary.push(bookToRestore); syncLibraryBadges(); renderDetailedLibraryAction(); fetchSupabaseData(); showToast('Failed to remove book.', 'error'); }
@@ -1170,8 +1312,33 @@
             const container = document.getElementById('detailed-library-action-container'); if (!container || !currentlyViewingBook) return;
             const title = currentlyViewingBook.title || 'Unknown Title'; const author = currentlyViewingBook.author_name ? currentlyViewingBook.author_name[0] : (currentlyViewingBook.author || 'Unknown Author');
             const titleStr = String(title).trim().toLowerCase(); const authorStr = String(author).trim().toLowerCase(); const existingBook = globalLibrary.find(b => String(b.title).trim().toLowerCase() === titleStr && String(b.author).trim().toLowerCase() === authorStr);
-            const libraryBtnText = existingBook ? existingBook.status : 'Add to your library'; const libraryBtnClass = existingBook ? 'border-brand-primary text-brand-primary' : 'border-brand-border text-brand-text'; const libraryIconClass = existingBook ? 'text-brand-primary' : 'text-brand-muted'; const checkIconHtml = existingBook ? `<i data-lucide="check" class="w-4 h-4 mr-1"></i>` : '';
-            container.innerHTML = `<button onclick="document.getElementById('dropdown-details').classList.toggle('hidden')" class="flex items-center justify-between bg-brand-card border ${libraryBtnClass} rounded-full px-5 py-2.5 text-xs font-semibold hover:bg-brand-surface transition-colors shadow-sm focus:outline-none w-full sm:w-auto"><span class="flex items-center">${checkIconHtml}${libraryBtnText}</span><i data-lucide="chevron-down" class="w-4 h-4 ml-3 ${libraryIconClass}"></i></button><div id="dropdown-details" class="hidden absolute top-full left-0 right-0 sm:right-auto mt-2 w-full sm:w-48 bg-brand-card border border-brand-border rounded-xl shadow-lg py-1 overflow-hidden z-50"><button onclick="saveBookToLibrary('currently_reading')" class="w-full text-center sm:text-left px-5 py-3 text-xs font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors ${existingBook?.tableName === 'currently_reading' ? 'bg-brand-surface text-brand-primary' : ''}">Currently Reading</button><button onclick="saveBookToLibrary('reading_later')" class="w-full text-center sm:text-left px-5 py-3 text-xs font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${existingBook?.tableName === 'reading_later' ? 'bg-brand-surface text-brand-primary' : ''}">Reading Later</button><button onclick="saveBookToLibrary('read_books')" class="w-full text-center sm:text-left px-5 py-3 text-xs font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${existingBook?.tableName === 'read_books' ? 'bg-brand-surface text-brand-primary' : ''}">Read</button>${existingBook ? `<button onclick="deleteBookFromDetails('${existingBook.id}', '${existingBook.tableName}')" class="w-full text-center sm:text-left px-5 py-3 text-xs font-semibold text-red-500 hover:bg-red-500/10 transition-colors border-t border-brand-border">Remove from library</button>` : ''}</div>`;
+            const libraryBtnText = existingBook ? existingBook.status : 'Add to your library'; 
+            
+            let libraryBtnClass = 'border-brand-border text-brand-text';
+            let libraryIconClass = 'text-brand-muted';
+            if (existingBook) {
+                if (existingBook.tableName === 'dropped_books') {
+                    libraryBtnClass = 'border-slate-400 text-slate-500 bg-slate-50 dark:bg-slate-800/50';
+                    libraryIconClass = 'text-slate-500';
+                } else {
+                    libraryBtnClass = 'border-brand-primary text-brand-primary';
+                    libraryIconClass = 'text-brand-primary';
+                }
+            }
+            const checkIconHtml = existingBook ? `<i data-lucide="${existingBook.tableName === 'dropped_books' ? 'x-circle' : 'check'}" class="w-4 h-4 mr-1"></i>` : '';
+            
+            container.innerHTML = `
+                <button onclick="document.getElementById('dropdown-details').classList.toggle('hidden')" class="flex items-center justify-between bg-brand-card border ${libraryBtnClass} rounded-full px-5 py-2.5 text-xs font-semibold hover:bg-brand-surface transition-colors shadow-sm focus:outline-none w-full sm:w-auto">
+                    <span class="flex items-center">${checkIconHtml}${libraryBtnText}</span>
+                    <i data-lucide="chevron-down" class="w-4 h-4 ml-3 ${libraryIconClass}"></i>
+                </button>
+                <div id="dropdown-details" class="hidden absolute top-full left-0 right-0 sm:right-auto mt-2 w-full sm:w-48 bg-brand-card border border-brand-border rounded-xl shadow-lg py-1 overflow-hidden z-50">
+                    <button onclick="saveBookToLibrary('currently_reading')" class="w-full text-center sm:text-left px-5 py-3 text-xs font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors ${existingBook?.tableName === 'currently_reading' ? 'bg-brand-surface text-brand-primary' : ''}">Currently Reading</button>
+                    <button onclick="saveBookToLibrary('reading_later')" class="w-full text-center sm:text-left px-5 py-3 text-xs font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${existingBook?.tableName === 'reading_later' ? 'bg-brand-surface text-brand-primary' : ''}">Reading Later</button>
+                    <button onclick="saveBookToLibrary('read_books')" class="w-full text-center sm:text-left px-5 py-3 text-xs font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${existingBook?.tableName === 'read_books' ? 'bg-brand-surface text-brand-primary' : ''}">Read</button>
+                    <button onclick="saveBookToLibrary('dropped_books')" class="w-full text-center sm:text-left px-5 py-3 text-xs font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border-t border-brand-border ${existingBook?.tableName === 'dropped_books' ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300' : ''}">Dropped</button>
+                    ${existingBook ? `<button onclick="deleteBookFromDetails('${existingBook.id}', '${existingBook.tableName}')" class="w-full text-center sm:text-left px-5 py-3 text-xs font-semibold text-red-500 hover:bg-red-500/10 transition-colors border-t border-brand-border">Remove from library</button>` : ''}
+                </div>`;
             if(window.lucide) lucide.createIcons();
         }
 
@@ -1180,6 +1347,7 @@
             if (sectionKey === 'currently_reading') renderCurrentlyReading(globalCurrentlyReading);
             else if (sectionKey === 'reading_later') renderBookListBasic(globalReadingLater, 'reading-later-container', 'reading_later');
             else if (sectionKey === 'read_books') renderBookListBasic(globalReadBooks, 'read-container', 'read_books');
+            else if (sectionKey === 'dropped_books') renderBookListBasic(globalDroppedBooks, 'dropped-container', 'dropped_books');
         }
 
         function updateSeeMoreButton(sectionEl, sectionKey, totalBooks) {
@@ -1202,12 +1370,22 @@
         }
 
         function renderBookListBasic(books, containerId, tableName) {
-            const container = document.getElementById(containerId); if(!container) return; container.innerHTML = '';
+            const container = document.getElementById(containerId); 
+            if(!container) return; container.innerHTML = '';
+            
+            const wrapper = container.closest('section');
+            if (tableName === 'dropped_books') {
+                if (!books || books.length === 0) { wrapper.classList.add('hidden'); wrapper.classList.remove('flex'); return; }
+                else { wrapper.classList.remove('hidden'); wrapper.classList.add('flex'); }
+            }
+
             if (!books || books.length === 0) { container.innerHTML = '<p class="col-span-full text-center text-sm text-brand-muted py-6">No books in this list yet.</p>'; updateSeeMoreButton(container.parentElement, tableName, 0); return; }
             const booksToShow = (!sectionExpanded[tableName] && books.length > 6) ? books.slice(0, 6) : books;
             booksToShow.forEach(book => {
-                const bookEl = document.createElement('div'); bookEl.className = 'flex flex-col items-center group cursor-pointer'; bookEl.onclick = () => openDetailedView({ title: book.title, author_name: [book.author], coverUrl: book.coverUrl, key: typeof book.id === 'string' && book.id.startsWith('/') ? book.id : null }, 'home');
-                bookEl.innerHTML = `<div class="relative w-full"><img src="${book.coverUrl}" alt="${book.title}" class="w-full aspect-[2/3] object-cover rounded-md mb-3 book-shadow transition-transform group-hover:-translate-y-1">${getCardMenuHTML(book.id, tableName)}</div><h4 class="font-semibold text-xs text-brand-text text-center line-clamp-1 w-full" title="${book.title}">${book.title}</h4><p class="text-[10px] text-brand-muted text-center line-clamp-1 w-full mt-0.5">${renderAuthorLink(book.author)}</p>`;
+                const bookEl = document.createElement('div'); bookEl.className = 'flex flex-col items-center group cursor-pointer'; bookEl.onclick = () => openDetailedView({ title: book.title, author_name: [book.author], coverUrl: book.coverUrl, key: typeof book.id === 'string' && book.id.startsWith('/') ? book.id : null, total_pages: book.total_pages }, 'home');
+                const isDropped = tableName === 'dropped_books';
+                const opacityClass = isDropped ? 'opacity-80' : '';
+                bookEl.innerHTML = `<div class="relative w-full ${opacityClass}"><img src="${book.coverUrl}" alt="${book.title}" class="w-full aspect-[2/3] object-cover rounded-md mb-3 book-shadow transition-transform group-hover:-translate-y-1 ${isDropped ? 'grayscale-[0.5]' : ''}">${getCardMenuHTML(book.id, tableName)}</div><h4 class="font-semibold text-xs text-brand-text text-center line-clamp-1 w-full" title="${book.title}">${book.title}</h4><p class="text-[10px] text-brand-muted text-center line-clamp-1 w-full mt-0.5">${renderAuthorLink(book.author)}</p>`;
                 container.appendChild(bookEl);
             });
             updateSeeMoreButton(container.parentElement, tableName, books.length);
@@ -1250,20 +1428,58 @@
                 container.addEventListener('scroll', () => { const scrollLeft = container.scrollLeft; const maxScroll = container.scrollWidth - container.clientWidth; const pct = maxScroll > 0 ? scrollLeft / maxScroll : 0; const dots = dotsContainer.children; if(dots.length > 0) { const activeIndex = Math.round(pct * (dots.length - 1)); for(let i=0; i<dots.length; i++) { dots[i].className = i === activeIndex ? 'w-6 h-1.5 bg-brand-primary rounded-full transition-all' : 'w-1.5 h-1.5 bg-brand-primaryLight rounded-full mt-[1px] transition-all'; } } });
             }
         }
-        function changeBooksPage(direction) { const totalPages = Math.ceil(globalCombinedLibrary.length / BOOKS_PER_PAGE) || 1; const newPage = currentBooksListPage + direction; if (newPage >= 1 && newPage <= totalPages) { currentBooksListPage = newPage; renderBooksList(); document.getElementById('books-list-container').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } }
+        function applyBooksFilter() {
+            currentBooksFilter = document.getElementById('books-filter-select').value;
+            currentBooksListPage = 1;
+            renderBooksList();
+        }
+        function changeBooksPage(direction) { 
+            const filteredLibrary = currentBooksFilter === 'all' ? globalCombinedLibrary : globalCombinedLibrary.filter(b => b.tableName === currentBooksFilter);
+            const totalPages = Math.ceil(filteredLibrary.length / BOOKS_PER_PAGE) || 1; 
+            const newPage = currentBooksListPage + direction; 
+            if (newPage >= 1 && newPage <= totalPages) { 
+                currentBooksListPage = newPage; 
+                renderBooksList(); 
+                document.getElementById('books-list-container').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); 
+            } 
+        }
         function renderBooksList() { 
             const container = document.getElementById('books-list-container'); const prevBtn = document.getElementById('books-list-prev'); const nextBtn = document.getElementById('books-list-next'); const dotsContainer = document.getElementById('books-list-dots'); if(!container) return; container.innerHTML = ''; 
-            const totalBooks = globalCombinedLibrary.length; const totalPages = Math.ceil(totalBooks / BOOKS_PER_PAGE) || 1;
+            
+            const filteredLibrary = currentBooksFilter === 'all' ? globalCombinedLibrary : globalCombinedLibrary.filter(b => b.tableName === currentBooksFilter);
+            
+            const totalBooks = filteredLibrary.length; const totalPages = Math.ceil(totalBooks / BOOKS_PER_PAGE) || 1;
             if (currentBooksListPage > totalPages) currentBooksListPage = totalPages; if (currentBooksListPage < 1) currentBooksListPage = 1;
-            const startIndex = (currentBooksListPage - 1) * BOOKS_PER_PAGE; const booksToShow = globalCombinedLibrary.slice(startIndex, startIndex + BOOKS_PER_PAGE);
-            if (booksToShow.length === 0) { container.innerHTML = `<p class="text-center text-brand-muted py-8">Your library is currently empty.</p>`; } else {
+            const startIndex = (currentBooksListPage - 1) * BOOKS_PER_PAGE; const booksToShow = filteredLibrary.slice(startIndex, startIndex + BOOKS_PER_PAGE);
+            
+            if (booksToShow.length === 0) { container.innerHTML = `<p class="text-center text-brand-muted py-8">No books found in this view.</p>`; } else {
                 booksToShow.forEach(book => { 
                     const bookEl = document.createElement('div'); bookEl.className = 'flex flex-col sm:flex-row gap-6 py-6 sm:py-8 border-b border-brand-border last:border-0 cursor-pointer group'; 
                     bookEl.onclick = (e) => { if(e.target.closest('button') || e.target.closest('.card-menu') || e.target.closest('span.hover\\:text-brand-primary')) return; openDetailedView({ title: book.title, author_name: [book.author], coverUrl: book.coverUrl, key: typeof book.id === 'string' && book.id.startsWith('/') ? book.id : null, total_pages: book.total_pages }, 'books'); };
                     let rightSideHTML = ''; 
-                    if (book.status === 'Currently reading') { const currentPage = book.current_page || 0; const totalPages = book.total_pages || 300; const progressPct = book.progress || Math.round((currentPage / totalPages) * 100) || 0; rightSideHTML = `<div class="w-full max-w-[130px] sm:max-w-none relative progress-container flex items-center"><div class="bg-brand-primary h-[10px] rounded-full" style="width: ${progressPct}%;"></div></div><div class="flex justify-between items-center w-full max-w-[130px] sm:max-w-none px-1 mt-1"><span class="text-[10px] text-brand-muted font-medium">${progressPct}%</span><button onclick="openProgressModal('${book.id}', ${currentPage}, ${totalPages}); event.stopPropagation();" class="text-brand-muted hover:text-brand-primary transition-colors p-1 -mr-1"><i data-lucide="edit-2" class="w-3 h-3"></i></button></div>`; } 
-                    else if (book.status === 'Read') { rightSideHTML = `<div class="text-[10px] text-brand-muted text-right">Added:<br>${book.readDates || 'Recently'}</div>`; } 
-                    bookEl.innerHTML = `<div class="flex flex-col sm:flex-row gap-4 sm:gap-6 w-full flex-1 items-center sm:items-start text-center sm:text-left"><img src="${book.coverUrl}" alt="${book.title}" class="w-24 sm:w-[5.5rem] h-auto sm:h-[8.5rem] object-cover rounded-md book-shadow shrink-0 transition-transform group-hover:-translate-y-1 mx-auto sm:mx-0"><div class="flex-1 flex flex-col min-w-0"><h3 class="text-base sm:text-lg font-semibold text-brand-text mb-0.5 group-hover:text-brand-primary transition-colors line-clamp-2">${book.title}</h3><p class="text-xs sm:text-sm text-brand-muted mb-2 sm:mb-3 truncate">${renderAuthorLink(book.author)}</p><p class="text-xs sm:text-sm text-brand-text leading-relaxed line-clamp-3 sm:line-clamp-3 mb-2 sm:mb-3">${book.description}</p><div class="flex items-center justify-center sm:justify-start text-xs sm:text-sm font-semibold text-brand-text mt-auto"><i data-lucide="star" class="w-3 h-3 sm:w-4 sm:h-4 text-brand-primary fill-brand-primary mr-1"></i> ${book.rating.toFixed(2)}</div></div></div><div class="relative z-10 w-full sm:w-40 flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start shrink-0 mt-6 sm:mt-0 border-t border-brand-border sm:border-0 pt-6 sm:pt-0" onclick="event.stopPropagation()"><button onclick="toggleMenu('list-menu-${book.id}', event)" class="whitespace-nowrap shrink-0 w-auto sm:w-full flex items-center justify-between border border-brand-border rounded-full px-5 py-2 sm:py-1.5 text-xs font-semibold text-brand-text hover:bg-brand-surface transition-colors focus:outline-none bg-brand-card">${book.status} <i data-lucide="chevron-down" class="w-3 h-3 ml-2 text-brand-muted"></i></button><div id="list-menu-${book.id}" class="card-menu hidden absolute top-[56px] sm:top-[36px] left-0 sm:left-auto right-auto sm:right-0 w-48 sm:w-40 bg-brand-card border border-brand-border rounded-xl shadow-lg py-1 overflow-hidden z-50"><button onclick="openAddToListModalForId('${book.id}', '${book.tableName}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors">Add to List...</button><button onclick="moveBook('${book.id}', '${book.tableName}', 'currently_reading')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${book.tableName==='currently_reading'?'hidden':''}">Move to Reading</button><button onclick="moveBook('${book.id}', '${book.tableName}', 'reading_later')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${book.tableName==='reading_later'?'hidden':''}">Move to Later</button><button onclick="moveBook('${book.id}', '${book.tableName}', 'read_books')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${book.tableName==='read_books'?'hidden':''}">Move to Read</button><button onclick="deleteBook('${book.id}', '${book.tableName}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-red-500 hover:bg-red-500/10 transition-colors border-t border-brand-border">Remove from library</button></div><div class="flex flex-col items-end sm:mt-3 flex-1 sm:w-full pl-4 sm:pl-0">${rightSideHTML}</div></div>`; 
+                    
+                    let statusBtnStyle = 'border-brand-border text-brand-text bg-brand-card hover:bg-brand-surface';
+                    let statusLabel = book.status;
+                    let dropdownOptionsHTML = `
+                        <button onclick="openAddToListModalForId('${book.id}', '${book.tableName}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors">Add to List...</button>
+                        <button onclick="moveBook('${book.id}', '${book.tableName}', 'currently_reading')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${book.tableName==='currently_reading'?'hidden':''}">Move to Reading</button>
+                        <button onclick="moveBook('${book.id}', '${book.tableName}', 'reading_later')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${book.tableName==='reading_later'?'hidden':''}">Move to Later</button>
+                        <button onclick="moveBook('${book.id}', '${book.tableName}', 'read_books')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${book.tableName==='read_books'?'hidden':''}">Move to Read</button>
+                        <button onclick="moveBook('${book.id}', '${book.tableName}', 'dropped_books')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-brand-text hover:bg-brand-surface hover:text-brand-primary transition-colors border-t border-brand-border ${book.tableName==='dropped_books'?'hidden':''}">Mark as Dropped</button>
+                        <button onclick="deleteBook('${book.id}', '${book.tableName}')" class="w-full text-left px-4 py-2 text-[11px] font-semibold text-red-500 hover:bg-red-500/10 transition-colors border-t border-brand-border">Remove from library</button>
+                    `;
+                    
+                    if (book.tableName === 'currently_reading') { 
+                        const currentPage = book.current_page || 0; const totalPages = book.total_pages || 300; const progressPct = book.progress || Math.round((currentPage / totalPages) * 100) || 0; rightSideHTML = `<div class="w-full max-w-[130px] sm:max-w-none relative progress-container flex items-center"><div class="bg-brand-primary h-[10px] rounded-full" style="width: ${progressPct}%;"></div></div><div class="flex justify-between items-center w-full max-w-[130px] sm:max-w-none px-1 mt-1"><span class="text-[10px] text-brand-muted font-medium">${progressPct}%</span><button onclick="openProgressModal('${book.id}', ${currentPage}, ${totalPages}); event.stopPropagation();" class="text-brand-muted hover:text-brand-primary transition-colors p-1 -mr-1"><i data-lucide="edit-2" class="w-3 h-3"></i></button></div>`; 
+                    } else if (book.tableName === 'read_books') { 
+                        rightSideHTML = `<div class="text-[10px] text-brand-muted text-right">Added:<br>${book.readDates || 'Recently'}</div>`; 
+                    } else if (book.tableName === 'dropped_books') {
+                        statusBtnStyle = 'border-slate-300 text-slate-500 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:border-slate-700 dark:hover:bg-slate-800';
+                        const currentPage = book.current_page || 0; const totalPages = book.total_pages || 300; const progressPct = book.progress || Math.round((currentPage / totalPages) * 100) || 0; 
+                        rightSideHTML = `<div class="text-[10px] text-slate-400 text-right">Dropped at:<br>${progressPct}% (${currentPage} / ${totalPages} pgs)</div>`; 
+                    }
+
+                    bookEl.innerHTML = `<div class="flex flex-col sm:flex-row gap-4 sm:gap-6 w-full flex-1 items-center sm:items-start text-center sm:text-left"><img src="${book.coverUrl}" alt="${book.title}" class="w-24 sm:w-[5.5rem] h-auto sm:h-[8.5rem] object-cover rounded-md book-shadow shrink-0 transition-transform group-hover:-translate-y-1 mx-auto sm:mx-0 ${book.tableName === 'dropped_books' ? 'grayscale-[0.5]' : ''}"><div class="flex-1 flex flex-col min-w-0"><h3 class="text-base sm:text-lg font-semibold text-brand-text mb-0.5 group-hover:text-brand-primary transition-colors line-clamp-2">${book.title}</h3><p class="text-xs sm:text-sm text-brand-muted mb-2 sm:mb-3 truncate">${renderAuthorLink(book.author)}</p><p class="text-xs sm:text-sm text-brand-text leading-relaxed line-clamp-3 sm:line-clamp-3 mb-2 sm:mb-3">${book.description}</p><div class="flex items-center justify-center sm:justify-start text-xs sm:text-sm font-semibold text-brand-text mt-auto"><i data-lucide="star" class="w-3 h-3 sm:w-4 sm:h-4 text-brand-primary fill-brand-primary mr-1"></i> ${book.rating.toFixed(2)}</div></div></div><div class="relative z-10 w-full sm:w-40 flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start shrink-0 mt-6 sm:mt-0 border-t border-brand-border sm:border-0 pt-6 sm:pt-0" onclick="event.stopPropagation()"><button onclick="toggleMenu('list-menu-${book.id}', event)" class="whitespace-nowrap shrink-0 w-auto sm:w-full flex items-center justify-between border rounded-full px-5 py-2 sm:py-1.5 text-xs font-semibold transition-colors focus:outline-none ${statusBtnStyle}">${statusLabel} <i data-lucide="chevron-down" class="w-3 h-3 ml-2 ${book.tableName === 'dropped_books' ? 'text-slate-400' : 'text-brand-muted'}"></i></button><div id="list-menu-${book.id}" class="card-menu hidden absolute top-[56px] sm:top-[36px] left-0 sm:left-auto right-auto sm:right-0 w-48 sm:w-40 bg-brand-card border border-brand-border rounded-xl shadow-lg py-1 overflow-hidden z-50">${dropdownOptionsHTML}</div><div class="flex flex-col items-end sm:mt-3 flex-1 sm:w-full pl-4 sm:pl-0">${rightSideHTML}</div></div>`; 
                     container.appendChild(bookEl); 
                 }); 
                 if(window.lucide) lucide.createIcons(); 
@@ -1367,7 +1583,14 @@
         function calculateLibraryStats() {
             const currentYear = new Date().getFullYear(); const monthlyBooks = new Array(12).fill(0); const monthlyPages = new Array(12).fill(0);
             let hasData = false;
+            let droppedCount = 0;
+            
             globalLibrary.forEach(book => { 
+                if (book.tableName === 'dropped_books') {
+                    droppedCount++;
+                    return; // DO NOT process dropped books for read stats!
+                }
+                
                 const d = book.created_at ? new Date(book.created_at) : new Date(); 
                 if (d.getFullYear() === currentYear) { 
                     const m = d.getMonth(); 
@@ -1386,7 +1609,13 @@
                     }
                 } 
             });
-            return { monthlyBooks, monthlyPages, hasData };
+            
+            const statsDroppedEl = document.getElementById('stats-dropped-count');
+            if(statsDroppedEl) {
+                statsDroppedEl.textContent = `${droppedCount} dropped`;
+            }
+            
+            return { monthlyBooks, monthlyPages, hasData, droppedCount };
         }
         
         async function fetchRealGenresAndLanguages() {
@@ -1448,7 +1677,9 @@
             const emptyState = document.getElementById('stats-empty-state');
             const contentWrapper = document.getElementById('stats-content-wrapper');
             
-            if (!lineStats.hasData && globalLibrary.length === 0) {
+            const hasAnyBookForStats = globalLibrary.some(b => b.tableName === 'currently_reading' || b.tableName === 'read_books');
+
+            if (!lineStats.hasData && !hasAnyBookForStats) {
                 emptyState.classList.remove('hidden');
                 emptyState.classList.add('flex');
                 contentWrapper.classList.add('opacity-0', 'pointer-events-none');
@@ -1646,11 +1877,12 @@
         }
 
         async function fetchSupabaseData() {
-            let activeCurrentlyReading = []; let readingLaterList = []; let readBooksList = [];
+            let activeCurrentlyReading = []; let readingLaterList = []; let readBooksList = []; let droppedBooksList = [];
             globalCustomLists = []; globalListItems = []; globalNotes = []; globalChallenges = [];
             try { const { data } = await supabaseClient.from('currently_reading').select('*').order('created_at', { ascending: false }); if(data) activeCurrentlyReading = data; } catch(e) {}
             try { const { data } = await supabaseClient.from('reading_later').select('*').order('created_at', { ascending: false }); if(data) readingLaterList = data; } catch(e) {}
             try { const { data } = await supabaseClient.from('read_books').select('*').order('created_at', { ascending: false }); if(data) readBooksList = data; } catch(e) {}
+            try { const { data } = await supabaseClient.from('dropped_books').select('*').order('created_at', { ascending: false }); if(data) droppedBooksList = data; } catch(e) {}
             try { const { data } = await supabaseClient.from('custom_lists').select('*').order('created_at', { ascending: false }); if(data) globalCustomLists = data; } catch(e) {}
             try { const { data } = await supabaseClient.from('list_items').select('*'); if(data) globalListItems = data; } catch(e) {}
             try { const { data } = await supabaseClient.from('notes').select('*').order('created_at', { ascending: false }); if(data) globalNotes = data.map(n => ({...n, coverUrl: n.coverUrl || n.coverurl})); } catch(e) {}
@@ -1661,9 +1893,10 @@
             const mappedCurrentlyReading = activeCurrentlyReading.map(b => ({ ...b, status: 'Currently reading', tableName: 'currently_reading', created_at: b.created_at || new Date().toISOString() }));
             const mappedReadingLater = readingLaterList.map(b => ({ ...b, status: 'Reading later', tableName: 'reading_later', created_at: b.created_at || new Date().toISOString() }));
             const mappedRead = readBooksList.map(b => ({ ...b, status: 'Read', tableName: 'read_books', created_at: b.created_at || new Date().toISOString(), readDates: b.created_at ? new Date(b.created_at).toLocaleDateString() : 'Recently' }));
+            const mappedDropped = droppedBooksList.map(b => ({ ...b, status: 'Dropped', tableName: 'dropped_books', created_at: b.created_at || new Date().toISOString() }));
             
-            const rawLibrary = [...mappedCurrentlyReading, ...mappedReadingLater, ...mappedRead];
-            const uniqueLibrary = []; const seenKeys = new Set(); const tablePriority = { 'currently_reading': 1, 'reading_later': 2, 'read_books': 3 };
+            const rawLibrary = [...mappedCurrentlyReading, ...mappedReadingLater, ...mappedRead, ...mappedDropped];
+            const uniqueLibrary = []; const seenKeys = new Set(); const tablePriority = { 'currently_reading': 1, 'reading_later': 2, 'read_books': 3, 'dropped_books': 4 };
             rawLibrary.sort((a, b) => tablePriority[a.tableName] - tablePriority[b.tableName]);
             for (const book of rawLibrary) { const titleStr = String(book.title || '').trim().toLowerCase(); const authorStr = String(book.author || '').trim().toLowerCase(); const key = titleStr + '|' + authorStr; if (!seenKeys.has(key)) { seenKeys.add(key); uniqueLibrary.push(book); } else { if (book.id && !String(book.id).startsWith('temp_')) supabaseClient.from(book.tableName).delete().eq('id', book.id).catch(e => console.warn(e)); } }
 
@@ -1671,13 +1904,15 @@
             activeCurrentlyReading = globalLibrary.filter(b => b.tableName === 'currently_reading');
             readingLaterList = globalLibrary.filter(b => b.tableName === 'reading_later');
             readBooksList = globalLibrary.filter(b => b.tableName === 'read_books');
+            droppedBooksList = globalLibrary.filter(b => b.tableName === 'dropped_books');
 
-            globalCurrentlyReading = activeCurrentlyReading; globalReadingLater = readingLaterList; globalReadBooks = readBooksList;
+            globalCurrentlyReading = activeCurrentlyReading; globalReadingLater = readingLaterList; globalReadBooks = readBooksList; globalDroppedBooks = droppedBooksList;
 
             renderCustomLists();
             renderCurrentlyReading(activeCurrentlyReading);
             renderBookListBasic(readingLaterList, 'reading-later-container', 'reading_later');
             renderBookListBasic(readBooksList, 'read-container', 'read_books');
+            renderBookListBasic(droppedBooksList, 'dropped-container', 'dropped_books');
             syncLibraryBadges();
 
             globalCombinedLibrary = globalLibrary.map(b => ({ ...b, rating: b.rating || parseFloat((Math.random() * (4.9 - 3.8) + 3.8).toFixed(2)), description: b.description || 'A fascinating book from your personal library collection.' }));
