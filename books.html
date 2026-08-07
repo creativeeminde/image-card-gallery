@@ -103,7 +103,7 @@
         progress::-moz-progress-bar { background-color: var(--color-primary); border-radius: 9999px; }
         .progress-container { border: 1px solid var(--color-primary-light); padding: 2px; border-radius: 9999px; height: 14px; }
         
-        .tab-active { background-color: var(--color-surface); border-top-left-radius: 12px; border-top-right-radius: 12px; font-weight: 600; }
+        .tab-active { background-color: var(--color-surface); border-radius: 12px; font-weight: 600; }
         .book-shadow { box-shadow: 4px 4px 10px rgba(0,0,0,0.1); }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: var(--color-bg); border-radius: 10px; }
@@ -127,12 +127,58 @@
         .favorite-btn:hover:not(.active) svg, .favorite-btn:hover:not(.active) i {
             color: #ef4444;
         }
+
+        /* PDF Reader animations */
+        #pdf-reader-modal {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        #pdf-reader-modal.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(20px);
+            display: none !important;
+        }
+        #pdf-reader-modal:not(.hidden) {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0);
+            display: flex !important;
+        }
     </style>
 </head>
 <body class="min-h-screen font-sans flex flex-col items-center pt-4 sm:pt-6 px-3 sm:px-8 transition-colors duration-300">
 
     <!-- Toast Notification Container -->
-    <div id="toast-container" class="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
+    <div id="toast-container" class="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[200] flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Full Screen PDF Reader Modal -->
+    <div id="pdf-reader-modal" class="hidden fixed inset-0 z-[150] bg-brand-bg flex-col overflow-hidden w-full h-full">
+        <!-- Top Toolbar -->
+        <div class="flex items-center justify-between px-4 sm:px-6 py-3 bg-brand-card border-b border-brand-border shadow-sm shrink-0">
+            <button onclick="closePdfReader()" class="flex items-center gap-2 text-brand-text hover:text-brand-primary transition-colors focus:outline-none font-medium text-sm">
+                <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                <span class="hidden sm:inline">Back to Book</span>
+            </button>
+            
+            <h2 id="pdf-reader-title" class="font-bold text-base sm:text-lg text-brand-text truncate px-4 flex-1 text-center">Reading</h2>
+            
+            <button onclick="downloadCurrentPdf()" class="flex items-center gap-2 text-brand-text hover:text-brand-primary transition-colors focus:outline-none font-medium text-sm">
+                <span class="hidden sm:inline">Download</span>
+                <i data-lucide="download" class="w-5 h-5"></i>
+            </button>
+        </div>
+        
+        <!-- Error/Loading Overlay -->
+        <div id="pdf-reader-loading" class="absolute inset-0 top-[60px] flex flex-col items-center justify-center bg-brand-bg z-10 pointer-events-none">
+            <svg class="animate-spin h-10 w-10 text-brand-primary mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            <p class="text-brand-text font-medium animate-pulse">Loading Document...</p>
+        </div>
+        
+        <!-- Iframe Container -->
+        <div class="flex-1 w-full h-full relative bg-gray-100 dark:bg-gray-800">
+            <iframe id="pdf-iframe" class="w-full h-full border-0 absolute inset-0 z-20" onload="document.getElementById('pdf-reader-loading').classList.add('hidden')" allow="fullscreen"></iframe>
+        </div>
+    </div>
 
     <!-- Update Progress Modal -->
     <div id="progress-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm transition-opacity px-4">
@@ -251,10 +297,11 @@
     </div>
 
     <!-- Header Navigation -->
-    <header class="w-full max-w-6xl flex flex-col sm:flex-row items-center justify-between mb-4 sm:mb-2 relative z-10 px-2 sm:px-6">
-        <div class="flex w-full justify-between items-center sm:hidden px-4 mb-4 mt-2">
+    <header class="w-full max-w-6xl flex flex-col sm:flex-row items-center justify-between mb-4 sm:mb-2 relative z-10 px-0 sm:px-6">
+        <!-- Mobile Top Bar -->
+        <div class="flex w-full justify-between items-center sm:hidden px-6 mb-4 mt-2">
             <h1 class="font-serif text-2xl font-semibold tracking-wide text-brand-text">Shelved.</h1>
-            <div class="flex space-x-4">
+            <div class="flex items-center gap-4">
                 <button onclick="toggleDarkMode()" class="text-brand-text hover:text-brand-primary transition-colors focus:outline-none" title="Toggle Theme">
                     <i data-lucide="moon" class="w-5 h-5 dark-icon"></i>
                     <i data-lucide="sun" class="w-5 h-5 light-icon hidden"></i>
@@ -265,21 +312,32 @@
 
         <div class="w-1/4 hidden sm:block"></div>
         
-        <div class="flex-1 flex flex-col items-center w-full max-w-full overflow-hidden">
+        <!-- Navigation Tabs -->
+        <div class="flex-1 flex flex-col items-center w-full max-w-full overflow-hidden relative">
             <h1 class="font-serif text-3xl font-semibold tracking-wide mb-6 hidden sm:block text-brand-text">Shelved.</h1>
-            <nav class="flex space-x-2 sm:space-x-8 text-sm text-brand-text w-full sm:w-auto overflow-x-auto hide-scrollbar justify-start sm:justify-center px-4 sm:px-0 pb-2 sm:pb-0" id="main-nav">
-                <a href="#" id="nav-home" onclick="switchTab('home')" class="tab-active px-4 sm:px-6 py-2 -mb-2 relative z-20 whitespace-nowrap shrink-0">Home</a>
-                <a href="#" id="nav-books" onclick="switchTab('books')" class="px-3 sm:px-2 py-2 text-brand-muted hover:text-brand-text transition-colors relative whitespace-nowrap shrink-0">Books</a>
-                <a href="#" id="nav-stats" onclick="switchTab('stats')" class="px-3 sm:px-2 py-2 text-brand-muted hover:text-brand-text transition-colors relative whitespace-nowrap shrink-0">Stats</a>
-                <a href="#" id="nav-explore" onclick="switchTab('explore')" class="px-3 sm:px-2 py-2 text-brand-muted hover:text-brand-text transition-colors relative whitespace-nowrap shrink-0">Explore</a>
-                <a href="#" id="nav-notes" onclick="switchTab('notes')" class="px-3 sm:px-2 py-2 text-brand-muted hover:text-brand-text transition-colors relative whitespace-nowrap shrink-0">Notes</a>
-                <a href="#" id="nav-read-page" onclick="switchTab('read-page')" class="px-3 sm:px-2 py-2 text-brand-muted hover:text-brand-text transition-colors relative whitespace-nowrap flex items-center gap-1.5 shrink-0"><i data-lucide="book-open" class="w-4 h-4"></i> Read a Page</a>
-                <!-- Hidden navigation item for profile tab highlighting -->
-                <a href="#" id="nav-profile" onclick="switchTab('profile')" class="hidden">Profile</a>
-            </nav>
+            
+            <div class="w-full relative px-0">
+                <!-- Subtle fade on edges for scroll indication & to prevent hard cut-offs visually -->
+                <div class="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-brand-bg to-transparent md:hidden z-10 pointer-events-none"></div>
+                <div class="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-brand-bg to-transparent md:hidden z-10 pointer-events-none"></div>
+                
+                <nav class="flex gap-2 sm:gap-4 md:gap-8 text-sm text-brand-text w-full overflow-x-auto overflow-y-hidden hide-scrollbar justify-start md:justify-center px-4 sm:px-8 md:px-0 pb-2 md:pb-0 scroll-smooth" id="main-nav" style="-webkit-overflow-scrolling: touch;">
+                    <a href="#" id="nav-home" onclick="switchTab('home')" class="tab-active px-4 sm:px-6 py-2 -mb-2 relative z-20 whitespace-nowrap shrink-0 font-medium transition-all">Home</a>
+                    <a href="#" id="nav-books" onclick="switchTab('books')" class="px-3 sm:px-4 py-2 text-brand-muted hover:text-brand-text transition-colors relative whitespace-nowrap shrink-0 font-medium transition-all">Books</a>
+                    <a href="#" id="nav-stats" onclick="switchTab('stats')" class="px-3 sm:px-4 py-2 text-brand-muted hover:text-brand-text transition-colors relative whitespace-nowrap shrink-0 font-medium transition-all">Stats</a>
+                    <a href="#" id="nav-explore" onclick="switchTab('explore')" class="px-3 sm:px-4 py-2 text-brand-muted hover:text-brand-text transition-colors relative whitespace-nowrap shrink-0 font-medium transition-all">Explore</a>
+                    <a href="#" id="nav-notes" onclick="switchTab('notes')" class="px-3 sm:px-4 py-2 text-brand-muted hover:text-brand-text transition-colors relative whitespace-nowrap shrink-0 font-medium transition-all">Notes</a>
+                    <a href="#" id="nav-read-page" onclick="switchTab('read-page')" class="px-3 sm:px-4 py-2 text-brand-muted hover:text-brand-text transition-colors relative whitespace-nowrap flex items-center gap-1.5 shrink-0 font-medium transition-all"><i data-lucide="book-open" class="w-4 h-4"></i> Read a Page</a>
+                    <!-- Spacer to ensure the last item is never cut off on mobile/tablet view -->
+                    <div class="w-6 shrink-0 md:hidden"></div>
+                    <!-- Hidden navigation item for profile tab highlighting -->
+                    <a href="#" id="nav-profile" onclick="switchTab('profile')" class="hidden">Profile</a>
+                </nav>
+            </div>
         </div>
 
-        <div class="w-1/4 justify-end space-x-4 hidden sm:flex">
+        <!-- Desktop Right Controls -->
+        <div class="w-1/4 justify-end gap-4 hidden sm:flex">
             <button onclick="toggleDarkMode()" class="text-brand-text hover:text-brand-primary transition-colors focus:outline-none" title="Toggle Theme">
                 <i data-lucide="moon" class="w-5 h-5 dark-icon"></i>
                 <i data-lucide="sun" class="w-5 h-5 light-icon hidden"></i>
@@ -764,6 +822,10 @@
         let globalFavAuthors = [];
         let authorCache = {}; // Cache to hold fetched author data (images/bio)
         
+        // PDF feature state
+        let globalBookPdfs = {}; 
+        let currentlyOpenPdfUrl = null;
+
         let sectionExpanded = { currently_reading: false, reading_later: false, read_books: false, dropped_books: false };
 
         let lastViewBeforeDetails = 'home';
@@ -851,13 +913,16 @@
             navLinks.forEach(id => {
                 const el = document.getElementById(`nav-${id}`);
                 const viewEl = document.getElementById(`view-${id}`);
-                if(el) el.className = 'px-3 sm:px-2 py-2 text-brand-muted hover:text-brand-text transition-colors relative whitespace-nowrap shrink-0' + (id === 'read-page' ? ' flex items-center gap-1.5' : '');
+                if(el) el.className = 'px-3 sm:px-4 py-2 text-brand-muted hover:text-brand-text transition-colors relative whitespace-nowrap shrink-0 font-medium transition-all' + (id === 'read-page' ? ' flex items-center gap-1.5' : '');
                 if(viewEl) { viewEl.classList.add('hidden'); viewEl.classList.remove(id === 'home' ? 'grid' : 'flex'); }
             });
+            
             const activeEl = document.getElementById(`nav-${tabId}`);
-            if(activeEl) activeEl.className = 'tab-active px-4 sm:px-6 py-2 -mb-2 relative z-20 whitespace-nowrap shrink-0' + (tabId === 'read-page' ? ' flex items-center gap-1.5' : '');
+            if(activeEl) activeEl.className = 'tab-active px-4 sm:px-6 py-2 -mb-2 relative z-20 whitespace-nowrap shrink-0 font-medium text-brand-text transition-all' + (tabId === 'read-page' ? ' flex items-center gap-1.5' : '');
+            
             const activeView = document.getElementById(`view-${tabId}`);
             if(activeView) { activeView.classList.remove('hidden'); activeView.classList.add(tabId === 'home' ? 'grid' : 'flex'); }
+            
             ['view-recommendations', 'view-trending', 'book-details-section', 'view-all-genres', 'view-genre-books', 'view-single-list', 'view-dedicated-notes', 'view-author'].forEach(id => { const v = document.getElementById(id); if (v) v.classList.add('hidden'); });
             
             if (tabId === 'profile') {
@@ -865,6 +930,15 @@
             }
             
             lastActiveTab = tabId;
+
+            // Smoothly scroll the active tab into the center of the view on smaller screens
+            if (activeEl && window.innerWidth < 768) {
+                const navContainer = document.getElementById('main-nav');
+                if (navContainer) {
+                    const scrollLeft = activeEl.offsetLeft - (navContainer.clientWidth / 2) + (activeEl.clientWidth / 2);
+                    navContainer.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+                }
+            }
         }
 
         function showToast(message, type = 'success') {
@@ -878,6 +952,187 @@
             setTimeout(() => { toast.classList.remove('opacity-100', 'scale-100'); toast.classList.add('opacity-0', 'scale-95'); setTimeout(() => toast.remove(), 300); }, 3000);
         }
 
+        // ================= PDF LINK READING LOGIC =================
+        function isValidUrl(string) {
+            try {
+                new URL(string);
+                return true;
+            } catch (err) {
+                return false;
+            }
+        }
+
+        async function savePdfUrl(bookKey, inputId = 'pdf-url-input') {
+            const inputEl = document.getElementById(inputId);
+            if (!inputEl) return;
+            const url = inputEl.value.trim();
+            
+            if (!url) {
+                return showToast('Please enter a valid URL.', 'error');
+            }
+            if (!isValidUrl(url)) {
+                return showToast('Invalid URL format. Make sure it includes http:// or https://', 'error');
+            }
+
+            const book = currentlyViewingBook;
+            const title = book.title || 'Unknown Title';
+            
+            try {
+                const payload = {
+                    book_key: bookKey,
+                    pdf_url: url,
+                    title: title
+                };
+
+                const { error } = await supabaseClient
+                    .from('book_pdfs')
+                    .upsert([payload], { onConflict: 'book_key' });
+
+                if (error) throw error;
+                
+                globalBookPdfs[bookKey] = url;
+                showToast('PDF link saved securely!');
+                renderPdfSection(bookKey, title); 
+
+            } catch (e) {
+                console.error("PDF Save Error", e);
+                globalBookPdfs[bookKey] = url;
+                showToast('PDF saved locally (DB error)', 'error');
+                renderPdfSection(bookKey, title);
+            }
+        }
+
+        async function removePdfUrl(bookKey) {
+            if (!confirm('Are you sure you want to remove the PDF link for this book?')) return;
+            
+            try {
+                const { error } = await supabaseClient.from('book_pdfs').delete().eq('book_key', bookKey);
+                if (error) throw error;
+                
+                delete globalBookPdfs[bookKey];
+                showToast('PDF link removed.');
+                renderPdfSection(bookKey, currentlyViewingBook.title || 'Unknown Title');
+                
+            } catch (e) {
+                delete globalBookPdfs[bookKey];
+                showToast('PDF link removed locally (DB error).', 'error');
+                renderPdfSection(bookKey, currentlyViewingBook.title || 'Unknown Title');
+            }
+        }
+
+        function showPdfInput(bookKey) {
+            const container = document.getElementById('pdf-section-container');
+            if(!container) return;
+            
+            container.innerHTML = `
+                <div class="flex items-center gap-2 mb-3">
+                    <i data-lucide="link" class="w-5 h-5 text-brand-primary"></i>
+                    <h3 class="font-semibold text-lg text-brand-text">Link a PDF</h3>
+                </div>
+                <p class="text-xs text-brand-muted mb-4 max-w-2xl">Paste a direct URL to a PDF file for this book. You'll be able to read it directly inside the app.</p>
+                <div class="flex flex-col sm:flex-row gap-3 max-w-2xl">
+                    <input type="url" id="pdf-url-input" placeholder="https://example.com/book.pdf" class="flex-1 bg-brand-bg border border-brand-border rounded-xl p-3 text-sm text-brand-text focus:ring-2 focus:ring-brand-primary outline-none shadow-sm transition-shadow">
+                    <button onclick="savePdfUrl('${bookKey}')" class="bg-brand-card border border-brand-primary text-brand-primary hover:bg-brand-primary hover:text-white font-semibold py-3 px-6 rounded-xl shadow-sm transition-colors whitespace-nowrap">
+                        Save Link
+                    </button>
+                    <button onclick="renderPdfSection('${bookKey}', '${currentlyViewingBook?.title}')" class="text-brand-muted hover:text-brand-text py-3 px-4 font-semibold text-sm">Cancel</button>
+                </div>
+            `;
+            if(window.lucide) lucide.createIcons();
+        }
+
+        function renderPdfSection(bookKey, title) {
+            const container = document.getElementById('pdf-section-container');
+            if (!container) return;
+            
+            const existingUrl = globalBookPdfs[bookKey];
+
+            if (existingUrl) {
+                container.innerHTML = `
+                    <div class="bg-brand-surface border border-brand-primary/20 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-sm overflow-hidden relative">
+                        <div class="absolute -right-4 -bottom-6 text-brand-primary opacity-5 transform rotate-[-15deg] pointer-events-none">
+                            <i data-lucide="book-open" class="w-48 h-48"></i>
+                        </div>
+                        <div class="flex flex-col z-10 w-full sm:w-auto text-center sm:text-left">
+                            <div class="flex items-center justify-center sm:justify-start gap-2 mb-1">
+                                <i data-lucide="file-text" class="w-5 h-5 text-brand-primary"></i>
+                                <h3 class="font-bold text-xl text-brand-text">Ready to Read</h3>
+                            </div>
+                            <p class="text-sm text-brand-muted">A PDF is linked to this book.</p>
+                        </div>
+                        <div class="flex flex-col w-full sm:w-auto items-center sm:items-end gap-3 z-10">
+                            <button onclick="openPdfReader('${bookKey}', '${title.replace(/'/g, "\\'")}')" class="w-full sm:w-auto bg-brand-primary text-white font-bold py-3.5 px-8 rounded-full shadow-lg hover:bg-brand-primaryDark hover:shadow-xl hover:-translate-y-1 transition-all flex items-center justify-center gap-2">
+                                <i data-lucide="book-open" class="w-5 h-5"></i> Start Reading
+                            </button>
+                            <div class="flex items-center gap-4 text-xs font-semibold">
+                                <button onclick="showPdfInput('${bookKey}')" class="text-brand-muted hover:text-brand-primary transition-colors">Edit Link</button>
+                                <span class="text-brand-border">|</span>
+                                <button onclick="removePdfUrl('${bookKey}')" class="text-red-400 hover:text-red-600 transition-colors">Remove</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = `
+                    <div class="flex items-center justify-between bg-brand-surface border border-brand-border rounded-xl p-5 shadow-sm">
+                        <div class="flex items-center gap-3">
+                            <div class="bg-brand-card p-2 rounded-lg text-brand-primary shadow-sm">
+                                <i data-lucide="file-text" class="w-5 h-5"></i>
+                            </div>
+                            <div class="flex flex-col">
+                                <h4 class="font-semibold text-sm text-brand-text">Have a PDF copy?</h4>
+                                <span class="text-xs text-brand-muted">Link it here to read within the app.</span>
+                            </div>
+                        </div>
+                        <button onclick="showPdfInput('${bookKey}')" class="bg-brand-card border border-brand-border text-brand-text hover:text-brand-primary hover:border-brand-primary transition-colors font-semibold py-2 px-4 rounded-full text-xs shadow-sm flex items-center gap-1.5 focus:outline-none">
+                            <i data-lucide="link" class="w-3 h-3"></i> Add Link
+                        </button>
+                    </div>
+                `;
+            }
+            if(window.lucide) lucide.createIcons();
+        }
+
+        function openPdfReader(bookKey, title) {
+            const url = globalBookPdfs[bookKey];
+            if (!url) return showToast('No PDF linked for this book.', 'error');
+            
+            currentlyOpenPdfUrl = url;
+            
+            const modal = document.getElementById('pdf-reader-modal');
+            const iframe = document.getElementById('pdf-iframe');
+            const loading = document.getElementById('pdf-reader-loading');
+            const titleEl = document.getElementById('pdf-reader-title');
+            
+            titleEl.textContent = title || 'Document';
+            loading.classList.remove('hidden');
+            
+            iframe.src = url; 
+            modal.classList.remove('hidden');
+            
+            setTimeout(() => { iframe.focus(); }, 500);
+        }
+
+        function closePdfReader() {
+            const modal = document.getElementById('pdf-reader-modal');
+            const iframe = document.getElementById('pdf-iframe');
+            
+            modal.classList.add('hidden');
+            iframe.src = ''; 
+            currentlyOpenPdfUrl = null;
+        }
+        
+        function downloadCurrentPdf() {
+            if (!currentlyOpenPdfUrl) return;
+            const anchor = document.createElement('a');
+            anchor.href = currentlyOpenPdfUrl;
+            anchor.target = '_blank';
+            anchor.download = 'book.pdf';
+            document.body.appendChild(anchor);
+            anchor.click();
+            document.body.removeChild(anchor);
+        }
+
         // ================= FAVORITES LOGIC =================
         async function toggleFavoriteBook(event, btnElement) {
             if(event) { event.preventDefault(); event.stopPropagation(); }
@@ -889,7 +1144,6 @@
             const icon = btnElement.querySelector('svg') || btnElement.querySelector('i');
             
             if (isFav) {
-                // Remove from favorites
                 try {
                     const { error } = await supabaseClient.from('favorite_books').delete().eq('book_key', bookKey);
                     if(error) throw error;
@@ -904,7 +1158,6 @@
                     showToast('Failed to remove favorite', 'error');
                 }
             } else {
-                // Add to favorites
                 const title = currentlyViewingBook.title || 'Unknown Title';
                 const author = currentlyViewingBook.author_name ? currentlyViewingBook.author_name[0] : (currentlyViewingBook.author || 'Unknown Author');
                 const coverUrl = currentlyViewingBook.coverUrl || (currentlyViewingBook.cover_i ? `https://covers.openlibrary.org/b/id/${currentlyViewingBook.cover_i}-M.jpg` : '');
@@ -914,7 +1167,7 @@
                     const { data, error } = await supabaseClient.from('favorite_books').insert([payload]).select();
                     if(error) throw error;
                     if(data && data.length > 0) globalFavBooks.push(data[0]);
-                    else globalFavBooks.push(payload); // fallback
+                    else globalFavBooks.push(payload); 
                     
                     btnElement.classList.add('active');
                     if(icon) {
@@ -926,7 +1179,7 @@
                     showToast('Failed to add favorite', 'error');
                 }
             }
-            renderProfileFavorites(); // Auto update profile view
+            renderProfileFavorites(); 
         }
 
         async function toggleFavoriteAuthor(event, btnElement) {
@@ -938,7 +1191,6 @@
             const icon = btnElement.querySelector('svg') || btnElement.querySelector('i');
             
             if (isFav) {
-                // Remove from favorites
                 try {
                     const { error } = await supabaseClient.from('favorite_authors').delete().ilike('name', authorName);
                     if(error) throw error;
@@ -953,13 +1205,12 @@
                     showToast('Failed to remove favorite', 'error');
                 }
             } else {
-                // Add to favorites
                 try {
                     const payload = { name: authorName };
                     const { data, error } = await supabaseClient.from('favorite_authors').insert([payload]).select();
                     if(error) throw error;
                     if(data && data.length > 0) globalFavAuthors.push(data[0]);
-                    else globalFavAuthors.push(payload); // fallback
+                    else globalFavAuthors.push(payload); 
                     
                     btnElement.classList.add('active');
                     if(icon) {
@@ -971,7 +1222,7 @@
                     showToast('Failed to add favorite', 'error');
                 }
             }
-            renderProfileFavorites(); // Auto update profile view
+            renderProfileFavorites(); 
         }
 
         function checkFavoriteBookStatus(bookKey) {
@@ -1012,17 +1263,15 @@
 
         async function fetchAuthorData(authorName) {
             if (!authorName) return null;
-            if (authorCache[authorName]) return authorCache[authorName]; // Return cached if exists
+            if (authorCache[authorName]) return authorCache[authorName]; 
 
             try {
-                // 1. Search for the author to get their Open Library key
                 const searchRes = await fetchWithRetry(`https://openlibrary.org/search/authors.json?q=${encodeURIComponent(authorName)}&limit=1`);
                 const searchData = await searchRes.json();
                 
                 if (searchData.docs && searchData.docs.length > 0) {
-                    const authorKey = searchData.docs[0].key; // e.g., OL23919A
+                    const authorKey = searchData.docs[0].key; 
                     
-                    // 2. Fetch specific author details using the key
                     const detailsRes = await fetchWithRetry(`https://openlibrary.org/authors/${authorKey}.json`);
                     const detailsData = await detailsRes.json();
                     
@@ -1032,12 +1281,10 @@
                     }
                     
                     let imgUrl = '';
-                    // 3. Try to get photo if they have one
                     if (detailsData.photos && detailsData.photos.length > 0) {
                         imgUrl = `https://covers.openlibrary.org/a/id/${detailsData.photos[0]}-M.jpg`;
                     }
 
-                    // Save to cache
                     const authorData = {
                         bio: bioText,
                         imageUrl: imgUrl
@@ -1046,7 +1293,6 @@
                     return authorData;
                 }
                 
-                // Cache empty result so we don't keep retrying failures
                 authorCache[authorName] = { bio: '', imageUrl: '' };
                 return authorCache[authorName];
             } catch (e) {
@@ -1056,7 +1302,6 @@
         }
 
         function renderProfileFavorites() {
-            // Render Books
             const booksGrid = document.getElementById('profile-fav-books-grid');
             const booksEmpty = document.getElementById('profile-fav-books-empty');
             
@@ -1073,7 +1318,6 @@
                 globalFavBooks.forEach(book => {
                     const cardHTML = document.createElement('div');
                     cardHTML.className = "flex flex-col gap-2 group cursor-pointer relative";
-                    // For favorites, construct a minimal book object to pass to details view
                     const bookObj = {
                         title: book.title,
                         author_name: [book.author],
@@ -1098,7 +1342,6 @@
                 });
             }
 
-            // Render Authors
             const authorsGrid = document.getElementById('profile-fav-authors-grid');
             const authorsEmpty = document.getElementById('profile-fav-authors-empty');
             
@@ -1118,7 +1361,6 @@
                     cardHTML.className = "bg-brand-surface border border-brand-border rounded-xl p-4 flex items-center justify-between group cursor-pointer hover:-translate-y-1 hover:shadow-md transition-all";
                     cardHTML.onclick = (e) => openAuthorPage(safeName, e);
                     
-                    // Create an ID for the image to update it asynchronously
                     const imgId = `profile-fav-author-img-${author.id || Date.now()}-${Math.floor(Math.random()*1000)}`;
                     
                     cardHTML.innerHTML = `
@@ -1136,7 +1378,6 @@
                     `;
                     authorsGrid.appendChild(cardHTML);
                     
-                    // Fetch and update image asynchronously
                     fetchAuthorData(author.name).then(data => {
                         if (data && data.imageUrl) {
                             const imgEl = document.getElementById(imgId);
@@ -1153,7 +1394,6 @@
             if(window.lucide) lucide.createIcons();
         }
 
-        // Helper function for rendering clickable author links properly formatted and event-handled
         function renderAuthorLink(authorName) {
             if (!authorName || authorName === 'Unknown Author') return `by ${authorName || 'Unknown Author'}`;
             const safeName = String(authorName).replace(/'/g, "\\'").replace(/"/g, '&quot;');
@@ -1167,7 +1407,6 @@
             }
             if(!authorName || authorName === 'Unknown Author') return;
 
-            // Track what to hide so we can safely restore it when clicking back
             const elementsToCheck = [
                 'view-home', 'view-books', 'view-explore', 'view-stats', 'view-notes', 'view-profile', 'view-read-page',
                 'view-recommendations', 'view-trending', 'view-all-genres', 'view-genre-books',
@@ -1180,27 +1419,23 @@
                 return el && !el.classList.contains('hidden');
             });
 
-            // Hide them all
             elementsToCheck.forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.add('hidden');
             });
 
-            // Show author view
             const authorView = document.getElementById('view-author');
             authorView.classList.remove('hidden');
             authorView.classList.add('flex');
 
             document.getElementById('author-page-title').textContent = authorName;
             
-            // Check favorites status
             checkFavoriteAuthorStatus(authorName);
 
             const grid = document.getElementById('author-books-grid');
             const loading = document.getElementById('author-loading');
             const empty = document.getElementById('author-empty');
             
-            // Elements for author photo/bio
             const imgEl = document.getElementById('author-page-image');
             const bioEl = document.getElementById('author-page-bio');
 
@@ -1209,13 +1444,11 @@
             empty.classList.remove('flex');
             loading.classList.remove('hidden');
             
-            // Reset photo/bio
             imgEl.classList.add('hidden');
             imgEl.src = '';
             bioEl.classList.add('hidden');
             bioEl.textContent = '';
             
-            // Fetch author photo and bio in parallel with their books
             fetchAuthorData(authorName).then(authorData => {
                 if (authorData) {
                     if (authorData.imageUrl) {
@@ -1286,7 +1519,7 @@
                 const el = document.getElementById(id);
                 if (el) {
                     el.classList.remove('hidden');
-                    if(id === 'view-profile') updateProfileStats(); // refresh if going back to profile
+                    if(id === 'view-profile') updateProfileStats(); 
                 }
             });
             visibleElementsBeforeAuthor = [];
@@ -1611,7 +1844,7 @@
                 if (error) { console.error("Save Error:", error); throw error; }
                 
                 if (data && data.length > 0) {
-                    newBook.id = data[0].id; // Replace temp ID with the real database ID
+                    newBook.id = data[0].id; 
                 }
                 
                 showToast(`Added to ${statusTable.replace('_', ' ')}!`); 
@@ -1662,7 +1895,7 @@
                 } 
                 
                 if (insertData && insertData.length > 0) {
-                    book.id = insertData[0].id; // Assign the newly generated DB ID
+                    book.id = insertData[0].id; 
                 }
                 
                 showToast(`Moved to ${newTable.replace('_', ' ')}!`); 
@@ -1789,6 +2022,7 @@
         }
 
         function scrollBooksCarousel(direction) { const container = document.getElementById('books-carousel-content'); if (container) { const item = container.firstElementChild; const scrollAmount = item ? item.offsetWidth + 24 : 300; container.scrollBy({ left: direction * scrollAmount, behavior: 'smooth' }); } }
+        
         function renderBooksViewCarousel(books) { 
             const container = document.getElementById('books-carousel-content'); const dotsContainer = document.getElementById('books-carousel-dots'); if(!container) return; container.innerHTML = ''; 
             if (!books || books.length === 0) { container.innerHTML = '<p class="text-sm text-brand-muted py-8 px-4">No books currently being read.</p>'; if(dotsContainer) dotsContainer.innerHTML = ''; return; }
@@ -1805,11 +2039,13 @@
                 container.addEventListener('scroll', () => { const scrollLeft = container.scrollLeft; const maxScroll = container.scrollWidth - container.clientWidth; const pct = maxScroll > 0 ? scrollLeft / maxScroll : 0; const dots = dotsContainer.children; if(dots.length > 0) { const activeIndex = Math.round(pct * (dots.length - 1)); for(let i=0; i<dots.length; i++) { dots[i].className = i === activeIndex ? 'w-6 h-1.5 bg-brand-primary rounded-full transition-all' : 'w-1.5 h-1.5 bg-brand-primaryLight rounded-full mt-[1px] transition-all'; } } });
             }
         }
+        
         function applyBooksFilter() {
             currentBooksFilter = document.getElementById('books-filter-select').value;
             currentBooksListPage = 1;
             renderBooksList();
         }
+        
         function changeBooksPage(direction) { 
             const filteredLibrary = currentBooksFilter === 'all' ? globalCombinedLibrary : globalCombinedLibrary.filter(b => b.tableName === currentBooksFilter);
             const totalPages = Math.ceil(filteredLibrary.length / BOOKS_PER_PAGE) || 1; 
@@ -1820,6 +2056,7 @@
                 document.getElementById('books-list-container').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); 
             } 
         }
+        
         function renderBooksList() { 
             const container = document.getElementById('books-list-container'); const prevBtn = document.getElementById('books-list-prev'); const nextBtn = document.getElementById('books-list-next'); const dotsContainer = document.getElementById('books-list-dots'); if(!container) return; container.innerHTML = ''; 
             
@@ -1946,6 +2183,7 @@
         }
 
         function createPageButton(pageNum) { const btn = document.createElement('button'); const isActive = pageNum === currentSearchPage; btn.className = `px-3 py-1 rounded-md text-sm font-medium transition-colors ${isActive ? 'bg-brand-primary text-white' : 'text-brand-muted hover:bg-brand-surface hover:text-brand-primary'}`; btn.textContent = pageNum; btn.onclick = () => { if (!isActive) searchBooks(pageNum); }; return btn; }
+        
         function renderPaginationControls(container) {
             container.innerHTML = ''; container.classList.remove('hidden');
             const prevBtn = document.createElement('button'); prevBtn.className = `p-1.5 rounded-md transition-colors flex items-center justify-center ${currentSearchPage === 1 ? 'text-gray-300 cursor-not-allowed' : 'text-brand-muted hover:bg-brand-surface hover:text-brand-primary'}`; prevBtn.innerHTML = '<i data-lucide="chevron-left" class="w-4 h-4"></i>'; prevBtn.onclick = () => { if (currentSearchPage > 1) searchBooks(currentSearchPage - 1); }; container.appendChild(prevBtn);
@@ -1956,6 +2194,7 @@
             if (endPage < totalSearchPages) { if (endPage < totalSearchPages - 1) { const dots = document.createElement('span'); dots.className = 'text-brand-muted px-2'; dots.textContent = '...'; container.appendChild(dots); } container.appendChild(createPageButton(totalSearchPages)); }
             const nextBtn = document.createElement('button'); nextBtn.className = `p-1.5 rounded-md transition-colors flex items-center justify-center ${currentSearchPage === totalSearchPages ? 'text-gray-300 cursor-not-allowed' : 'text-brand-muted hover:bg-brand-surface hover:text-brand-primary'}`; nextBtn.innerHTML = '<i data-lucide="chevron-right" class="w-4 h-4"></i>'; nextBtn.onclick = () => { if (currentSearchPage < totalSearchPages) searchBooks(currentSearchPage + 1); }; container.appendChild(nextBtn); if(window.lucide) lucide.createIcons();
         }
+        
         function clearSearch() { document.getElementById('searchInput').value = ''; document.getElementById('search-results-section').classList.add('hidden'); document.getElementById('explore-default-content').classList.remove('hidden'); currentSearchQuery = ''; currentSearchPage = 1; totalSearchPages = 1; }
 
         function calculateLibraryStats() {
@@ -1966,7 +2205,7 @@
             globalLibrary.forEach(book => { 
                 if (book.tableName === 'dropped_books') {
                     droppedCount++;
-                    return; // DO NOT process dropped books for read stats!
+                    return; 
                 }
                 
                 const d = book.created_at ? new Date(book.created_at) : new Date(); 
@@ -2018,6 +2257,7 @@
             const sortedGenres = Object.entries(genreCounts).sort((a,b) => b[1]-a[1]).slice(0, 5); const sortedLangs = Object.entries(mappedLangCounts).sort((a,b) => b[1]-a[1]).slice(0, 5);
             return { genres: { labels: sortedGenres.map(i => i[0]), data: sortedGenres.map(i => i[1]) }, languages: { labels: sortedLangs.map(i => i[0]), data: sortedLangs.map(i => i[1]) } };
         }
+        
         function updateBarCharts(glStats) { 
             if (charts['statsPageGenres']) { 
                 charts['statsPageGenres'].data.labels = glStats.genres.labels; 
@@ -2105,12 +2345,14 @@
             const contentDiv = document.getElementById('book-details-content'); const loadingDiv = document.getElementById('book-details-loading'); contentDiv.innerHTML = ''; loadingDiv.classList.remove('hidden');
             const title = book.title || 'Unknown Title'; const author = book.author_name ? book.author_name[0] : (book.author || 'Unknown Author'); const coverUrl = book.coverUrl || (book.cover_i ? `https://covers.openlibrary.org/b/id/${book.cover_i}-L.jpg` : `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='300' style='background:%23fde9d9'></svg>`);
             let description = 'No description available for this book.'; let similarBooksHTML = '';
+            
             try {
                 const fetchPromises = [];
                 if (book.key && typeof book.key === 'string' && book.key.startsWith('/')) { fetchPromises.push(fetchWithRetry(`https://openlibrary.org${book.key}.json`).then(res => res.json()).then(data => { if (data.description) description = typeof data.description === 'string' ? data.description : data.description.value; }).catch(err => {})); }
                 if (author !== 'Unknown Author') { fetchPromises.push(fetchWithRetry(`https://openlibrary.org/search.json?author=${encodeURIComponent(author)}&limit=10`).then(res => res.json()).then(data => { const simBooks = (data.docs || []).filter(b => b.title !== title && b.key !== book.key).slice(0, 3); if (simBooks.length > 0) { const cardsHTML = simBooks.map((simBook) => { const simTitle = simBook.title || 'Unknown Title'; const simAuthor = simBook.author_name ? simBook.author_name[0] : author; const simCover = simBook.cover_i ? `https://covers.openlibrary.org/b/id/${simBook.cover_i}-S.jpg` : ''; const simRating = (Math.random() * (4.9 - 3.5) + 3.5).toFixed(2); const stringifiedSim = JSON.stringify({ title: simTitle, author_name: [simAuthor], cover_i: simBook.cover_i, key: simBook.key, coverUrl: simCover, total_pages: simBook.number_of_pages_median || 300 }).replace(/"/g, '&quot;'); return `<div class="flex items-center gap-3 w-full max-w-[200px] cursor-pointer group" onclick="openDetailedView(${stringifiedSim}, '${sourceContext}')"><img src="${simCover || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='72' style='background:%23e2e8f0'></svg>"}" alt="${simTitle}" class="w-12 h-18 object-cover rounded shadow-sm group-hover:scale-105 transition-transform"><div class="flex flex-col overflow-hidden"><h5 class="text-xs font-semibold text-brand-text truncate group-hover:text-brand-primary transition-colors">${simTitle}</h5><span class="text-[10px] text-brand-muted truncate">${renderAuthorLink(simAuthor)}</span><div class="flex items-center text-[10px] font-semibold text-brand-text mt-1"><i data-lucide="star" class="w-3 h-3 text-brand-primary fill-brand-primary mr-1"></i> ${simRating}</div></div></div>`; }).join(''); similarBooksHTML = `<hr class="border-brand-border"><div class="w-full max-w-4xl mx-auto"><h3 class="text-center font-semibold text-brand-text mb-8">Other books you might enjoy</h3><div class="grid grid-cols-1 sm:grid-cols-3 gap-6 justify-items-center">${cardsHTML}</div></div>`; } }).catch(err => {})); }
                 await Promise.all(fetchPromises);
             } catch (err) {}
+            
             loadingDiv.classList.add('hidden'); const rating = (Math.random() * (4.9 - 3.5) + 3.5).toFixed(2); const formattedDescription = description.split('\n').filter(p => p.trim() !== '').map(p => `<p class="mb-3">${p}</p>`).join(''); const bookKeyForNotes = book.key || title;
             
             contentDiv.innerHTML = `
@@ -2136,7 +2378,11 @@
                         <div class="text-sm text-brand-text leading-relaxed opacity-90 max-w-3xl text-left">${formattedDescription}</div>
                     </div>
                 </div>
-                <div class="mt-8 border-t border-brand-border pt-8 w-full" id="book-notes-container">
+                
+                <!-- PDF Section -->
+                <div id="pdf-section-container" class="w-full mb-2 mt-4 pt-8 border-t border-brand-border max-w-4xl"></div>
+
+                <div class="mt-4 border-t border-brand-border pt-8 w-full" id="book-notes-container">
                     <h3 class="font-semibold text-lg text-brand-text mb-4">Notes & Quotes</h3>
                     <div class="flex flex-col gap-3 mb-8 max-w-4xl">
                         <textarea id="new-note-content" rows="3" class="w-full bg-brand-bg border border-brand-border rounded-xl p-4 text-sm text-brand-text focus:ring-2 focus:ring-brand-primaryLight outline-none shadow-sm resize-none custom-scrollbar" placeholder="Save a bookmarked sentence, quote, or personal thought..."></textarea>
@@ -2150,7 +2396,12 @@
             `;
             
             checkFavoriteBookStatus(bookKeyForNotes);
-            renderDetailedLibraryAction(); renderBookNotesList(bookKeyForNotes); if(window.lucide) lucide.createIcons(); document.getElementById('book-details-section').scrollIntoView({ behavior: 'smooth' });
+            renderDetailedLibraryAction(); 
+            renderBookNotesList(bookKeyForNotes); 
+            renderPdfSection(bookKeyForNotes, title);
+            
+            if(window.lucide) lucide.createIcons(); 
+            document.getElementById('book-details-section').scrollIntoView({ behavior: 'smooth' });
         }
         
         function closeBookDetails() { 
@@ -2184,7 +2435,6 @@
         function openDedicatedNotes(bookKey, title, author, coverUrl) {
             currentlyViewingBook = { key: bookKey, title: title, author_name: [author], coverUrl: coverUrl };
             
-            // Hide all standard views
             ['home', 'books', 'explore', 'stats', 'notes', 'profile', 'read-page', 'recommendations', 'trending', 'view-single-list', 'all-genres', 'genre-books', 'view-author'].forEach(id => { 
                 const view = document.getElementById(`view-${id}`); 
                 if (view) { view.classList.add('hidden'); view.classList.remove('flex'); view.classList.remove('grid'); }
@@ -2194,7 +2444,6 @@
             document.getElementById('search-results-section').classList.add('hidden');
             document.getElementById('explore-default-content').classList.add('hidden');
             
-            // Show dedicated notes view
             const viewDedicated = document.getElementById('view-dedicated-notes');
             viewDedicated.classList.remove('hidden');
             viewDedicated.classList.add('flex');
@@ -2311,7 +2560,8 @@
         async function fetchSupabaseData() {
             let activeCurrentlyReading = []; let readingLaterList = []; let readBooksList = []; let droppedBooksList = [];
             globalCustomLists = []; globalListItems = []; globalNotes = []; globalChallenges = [];
-            globalFavBooks = []; globalFavAuthors = [];
+            globalFavBooks = []; globalFavAuthors = []; globalBookPdfs = {};
+            
             try { const { data } = await supabaseClient.from('currently_reading').select('*').order('created_at', { ascending: false }); if(data) activeCurrentlyReading = data; } catch(e) {}
             try { const { data } = await supabaseClient.from('reading_later').select('*').order('created_at', { ascending: false }); if(data) readingLaterList = data; } catch(e) {}
             try { const { data } = await supabaseClient.from('read_books').select('*').order('created_at', { ascending: false }); if(data) readBooksList = data; } catch(e) {}
@@ -2322,6 +2572,15 @@
             try { const { data } = await supabaseClient.from('custom_challenges').select('*').order('created_at', { ascending: false }); if(data) globalChallenges = data; } catch(e) {}
             try { const { data } = await supabaseClient.from('favorite_books').select('*').order('created_at', { ascending: false }); if(data) globalFavBooks = data; } catch(e) {}
             try { const { data } = await supabaseClient.from('favorite_authors').select('*').order('created_at', { ascending: false }); if(data) globalFavAuthors = data; } catch(e) {}
+            
+            try { 
+                const { data } = await supabaseClient.from('book_pdfs').select('*'); 
+                if(data) {
+                    data.forEach(item => {
+                        globalBookPdfs[item.book_key] = item.pdf_url;
+                    });
+                }
+            } catch(e) { console.warn("Failed to fetch PDFs", e); }
 
             if(globalChallenges.length === 0) { globalChallenges.push({ id: 'local_def', name: '2026 Reading Challenge', goal_type: 'books', target: 20, status: 'active', start_date: '2026-01-01', end_date: '2026-12-31' }); }
 
