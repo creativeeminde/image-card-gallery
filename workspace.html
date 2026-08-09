@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workspace</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            background-color: #F5F0E6; /* Default Workspace background */
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .writing-vertical {
+            writing-mode: vertical-rl;
+        }
+
+        /* Custom minimal scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 0, 0, 0.25);
+        }
+
+        /* List/Card dark mode specific scrolling */
+        .board-list ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .hide {
+            display: none !important;
+        }
+
+        .drop-indicator {
+            height: 6px;
+            background-color: #3b82f6; /* Blue-500 */
+            border-radius: 4px;
+            margin: 4px 0;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            pointer-events: none;
+            transition: all 0.2s ease;
+        }
+
+        .list-drop-indicator {
+            width: 6px;
+            height: 100%;
+            background-color: #3b82f6;
+            border-radius: 4px;
+            margin: 0 8px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="text-gray-900 flex h-screen w-screen relative selection:bg-blue-200">
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-gray-50 text-blue-600 font-semibold transition-opacity duration-300">
+        <i data-lucide="loader-2" class="animate-spin mb-4" width="32" height="32"></i>
+        <span>Loading your workspace...</span>
+    </div>
+
+    <!-- Floating Nav -->
+    <div id="floating-nav" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-white/90 backdrop-blur-md shadow-lg shadow-black/5 border border-gray-200 rounded-full flex items-center p-1.5 gap-1 hide transition-all duration-300">
+        <div onclick="setView('boards')" class="flex items-center justify-center bg-blue-600 p-2 rounded-full text-white ml-1 mr-1 cursor-pointer shadow-sm hover:bg-blue-700 transition-colors" title="Workspace Home">
+            <i data-lucide="layout-dashboard" width="18" height="18"></i>
+        </div>
+        
+        <div id="nav-btn-boards" onclick="setView('boards')" class="nav-item flex items-center gap-2 px-4 py-2 rounded-full cursor-pointer transition-all text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">Boards</div>
+        
+        <div id="nav-btn-inbox" onclick="setView('inbox')" class="nav-item flex items-center gap-2 px-4 py-2 rounded-full cursor-pointer transition-all text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+            <i data-lucide="inbox" width="16" height="16"></i> Inbox
+            <span id="nav-inbox-count" class="bg-gray-200 text-gray-700 text-xs px-2 py-0.5 rounded-full ml-1 hide">0</span>
+        </div>
+        
+        <div id="nav-btn-today" onclick="setView('today')" class="nav-item flex items-center gap-2 px-4 py-2 rounded-full cursor-pointer transition-all text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+            <i data-lucide="star" width="16" height="16"></i> Today
+            <span id="nav-today-count" class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full ml-1 hide">0</span>
+        </div>
+        
+        <div id="nav-btn-search" onclick="setView('search')" class="nav-item flex items-center gap-2 px-4 py-2 rounded-full cursor-pointer transition-all text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+            <i data-lucide="search" width="16" height="16"></i> Search
+        </div>
+        
+        <div class="w-px h-6 bg-gray-300 mx-2"></div>
+        
+        <!-- Boards Dropdown -->
+        <div class="relative" id="nav-dropdown-container">
+            <div onclick="toggleBoardDropdown(event)" id="nav-btn-board-dropdown" class="flex items-center gap-1 px-4 py-2 rounded-full cursor-pointer transition-all text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                <span id="nav-current-board-name" class="max-w-[120px] truncate">Current Board</span>
+                <i data-lucide="chevron-down" id="nav-chevron" width="14" height="14" class="transition-transform duration-200 ml-1"></i>
+            </div>
+            
+            <div id="nav-boards-dropdown" class="absolute top-full mt-3 left-1/2 -translate-x-1/2 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 flex-col z-50 max-h-96 overflow-y-auto hide">
+                <div class="px-4 pb-2 pt-1 text-xs font-semibold text-gray-400 uppercase tracking-wider flex justify-between items-center border-b border-gray-50 mb-1">
+                    <span>Your Boards</span>
+                    <button onclick="toggleAddBoardInput(event)" class="hover:bg-gray-100 p-1.5 rounded text-gray-500 transition-colors"><i data-lucide="plus" width="14" height="14"></i></button>
+                </div>
+                
+                <div id="nav-add-board-container" class="px-3 py-2 hide">
+                    <input type="text" id="nav-new-board-input" class="w-full text-sm border-2 border-blue-500 rounded-xl px-3 py-2 outline-none bg-blue-50/50" placeholder="Board name...">
+                </div>
+                
+                <div id="nav-dropdown-list" class="px-2 space-y-0.5 mt-1">
+                    <!-- Populated via JS -->
+                </div>
+            </div>
+        </div>
+        
+        <div class="w-px h-6 bg-gray-300 mx-2"></div>
+        
+        <div id="nav-btn-settings" onclick="setView('settings')" class="flex items-center justify-center p-2 rounded-full cursor-pointer transition-all mr-1 text-gray-600 hover:bg-gray-100 hover:text-gray-900" title="Settings">
+            <i data-lucide="settings" width="18" height="18"></i>
+        </div>
+    </div>
+
+    <!-- Main Content Containers -->
+    <main class="flex-1 flex flex-col min-w-0 h-full w-full relative z-0">
+        
+        <!-- View: Workspace Home (Boards Grid) -->
+        <div id="view-boards" class="app-view flex-1 p-10 pt-24 overflow-y-auto hide">
+            <h2 class="text-3xl font-bold mb-6">Your Workspace</h2>
+            <div id="boards-grid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                <!-- Boards generated here -->
+            </div>
+        </div>
+
+        <!-- View: Active Board -->
+        <div id="view-board" class="app-view flex-1 flex flex-col h-full w-full relative pt-20 hide bg-[#F5F0E6]">
+            <!-- Board Header -->
+            <div class="px-6 py-4 bg-white/40 backdrop-blur-sm flex items-center justify-between text-gray-800 border-b border-black/5 z-10">
+                <div class="flex items-center gap-4">
+                    <h2 id="active-board-title" class="text-2xl font-bold cursor-pointer hover:bg-white/50 px-2 py-1 rounded transition-colors" onclick="editBoardTitle()">Board Title</h2>
+                    <input id="active-board-title-input" class="text-2xl font-bold bg-white/60 px-2 py-1 rounded outline-none w-64 text-gray-800 hide" type="text" onblur="saveBoardTitle()" onkeydown="if(event.key === 'Enter') saveBoardTitle()">
+                    
+                    <button id="active-board-favorite" onclick="toggleFavoriteBoard()" class="p-1.5 rounded transition text-gray-400 hover:text-gray-600 hover:bg-white/50">
+                        <i data-lucide="star" width="20" height="20"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Lists Container (Horizontal Scroll) -->
+            <div id="board-lists-container" class="flex-1 overflow-x-auto overflow-y-hidden p-6 flex items-start gap-4">
+                <!-- Lists and Add List generated here -->
+            </div>
+        </div>
+
+        <!-- View: Inbox -->
+        <div id="view-inbox" class="app-view flex-1 bg-white p-10 pt-24 overflow-y-auto hide">
+            <div class="max-w-3xl mx-auto">
+                <h2 class="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3"><i data-lucide="inbox" class="text-blue-600" width="32" height="32"></i> Inbox</h2>
+                <p class="text-gray-500 mb-8">Quickly capture ideas and tasks before organizing them into boards.</p>
+                <input id="inbox-input" class="w-full p-4 text-lg border rounded-xl shadow-sm focus:ring-2 ring-blue-500 outline-none mb-8" placeholder="What's on your mind? Press Enter to save..." onkeydown="handleInboxInput(event)">
+                <div id="inbox-list" class="space-y-3">
+                    <!-- Inbox items generated here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- View: Today -->
+        <div id="view-today" class="app-view flex-1 bg-white p-10 pt-24 overflow-y-auto hide">
+            <div class="max-w-4xl mx-auto">
+                <h2 class="text-3xl font-bold text-gray-900 mb-8 flex items-center gap-3"><i data-lucide="star" class="text-yellow-500 fill-yellow-500" width="32" height="32"></i> My Day</h2>
+                
+                <div id="today-overdue-container" class="mb-8 hide">
+                    <h3 class="text-xl font-bold text-red-600 mb-3 flex items-center gap-2"><i data-lucide="clock" width="20" height="20"></i> Overdue (<span id="today-overdue-count">0</span>)</h3>
+                    <div id="today-overdue-list" class="bg-white border border-red-200 rounded-xl overflow-hidden shadow-sm"></div>
+                </div>
+
+                <div class="mb-8">
+                    <h3 class="text-xl font-bold text-gray-800 mb-3">Due Today (<span id="today-due-count">0</span>)</h3>
+                    <div id="today-due-list" class="bg-white border rounded-xl overflow-hidden shadow-sm"></div>
+                    <div id="today-empty-msg" class="bg-gray-50 rounded-xl p-8 text-center text-gray-500 border border-dashed border-gray-300 hide">No tasks due today. Enjoy your day!</div>
+                </div>
+
+                <div id="today-completed-container" class="hide">
+                    <h3 class="text-xl font-bold text-green-700 mb-3">Completed Today</h3>
+                    <div id="today-completed-list" class="bg-white border border-green-200 rounded-xl overflow-hidden opacity-75"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- View: Search -->
+        <div id="view-search" class="app-view flex-1 bg-gray-50 p-10 pt-24 overflow-y-auto hide">
+            <div class="max-w-4xl mx-auto">
+                <div class="relative mb-8 shadow-sm rounded-xl overflow-hidden">
+                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <i data-lucide="search" class="text-gray-400" width="24" height="24"></i>
+                    </div>
+                    <input type="text" id="search-input" class="w-full pl-12 pr-4 py-4 text-xl border-none outline-none focus:ring-2 ring-blue-500" placeholder="Search across all boards, cards, descriptions, and notes..." onkeyup="handleSearch(event)">
+                </div>
+                <div id="search-results-container" class="hide">
+                    <h3 class="text-lg font-semibold text-gray-600 mb-4">Results (<span id="search-count">0</span>)</h3>
+                    <div id="search-list" class="space-y-3"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- View: Settings -->
+        <div id="view-settings" class="app-view flex-1 bg-white p-10 pt-24 overflow-y-auto hide">
+            <h2 class="text-3xl font-bold text-gray-900 mb-8 flex items-center gap-3"><i data-lucide="settings" class="text-gray-600" width="32" height="32"></i> Settings</h2>
+            <div class="p-6 border rounded-xl bg-blue-50 border-blue-100 max-w-2xl">
+                <h3 class="text-lg font-bold text-blue-900 mb-2">Data Persistence Active</h3>
+                <p class="text-blue-800 text-sm">All data is securely connected and saving in real-time to your Supabase instance using the REST endpoint. Vanilla JS mode.</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal Root Container -->
+    <div id="modal-root"></div>
+
+    <script>
+        // --- 1. Supabase Config & REST Client ---
+        const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
+
+        const headers = {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        };
+
+        const supabaseFetch = async (endpoint, options = {}) => {
+            const response = await fetch(`${SUPABASE_URL}/rest/v1/${endpoint}`, {
+                ...options,
+                headers: { ...headers, ...options.headers }
+            });
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                console.error(`Supabase Error [${options.method || 'GET'} /${endpoint}]:`, error);
+                throw new Error(error.message || 'Supabase request failed');
+            }
+            if (response.status === 204) return null;
+            return response.json();
+        };
+
+        const supabase = {
+            from: (table) => ({
+                select: async (query = '*') => {
+                    let url = `${table}?select=${encodeURIComponent(query)}`;
+                    return supabaseFetch(url);
+                },
+                insert: async (data) => {
+                    return supabaseFetch(table, {
+                        method: 'POST',
+                        body: JSON.stringify(Array.isArray(data) ? data : [data])
+                    });
+                },
+                update: async (data, matchColumn, matchValue) => {
+                    return supabaseFetch(`${table}?${matchColumn}=eq.${matchValue}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify(data)
+                    });
+                },
+                delete: async (matchColumn, matchValue) => {
+                    return supabaseFetch(`${table}?${matchColumn}=eq.${matchValue}`, {
+                        method: 'DELETE'
+                    });
+                }
+            })
+        };
+
+        // --- 2. Global Application State ---
+        const PRIORITIES = ['None', 'Low', 'Medium', 'High', 'Urgent'];
+        const PRIORITY_COLORS = {
+            None: 'bg-gray-100 text-gray-600',
+            Low: 'bg-blue-100 text-blue-700',
+            Medium: 'bg-yellow-100 text-yellow-700',
+            High: 'bg-orange-100 text-orange-700',
+            Urgent: 'bg-red-100 text-red-700'
+        };
+
+        const state = {
+            boards: [], lists: [], cards: [], labels: [], cardLabels: [],
+            checklists: [], checklistItems: [], inboxItems: [], appSettings: null,
+            currentView: 'boards', // 'boards', 'board', 'inbox', 'today', 'search', 'settings'
+            activeBoardId: null,
+            searchQuery: '',
+            modalCardId: null,
+            // Drag and drop tracking
+            dragType: null, // 'card' or 'list'
+            draggedId: null,
+            sourceListId: null,
+        };
+
+        // DOM Elements tracking to avoid excessive queries
+        const DOM = {
+            views: {
+                boards: document.getElementById('view-boards'),
+                board: document.getElementById('view-board'),
+                inbox: document.getElementById('view-inbox'),
+                today: document.getElementById('view-today'),
+                search: document.getElementById('view-search'),
+                settings: document.getElementById('view-settings'),
+            },
+            nav: document.getElementById('floating-nav')
+        };
+
+        // --- STREAMING_CHUNK:Core Initialization and Data Fetching ---
+        async function fetchAllData() {
+            try {
+                const [
+                    resBoards, resLists, resCards, resLabels, resCardLabels,
+                    resChecklists, resChecklistItems, resInbox, resSettings
+                ] = await Promise.all([
+                    supabase.from('boards').select('*'),
+                    supabase.from('lists').select('*'),
+                    supabase.from('cards').select('*'),
+                    supabase.from('labels').select('*'),
+                    supabase.from('card_labels').select('*'),
+                    supabase.from('checklists').select('*'),
+                    supabase.from('checklist_items').select('*'),
+                    supabase.from('inbox_items').select('*'),
+                    supabase.from('app_settings').select('*')
+                ]);
+
+                if (resBoards) state.boards = resBoards.sort((a,b) => a.position - b.position);
+                if (resLists) state.lists = resLists.sort((a,b) => a.position - b.position);
+                if (resCards) state.cards = resCards.sort((a,b) => a.position - b.position);
+                if (resLabels) state.labels = resLabels;
+                if (resCardLabels) state.cardLabels = resCardLabels;
+                if (resChecklists) state.checklists = resChecklists.sort((a,b) => a.position - b.position);
+                if (resChecklistItems) state.checklistItems = resChecklistItems.sort((a,b) => a.position - b.position);
+                if (resInbox) state.inboxItems = resInbox.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+                
+                if (resSettings && resSettings.length > 0) {
+                    state.appSettings = resSettings[0];
+                    if (state.appSettings.default_board_id && state.boards.find(b => b.id === state.appSettings.default_board_id)) {
+                        state.activeBoardId = state.appSettings.default_board_id;
+                        state.currentView = 'board';
+                    }
+                }
+            } catch (error) {
+                console.error("Error fetching data:", error);
+            }
+        }
+
+        async function initApp() {
+            setFavicon();
+            await fetchAllData();
+            
+            document.getElementById('loading-overlay').classList.add('opacity-0');
+            setTimeout(() => {
+                document.getElementById('loading-overlay').classList.add('hide');
+                DOM.nav.classList.remove('hide');
+                renderApp();
+            }, 300);
+
+            // Global Click listener to close dropdowns
+            document.addEventListener('mousedown', (e) => {
+                const navDropdown = document.getElementById('nav-boards-dropdown');
+                const navBtn = document.getElementById('nav-btn-board-dropdown');
+                if (!navDropdown.classList.contains('hide') && !navDropdown.contains(e.target) && !navBtn.contains(e.target)) {
+                    navDropdown.classList.add('hide');
+                    document.getElementById('nav-add-board-container').classList.add('hide');
+                    document.getElementById('nav-chevron').classList.remove('rotate-180');
+                }
+            });
+
+            // Global Drag & Drop Listeners
+            setupDragAndDrop();
+        }
+
+        function setFavicon() {
+            let link = document.querySelector("link[rel~='icon']");
+            if (!link) {
+                link = document.createElement('link');
+                link.rel = 'icon';
+                document.head.appendChild(link);
+            }
+            link.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="%232563eb" /><path d="M28 53 L45 70 L72 35" fill="none" stroke="%23ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" /></svg>';
+        }
+
+        // --- STREAMING_CHUNK:Routing and Main Render Function ---
+        function setView(viewName) {
+            state.currentView = viewName;
+            if (viewName !== 'board') state.activeBoardId = null;
+            if (viewName === 'search') {
+                setTimeout(() => document.getElementById('search-input').focus(), 100);
+            }
+            renderApp();
+        }
+
+        function renderApp() {
+            // Update Nav UI
+            ['boards', 'inbox', 'today', 'search', 'settings'].forEach(v => {
+                const el = document.getElementById(`nav-btn-${v}`);
+                if (el) {
+                    if (state.currentView === v) {
+                        el.className = 'nav-item flex items-center gap-2 px-4 py-2 rounded-full cursor-pointer transition-all text-sm font-medium bg-blue-100 text-blue-700 shadow-sm';
+                    } else {
+                        el.className = 'nav-item flex items-center gap-2 px-4 py-2 rounded-full cursor-pointer transition-all text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900';
+                    }
+                }
+            });
+
+            // Update Nav Board Dropdown UI
+            const boardDropdownBtn = document.getElementById('nav-btn-board-dropdown');
+            if (state.currentView === 'board') {
+                boardDropdownBtn.className = 'flex items-center gap-1 px-4 py-2 rounded-full cursor-pointer transition-all text-sm font-medium bg-blue-50 text-blue-700 border border-blue-100 shadow-sm';
+                const activeB = state.boards.find(b => b.id === state.activeBoardId);
+                document.getElementById('nav-current-board-name').innerText = activeB ? activeB.title : 'Current Board';
+            } else {
+                boardDropdownBtn.className = 'flex items-center gap-1 px-4 py-2 rounded-full cursor-pointer transition-all text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900';
+                document.getElementById('nav-current-board-name').innerText = 'Current Board';
+            }
+
+            // Update Counts
+            const dueToday = state.cards.filter(c => c.due_date && new Date(c.due_date).toDateString() === new Date().toDateString() && !c.is_completed).length;
+            const inboxCountEl = document.getElementById('nav-inbox-count');
+            const todayCountEl = document.getElementById('nav-today-count');
+            
+            inboxCountEl.innerText = state.inboxItems.length;
+            if (state.inboxItems.length > 0) inboxCountEl.classList.remove('hide');
+            else inboxCountEl.classList.add('hide');
+
+            todayCountEl.innerText = dueToday;
+            if (dueToday > 0) todayCountEl.classList.remove('hide');
+            else todayCountEl.classList.add('hide');
+
+            // Populate Nav Dropdown
+            const navDropdownList = document.getElementById('nav-dropdown-list');
+            navDropdownList.innerHTML = state.boards.length === 0 
+                ? `<div class="px-4 py-4 text-sm text-gray-500 text-center">No boards yet</div>` 
+                : state.boards.map(b => `
+                <div onclick="selectBoardFromNav('${b.id}')" class="flex items-center px-3 py-2.5 rounded-xl cursor-pointer transition-colors text-sm ${state.activeBoardId === b.id ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700 hover:bg-gray-100'}">
+                    <div class="w-4 h-4 rounded ml-1 bg-[#F5F0E6] border border-gray-300 mr-3 flex-shrink-0 shadow-sm"></div>
+                    <span class="truncate flex-1">${escapeHTML(b.title)}</span>
+                    ${b.is_favorite ? `<i data-lucide="star" width="12" height="12" class="text-yellow-500 fill-yellow-500 flex-shrink-0 ml-2"></i>` : ''}
+                </div>
+            `).join('');
+
+            // Route View Visibilities
+            Object.values(DOM.views).forEach(el => el.classList.add('hide'));
+            DOM.views[state.currentView].classList.remove('hide');
+
+            // Render specific view content
+            if (state.currentView === 'boards') renderBoardsView();
+            else if (state.currentView === 'board') renderActiveBoardView();
+            else if (state.currentView === 'inbox') renderInboxView();
+            else if (state.currentView === 'today') renderTodayView();
+            else if (state.currentView === 'search') renderSearchView();
+
+            lucide.createIcons();
+            
+            // Manage Modal
+            if (state.modalCardId) {
+                renderCardModal();
+            } else {
+                document.getElementById('modal-root').innerHTML = '';
+            }
+        }
+
+        // --- STREAMING_CHUNK:Nav Actions and API Mutators ---
+        function toggleBoardDropdown(e) {
+            e.stopPropagation();
+            const dropdown = document.getElementById('nav-boards-dropdown');
+            dropdown.classList.toggle('hide');
+            document.getElementById('nav-chevron').classList.toggle('rotate-180');
+        }
+
+        function toggleAddBoardInput(e) {
+            e.stopPropagation();
+            const container = document.getElementById('nav-add-board-container');
+            container.classList.toggle('hide');
+            if (!container.classList.contains('hide')) {
+                const input = document.getElementById('nav-new-board-input');
+                input.focus();
+                input.onkeydown = async (ev) => {
+                    if (ev.key === 'Enter' && input.value.trim()) {
+                        await addBoard(input.value.trim());
+                        input.value = '';
+                        container.classList.add('hide');
+                        document.getElementById('nav-boards-dropdown').classList.add('hide');
+                        document.getElementById('nav-chevron').classList.remove('rotate-180');
+                    }
+                };
+            }
+        }
+
+        function selectBoardFromNav(id) {
+            state.activeBoardId = id;
+            setView('board');
+            document.getElementById('nav-boards-dropdown').classList.add('hide');
+            document.getElementById('nav-chevron').classList.remove('rotate-180');
+        }
+
+        // --- Data Mutations ---
+        async function addBoard(title) {
+            const newBoard = { title, position: state.boards.length * 1000, bg_color: '#F5F0E6' };
+            const data = await supabase.from('boards').insert([newBoard]);
+            if (data && data[0]) {
+                state.boards.push(data[0]);
+                state.activeBoardId = data[0].id;
+                setView('board');
+            }
+        }
+
+        async function updateBoard(id, updates) {
+            const idx = state.boards.findIndex(b => b.id === id);
+            if (idx > -1) {
+                state.boards[idx] = { ...state.boards[idx], ...updates };
+                renderApp();
+                await supabase.from('boards').update(updates, 'id', id);
+            }
+        }
+
+        async function deleteBoard(id) {
+            state.boards = state.boards.filter(b => b.id !== id);
+            if (state.activeBoardId === id) setView('boards');
+            else renderApp();
+            await supabase.from('boards').delete('id', id);
+        }
+
+        async function addList(board_id, title) {
+            const boardLists = state.lists.filter(l => l.board_id === board_id);
+            const newList = { board_id, title, position: boardLists.length * 1000 };
+            const data = await supabase.from('lists').insert([newList]);
+            if (data && data[0]) {
+                state.lists.push(data[0]);
+                renderApp();
+            }
+        }
+
+        async function updateList(id, updates) {
+            const idx = state.lists.findIndex(l => l.id === id);
+            if (idx > -1) {
+                state.lists[idx] = { ...state.lists[idx], ...updates };
+                renderApp();
+                await supabase.from('lists').update(updates, 'id', id);
+            }
+        }
+
+        async function deleteList(id) {
+            state.lists = state.lists.filter(l => l.id !== id);
+            renderApp();
+            await supabase.from('lists').delete('id', id);
+        }
+
+        async function addCard(list_id, title) {
+            const listCards = state.cards.filter(c => c.list_id === list_id);
+            const newCard = { list_id, title, position: listCards.length * 1000 };
+            const data = await supabase.from('cards').insert([newCard]);
+            if (data && data[0]) {
+                state.cards.push(data[0]);
+                renderApp();
+            }
+        }
+
+        async function updateCard(id, updates, reRender = true) {
+            const idx = state.cards.findIndex(c => c.id === id);
+            if (idx > -1) {
+                state.cards[idx] = { ...state.cards[idx], ...updates };
+                if (reRender) renderApp();
+                await supabase.from('cards').update(updates, 'id', id);
+            }
+        }
+
+        async function deleteCard(id) {
+            state.cards = state.cards.filter(c => c.id !== id);
+            renderApp();
+            await supabase.from('cards').delete('id', id);
+        }
+
+        // --- STREAMING_CHUNK:Rendering View: Boards Home ---
+        function renderBoardsView() {
+            const grid = document.getElementById('boards-grid');
+            let html = state.boards.map(board => `
+                <div onclick="selectBoardFromNav('${board.id}')" class="h-32 rounded-xl p-4 shadow-sm hover:shadow-md cursor-pointer flex flex-col justify-between group transition-all bg-[#F5F0E6] border border-gray-200">
+                    <h3 class="font-bold text-gray-800 text-lg">${escapeHTML(board.title)}</h3>
+                    <div class="flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                        ${board.is_favorite ? `<i data-lucide="star" class="text-yellow-500 fill-yellow-500" width="18" height="18"></i>` : ''}
+                    </div>
+                </div>
+            `).join('');
+
+            html += `
+                <div onclick="const t = prompt('Enter board name:'); if(t) addBoard(t);" class="h-32 rounded-xl p-4 border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-500 hover:bg-gray-100 cursor-pointer transition-colors">
+                    <span class="font-medium flex items-center gap-2"><i data-lucide="plus" width="18" height="18"></i> Create new board</span>
+                </div>
+            `;
+            grid.innerHTML = html;
+        }
+
+        // --- STREAMING_CHUNK:Rendering View: Active Board & Lists ---
+        function renderActiveBoardView() {
+            const board = state.boards.find(b => b.id === state.activeBoardId);
+            if (!board) return;
+
+            const titleEl = document.getElementById('active-board-title');
+            const titleInputEl = document.getElementById('active-board-title-input');
+            const favEl = document.getElementById('active-board-favorite');
+            
+            titleEl.innerText = board.title;
+            titleInputEl.value = board.title;
+            titleEl.classList.remove('hide');
+            titleInputEl.classList.add('hide');
+
+            if (board.is_favorite) {
+                favEl.innerHTML = `<i data-lucide="star" class="text-yellow-500 fill-yellow-500" width="20" height="20"></i>`;
+                favEl.classList.add('text-yellow-500');
+            } else {
+                favEl.innerHTML = `<i data-lucide="star" width="20" height="20"></i>`;
+                favEl.classList.remove('text-yellow-500');
+            }
+
+            const container = document.getElementById('board-lists-container');
+            // Preserve horizontal scroll position during re-render
+            const currentScroll = container.scrollLeft;
+            
+            container.innerHTML = '';
+
+            const boardLists = state.lists.filter(l => l.board_id === state.activeBoardId).sort((a, b) => a.position - b.position);
+            
+            boardLists.forEach(list => {
+                container.appendChild(createListHTML(list));
+            });
+
+            // Add List Box
+            const addListDiv = document.createElement('div');
+            addListDiv.className = 'w-72 flex-shrink-0';
+            addListDiv.innerHTML = `
+                <div id="add-list-form-${board.id}" class="bg-white rounded-xl p-2 shadow-lg hide">
+                    <input type="text" id="add-list-input-${board.id}" class="w-full text-sm border-2 border-blue-500 rounded px-3 py-2 outline-none mb-2" placeholder="Enter list title...">
+                    <div class="flex items-center gap-2">
+                        <button onclick="submitAddList('${board.id}')" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm font-medium">Add List</button>
+                        <button onclick="toggleAddListForm('${board.id}')" class="p-1.5 hover:bg-gray-200 rounded text-gray-600"><i data-lucide="x" width="18" height="18"></i></button>
+                    </div>
+                </div>
+                <button id="add-list-btn-${board.id}" onclick="toggleAddListForm('${board.id}')" class="flex items-center gap-2 w-full bg-black/5 hover:bg-black/10 text-gray-700 px-4 py-3 rounded-xl font-medium transition-colors backdrop-blur-sm">
+                    <i data-lucide="plus" width="20" height="20"></i> Add another list
+                </button>
+            `;
+            container.appendChild(addListDiv);
+
+            container.scrollLeft = currentScroll;
+        }
+
+        // Active board helpers
+        function editBoardTitle() {
+            document.getElementById('active-board-title').classList.add('hide');
+            const input = document.getElementById('active-board-title-input');
+            input.classList.remove('hide');
+            input.focus();
+        }
+
+        function saveBoardTitle() {
+            const val = document.getElementById('active-board-title-input').value.trim();
+            const board = state.boards.find(b => b.id === state.activeBoardId);
+            if (val && val !== board.title) updateBoard(board.id, { title: val });
+            else renderApp();
+        }
+
+        function toggleFavoriteBoard() {
+            const board = state.boards.find(b => b.id === state.activeBoardId);
+            updateBoard(board.id, { is_favorite: !board.is_favorite });
+        }
+
+        function toggleAddListForm(boardId) {
+            const form = document.getElementById(`add-list-form-${boardId}`);
+            const btn = document.getElementById(`add-list-btn-${boardId}`);
+            form.classList.toggle('hide');
+            btn.classList.toggle('hide');
+            if (!form.classList.contains('hide')) {
+                const input = document.getElementById(`add-list-input-${boardId}`);
+                input.focus();
+                input.onkeydown = (e) => { if(e.key === 'Enter') submitAddList(boardId); }
+            }
+        }
+
+        function submitAddList(boardId) {
+            const input = document.getElementById(`add-list-input-${boardId}`);
+            if (input.value.trim()) {
+                addList(boardId, input.value.trim());
+            }
+        }
+
+        // --- STREAMING_CHUNK:Generating Individual List and Card DOM Elements ---
+        function createListHTML(list) {
+            const listCards = state.cards.filter(c => c.list_id === list.id).sort((a, b) => a.position - b.position);
+            const wrapper = document.createElement('div');
+            
+            if (list.is_collapsed) {
+                wrapper.className = 'w-12 bg-[#101405]/90 rounded-xl flex flex-col items-center py-4 cursor-pointer hover:bg-[#1a1f0a] flex-shrink-0';
+                wrapper.onclick = () => updateList(list.id, { is_collapsed: false });
+                wrapper.innerHTML = `<span class="writing-vertical text-[#E4E6EA] font-bold tracking-wider h-full whitespace-nowrap">${escapeHTML(list.title)} (${listCards.length})</span>`;
+                return wrapper;
+            }
+
+            wrapper.className = 'board-list w-72 bg-[#101405] rounded-xl flex flex-col flex-shrink-0 max-h-full';
+            wrapper.dataset.listId = list.id;
+            wrapper.draggable = true;
+            
+            // List Header
+            let cardsHtml = listCards.map(c => createCardHTMLString(c)).join('');
+
+            wrapper.innerHTML = `
+                <div class="list-header p-3 flex items-center justify-between group cursor-grab active:cursor-grabbing">
+                    <h3 class="font-bold text-[#E4E6EA] text-sm px-2 cursor-pointer w-full" onclick="editListTitle('${list.id}')" id="list-title-${list.id}">${escapeHTML(list.title)} <span class="text-[#A5A7AA] font-normal ml-1">${listCards.length}</span></h3>
+                    <input id="list-input-${list.id}" class="px-2 py-1 text-sm font-bold border-2 border-blue-500 rounded outline-none w-full mr-2 bg-[#242629] text-[#E4E6EA] hide" value="${escapeHTML(list.title)}" onblur="saveListTitle('${list.id}')" onkeydown="if(event.key === 'Enter') saveListTitle('${list.id}')">
+                    
+                    <div class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onclick="updateList('${list.id}', {is_collapsed: true})" class="p-1.5 hover:bg-white/10 rounded text-[#A5A7AA]"><i data-lucide="chevron-right" width="14" height="14"></i></button>
+                        <button onclick="if(confirm('Delete list?')) deleteList('${list.id}')" class="p-1.5 hover:bg-white/10 rounded text-[#A5A7AA]"><i data-lucide="trash-2" width="14" height="14"></i></button>
+                    </div>
+                </div>
+
+                <div class="cards-container flex-1 overflow-y-auto px-2 min-h-[50px] relative pb-4">
+                    ${cardsHtml}
+                </div>
+
+                <!-- Add Card Area -->
+                <div id="add-card-form-${list.id}" class="px-2 mb-2 hide">
+                    <textarea id="add-card-input-${list.id}" class="w-full text-sm border-none rounded-md p-3 outline-none resize-none shadow-sm focus:ring-2 focus:ring-blue-500 bg-[#242629] text-[#E4E6EA] placeholder-[#A5A7AA]" placeholder="Enter a title for this card..." rows="2"></textarea>
+                    <div class="flex items-center gap-2 mt-2">
+                        <button onclick="submitAddCard('${list.id}')" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm font-medium">Add Card</button>
+                        <button onclick="toggleAddCardForm('${list.id}')" class="p-1.5 hover:bg-white/10 rounded text-[#A5A7AA]"><i data-lucide="x" width="18" height="18"></i></button>
+                    </div>
+                </div>
+
+                <div id="add-card-btn-${list.id}" class="p-2">
+                    <button onclick="toggleAddCardForm('${list.id}')" class="flex items-center gap-2 w-full px-3 py-2 text-sm text-[#A5A7AA] hover:bg-white/10 rounded-md transition-colors">
+                        <i data-lucide="plus" width="16" height="16"></i> Add a card
+                    </button>
+                </div>
+            `;
+            return wrapper;
+        }
+
+        function createCardHTMLString(card) {
+            const cLabels = state.cardLabels.filter(cl => cl.card_id === card.id).map(cl => state.labels.find(l => l.id === cl.label_id)).filter(Boolean);
+            const cChecklists = state.checklists.filter(c => c.card_id === card.id);
+            const totalItems = state.checklistItems.filter(ci => cChecklists.some(c => c.id === ci.checklist_id)).length;
+            const completedItems = state.checklistItems.filter(ci => cChecklists.some(c => c.id === ci.checklist_id) && ci.is_completed).length;
+            const hasNotes = !!card.notes;
+            const isOverdue = card.due_date && new Date(card.due_date) < new Date() && !card.is_completed;
+            
+            let labelsHtml = '';
+            if (cLabels.length > 0) {
+                labelsHtml = `<div class="flex flex-wrap gap-1 mb-2">` + 
+                    cLabels.map(l => `<span class="h-2 w-8 rounded-full" style="background-color: ${l.color}" title="${escapeHTML(l.name)}"></span>`).join('') + 
+                `</div>`;
+            }
+
+            let metaHtml = '';
+            if (card.priority !== 'None') {
+                metaHtml += `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${PRIORITY_COLORS[card.priority]}">${card.priority}</span>`;
+            }
+            if (card.due_date) {
+                const dateCls = isOverdue ? 'text-red-600 font-medium' : (card.is_completed ? 'text-green-600' : '');
+                metaHtml += `<div class="flex items-center gap-1 ${dateCls}"><i data-lucide="clock" width="12" height="12"></i> <span>${new Date(card.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span></div>`;
+            }
+            if (totalItems > 0) {
+                const checkCls = completedItems === totalItems ? 'text-green-600' : '';
+                metaHtml += `<div class="flex items-center gap-1 ${checkCls}"><i data-lucide="check-square" width="12" height="12"></i> <span>${completedItems}/${totalItems}</span></div>`;
+            }
+            if (hasNotes) {
+                metaHtml += `<i data-lucide="align-left" width="12" height="12"></i>`;
+            }
+
+            return `
+                <div data-card-id="${card.id}" draggable="true" onclick="openCardModal('${card.id}')" class="task-card bg-[#242629] rounded-md shadow-sm border border-[#3a3b3e] p-3 mb-2 cursor-pointer hover:border-blue-400 hover:shadow transition-all group ${card.is_completed ? 'opacity-60' : ''}">
+                    ${labelsHtml}
+                    <h4 class="text-sm font-medium text-[#E4E6EA] ${card.is_completed ? 'line-through' : ''}">${escapeHTML(card.title)}</h4>
+                    ${metaHtml ? `<div class="flex flex-wrap items-center gap-3 mt-2 text-xs text-[#A5A7AA]">${metaHtml}</div>` : ''}
+                </div>
+            `;
+        }
+
+        // List sub-actions
+        function editListTitle(id) {
+            document.getElementById(`list-title-${id}`).classList.add('hide');
+            const input = document.getElementById(`list-input-${id}`);
+            input.classList.remove('hide');
+            input.focus();
+        }
+
+        function saveListTitle(id) {
+            const val = document.getElementById(`list-input-${id}`).value.trim();
+            const list = state.lists.find(l => l.id === id);
+            if (val && val !== list.title) updateList(id, { title: val });
+            else renderApp();
+        }
+
+        function toggleAddCardForm(listId) {
+            const form = document.getElementById(`add-card-form-${listId}`);
+            const btn = document.getElementById(`add-card-btn-${listId}`);
+            form.classList.toggle('hide');
+            btn.classList.toggle('hide');
+            if (!form.classList.contains('hide')) {
+                const input = document.getElementById(`add-card-input-${listId}`);
+                input.focus();
+                input.onkeydown = (e) => {
+                    if(e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        submitAddCard(listId);
+                    }
+                }
+            }
+        }
+
+        function submitAddCard(listId) {
+            const input = document.getElementById(`add-card-input-${listId}`);
+            if (input.value.trim()) {
+                addCard(listId, input.value.trim());
+            }
+        }
+
+        // --- STREAMING_CHUNK:Implementing Native HTML5 Drag and Drop ---
+        const dropIndicator = document.createElement('div');
+        dropIndicator.className = 'drop-indicator';
+
+        const listDropIndicator = document.createElement('div');
+        listDropIndicator.className = 'list-drop-indicator';
+
+        function setupDragAndDrop() {
+            // Use event delegation on the document body for drag events
+            document.addEventListener('dragstart', e => {
+                // If dragging text input, ignore
+                if(e.target.tagName && (e.target.tagName.toLowerCase() === 'input' || e.target.tagName.toLowerCase() === 'textarea')) return;
+
+                const cardEl = e.target.closest('.task-card');
+                const listEl = e.target.closest('.board-list');
+
+                if (cardEl) {
+                    state.dragType = 'card';
+                    state.draggedId = cardEl.dataset.cardId;
+                    e.dataTransfer.effectAllowed = 'move';
+                    setTimeout(() => cardEl.classList.add('opacity-40'), 0);
+                } else if (listEl && e.target.closest('.list-header')) {
+                    state.dragType = 'list';
+                    state.draggedId = listEl.dataset.listId;
+                    e.dataTransfer.effectAllowed = 'move';
+                    setTimeout(() => listEl.classList.add('opacity-40'), 0);
+                }
+            });
+
+            document.addEventListener('dragend', e => {
+                if (e.target.classList) e.target.classList.remove('opacity-40');
+                if (dropIndicator.parentElement) dropIndicator.remove();
+                if (listDropIndicator.parentElement) listDropIndicator.remove();
+                state.dragType = null;
+                state.draggedId = null;
+            });
+
+            document.addEventListener('dragover', e => {
+                e.preventDefault(); // Necessary to allow dropping
+
+                if (state.dragType === 'card') {
+                    const listEl = e.target.closest('.board-list');
+                    if (listEl) {
+                        const container = listEl.querySelector('.cards-container');
+                        const cards = [...container.querySelectorAll('.task-card:not(.opacity-40)')];
+                        const y = e.clientY;
+                        let insertBeforeEl = null;
+
+                        for (let card of cards) {
+                            const box = card.getBoundingClientRect();
+                            if (y < box.top + box.height / 2) {
+                                insertBeforeEl = card;
+                                break;
+                            }
+                        }
+
+                        if (insertBeforeEl) container.insertBefore(dropIndicator, insertBeforeEl);
+                        else container.appendChild(dropIndicator);
+                    }
+                } else if (state.dragType === 'list') {
+                    const boardContainer = document.getElementById('board-lists-container');
+                    const lists = [...boardContainer.querySelectorAll('.board-list:not(.opacity-40)')];
+                    const x = e.clientX;
+                    let insertBeforeEl = null;
+
+                    for (let l of lists) {
+                        const box = l.getBoundingClientRect();
+                        if (x < box.left + box.width / 2) {
+                            insertBeforeEl = l;
+                            break;
+                        }
+                    }
+
+                    if (insertBeforeEl) boardContainer.insertBefore(listDropIndicator, insertBeforeEl);
+                    else if (boardContainer.lastChild && boardContainer.lastChild.id && boardContainer.lastChild.id.startsWith('add-list')) {
+                         boardContainer.insertBefore(listDropIndicator, boardContainer.lastChild);
+                    }
+                }
+            });
+
+            document.addEventListener('drop', async e => {
+                e.preventDefault();
+                
+                if (state.dragType === 'card' && state.draggedId && dropIndicator.parentElement) {
+                    const listEl = dropIndicator.closest('.board-list');
+                    const listId = listEl.dataset.listId;
+                    const cardsContainer = listEl.querySelector('.cards-container');
+                    
+                    // Find index among cards
+                    const children = [...cardsContainer.children];
+                    let dropIndex = 0;
+                    for (let child of children) {
+                        if (child === dropIndicator) break;
+                        if (child.classList.contains('task-card')) dropIndex++;
+                    }
+                    
+                    await moveCard(state.draggedId, listId, dropIndex);
+                } 
+                else if (state.dragType === 'list' && state.draggedId && listDropIndicator.parentElement) {
+                    const container = document.getElementById('board-lists-container');
+                    const children = [...container.children];
+                    let dropIndex = 0;
+                    for (let child of children) {
+                        if (child === listDropIndicator) break;
+                        if (child.classList.contains('board-list')) dropIndex++;
+                    }
+                    
+                    await moveList(state.draggedId, dropIndex);
+                }
+
+                if (dropIndicator.parentElement) dropIndicator.remove();
+                if (listDropIndicator.parentElement) listDropIndicator.remove();
+            });
+        }
+
+        async function moveCard(cardId, targetListId, newIndex) {
+            const card = state.cards.find(c => c.id === cardId);
+            if (!card) return;
+
+            let newCards = state.cards.filter(c => c.id !== cardId);
+            const targetCards = newCards.filter(c => c.list_id === targetListId).sort((a, b) => a.position - b.position);
+            
+            const updatedCard = { ...card, list_id: targetListId };
+            targetCards.splice(newIndex, 0, updatedCard);
+            
+            const updates = targetCards.map((c, idx) => ({ ...c, position: idx * 1000 }));
+            const otherCards = newCards.filter(c => c.list_id !== targetListId);
+            
+            state.cards = [...otherCards, ...updates];
+            renderApp(); // Optimistic immediate update
+
+            await Promise.all(updates.map(c => 
+                supabase.from('cards').update({ list_id: c.list_id, position: c.position }, 'id', c.id)
+            ));
+        }
+
+        async function moveList(listId, newIndex) {
+            const boardLists = state.lists.filter(l => l.board_id === state.activeBoardId).sort((a, b) => a.position - b.position);
+            const listToMove = boardLists.find(l => l.id === listId);
+            if (!listToMove) return;
+
+            let newBoardLists = boardLists.filter(l => l.id !== listId);
+            newBoardLists.splice(newIndex, 0, listToMove);
+
+            const updates = newBoardLists.map((l, idx) => ({ ...l, position: idx * 1000 }));
+            
+            state.lists = state.lists.map(l => {
+                const update = updates.find(u => u.id === l.id);
+                return update ? update : l;
+            });
+            renderApp();
+
+            for (const l of updates) {
+                await supabase.from('lists').update({ position: l.position }, 'id', l.id);
+            }
+        }
+
+        // --- STREAMING_CHUNK:Card Detail Modal Implementation ---
+        function openCardModal(cardId) {
+            state.modalCardId = cardId;
+            renderCardModal();
+        }
+
+        function closeCardModal() {
+            state.modalCardId = null;
+            document.getElementById('modal-root').innerHTML = '';
+            renderApp(); // re-render board in case something changed
+        }
+
+        function renderCardModal() {
+            const card = state.cards.find(c => c.id === state.modalCardId);
+            if (!card) return closeCardModal();
+
+            const list = state.lists.find(l => l.id === card.list_id);
+            const board = state.boards.find(b => b.id === list?.board_id);
+            const activeLabels = state.cardLabels.filter(cl => cl.card_id === card.id).map(cl => state.labels.find(l => l.id === cl.label_id)).filter(Boolean);
+            const cardChecklists = state.checklists.filter(c => c.card_id === card.id).sort((a,b) => a.position - b.position);
+
+            const labelsHtml = activeLabels.length > 0 ? `
+                <div>
+                    <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Labels</h4>
+                    <div class="flex flex-wrap gap-2">
+                        ${activeLabels.map(l => `<span class="px-3 py-1 rounded text-sm text-white font-medium shadow-sm" style="background-color: ${l.color}">${escapeHTML(l.name)}</span>`).join('')}
+                    </div>
+                </div>
+            ` : '';
+
+            const dateHtml = card.due_date ? `
+                <div>
+                    <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Due Date</h4>
+                    <div class="flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded text-sm font-medium">
+                        <input type="checkbox" class="w-4 h-4 cursor-pointer" ${card.is_completed ? 'checked' : ''} onchange="toggleCardComplete()">
+                        <span>${new Date(card.due_date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}</span>
+                        ${card.is_completed ? `<span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded">Complete</span>` : ''}
+                    </div>
+                </div>
+            ` : '';
+
+            const checklistsHtml = cardChecklists.map(cl => {
+                const items = state.checklistItems.filter(i => i.checklist_id === cl.id).sort((a,b) => a.position - b.position);
+                const comp = items.filter(i => i.is_completed).length;
+                const prog = items.length ? Math.round((comp / items.length) * 100) : 0;
+
+                return `
+                <div>
+                    <div class="flex items-center gap-3 mb-2">
+                        <i data-lucide="check-square" class="text-gray-400" width="20" height="20"></i>
+                        <input class="font-semibold text-gray-800 text-lg bg-transparent outline-none focus:border-b-2 border-blue-500 w-full" value="${escapeHTML(cl.title)}" onblur="updateChecklistTitle('${cl.id}', this.value)">
+                        <button onclick="if(confirm('Delete checklist?')) deleteChecklist('${cl.id}')" class="bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded text-sm font-medium text-gray-700 flex-shrink-0">Delete</button>
+                    </div>
+                    <div class="pl-8 mb-4">
+                        <div class="flex items-center gap-2 mb-3">
+                            <span class="text-xs text-gray-500 w-8 text-right">${prog}%</span>
+                            <div class="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+                                <div class="h-full transition-all ${prog === 100 ? 'bg-green-500' : 'bg-blue-500'}" style="width: ${prog}%"></div>
+                            </div>
+                        </div>
+                        <div class="space-y-2 mb-3">
+                            ${items.map(item => `
+                                <div class="flex items-start gap-3 group">
+                                    <input type="checkbox" class="w-4 h-4 mt-1 cursor-pointer" ${item.is_completed ? 'checked' : ''} onchange="toggleChecklistItem('${item.id}', ${item.is_completed})">
+                                    <input class="flex-1 outline-none bg-transparent hover:bg-gray-50 focus:bg-white focus:ring-2 ring-blue-200 rounded px-2 py-0.5 ${item.is_completed ? 'line-through text-gray-500' : 'text-gray-800'}" value="${escapeHTML(item.title)}" onblur="updateChecklistItemTitle('${item.id}', this.value)">
+                                    <button onclick="deleteChecklistItem('${item.id}')" class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500"><i data-lucide="x" width="16" height="16"></i></button>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="flex">
+                            <input type="text" placeholder="Add an item..." class="text-sm bg-gray-50 border border-transparent focus:border-blue-500 rounded px-3 py-1.5 outline-none w-full max-w-sm" onkeydown="if(event.key === 'Enter' && this.value.trim()) { addChecklistItem('${cl.id}', this.value.trim()); this.value=''; }">
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+
+            const priorityOptions = PRIORITIES.map(p => `<option value="${p}" class="bg-white text-black" ${card.priority === p ? 'selected' : ''}>${p}</option>`).join('');
+
+            const allLabelsHtml = state.labels.map(l => `
+                <div class="flex items-center gap-2 p-1 hover:bg-gray-100 rounded cursor-pointer" onclick="toggleCardLabel('${l.id}')">
+                    <input type="checkbox" class="w-3 h-3 pointer-events-none" ${activeLabels.some(al => al.id === l.id) ? 'checked' : ''}>
+                    <span class="flex-1 px-2 py-0.5 rounded text-xs text-white" style="background-color: ${l.color}">${escapeHTML(l.name)}</span>
+                </div>
+            `).join('');
+
+            const html = `
+            <div class="fixed inset-0 z-50 bg-black/60 flex justify-center items-start pt-16 overflow-y-auto" onclick="if(event.target===this) closeCardModal()">
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl mb-16 relative">
+                    <button onclick="closeCardModal()" class="absolute top-4 right-4 p-2 rounded-full hover:bg-gray-100 text-gray-500"><i data-lucide="x" width="20" height="20"></i></button>
+                    
+                    <div class="p-6 border-b border-gray-100">
+                        <div class="flex items-start gap-3">
+                            <i data-lucide="layout-dashboard" class="text-gray-400 mt-1" width="24" height="24"></i>
+                            <div class="w-full">
+                                <input class="text-2xl font-bold text-gray-800 w-full outline-none border-2 border-transparent focus:border-blue-500 rounded px-2 -ml-2 bg-transparent ${card.is_completed ? 'line-through text-gray-400' : ''}" value="${escapeHTML(card.title)}" onblur="if(this.value !== '${escapeHTML(card.title)}') updateCard('${card.id}', { title: this.value })" onkeydown="if(event.key === 'Enter') this.blur()">
+                                <div class="text-sm text-gray-500 mt-1">in list <span class="underline">${escapeHTML(list?.title)}</span> on board <span class="font-semibold">${escapeHTML(board?.title)}</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col md:flex-row">
+                        <div class="flex-1 p-6 space-y-8">
+                            
+                            <div class="flex flex-wrap gap-6">
+                                ${labelsHtml}
+                                ${dateHtml}
+                            </div>
+
+                            <!-- Description -->
+                            <div>
+                                <div class="flex items-center gap-3 mb-2">
+                                    <i data-lucide="align-left" class="text-gray-400" width="20" height="20"></i>
+                                    <h3 class="font-semibold text-gray-800 text-lg">Description</h3>
+                                </div>
+                                <div class="pl-8">
+                                    <textarea id="modal-desc" class="w-full min-h-[100px] p-3 border rounded-md outline-none focus:ring-2 focus:ring-blue-500 resize-y bg-gray-50 focus:bg-white" placeholder="Add a more detailed description..." onblur="updateCard('${card.id}', {description: this.value}, false)">${escapeHTML(card.description || '')}</textarea>
+                                </div>
+                            </div>
+
+                            ${checklistsHtml}
+
+                            <!-- Notes -->
+                            <div>
+                                <div class="flex items-center gap-3 mb-2">
+                                    <i data-lucide="align-left" class="text-gray-400" width="20" height="20"></i>
+                                    <h3 class="font-semibold text-gray-800 text-lg">Personal Notes</h3>
+                                </div>
+                                <div class="pl-8">
+                                    <textarea id="modal-notes" class="w-full min-h-[100px] p-3 border rounded-md outline-none focus:ring-2 focus:ring-yellow-500 resize-y bg-yellow-50 focus:bg-white" placeholder="Add personal notes here (not visible in lists)..." onblur="updateCard('${card.id}', {notes: this.value}, false)">${escapeHTML(card.notes || '')}</textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Sidebar Actions -->
+                        <div class="w-full md:w-56 bg-gray-50 p-6 md:border-l space-y-6">
+                            <div>
+                                <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Actions</h4>
+                                <div class="space-y-2">
+                                    <button onclick="toggleCardComplete()" class="flex items-center gap-2 w-full px-3 py-2 text-sm font-medium rounded transition-colors ${card.is_completed ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}">
+                                        <i data-lucide="check-square" width="16" height="16"></i> ${card.is_completed ? 'Mark Incomplete' : 'Mark Complete'}
+                                    </button>
+                                    
+                                    <div class="relative group">
+                                        <button class="flex items-center gap-2 w-full px-3 py-2 text-sm font-medium rounded bg-gray-200 text-gray-700 hover:bg-gray-300">
+                                            <i data-lucide="tag" width="16" height="16"></i> Labels
+                                        </button>
+                                        <div class="absolute right-0 top-full mt-1 w-48 bg-white shadow-xl rounded border p-2 hidden group-hover:block z-10">
+                                            ${allLabelsHtml}
+                                        </div>
+                                    </div>
+                                    
+                                    <button onclick="addChecklist()" class="flex items-center gap-2 w-full px-3 py-2 text-sm font-medium rounded bg-gray-200 text-gray-700 hover:bg-gray-300">
+                                        <i data-lucide="check-square" width="16" height="16"></i> Checklist
+                                    </button>
+                                    
+                                    <div class="relative group">
+                                        <button class="flex items-center gap-2 w-full px-3 py-2 text-sm font-medium rounded bg-gray-200 text-gray-700 hover:bg-gray-300">
+                                            <i data-lucide="clock" width="16" height="16"></i> Dates
+                                        </button>
+                                        <div class="absolute right-0 top-full mt-1 w-auto bg-white shadow-xl rounded border p-2 hidden group-hover:block z-10">
+                                            <input type="datetime-local" class="text-sm p-1 border rounded" value="${card.due_date ? card.due_date.slice(0,16) : ''}" onchange="setCardDate(this.value)">
+                                            ${card.due_date ? `<button onclick="setCardDate(null)" class="mt-2 text-xs text-red-500 w-full text-left">Remove Date</button>` : ''}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Priority</h4>
+                                <select onchange="updateCard('${card.id}', { priority: this.value })" class="w-full p-2 text-sm rounded font-medium outline-none border cursor-pointer ${PRIORITY_COLORS[card.priority] || 'bg-white text-gray-800'}">
+                                    ${priorityOptions}
+                                </select>
+                            </div>
+
+                            <div class="pt-4 border-t">
+                                <button onclick="if(confirm('Delete this card permanently?')) { deleteCard('${card.id}'); closeCardModal(); }" class="flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium rounded bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
+                                    <i data-lucide="trash-2" width="16" height="16"></i> Delete Card
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            `;
+            
+            const root = document.getElementById('modal-root');
+            root.innerHTML = html;
+            lucide.createIcons();
+        }
+
+        // Modal Action Helpers
+        async function toggleCardComplete() {
+            const card = state.cards.find(c => c.id === state.modalCardId);
+            await updateCard(card.id, { is_completed: !card.is_completed });
+            renderCardModal();
+        }
+
+        async function setCardDate(val) {
+            await updateCard(state.modalCardId, { due_date: val ? new Date(val).toISOString() : null });
+            renderCardModal();
+        }
+
+        async function toggleCardLabel(labelId) {
+            const cardId = state.modalCardId;
+            const exists = state.cardLabels.find(cl => cl.card_id === cardId && cl.label_id === labelId);
+            if (exists) {
+                state.cardLabels = state.cardLabels.filter(cl => !(cl.card_id === cardId && cl.label_id === labelId));
+                await supabaseFetch(`card_labels?card_id=eq.${cardId}&label_id=eq.${labelId}`, { method: 'DELETE' });
+            } else {
+                state.cardLabels.push({ card_id: cardId, label_id: labelId });
+                await supabase.from('card_labels').insert([{ card_id: cardId, label_id: labelId }]);
+            }
+            renderCardModal();
+        }
+
+        async function addChecklist() {
+            const newCl = { card_id: state.modalCardId, title: 'Checklist', position: state.checklists.length * 1000 };
+            const data = await supabase.from('checklists').insert([newCl]);
+            if (data && data[0]) {
+                state.checklists.push(data[0]);
+                renderCardModal();
+            }
+        }
+        async function updateChecklistTitle(id, val) {
+            await supabase.from('checklists').update({ title: val }, 'id', id);
+        }
+        async function deleteChecklist(id) {
+            state.checklists = state.checklists.filter(c => c.id !== id);
+            renderCardModal();
+            await supabase.from('checklists').delete('id', id);
+        }
+
+        async function addChecklistItem(checklistId, title) {
+            const items = state.checklistItems.filter(i => i.checklist_id === checklistId);
+            const newItem = { checklist_id: checklistId, title, position: items.length * 1000 };
+            const data = await supabase.from('checklist_items').insert([newItem]);
+            if (data && data[0]) {
+                state.checklistItems.push(data[0]);
+                renderCardModal();
+            }
+        }
+        async function updateChecklistItemTitle(id, val) {
+            await supabase.from('checklist_items').update({ title: val }, 'id', id);
+        }
+        async function toggleChecklistItem(id, currentStatus) {
+            const idx = state.checklistItems.findIndex(i => i.id === id);
+            if(idx > -1) state.checklistItems[idx].is_completed = !currentStatus;
+            renderCardModal();
+            await supabase.from('checklist_items').update({ is_completed: !currentStatus }, 'id', id);
+        }
+        async function deleteChecklistItem(id) {
+            state.checklistItems = state.checklistItems.filter(i => i.id !== id);
+            renderCardModal();
+            await supabase.from('checklist_items').delete('id', id);
+        }
+
+        // --- STREAMING_CHUNK:Additional Views (Inbox, Today, Search) ---
+        async function handleInboxInput(e) {
+            if (e.key === 'Enter' && e.target.value.trim()) {
+                const title = e.target.value.trim();
+                const data = await supabase.from('inbox_items').insert([{ title }]);
+                if (data && data[0]) {
+                    state.inboxItems.unshift(data[0]);
+                    e.target.value = '';
+                    renderApp();
+                }
+            }
+        }
+
+        async function convertInboxToTask(itemId, listId) {
+            const item = state.inboxItems.find(i => i.id === itemId);
+            const listCards = state.cards.filter(c => c.list_id === listId);
+            const data = await supabase.from('cards').insert([{ list_id: listId, title: item.title, notes: item.notes, position: listCards.length * 1000 }]);
+            
+            if (data && data[0]) {
+                state.cards.push(data[0]);
+                state.inboxItems = state.inboxItems.filter(i => i.id !== itemId);
+                renderApp();
+                await supabase.from('inbox_items').delete('id', itemId);
+            }
+        }
+
+        async function deleteInboxItem(itemId) {
+            state.inboxItems = state.inboxItems.filter(i => i.id !== itemId);
+            renderApp();
+            await supabase.from('inbox_items').delete('id', itemId);
+        }
+
+        function renderInboxView() {
+            const list = document.getElementById('inbox-list');
+            if (state.inboxItems.length === 0) {
+                list.innerHTML = `<div class="text-center text-gray-400 py-10">Inbox is empty. All caught up!</div>`;
+                return;
+            }
+
+            let dropdownHtml = state.boards.map(b => `
+                <div class="p-2 border-b last:border-0">
+                    <div class="text-xs font-bold text-gray-500 uppercase px-2 py-1">${escapeHTML(b.title)}</div>
+                    ${state.lists.filter(l => l.board_id === b.id).map(l => `
+                        <div class="px-4 py-1.5 hover:bg-blue-50 cursor-pointer text-sm text-gray-700 rounded" onclick="convertInboxToTask('${'{{itemId}}'}', '${l.id}')">${escapeHTML(l.title)}</div>
+                    `).join('')}
+                </div>
+            `).join('');
+
+            list.innerHTML = state.inboxItems.map(item => `
+                <div class="p-4 border rounded-xl flex items-center justify-between hover:shadow-md transition">
+                    <div>
+                        <p class="font-semibold text-gray-800 text-lg">${escapeHTML(item.title)}</p>
+                        <p class="text-sm text-gray-400">${new Date(item.created_at).toLocaleDateString()}</p>
+                    </div>
+                    <div class="flex gap-2 relative group">
+                        <button class="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1 hover:bg-blue-100">
+                            Move to Board <i data-lucide="chevron-down" width="14" height="14"></i>
+                        </button>
+                        <div class="absolute right-0 top-full mt-2 w-64 bg-white shadow-xl rounded-xl border max-h-64 overflow-y-auto hidden group-hover:block z-10">
+                            ${dropdownHtml.replace(/\{\{itemId\}\}/g, item.id)}
+                        </div>
+                        <button onclick="deleteInboxItem('${item.id}')" class="text-gray-400 hover:text-red-500 p-2"><i data-lucide="trash-2" width="18" height="18"></i></button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function buildRowHtml(card) {
+            const list = state.lists.find(l => l.id === card.list_id);
+            const board = state.boards.find(b => b.id === list?.board_id);
+            return `
+                <div onclick="openCardModal('${card.id}')" class="flex items-center justify-between p-3 border-b hover:bg-gray-50 cursor-pointer group">
+                    <div class="flex items-center gap-3">
+                        <input type="checkbox" ${card.is_completed ? 'checked' : ''} class="w-5 h-5 rounded-full pointer-events-none">
+                        <div>
+                            <p class="font-medium ${card.is_completed ? 'line-through text-gray-500' : 'text-gray-800'}">${escapeHTML(card.title)}</p>
+                            <div class="text-xs text-gray-500 flex gap-2">
+                                <span class="bg-gray-100 px-1.5 rounded">${escapeHTML(board?.title)} &gt; ${escapeHTML(list?.title)}</span>
+                                ${card.priority !== 'None' ? `<span class="${PRIORITY_COLORS[card.priority]} px-1.5 rounded">${card.priority}</span>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-sm font-medium flex gap-4">
+                        <span class="${new Date(card.due_date) < new Date() && !card.is_completed ? 'text-red-600' : 'text-gray-600'}">
+                            ${new Date(card.due_date).toLocaleTimeString('en-US', { hour: '2-digit', minute:'2-digit' })}
+                        </span>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTodayView() {
+            const today = new Date().toDateString();
+            const todayCards = state.cards.filter(c => c.due_date && new Date(c.due_date).toDateString() === today && !c.is_completed);
+            const overdueCards = state.cards.filter(c => c.due_date && new Date(c.due_date) < new Date() && new Date(c.due_date).toDateString() !== today && !c.is_completed);
+            const completedToday = state.cards.filter(c => c.is_completed && new Date(c.updated_at).toDateString() === today);
+
+            const overdueContainer = document.getElementById('today-overdue-container');
+            if (overdueCards.length > 0) {
+                overdueContainer.classList.remove('hide');
+                document.getElementById('today-overdue-count').innerText = overdueCards.length;
+                document.getElementById('today-overdue-list').innerHTML = overdueCards.map(buildRowHtml).join('');
+            } else overdueContainer.classList.add('hide');
+
+            document.getElementById('today-due-count').innerText = todayCards.length;
+            if (todayCards.length === 0) {
+                document.getElementById('today-empty-msg').classList.remove('hide');
+                document.getElementById('today-due-list').innerHTML = '';
+            } else {
+                document.getElementById('today-empty-msg').classList.add('hide');
+                document.getElementById('today-due-list').innerHTML = todayCards.map(buildRowHtml).join('');
+            }
+
+            const compContainer = document.getElementById('today-completed-container');
+            if (completedToday.length > 0) {
+                compContainer.classList.remove('hide');
+                document.getElementById('today-completed-list').innerHTML = completedToday.map(buildRowHtml).join('');
+            } else compContainer.classList.add('hide');
+        }
+
+        function handleSearch(e) {
+            state.searchQuery = e.target.value;
+            renderSearchView();
+        }
+
+        function renderSearchView() {
+            const q = state.searchQuery.toLowerCase();
+            const container = document.getElementById('search-results-container');
+            
+            if (!q) {
+                container.classList.add('hide');
+                return;
+            }
+            
+            container.classList.remove('hide');
+            const results = state.cards.filter(c => 
+                c.title.toLowerCase().includes(q) || 
+                (c.description && c.description.toLowerCase().includes(q)) ||
+                (c.notes && c.notes.toLowerCase().includes(q))
+            );
+
+            document.getElementById('search-count').innerText = results.length;
+            
+            document.getElementById('search-list').innerHTML = results.map(card => {
+                const list = state.lists.find(l => l.id === card.list_id);
+                const board = state.boards.find(b => b.id === list?.board_id);
+                return `
+                    <div onclick="openCardModal('${card.id}')" class="bg-white p-4 rounded-xl border shadow-sm hover:shadow-md cursor-pointer transition">
+                        <h4 class="text-lg font-bold text-gray-800 ${card.is_completed ? 'line-through opacity-70' : ''}">${escapeHTML(card.title)}</h4>
+                        <div class="text-sm text-gray-500 mt-1 flex items-center gap-2">
+                            <span class="bg-gray-100 px-2 py-0.5 rounded-full">${escapeHTML(board?.title)}</span> &rarr;
+                            <span class="bg-gray-100 px-2 py-0.5 rounded-full">${escapeHTML(list?.title)}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // --- STREAMING_CHUNK:Utils and Bootstrapping ---
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str.replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag] || tag)
+            );
+        }
+
+        // Boot the app
+        window.addEventListener('DOMContentLoaded', initApp);
+
+    </script>
+</body>
+</html>
