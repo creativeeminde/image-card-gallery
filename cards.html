@@ -225,6 +225,31 @@
 
     </main>
 
+    <!-- Full-Screen Lightbox Image Viewer Overlay with Arrows -->
+    <div id="fullscreen-lightbox" class="hidden fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-12" onclick="closeLightbox()">
+        
+        <!-- Close Button (Top Right) -->
+        <button onclick="closeLightbox()" class="absolute top-6 right-6 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-all z-50 shadow-lg cursor-pointer" title="Close Viewer">
+            <i data-lucide="x" class="w-6 h-6"></i>
+        </button>
+
+        <!-- Left Navigation Arrow -->
+        <button onclick="event.stopPropagation(); navigateLightbox(-1)" class="absolute left-6 top-1/2 -translate-y-1/2 w-14 h-14 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-all z-50 shadow-lg cursor-pointer" title="Previous Image">
+            <i data-lucide="chevron-left" class="w-8 h-8"></i>
+        </button>
+
+        <!-- Right Navigation Arrow -->
+        <button onclick="event.stopPropagation(); navigateLightbox(1)" class="absolute right-6 top-1/2 -translate-y-1/2 w-14 h-14 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-all z-50 shadow-lg cursor-pointer" title="Next Image">
+            <i data-lucide="chevron-right" class="w-8 h-8"></i>
+        </button>
+
+        <!-- Main Image Container -->
+        <div class="relative max-w-7xl max-h-[90vh] w-full h-full flex items-center justify-center px-16" onclick="event.stopPropagation()">
+            <img id="lightbox-image" src="" alt="Full Screen View" class="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl" />
+        </div>
+    </div>
+
+    <!-- Application Runtime Scripts -->
     <script>
         const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
@@ -241,10 +266,30 @@
         let currentDetailItem = null;
         let activeFloatingImage = null;
         let isFullViewMode = false;
+        let lightboxImagesList = [];
+        let lightboxCurrentIndex = 0;
 
         window.onload = function() {
             fetchCollectibles();
             lucide.createIcons();
+
+            // Keyboard navigation and escape listener for lightbox & general modals
+            document.addEventListener('keydown', function(e) {
+                const lightbox = document.getElementById('fullscreen-lightbox');
+                const isLightboxOpen = !lightbox.classList.contains('hidden');
+
+                if (e.key === 'Escape') {
+                    if (isLightboxOpen) {
+                        closeLightbox();
+                    }
+                } else if (isLightboxOpen) {
+                    if (e.key === 'ArrowLeft') {
+                        navigateLightbox(-1);
+                    } else if (e.key === 'ArrowRight') {
+                        navigateLightbox(1);
+                    }
+                }
+            });
         };
 
         async function fetchCollectibles() {
@@ -378,7 +423,9 @@
 
             renderGallery();
             updatePreviewPanel();
-            openFullDetailView();
+            if (isFullViewMode) {
+                renderAdditionalImagesGrid();
+            }
         }
 
         function updatePreviewPanel() {
@@ -475,14 +522,14 @@
                 const isMain = index === 0;
                 html += `
                     <div class="flex flex-col group">
-                        <div class="relative w-full h-96 rounded-3xl overflow-hidden shadow-md group-hover:shadow-2xl transition-all duration-300 flex items-center justify-center bg-slate-50">
+                        <div onclick="openLightbox(${index})" class="cursor-pointer relative w-full h-96 rounded-3xl overflow-hidden shadow-md group-hover:shadow-2xl transition-all duration-300 flex items-center justify-center bg-slate-50">
                             <img src="${img}" alt="Card View ${index + 1}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                             ${isMain ? '<span class="absolute top-4 left-4 text-[10px] bg-white/80 backdrop-blur text-indigo-600 px-3 py-1 rounded-full font-bold uppercase tracking-wider shadow-sm">Primary Cover</span>' : ''}
                         </div>
                         <div class="mt-3 flex items-center justify-between px-1">
                             <span class="text-xs font-medium text-slate-500">${isMain ? 'Main Cover Card' : 'Additional Card #' + index}</span>
                             ${!isMain ? `
-                                <button onclick="removeAdditionalImage('${img}')" class="w-8 h-8 rounded-full bg-red-50 text-red-400 hover:text-red-600 hover:bg-red-100 flex items-center justify-center transition-colors shadow-sm" title="Remove Image">
+                                <button onclick="event.stopPropagation(); removeAdditionalImage('${img}')" class="w-8 h-8 rounded-full bg-red-50 text-red-400 hover:text-red-600 hover:bg-red-100 flex items-center justify-center transition-colors shadow-sm" title="Remove Image">
                                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                                 </button>
                             ` : ''}
@@ -492,6 +539,33 @@
             });
             grid.innerHTML = html;
             lucide.createIcons();
+        }
+
+        function openLightbox(index) {
+            if (!currentDetailItem) return;
+            lightboxImagesList = [currentDetailItem.image_url, ...(currentDetailItem.additional_images || [])];
+            lightboxCurrentIndex = index;
+            
+            updateLightboxImage();
+            document.getElementById('fullscreen-lightbox').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            lucide.createIcons();
+        }
+
+        function updateLightboxImage() {
+            if (lightboxImagesList.length === 0) return;
+            document.getElementById('lightbox-image').src = lightboxImagesList[lightboxCurrentIndex];
+        }
+
+        function navigateLightbox(direction) {
+            if (lightboxImagesList.length === 0) return;
+            lightboxCurrentIndex = (lightboxCurrentIndex + direction + lightboxImagesList.length) % lightboxImagesList.length;
+            updateLightboxImage();
+        }
+
+        function closeLightbox() {
+            document.getElementById('fullscreen-lightbox').classList.add('hidden');
+            document.body.style.overflow = 'auto';
         }
 
         function toggleAddImageModal(show) {
@@ -650,3 +724,4 @@
     </script>
 </body>
 </html>
+```eof
