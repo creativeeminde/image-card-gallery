@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Collectibles Gallery</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        body {
+            background-color: #f3f4fc;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800 flex items-center justify-center p-4 sm:p-8">
+
+    <div class="w-full max-w-6xl h-[90vh] bg-white/40 backdrop-blur-3xl rounded-[40px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.05)] border border-white/60 flex overflow-hidden relative">
+        
+        <!-- Floating Sidebar -->
+        <div class="w-24 h-full py-8 flex flex-col items-center justify-between border-r border-white/50 bg-white/30 z-10">
+            <div class="w-14 h-14 bg-white rounded-full flex items-center justify-center shadow-sm text-indigo-500 mb-8">
+                <i data-lucide="landmark" class="w-6 h-6"></i>
+            </div>
+            
+            <nav class="flex-1 flex flex-col items-center gap-6">
+                <button onclick="switchTab('home')" id="nav-home" class="w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 bg-indigo-100 text-indigo-600 shadow-sm scale-110">
+                    <i data-lucide="home" class="w-[22px] h-[22px]"></i>
+                </button>
+                <button onclick="switchTab('collection')" id="nav-collection" class="w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 text-slate-400 hover:bg-white hover:text-slate-600">
+                    <i data-lucide="heart" class="w-[22px] h-[22px]"></i>
+                </button>
+                <button onclick="switchTab('add')" id="nav-add" class="w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 text-slate-400 hover:bg-white hover:text-slate-600">
+                    <i data-lucide="plus-circle" class="w-[22px] h-[22px]"></i>
+                </button>
+            </nav>
+            
+            <div class="mt-auto">
+                <div class="w-12 h-12 rounded-full bg-indigo-100 border-2 border-white text-indigo-500 shadow-inner flex items-center justify-center">
+                    <i data-lucide="user" class="w-5 h-5"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 h-full overflow-y-auto p-8 relative scroll-smooth">
+            
+            <header class="mb-10 flex items-center justify-between">
+                <div class="h-12 w-64 bg-white/50 rounded-2xl border border-white/60 shadow-sm flex items-center px-4 space-x-3">
+                    <div class="w-10 h-2 bg-indigo-200 rounded-full"></div>
+                    <div class="w-6 h-2 bg-slate-200 rounded-full"></div>
+                </div>
+                
+                <div class="h-10 w-24 bg-white/50 rounded-full border border-white/60 shadow-sm flex items-center justify-center space-x-2">
+                    <div class="w-4 h-2 bg-indigo-200 rounded-full"></div>
+                    <div class="w-2 h-2 bg-slate-200 rounded-full"></div>
+                </div>
+            </header>
+
+            <!-- Error Banner -->
+            <div id="error-banner" class="hidden mb-6 p-4 bg-red-50 text-red-600 rounded-2xl border border-red-100 flex items-center space-x-3">
+                <i data-lucide="alert-circle" class="w-5 h-5 flex-shrink-0"></i>
+                <span id="error-message"></span>
+            </div>
+
+            <div id="loading-state" class="flex flex-col items-center justify-center h-64 space-y-4">
+                <i data-lucide="loader-2" class="animate-spin text-indigo-400 w-8 h-8"></i>
+                <p class="text-slate-400">Loading gallery...</p>
+            </div>
+
+            <!-- Add Item View -->
+            <div id="view-add" class="hidden max-w-xl mx-auto bg-white/60 backdrop-blur-lg p-8 rounded-3xl shadow-sm border border-white/80">
+                <h2 class="text-2xl font-light mb-6 text-slate-700">Add to Collection</h2>
+                <form id="mint-form" onsubmit="handleMint(event)" class="space-y-5">
+                    <div>
+                        <label class="block text-sm text-slate-500 mb-1 ml-1">Title</label>
+                        <input type="text" id="mint-title" required class="w-full bg-white/80 border-none rounded-2xl px-5 py-4 focus:ring-2 focus:ring-indigo-100 outline-none text-slate-700 placeholder-slate-400 shadow-sm" placeholder="e.g. Marble Bust" />
+                    </div>
+                    <div>
+                        <label class="block text-sm text-slate-500 mb-1 ml-1">Image URL</label>
+                        <input type="url" id="mint-image" required class="w-full bg-white/80 border-none rounded-2xl px-5 py-4 focus:ring-2 focus:ring-indigo-100 outline-none text-slate-700 placeholder-slate-400 shadow-sm" placeholder="https://..." />
+                    </div>
+                    <div>
+                        <label class="block text-sm text-slate-500 mb-1 ml-1">Category</label>
+                        <select id="mint-category" class="w-full bg-white/80 border-none rounded-2xl px-5 py-4 focus:ring-2 focus:ring-indigo-100 outline-none text-slate-700 shadow-sm appearance-none">
+                            <option>Sculpture</option>
+                            <option>Relief</option>
+                            <option>Architecture</option>
+                            <option>Painting</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-slate-500 mb-1 ml-1">Description (Optional)</label>
+                        <textarea id="mint-desc" class="w-full bg-white/80 border-none rounded-2xl px-5 py-4 focus:ring-2 focus:ring-indigo-100 outline-none text-slate-700 placeholder-slate-400 shadow-sm h-24 resize-none" placeholder="Details about this piece..."></textarea>
+                    </div>
+                    <button type="submit" id="mint-btn" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white rounded-2xl py-4 font-medium transition-colors shadow-lg shadow-indigo-200 flex items-center justify-center space-x-2">
+                        <i data-lucide="plus" class="w-5 h-5"></i>
+                        <span>Add to Collection</span>
+                    </button>
+                </form>
+            </div>
+
+            <div id="view-gallery" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-20">
+                <!-- Cards injected via JS -->
+            </div>
+        </main>
+
+        <div id="item-modal" class="hidden absolute inset-0 z-50 bg-slate-900/10 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8" onclick="closeModal()">
+            <div class="w-full max-w-5xl bg-white rounded-[40px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.1)] p-4 sm:p-6 relative flex flex-col md:flex-row items-stretch min-h-[580px]" onclick="event.stopPropagation()">
+                
+                <!-- Modal Top Controls -->
+                <button onclick="closeModal()" class="absolute top-6 left-6 w-9 h-9 bg-white border border-slate-100 shadow-sm text-slate-500 rounded-full flex items-center justify-center hover:bg-slate-50 transition-all z-30 hover:scale-105">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+                <button id="modal-like-btn" onclick="toggleModalLike()" class="absolute top-6 right-6 w-9 h-9 bg-white border border-slate-100 shadow-sm rounded-full flex items-center justify-center hover:bg-slate-50 transition-all z-30 hover:scale-105 text-slate-300">
+                    <i data-lucide="heart" class="w-4 h-4"></i>
+                </button>
+
+                <!-- Left Side: Thumbnails & Add Button -->
+                <div class="w-full md:w-[32%] flex flex-col pr-4 pt-16 border-r border-slate-100 overflow-y-auto hide-scrollbar max-h-[520px]">
+                    <div class="w-8 h-1 bg-slate-100 rounded-full mb-3 ml-2 flex items-center">
+                        <div class="w-3 h-1.5 bg-indigo-300 rounded-full shadow-sm"></div>
+                    </div>
+                    <div id="modal-thumbnails" class="flex flex-col gap-4 pb-4">
+                        <!-- Thumbnails injected via JS -->
+                    </div>
+                </div>
+
+                <!-- Right Side: Main Preview & Details -->
+                <div class="w-full md:w-[68%] flex flex-col pl-0 md:pl-6 pt-12 md:pt-4 justify-between relative">
+                    
+                    <!-- Add Image Overlay -->
+                    <div id="add-image-overlay" class="hidden absolute inset-0 bg-white/95 backdrop-blur-md z-40 flex flex-col items-center justify-center p-8 rounded-[40px]">
+                        <h3 class="text-slate-700 font-medium mb-4 text-lg">Add Another Image</h3>
+                        <input type="url" id="new-image-url" class="w-full max-w-sm bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 mb-5 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 shadow-inner transition-all text-sm" placeholder="Paste image URL here..." />
+                        <div class="flex gap-3">
+                            <button onclick="toggleAddImageModal(false)" class="px-6 py-3 rounded-xl text-slate-500 hover:bg-slate-100 transition-colors font-medium text-sm">Cancel</button>
+                            <button onclick="saveNewImage()" id="save-image-btn" class="px-6 py-3 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 transition-colors shadow-md flex items-center gap-2 font-medium text-sm">
+                                <i data-lucide="check" class="w-4 h-4"></i>
+                                <span>Save Image</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Main Display Image -->
+                    <div class="flex-1 flex items-center justify-center p-4 relative min-h-[350px]">
+                        <img id="modal-main-image" src="" alt="Preview" class="max-w-full max-h-[380px] object-contain mix-blend-multiply drop-shadow-[0_20px_30px_rgba(0,0,0,0.12)] transition-opacity duration-300" />
+                    </div>
+
+                    <!-- Bottom Info & Delete -->
+                    <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
+                        <div>
+                            <span id="modal-category" class="text-[10px] font-bold tracking-widest text-indigo-400 uppercase block mb-1"></span>
+                            <h2 id="modal-title" class="text-2xl font-light text-slate-800"></h2>
+                        </div>
+
+                        <div>
+                            <div id="delete-confirm-box" class="hidden flex items-center gap-2 bg-red-50 p-2 rounded-xl">
+                                <span class="text-xs text-red-600 font-medium">Delete item?</span>
+                                <button onclick="toggleDeleteConfirm(false)" class="px-3 py-1 bg-white text-slate-600 rounded-lg text-xs font-medium shadow-sm">No</button>
+                                <button onclick="deleteCurrentItem()" class="px-3 py-1 bg-red-500 text-white rounded-lg text-xs font-medium shadow-sm">Yes</button>
+                            </div>
+                            <button id="delete-trigger-btn" onclick="toggleDeleteConfirm(true)" class="flex items-center gap-2 text-slate-400 hover:text-red-500 transition-colors text-xs font-medium group px-3 py-2 rounded-xl hover:bg-red-50">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                <span>Delete Item</span>
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://fwzffqwjprjuwidkrckb.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3emZmcXdqcHJqdXdpZGtyY2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMTMwNzMsImV4cCI6MjA2MzU4OTA3M30.p3b_pshzTN-G3QTKE91b5TGBZJwSRZTEOClXN5JEl6I';
+
+        const SUPABASE_HEADERS = {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json'
+        };
+
+        let collectibles = [];
+        let likedItems = new Set(JSON.parse(localStorage.getItem('local_likes') || '[]'));
+        let activeTab = 'home';
+        let selectedItem = null;
+        let activeImage = null;
+
+        // Initialize App on Load
+        window.onload = function() {
+            fetchCollectibles();
+            lucide.createIcons();
+        };
+
+        async function fetchCollectibles() {
+            try {
+                showLoading(true);
+                hideError();
+                const response = await fetch(SUPABASE_URL + '/rest/v1/collectibles?select=*&order=created_at.desc', {
+                    headers: SUPABASE_HEADERS
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.message || 'HTTP Error ' + response.status);
+                }
+
+                collectibles = await response.json();
+                renderGallery();
+            } catch (err) {
+                console.error("Error fetching data:", err);
+                showError(err.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function switchTab(tab) {
+            activeTab = tab;
+            document.getElementById('nav-home').className = tab === 'home' 
+                ? 'w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 bg-indigo-100 text-indigo-600 shadow-sm scale-110'
+                : 'w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 text-slate-400 hover:bg-white hover:text-slate-600';
+            
+            document.getElementById('nav-collection').className = tab === 'collection' 
+                ? 'w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 bg-indigo-100 text-indigo-600 shadow-sm scale-110'
+                : 'w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 text-slate-400 hover:bg-white hover:text-slate-600';
+
+            document.getElementById('nav-add').className = tab === 'add' 
+                ? 'w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 bg-indigo-100 text-indigo-600 shadow-sm scale-110'
+                : 'w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 text-slate-400 hover:bg-white hover:text-slate-600';
+
+            document.getElementById('view-add').classList.toggle('hidden', tab !== 'add');
+            document.getElementById('view-gallery').classList.toggle('hidden', tab === 'add');
+            
+            renderGallery();
+        }
+
+        function renderGallery() {
+            const grid = document.getElementById('view-gallery');
+            const displayItems = activeTab === 'collection'
+                ? collectibles.filter(item => likedItems.has(item.id))
+                : collectibles;
+
+            if (displayItems.length === 0) {
+                grid.innerHTML = '<div class="col-span-full py-20 text-center text-slate-400">' + (activeTab === 'collection' ? "You haven't liked any items yet." : "No collectibles found in database.") + '</div>';
+                return;
+            }
+
+            let html = '';
+            displayItems.forEach(item => {
+                const isLiked = likedItems.has(item.id);
+                html += `
+                    <div onclick="openModal('${item.id}')" class="bg-white/80 backdrop-blur-md rounded-3xl p-4 shadow-sm border border-white hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group flex flex-col">
+                        <div class="relative w-full h-56 rounded-2xl overflow-hidden bg-slate-100 mb-4">
+                            <img src="${item.image_url}" alt="${item.title}" class="w-full h-full object-cover mix-blend-multiply group-hover:scale-105 transition-transform duration-700" />
+                            <button onclick="toggleLike(event, '${item.id}')" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/80 backdrop-blur-sm flex items-center justify-center shadow-sm transition-colors ${isLiked ? 'text-red-500' : 'text-slate-400 hover:text-indigo-400'}">
+                                <i data-lucide="heart" class="w-4 h-4" ${isLiked ? 'fill="currentColor"' : ''}></i>
+                            </button>
+                        </div>
+                        <div class="flex items-end justify-between mt-auto">
+                            <div>
+                                <span class="text-[10px] font-bold tracking-widest text-indigo-400 uppercase block mb-0.5">${item.category}</span>
+                                <h3 class="font-medium text-slate-800 text-sm truncate w-40">${item.title}</h3>
+                            </div>
+                            <div class="w-8 h-8 rounded-full bg-indigo-50 text-indigo-500 flex items-center justify-center group-hover:bg-indigo-500 group-hover:text-white transition-colors">
+                                <i data-lucide="plus" class="w-4 h-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            grid.innerHTML = html;
+            lucide.createIcons();
+        }
+
+        function toggleLike(e, id) {
+            e.stopPropagation();
+            if (likedItems.has(id)) {
+                likedItems.delete(id);
+            } else {
+                likedItems.add(id);
+            }
+            localStorage.setItem('local_likes', JSON.stringify(Array.from(likedItems)));
+            renderGallery();
+            if (selectedItem && selectedItem.id === id) {
+                updateModalLikeButton();
+            }
+        }
+
+        function openModal(id) {
+            selectedItem = collectibles.find(c => c.id === id);
+            if (!selectedItem) return;
+            
+            activeImage = selectedItem.image_url;
+            document.getElementById('modal-main-image').src = activeImage;
+            document.getElementById('modal-title').innerText = selectedItem.title;
+            document.getElementById('modal-category').innerText = selectedItem.category;
+            
+            renderModalThumbnails();
+            updateModalLikeButton();
+            toggleDeleteConfirm(false);
+            toggleAddImageModal(false);
+
+            document.getElementById('item-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            selectedItem = null;
+            document.getElementById('item-modal').classList.add('hidden');
+        }
+
+        function renderModalThumbnails() {
+            const container = document.getElementById('modal-thumbnails');
+            const images = [selectedItem.image_url, ...(selectedItem.additional_images || [])];
+            
+            let html = '';
+            images.forEach((img) => {
+                const isActive = activeImage === img;
+                html += `
+                    <div onclick="setActiveImage('${img}')" class="w-full h-44 rounded-2xl overflow-hidden cursor-pointer transition-all bg-white p-3 border shadow-sm relative flex items-center justify-center ${isActive ? 'border-indigo-400 ring-2 ring-indigo-100 scale-[1.02]' : 'border-slate-100 opacity-70 hover:opacity-100 hover:scale-[1.01]'}">
+                        <img src="${img}" class="w-full h-full object-cover rounded-xl mix-blend-multiply" />
+                    </div>
+                `;
+            });
+
+            html += `
+                <button onclick="toggleAddImageModal(true)" class="w-full h-24 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 text-slate-400 hover:text-indigo-500 hover:border-indigo-300 hover:bg-indigo-50/50 flex items-center justify-center transition-all" title="Add Image URL">
+                    <i data-lucide="plus" class="w-6 h-6"></i>
+                </button>
+            `;
+
+            container.innerHTML = html;
+            lucide.createIcons();
+        }
+
+        function setActiveImage(img) {
+            activeImage = img;
+            document.getElementById('modal-main-image').src = img;
+            renderModalThumbnails();
+        }
+
+        function updateModalLikeButton() {
+            const isLiked = likedItems.has(selectedItem.id);
+            const btn = document.getElementById('modal-like-btn');
+            btn.className = 'absolute top-6 right-6 w-9 h-9 bg-white border border-slate-100 shadow-sm rounded-full flex items-center justify-center hover:bg-slate-50 transition-all z-30 hover:scale-105 ' + (isLiked ? 'text-indigo-500' : 'text-slate-300');
+            btn.innerHTML = `<i data-lucide="heart" class="w-4 h-4" ${isLiked ? 'fill="currentColor"' : ''}></i>`;
+            lucide.createIcons();
+        }
+
+        function toggleModalLike() {
+            if (selectedItem) {
+                toggleLike({ stopPropagation: () => {} }, selectedItem.id);
+            }
+        }
+
+        function toggleAddImageModal(show) {
+            document.getElementById('add-image-overlay').classList.toggle('hidden', !show);
+            if (show) {
+                document.getElementById('new-image-url').value = '';
+                document.getElementById('new-image-url').focus();
+            }
+        }
+
+        async function saveNewImage() {
+            const url = document.getElementById('new-image-url').value;
+            if (!url) return;
+
+            try {
+                const currentExtra = selectedItem.additional_images || [];
+                const updatedExtra = [...currentExtra, url];
+
+                const response = await fetch(SUPABASE_URL + '/rest/v1/collectibles?id=eq.' + selectedItem.id, {
+                    method: 'PATCH',
+                    headers: Object.assign({}, SUPABASE_HEADERS, { 'Prefer': 'return=representation' }),
+                    body: JSON.stringify({ additional_images: updatedExtra })
+                });
+
+                if (!response.ok) throw new Error("Failed to add image");
+                const jsonResponse = await response.json();
+                if (!jsonResponse || jsonResponse.length === 0) throw new Error("Update blocked by database policy.");
+
+                selectedItem = jsonResponse[0];
+                collectibles = collectibles.map(c => c.id === selectedItem.id ? selectedItem : c);
+                
+                toggleAddImageModal(false);
+                renderModalThumbnails();
+            } catch (err) {
+                console.error("Update error:", err);
+                alert("Failed to save image: " + err.message);
+            }
+        }
+
+        function toggleDeleteConfirm(show) {
+            document.getElementById('delete-confirm-box').classList.toggle('hidden', !show);
+            document.getElementById('delete-trigger-btn').classList.toggle('hidden', show);
+        }
+
+        async function deleteCurrentItem() {
+            if (!selectedItem) return;
+            try {
+                const response = await fetch(SUPABASE_URL + '/rest/v1/collectibles?id=eq.' + selectedItem.id, {
+                    method: 'DELETE',
+                    headers: SUPABASE_HEADERS
+                });
+
+                if (!response.ok) throw new Error("Failed to delete item");
+
+                collectibles = collectibles.filter(c => c.id !== selectedItem.id);
+                closeModal();
+                renderGallery();
+            } catch (err) {
+                console.error("Delete error:", err);
+                alert("Failed to delete item.");
+            }
+        }
+
+        async function handleMint(e) {
+            e.preventDefault();
+            const title = document.getElementById('mint-title').value;
+            const image_url = document.getElementById('mint-image').value;
+            const category = document.getElementById('mint-category').value;
+            const description = document.getElementById('mint-desc').value;
+
+            if (!title || !image_url) return;
+
+            try {
+                const newItem = { title, description, image_url, category, additional_images: [] };
+                const response = await fetch(SUPABASE_URL + '/rest/v1/collectibles', {
+                    method: 'POST',
+                    headers: Object.assign({}, SUPABASE_HEADERS, { 'Prefer': 'return=representation' }),
+                    body: JSON.stringify(newItem)
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.message || "Failed to save to database");
+                }
+
+                const inserted = await response.json();
+                collectibles.unshift(inserted[0]);
+
+                document.getElementById('mint-form').reset();
+                switchTab('home');
+            } catch (err) {
+                console.error("Minting error:", err);
+                showError(err.message || "Minting failed.");
+            }
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading-state').classList.toggle('hidden', !show);
+        }
+
+        function showError(msg) {
+            const banner = document.getElementById('error-banner');
+            document.getElementById('error-message').innerText = msg;
+            banner.classList.remove('hidden');
+        }
+
+        function hideError() {
+            document.getElementById('error-banner').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
