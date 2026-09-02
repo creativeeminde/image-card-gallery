@@ -5873,14 +5873,14 @@ function initCarouselDrag() {
             try {
                 // 1. Delete all clips associated with this model (by card_id)
                 const { error: clipsErr } = await supabaseClient
-                    .from('global_clips')
+                    .from('studiohub_global_clips')
                     .delete()
                     .eq('card_id', modelId);
                 if (clipsErr) throw clipsErr;
 
                 // 2. Delete the model card itself (images are stored as JSON columns on the card row)
                 const { error: cardErr } = await supabaseClient
-                    .from('cards')
+                    .from('studiohub_models')
                     .delete()
                     .eq('id', modelId);
                 if (cardErr) throw cardErr;
@@ -5982,7 +5982,7 @@ function initCarouselDrag() {
             currentActiveModelData.audio_clips = clips;
             _moanEditTags.forEach(t => persistTagToLibrary(t));
             try {
-                await supabaseClient.from('cards').update({ audio_clips: clips }).eq('id', currentActiveModelData.id);
+                await supabaseClient.from('studiohub_models').update({ audio_clips: clips }).eq('id', currentActiveModelData.id);
                 showSuccessToast('Moan updated! ✏️');
                 renderAudioClips();
                 closeEditMoanModal();
@@ -6019,7 +6019,7 @@ function initCarouselDrag() {
             const updates   = { title, audio_url, tags };
             if (cover_url) updates.cover_url = cover_url;
             try {
-                await supabaseClient.from('waves').update(updates).eq('id', editingWaveId);
+                await supabaseClient.from('studiohub_waves').update(updates).eq('id', editingWaveId);
                 const idx = allLoadedWaves.findIndex(w => w.id === editingWaveId);
                 if (idx > -1) allLoadedWaves[idx] = { ...allLoadedWaves[idx], ...updates };
                 showSuccessToast('Audio updated! ✏️');
@@ -6336,7 +6336,7 @@ function closeCategoryModal() {
             const clipsGrid = document.getElementById('closeUpClipsGrid');
             try {
                 const { data: relationalClips } = await supabaseClient
-                    .from('global_clips')
+                    .from('studiohub_global_clips')
                     .select('*')
                     .eq('card_id', cardData.id)
                     .order('created_at', { ascending: false });
@@ -6483,7 +6483,7 @@ const avg = Math.round((balanceSum + skillSum) / 10);
                     skill_moanheat: d.skill_moanheat ?? 50,
                 };
                 try {
-                    await supabaseClient.from('cards').update(updateData).eq('id', d.id);
+                    await supabaseClient.from('studiohub_models').update(updateData).eq('id', d.id);
                     // Keep allLoadedCards in sync so gallery rating badges refresh
                     const idx = allLoadedCards.findIndex(c => c.id === d.id);
                     if (idx > -1) allLoadedCards[idx] = { ...allLoadedCards[idx], ...updateData };
@@ -6887,7 +6887,7 @@ function toggleCategoryExpand(id, event) {
 }
         async function fetchCategories() {
             try {
-                const { data, error } = await supabaseClient.from('clip_categories').select('*');
+                const { data, error } = await supabaseClient.from('studiohub_clip_categories').select('*');
                 if (data) {
                     clipCategories = data;
                     renderCategorySidebar();
@@ -7034,8 +7034,8 @@ async function renderClipTagsDropdown() {
             //    no site/model filter) so the dropdown always shows the full universe of tags.
             try {
                 const { data, error } = await supabaseClient
-                    .from('global_clips')
-                    .select('tags, cards(tags)')
+                    .from('studiohub_global_clips')
+                    .select('tags, cards:studiohub_models(tags)')
                     .not('tags', 'is', null)
                     .neq('tags', '');
                 if (!error && data) {
@@ -7132,7 +7132,7 @@ async function renderClipTagsDropdown() {
             // Step 2: Fetch ALL distinct site_names from Supabase in background
             try {
                 const { data, error } = await supabaseClient
-                    .from('global_clips')
+                    .from('studiohub_global_clips')
                     .select('site_name')
                     .not('site_name', 'is', null)
                     .neq('site_name', '');
@@ -7223,7 +7223,7 @@ function filterClipsByModel(modelId) {
             
             try {
                 // FIXED QUERY HERE: Added 'tags' to the cards select so the filter can see them
-                let query = supabaseClient.from('global_clips').select('*, cards(id, title, main_image_url, tags)').order('created_at', { ascending: false });
+                let query = supabaseClient.from('studiohub_global_clips').select('*, cards:studiohub_models(id, title, main_image_url, tags)').order('created_at', { ascending: false });
                 
                 if (currentCategoryFilter) {
                     // Match clips where the legacy category_id matches OR the category_ids array contains the selected category
@@ -7519,7 +7519,7 @@ function renderYTClipsGrid(clearFirst = false) {
 
                     // 4. Persist to Supabase (fire-and-forget)
                     supabaseClient
-                        .from('global_clips')
+                        .from('studiohub_global_clips')
                         .update({ duration: mmss })
                         .eq('id', clipId)
                         .then(({ error }) => {
@@ -8073,7 +8073,7 @@ let editingClipId = null; // Track if we are editing
 
     // Increment views slightly delayed to ensure valid open
     setTimeout(() => {
-        supabaseClient.from('global_clips').update({ views: (clip.views || 0) + 1 }).eq('id', id).then(() => {
+        supabaseClient.from('studiohub_global_clips').update({ views: (clip.views || 0) + 1 }).eq('id', id).then(() => {
             clip.views = (clip.views || 0) + 1;
         });
     }, 5000);
@@ -8321,7 +8321,7 @@ let editingClipId = null; // Track if we are editing
             // Also handle card_ids array so multi-model clips are counted for every assigned model.
             try {
                 const { data: allClips, error } = await supabaseClient
-                    .from('global_clips')
+                    .from('studiohub_global_clips')
                     .select('id, card_id, card_ids, views');
 
                 if (!error && allClips) {
@@ -8429,7 +8429,7 @@ let editingClipId = null; // Track if we are editing
             let fetchError = null;
 
             const { data: primaryData, error: primaryError } = await supabaseClient
-                .from('global_clips')
+                .from('studiohub_global_clips')
                 .select('*')
                 .or(`card_id.eq.${modelId},card_ids.cs.{${modelId}}`)
                 .order('created_at', { ascending: false });
@@ -8438,7 +8438,7 @@ let editingClipId = null; // Track if we are editing
                 // card_ids column may not exist — fall back to simple card_id-only query
                 console.warn('openAllClipsView: or-query failed, falling back to card_id-only fetch', primaryError);
                 const { data: fallbackData, error: fallbackError } = await supabaseClient
-                    .from('global_clips')
+                    .from('studiohub_global_clips')
                     .select('*')
                     .eq('card_id', modelId)
                     .order('created_at', { ascending: false });
@@ -8730,7 +8730,7 @@ let editingClipId = null; // Track if we are editing
                     }
                     // Fetch clips for this specific card directly — immune to race conditions
                     supabaseClient
-                        .from('global_clips')
+                        .from('studiohub_global_clips')
                         .select('id, url, tags, title, card_id')
                         .eq('card_id', card.id)
                         .then(({ data, error }) => {
@@ -9284,7 +9284,7 @@ let editingClipId = null; // Track if we are editing
             // Check if it's a new relational global clip
             if (isClipViewer && mediaToDelete.id && typeof mediaToDelete.id === 'number') {
                 try {
-                    await supabaseClient.from('global_clips').delete().eq('id', mediaToDelete.id);
+                    await supabaseClient.from('studiohub_global_clips').delete().eq('id', mediaToDelete.id);
                 } catch(e) { console.error("Error deleting global clip", e); }
             } else {
                 let targetCardId = isGlobalViewer ? mediaToDelete.cardId : (currentActiveModelData ? currentActiveModelData.id : null);
@@ -9297,7 +9297,7 @@ let editingClipId = null; // Track if we are editing
                     
                     if (originalAssetIdx !== -1) {
                         targetMediaArray.splice(originalAssetIdx, 1);
-                        try { await supabaseClient.from('cards').update({ [dbField]: targetMediaArray }).eq('id', targetCard.id); } 
+                        try { await supabaseClient.from('studiohub_models').update({ [dbField]: targetMediaArray }).eq('id', targetCard.id); } 
                         catch(e) { console.error("Failed to delete media from Supabase", e); }
                     }
                 }
@@ -9386,7 +9386,7 @@ let editingClipId = null; // Track if we are editing
             // even after a page refresh before cards have fully loaded in memory.
             try {
                 const { data, error } = await supabaseClient
-                    .from('cards')
+                    .from('studiohub_models')
                     .select('tags, class_tags, amazing_at_tags');
                 if (!error && data) {
                     const tempSet = new Set();
@@ -9541,7 +9541,7 @@ let editingClipId = null; // Track if we are editing
                 if (isClipViewer && media && media.id) {
                     try {
                         await supabaseClient
-                            .from('global_clips')
+                            .from('studiohub_global_clips')
                             .update({ tags: newTagsStr })
                             .eq('id', media.id);
                         // Keep in-memory ytGlobalClips array in sync
@@ -9571,7 +9571,7 @@ let editingClipId = null; // Track if we are editing
                         if (typeof originalAsset === 'string') targetMediaArray[originalAssetIdx] = { url: originalAsset, tags: newTagsStr };
                         else targetMediaArray[originalAssetIdx].tags = newTagsStr;
                         
-                        try { await supabaseClient.from('cards').update({ [dbField]: targetMediaArray }).eq('id', targetCard.id); updateLightboxContent(); } 
+                        try { await supabaseClient.from('studiohub_models').update({ [dbField]: targetMediaArray }).eq('id', targetCard.id); updateLightboxContent(); } 
                         catch(e) { console.error("Failed to save media tags to cards", e); }
                     } else {
                         console.warn("saveTagsToModel: asset not found in", dbField, "for card", targetCard.id, "url:", mediaUrl);
@@ -9585,7 +9585,7 @@ let editingClipId = null; // Track if we are editing
             currentActiveModelData[pickerTargetType] = newTagsStr;
             if (pickerTargetType === 'class_tags') renderClassSection();
             if (pickerTargetType === 'amazing_at_tags') renderAmazingAtSection();
-            try { await supabaseClient.from('cards').update({ [pickerTargetType]: newTagsStr }).eq('id', currentActiveModelData.id); } 
+            try { await supabaseClient.from('studiohub_models').update({ [pickerTargetType]: newTagsStr }).eq('id', currentActiveModelData.id); } 
             catch(e) { console.error("Failed to save tag", e); }
             buildFilters();
         }
@@ -9598,7 +9598,7 @@ let editingClipId = null; // Track if we are editing
             currentActiveModelData[type] = tags.join(', ');
             if (type === 'class_tags') renderClassSection();
             if (type === 'amazing_at_tags') renderAmazingAtSection();
-            try { await supabaseClient.from('cards').update({ [type]: currentActiveModelData[type] }).eq('id', currentActiveModelData.id); } 
+            try { await supabaseClient.from('studiohub_models').update({ [type]: currentActiveModelData[type] }).eq('id', currentActiveModelData.id); } 
             catch(e) { console.error("Failed to remove tag", e); }
             buildFilters();
         }
@@ -9652,7 +9652,7 @@ let editingClipId = null; // Track if we are editing
             if (!currentActiveModelData) return;
             currentActiveModelData.audio_clips.splice(index, 1);
             renderAudioClips();
-            try { await supabaseClient.from('cards').update({ audio_clips: currentActiveModelData.audio_clips }).eq('id', currentActiveModelData.id); } 
+            try { await supabaseClient.from('studiohub_models').update({ audio_clips: currentActiveModelData.audio_clips }).eq('id', currentActiveModelData.id); } 
             catch(e) { console.error("Error deleting audio", e); }
         }
 
@@ -9665,7 +9665,7 @@ let editingClipId = null; // Track if we are editing
             const tags = Array.isArray(clip.tags) ? [...clip.tags] : (clip.tags ? String(clip.tags).split(',').map(t=>t.trim()).filter(Boolean) : []);
             const newWave = { title: clip.title || `Moan ${index + 1}`, cover_url: coverUrl, audio_url: clip.url, source: 'moan', tags, skill_moanheat: currentActiveModelData.skill_moanheat ?? 50 };
             try {
-                const { data, error } = await supabaseClient.from('waves').insert([newWave]).select();
+                const { data, error } = await supabaseClient.from('studiohub_waves').insert([newWave]).select();
                 if (error) throw error;
                 allLoadedWaves.unshift(data[0]);
                 showSuccessToast(`"${newWave.title}" added to Waves! 🎵`);
@@ -9683,7 +9683,7 @@ let editingClipId = null; // Track if we are editing
                 return { title: clip.title || `Moan ${i + 1}`, cover_url: coverUrl, audio_url: clip.url, source: 'moan', tags, skill_moanheat: currentActiveModelData.skill_moanheat ?? 50 };
             });
             try {
-                const { data, error } = await supabaseClient.from('waves').insert(newWaves).select();
+                const { data, error } = await supabaseClient.from('studiohub_waves').insert(newWaves).select();
                 if (error) throw error;
                 allLoadedWaves.unshift(...data.reverse());
                 showSuccessToast(`${data.length} moan${data.length > 1 ? 's' : ''} added to Waves! 🎵`);
@@ -9702,7 +9702,7 @@ let editingClipId = null; // Track if we are editing
 
         async function fetchInfiniteItems() {
             try {
-                const { data, error } = await supabaseClient.from('infinite_canvas_items').select('*');
+                const { data, error } = await supabaseClient.from('studiohub_infinite_canvas').select('*');
                 if (data) { infiniteItems = data; updateInfiniteTagFilter(); }
             } catch(e) { console.log("Infinite table might not exist yet."); }
         }
@@ -9724,7 +9724,7 @@ let editingClipId = null; // Track if we are editing
                 }
                 
                 try {
-                    await supabaseClient.from('infinite_canvas_items').delete().eq('url', url);
+                    await supabaseClient.from('studiohub_infinite_canvas').delete().eq('url', url);
                     showSuccessToast("Removed from Infinite Canvas!"); updateInfiniteTagFilter();
                 } catch(err) {
                     btn.style.backgroundColor = '#7fe826'; btn.style.color = '#111'; btn.style.borderColor = '#7fe826';
@@ -9750,7 +9750,7 @@ let editingClipId = null; // Track if we are editing
                 infiniteItems.push(newItem);
                 
                 try {
-                    const { data, error } = await supabaseClient.from('infinite_canvas_items').insert([{ card_id: cardId, url: url, x: x, y: y, tags: tags }]).select();
+                    const { data, error } = await supabaseClient.from('studiohub_infinite_canvas').insert([{ card_id: cardId, url: url, x: x, y: y, tags: tags }]).select();
                     if (error) throw error;
                     if(data && data.length > 0) {
                         const idx = infiniteItems.findIndex(i => i.id === tempId);
@@ -9912,7 +9912,7 @@ let editingClipId = null; // Track if we are editing
             
             async function fetchModelsData() {
     try {
-        const { data, error } = await supabaseClient.from('cards').select('*').order('title', { ascending: true });
+        const { data, error } = await supabaseClient.from('studiohub_models').select('*').order('title', { ascending: true });
         if (error) throw error;
         
         if (data) {
@@ -10069,7 +10069,7 @@ let editingClipId = null; // Track if we are editing
                     if (isItemDragging) {
                         isItemDragging = false;
                         if (draggedItemEl) { draggedItemEl.style.zIndex = ''; draggedItemEl.classList.remove('ring-4', 'ring-[#7fe826]'); draggedItemEl.classList.add('hover:-translate-y-2'); }
-                        if (draggedItem && draggedItem.id) { try { await supabaseClient.from('infinite_canvas_items').update({ x: draggedItem.x, y: draggedItem.y }).eq('id', draggedItem.id); } catch(err) { console.error("Failed to save item position", err); } }
+                        if (draggedItem && draggedItem.id) { try { await supabaseClient.from('studiohub_infinite_canvas').update({ x: draggedItem.x, y: draggedItem.y }).eq('id', draggedItem.id); } catch(err) { console.error("Failed to save item position", err); } }
                         draggedItem = null; draggedItemEl = null;
                     }
                     if (isInfDragging) { isInfDragging = false; infContainer.style.cursor = 'grab'; }
@@ -10098,7 +10098,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                     targetArray.push({ url: url, title, tags: [..._moanAddTags] });
                     currentActiveModelData.audio_clips = targetArray;
                     try {
-                        await supabaseClient.from('cards').update({ audio_clips: targetArray }).eq('id', currentActiveModelData.id);
+                        await supabaseClient.from('studiohub_models').update({ audio_clips: targetArray }).eq('id', currentActiveModelData.id);
                         renderAudioClips();
                         closeAddAudioModal();
                         showSuccessToast("Moan audio added successfully!");
@@ -10149,7 +10149,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                     });
 
                     try {
-                        await supabaseClient.from('cards').update({ [dbField]: targetArray }).eq('id', currentActiveModelData.id);
+                        await supabaseClient.from('studiohub_models').update({ [dbField]: targetArray }).eq('id', currentActiveModelData.id);
                         closeAddMediaModal();
                         const plural = urls.length > 1 ? `${urls.length} items` : '1 item';
                         showSuccessToast(isAddingClip ? `${plural} added successfully!` : `${plural} added successfully!`);
@@ -10184,7 +10184,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                     };
                     
                     try {
-                        const { data, error } = await supabaseClient.from('cards').insert([newCard]).select();
+                        const { data, error } = await supabaseClient.from('studiohub_models').insert([newCard]).select();
                         if (error) throw error;
                         allLoadedCards.unshift(data[0]);
                         closeModelModal();
@@ -10212,7 +10212,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                     if (newUrl) updates.main_image_url = newUrl;
 
                     try {
-                        await supabaseClient.from('cards').update(updates).eq('id', currentActiveModelData.id);
+                        await supabaseClient.from('studiohub_models').update(updates).eq('id', currentActiveModelData.id);
 
                         // Update in-memory model data
                         currentActiveModelData.title = newName;
@@ -10247,7 +10247,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                     if (parentId) insertData.parent_id = parseInt(parentId);
 
                     try {
-                        const { error } = await supabaseClient.from('clip_categories').insert([insertData]);
+                        const { error } = await supabaseClient.from('studiohub_clip_categories').insert([insertData]);
                         if (error) throw error;
                         closeCategoryModal();
                         showSuccessToast("Category created!");
@@ -10307,9 +10307,9 @@ const addAudioForm = document.getElementById('addAudioForm');
                                     site_name: siteNameVal
                                 };
                                 const { data, error } = await supabaseClient
-                                    .from('global_clips')
+                                    .from('studiohub_global_clips')
                                     .insert([clipData])
-                                    .select('*, cards(id, title, main_image_url)');
+                                    .select('*, cards:studiohub_models(id, title, main_image_url)');
                                 if (error) throw error;
                                 if (data && data.length > 0) {
                                     ytGlobalClips.unshift(data[0]);
@@ -10394,10 +10394,10 @@ const addAudioForm = document.getElementById('addAudioForm');
                         if (editingClipId) {
                             // --- UPDATE EXISTING CLIP ---
                             const response = await supabaseClient
-                                .from('global_clips')
+                                .from('studiohub_global_clips')
                                 .update(clipData)
                                 .eq('id', editingClipId)
-                                .select('*, cards(id, title, main_image_url, related_images_with_tags)');
+                                .select('*, cards:studiohub_models(id, title, main_image_url, related_images_with_tags)');
                             data = response.data;
                             error = response.error;
                             
@@ -10423,9 +10423,9 @@ const addAudioForm = document.getElementById('addAudioForm');
                         } else {
                             // --- INSERT NEW CLIP ---
                             const response = await supabaseClient
-                                .from('global_clips')
+                                .from('studiohub_global_clips')
                                 .insert([clipData])
-                                .select('*, cards(id, title, main_image_url)');
+                                .select('*, cards:studiohub_models(id, title, main_image_url)');
                             data = response.data;
                             error = response.error;
                             
@@ -10539,7 +10539,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                     const audio = document.getElementById('waveAudioUrl').value;
                     const newWave = { title: name, cover_url: cover, audio_url: audio, source: 'wave', tags: [..._waveAddTags] };
                     try {
-                        const { data, error } = await supabaseClient.from('waves').insert([newWave]).select();
+                        const { data, error } = await supabaseClient.from('studiohub_waves').insert([newWave]).select();
                         if (error) throw error;
                         allLoadedWaves.unshift(data[0]);
                         closeAddWaveModal();
@@ -10872,7 +10872,7 @@ const addAudioForm = document.getElementById('addAudioForm');
         // ==========================================
         async function fetchWavesData() {
             try {
-                const { data, error } = await supabaseClient.from('waves').select('*').order('created_at', { ascending: false });
+                const { data, error } = await supabaseClient.from('studiohub_waves').select('*').order('created_at', { ascending: false });
                 if (data) { allLoadedWaves = data; seedTagLibraryFromData(); renderWavesGrid(); }
             } catch(e) { console.error("Waves table might not exist.", e); }
         }
@@ -10990,7 +10990,7 @@ const addAudioForm = document.getElementById('addAudioForm');
 
         async function executeWaveDeletion(id) {
             try {
-                await supabaseClient.from('waves').delete().eq('id', id);
+                await supabaseClient.from('studiohub_waves').delete().eq('id', id);
                 allLoadedWaves = allLoadedWaves.filter(w => w.id !== id);
                 showSuccessToast("Wave deleted!");
                 if (currentWaveIndex !== -1 && allLoadedWaves[currentWaveIndex] && allLoadedWaves[currentWaveIndex].id === id) { closeGlobalAudio(); currentWaveIndex = -1; }
@@ -11105,8 +11105,8 @@ const addAudioForm = document.getElementById('addAudioForm');
 
             try {
                 let query = supabaseClient
-                    .from('global_clips')
-                    .select('*, cards(id, title, main_image_url, tags, rating_hotness)');
+                    .from('studiohub_global_clips')
+                    .select('*, cards:studiohub_models(id, title, main_image_url, tags, rating_hotness)');
 
                 if (heroMode === 'views') {
                     query = query.order('views', { ascending: false });
@@ -11320,7 +11320,7 @@ const addAudioForm = document.getElementById('addAudioForm');
         async function fetchPlaylists() {
             try {
                 const { data, error } = await supabaseClient
-                    .from('playlists')
+                    .from('studiohub_playlists')
                     .select('*')
                     .order('created_at', { ascending: false });
                 if (data) {
@@ -11416,8 +11416,8 @@ const addAudioForm = document.getElementById('addAudioForm');
             // Fetch clips that belong to this manual playlist
             try {
                 const { data, error } = await supabaseClient
-                    .from('playlist_clips')
-                    .select('clip_id, global_clips(*)')
+                    .from('studiohub_playlist_clips')
+                    .select('clip_id, global_clips:studiohub_global_clips(*)')
                     .eq('playlist_id', playlistId)
                     .order('added_at', { ascending: false });
 
@@ -11457,8 +11457,8 @@ const addAudioForm = document.getElementById('addAudioForm');
                 if (playlistId === 'smart:top_watched') {
                     // Top Watched: clips sorted by views descending
                     const { data, error } = await supabaseClient
-                        .from('global_clips')
-                        .select('*, cards(id, title, main_image_url, tags)')
+                        .from('studiohub_global_clips')
+                        .select('*, cards:studiohub_models(id, title, main_image_url, tags)')
                         .order('views', { ascending: false })
                         .limit(50);
                     if (error) throw error;
@@ -11488,8 +11488,8 @@ const addAudioForm = document.getElementById('addAudioForm');
 
                     const topCardIds = topCards.map(c => c.id);
                     const { data, error } = await supabaseClient
-                        .from('global_clips')
-                        .select('*, cards(id, title, main_image_url, tags)')
+                        .from('studiohub_global_clips')
+                        .select('*, cards:studiohub_models(id, title, main_image_url, tags)')
                         .in('card_id', topCardIds)
                         .order('created_at', { ascending: false })
                         .limit(60);
@@ -11507,8 +11507,8 @@ const addAudioForm = document.getElementById('addAudioForm');
                     // Content Queen: model with the most clips
                     // Count clips per card_id from global_clips
                     const { data, error } = await supabaseClient
-                        .from('global_clips')
-                        .select('card_id, cards(id, title, main_image_url, tags)');
+                        .from('studiohub_global_clips')
+                        .select('card_id, cards:studiohub_models(id, title, main_image_url, tags)');
                     if (error) throw error;
 
                     // Count clips per model
@@ -11530,8 +11530,8 @@ const addAudioForm = document.getElementById('addAudioForm');
 
                     // Fetch actual clips for top models, ordered so the queen's clips come first
                     const { data: clipData, error: clipError } = await supabaseClient
-                        .from('global_clips')
-                        .select('*, cards(id, title, main_image_url, tags)')
+                        .from('studiohub_global_clips')
+                        .select('*, cards:studiohub_models(id, title, main_image_url, tags)')
                         .in('card_id', topModelIds)
                         .order('created_at', { ascending: false })
                         .limit(60);
@@ -11597,7 +11597,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                 if (editingId) {
                     // Update existing
                     const { error } = await supabaseClient
-                        .from('playlists')
+                        .from('studiohub_playlists')
                         .update({ name, description: description || null, cover_url: cover_url || null })
                         .eq('id', editingId);
                     if (!error) {
@@ -11608,7 +11608,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                 } else {
                     // Insert new
                     const { data, error } = await supabaseClient
-                        .from('playlists')
+                        .from('studiohub_playlists')
                         .insert([{ name, description: description || null, cover_url: cover_url || null }])
                         .select()
                         .single();
@@ -11634,8 +11634,8 @@ const addAudioForm = document.getElementById('addAudioForm');
                 // Execute deletion
                 clearTimeout(playlistDeleteTimeouts[id]);
                 try {
-                    await supabaseClient.from('playlist_clips').delete().eq('playlist_id', id);
-                    await supabaseClient.from('playlists').delete().eq('id', id);
+                    await supabaseClient.from('studiohub_playlist_clips').delete().eq('playlist_id', id);
+                    await supabaseClient.from('studiohub_playlists').delete().eq('id', id);
                     allPlaylists = allPlaylists.filter(p => p.id !== id);
                     if (currentPlaylistFilter === id) {
                         currentPlaylistFilter = null;
@@ -11685,8 +11685,8 @@ const addAudioForm = document.getElementById('addAudioForm');
             // Fetch clips
             try {
                 const { data } = await supabaseClient
-                    .from('playlist_clips')
-                    .select('id, clip_id, added_at, global_clips(id, title, url, duration, card_id, cards(title, main_image_url))')
+                    .from('studiohub_playlist_clips')
+                    .select('id, clip_id, added_at, global_clips:studiohub_global_clips(id, title, url, duration, card_id, cards:studiohub_models(title, main_image_url))')
                     .eq('playlist_id', id)
                     .order('added_at', { ascending: false });
 
@@ -11749,7 +11749,7 @@ const addAudioForm = document.getElementById('addAudioForm');
         async function removeClipFromPlaylist(playlistId, rowId, btn) {
             btn.disabled = true;
             try {
-                await supabaseClient.from('playlist_clips').delete().eq('id', rowId);
+                await supabaseClient.from('studiohub_playlist_clips').delete().eq('id', rowId);
                 // Remove the card from the UI
                 const card = btn.closest('.flex.flex-col.gap-2');
                 if (card) card.remove();
@@ -11795,7 +11795,7 @@ const addAudioForm = document.getElementById('addAudioForm');
             let savedIds = new Set();
             try {
                 const { data } = await supabaseClient
-                    .from('playlist_clips')
+                    .from('studiohub_playlist_clips')
                     .select('playlist_id')
                     .eq('clip_id', clipId);
                 if (data) data.forEach(d => savedIds.add(d.playlist_id));
@@ -11830,7 +11830,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                 if (isSaved) {
                     // Remove
                     await supabaseClient
-                        .from('playlist_clips')
+                        .from('studiohub_playlist_clips')
                         .delete()
                         .eq('playlist_id', playlistId)
                         .eq('clip_id', clipId);
@@ -11838,7 +11838,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                 } else {
                     // Add — prevent duplicates via upsert-like insert
                     const { error } = await supabaseClient
-                        .from('playlist_clips')
+                        .from('studiohub_playlist_clips')
                         .insert([{ playlist_id: playlistId, clip_id: clipId }]);
                     if (!error) showSuccessToast('Saved to playlist!');
                 }
@@ -12263,7 +12263,7 @@ const addAudioForm = document.getElementById('addAudioForm');
                     item.y = wy2 - ITEM_H / 2;
 
                     updates.push(
-                        supabaseClient.from('infinite_canvas_items')
+                        supabaseClient.from('studiohub_infinite_canvas')
                             .update({ x: item.x, y: item.y })
                             .eq('id', item.id)
                     );
@@ -12554,7 +12554,7 @@ const addAudioForm = document.getElementById('addAudioForm');
         async function fetchSeries() {
             try {
                 const { data, error } = await supabaseClient
-                    .from('playlists')
+                    .from('studiohub_playlists')
                     .select('*')
                     .eq('series_mode', true)
                     .order('created_at', { ascending: false });
@@ -12602,8 +12602,8 @@ const addAudioForm = document.getElementById('addAudioForm');
 
             try {
                 const { data, error } = await supabaseClient
-                    .from('playlist_clips')
-                    .select('clip_id, order_index, global_clips(*)')
+                    .from('studiohub_playlist_clips')
+                    .select('clip_id, order_index, global_clips:studiohub_global_clips(*)')
                     .eq('playlist_id', seriesId)
                     .order('order_index', { ascending: true });
 
@@ -12792,8 +12792,8 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
         async function dfLoadLibrary() {
             try {
                 const { data, error } = await supabaseClient
-                    .from('global_clips')
-                    .select('*, cards(id, title, main_image_url, related_images_with_tags)')
+                    .from('studiohub_global_clips')
+                    .select('*, cards:studiohub_models(id, title, main_image_url, related_images_with_tags)')
                     .order('created_at', { ascending: false })
                     .limit(200);
                 if (data) {
@@ -13581,7 +13581,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                 let workflowId = DF.activeWorkflowId;
                 if (!workflowId) {
                     // Create workflow
-                    const { data: wf, error: wErr } = await supabaseClient.from('dreamflow_workflows').insert({
+                    const { data: wf, error: wErr } = await supabaseClient.from('studiohub_df_workflows').insert({
                         name: name || 'Untitled Workflow',
                         canvas_x: DF.panX,
                         canvas_y: DF.panY,
@@ -13592,14 +13592,14 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                     DF.activeWorkflowId = workflowId;
                 } else {
                     // Update viewport
-                    await supabaseClient.from('dreamflow_workflows').update({
+                    await supabaseClient.from('studiohub_df_workflows').update({
                         canvas_x: DF.panX,
                         canvas_y: DF.panY,
                         canvas_zoom: DF.zoom,
                         updated_at: new Date().toISOString(),
                     }).eq('id', workflowId);
                     // Delete old nodes + edges
-                    await supabaseClient.from('dreamflow_nodes').delete().eq('workflow_id', workflowId);
+                    await supabaseClient.from('studiohub_df_nodes').delete().eq('workflow_id', workflowId);
                 }
                 // Insert nodes — never include id, always let the DB generate UUIDs
                 if (DF.nodes.length > 0) {
@@ -13614,7 +13614,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                         video_url: n.videoUrl,
                         tags: n.tags,
                     }));
-                    const { data: savedNodes, error: nErr } = await supabaseClient.from('dreamflow_nodes').insert(nodeRows).select();
+                    const { data: savedNodes, error: nErr } = await supabaseClient.from('studiohub_df_nodes').insert(nodeRows).select();
                     if (nErr) throw nErr;
                     // Build old-local-id -> new-DB-uuid map
                     const idMap = {};
@@ -13628,7 +13628,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                         target_node_id: idMap[e.targetId] || e.targetId,
                     })).filter(e => e.source_node_id && e.target_node_id);
                     if (edgeRows.length > 0) {
-                        await supabaseClient.from('dreamflow_edges').insert(edgeRows);
+                        await supabaseClient.from('studiohub_df_edges').insert(edgeRows);
                     }
                 }
                 showSuccessToast('Workflow saved! ✓');
@@ -13640,9 +13640,9 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
 
         async function dfLoadWorkflow(workflowId) {
             try {
-                const { data: wf } = await supabaseClient.from('dreamflow_workflows').select('*').eq('id', workflowId).single();
-                const { data: nodes } = await supabaseClient.from('dreamflow_nodes').select('*').eq('workflow_id', workflowId);
-                const { data: edges } = await supabaseClient.from('dreamflow_edges').select('*').eq('workflow_id', workflowId);
+                const { data: wf } = await supabaseClient.from('studiohub_df_workflows').select('*').eq('id', workflowId).single();
+                const { data: nodes } = await supabaseClient.from('studiohub_df_nodes').select('*').eq('workflow_id', workflowId);
+                const { data: edges } = await supabaseClient.from('studiohub_df_edges').select('*').eq('workflow_id', workflowId);
                 if (!wf) return;
 
                 dfClearCanvas();
@@ -13685,7 +13685,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
         async function dfDeleteWorkflow(workflowId, event) {
             event.stopPropagation();
             if (!confirm('Delete this workflow permanently?')) return;
-            await supabaseClient.from('dreamflow_workflows').delete().eq('id', workflowId);
+            await supabaseClient.from('studiohub_df_workflows').delete().eq('id', workflowId);
             if (DF.activeWorkflowId === workflowId) { dfClearCanvas(); DF.activeWorkflowId = null; }
             dfOpenWorkflowModal(); // refresh
         }
@@ -13696,7 +13696,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             const listEl = document.getElementById('dfWorkflowList');
             listEl.innerHTML = '<div style="padding:30px;text-align:center;color:#334155;font-size:12px;font-weight:600;">Loading…</div>';
             try {
-                const { data, error } = await supabaseClient.from('dreamflow_workflows').select('*').order('updated_at', { ascending: false });
+                const { data, error } = await supabaseClient.from('studiohub_df_workflows').select('*').order('updated_at', { ascending: false });
                 if (!data || data.length === 0) {
                     listEl.innerHTML = '<div style="padding:30px;text-align:center;color:#334155;font-size:12px;font-weight:600;">No saved workflows yet. Save your first one below!</div>';
                     return;
@@ -13938,7 +13938,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             if (!supabaseClient) return;
             try {
                 const { data, error } = await supabaseClient
-                    .from('poses')
+                    .from('studiohub_poses')
                     .select('name')
                     .order('name', { ascending: true });
                 if (error) throw error;
@@ -13981,18 +13981,18 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
 
             try {
                 let query = supabaseClient
-                    .from('pose_images')
-                    .select('id, image_url, safety_type, poses(name)')
+                    .from('studiohub_pose_images')
+                    .select('id, image_url, safety_type, poses:studiohub_poses(name)')
                     .order('created_at', { ascending })
                     .range(posesPageOffset, posesPageOffset + POSES_PAGE_SIZE - 1);
 
                 if (currentPoseFilter !== 'all') {
                     const { data: poseRow } = await supabaseClient
-                        .from('poses').select('id').eq('name', currentPoseFilter).maybeSingle();
+                        .from('studiohub_poses').select('id').eq('name', currentPoseFilter).maybeSingle();
                     if (poseRow) {
                         query = supabaseClient
-                            .from('pose_images')
-                            .select('id, image_url, safety_type, poses(name)')
+                            .from('studiohub_pose_images')
+                            .select('id, image_url, safety_type, poses:studiohub_poses(name)')
                             .eq('pose_id', poseRow.id)
                             .order('created_at', { ascending })
                             .range(posesPageOffset, posesPageOffset + POSES_PAGE_SIZE - 1);
@@ -14043,7 +14043,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                 let poseRowId = null;
                 if (currentPoseFilter !== 'all') {
                     const { data: poseRow } = await supabaseClient
-                        .from('poses').select('id').eq('name', currentPoseFilter).maybeSingle();
+                        .from('studiohub_poses').select('id').eq('name', currentPoseFilter).maybeSingle();
                     if (!poseRow) {
                         // Filter tag doesn't exist
                         document.getElementById('posesLoadingState').classList.add('hidden');
@@ -14059,8 +14059,8 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                 // Page through the whole table
                 while (true) {
                     let q = supabaseClient
-                        .from('pose_images')
-                        .select('id, image_url, safety_type, poses(name)')
+                        .from('studiohub_pose_images')
+                        .select('id, image_url, safety_type, poses:studiohub_poses(name)')
                         .order('id', { ascending: true })   // stable ordering for paging
                         .range(offset, offset + CHUNK - 1);
                     if (poseRowId) q = q.eq('pose_id', poseRowId);
@@ -14285,7 +14285,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             if (!confirm('Remove this image?')) return;
             try {
                 const { error } = await supabaseClient
-                    .from('pose_images')
+                    .from('studiohub_pose_images')
                     .delete()
                     .eq('id', imageId);
                 if (error) throw error;
@@ -14459,26 +14459,26 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                     // Upsert pose row
                     let poseId;
                     const { data: existingPose } = await supabaseClient
-                        .from('poses').select('id').ilike('name', poseName).maybeSingle();
+                        .from('studiohub_poses').select('id').ilike('name', poseName).maybeSingle();
                     if (existingPose) {
                         poseId = existingPose.id;
                     } else {
                         const { data: newPose, error: poseErr } = await supabaseClient
-                            .from('poses').insert({ name: poseName }).select('id').single();
+                            .from('studiohub_poses').insert({ name: poseName }).select('id').single();
                         if (poseErr) throw poseErr;
                         poseId = newPose.id;
                     }
 
                     // Only insert URLs not already linked to this category (avoid duplicates)
                     const { data: existingRows } = await supabaseClient
-                        .from('pose_images').select('image_url').eq('pose_id', poseId).in('image_url', urls);
+                        .from('studiohub_pose_images').select('image_url').eq('pose_id', poseId).in('image_url', urls);
                     const existingUrls = new Set((existingRows || []).map(r => r.image_url));
                     const newUrls = urls.filter(u => !existingUrls.has(u));
                     let inserted = [];
                     if (newUrls.length > 0) {
                         const inserts = newUrls.map(url => ({ pose_id: poseId, image_url: url, safety_type: safetyType }));
                         const { data: ins, error: imgErr } = await supabaseClient
-                            .from('pose_images').insert(inserts).select('*, poses(name)');
+                            .from('studiohub_pose_images').insert(inserts).select('*, poses:studiohub_poses(name)');
                         if (imgErr) throw imgErr;
                         inserted = ins || [];
                     }
@@ -14544,8 +14544,8 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
             try {
                 // Fetch all pose_images rows for this URL to get current categories + safety_type
                 const { data: rows, error } = await supabaseClient
-                    .from('pose_images')
-                    .select('pose_id, safety_type, poses(id, name)')
+                    .from('studiohub_pose_images')
+                    .select('pose_id, safety_type, poses:studiohub_poses(id, name)')
                     .eq('image_url', imageUrl);
                 if (error) throw error;
 
@@ -14662,7 +14662,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                 // safety_type is written — UPDATE can silently no-op if the
                 // PostgREST schema cache hasn't picked up the new column yet.
                 const { error: delAllErr } = await supabaseClient
-                    .from('pose_images')
+                    .from('studiohub_pose_images')
                     .delete()
                     .eq('image_url', imageUrl);
                 if (delAllErr) throw delAllErr;
@@ -14671,12 +14671,12 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                 for (const name of targetCats) {
                     let poseId;
                     const { data: existingPose } = await supabaseClient
-                        .from('poses').select('id').ilike('name', name).maybeSingle();
+                        .from('studiohub_poses').select('id').ilike('name', name).maybeSingle();
                     if (existingPose) {
                         poseId = existingPose.id;
                     } else {
                         const { data: newPose, error: poseErr } = await supabaseClient
-                            .from('poses').insert({ name }).select('id').single();
+                            .from('studiohub_poses').insert({ name }).select('id').single();
                         if (poseErr) throw poseErr;
                         poseId = newPose.id;
                         if (!posesTagsList.includes(name)) {
@@ -14685,7 +14685,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                         }
                     }
                     const { error: insErr } = await supabaseClient
-                        .from('pose_images')
+                        .from('studiohub_pose_images')
                         .insert({ pose_id: poseId, image_url: imageUrl, safety_type: newSafetyType });
                     if (insErr) throw insErr;
                 }
