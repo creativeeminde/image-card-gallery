@@ -6586,23 +6586,35 @@ const avg = Math.round((balanceSum + skillSum) / 10);
         }
 
         function generatePreviewCardHTML(media, defaultTag, isClip = false) {
-            const url = optimizeMediaUrl(media.url || media.image_url || media.video_url || media.src || (typeof media === 'string' ? media : ''), isClip);
-            const optImgUrl = optimizeMediaUrl(media.url || media.image_url || media.video_url || media.src || (typeof media === 'string' ? media : ''), false, 300);
-            const tagStr = media.tags || defaultTag;
-            const firstTag = tagStr.split(',')[0].trim() || defaultTag;
-            const isVideo = url.match(/\.(mp4|webm|ogg|mov)$/i) || (!url.match(/\.(jpeg|jpg|gif|png|webp)$/i) && isClip);
-            
-            const mediaElement = isVideo
-                ? `<video data-src="${url}" preload="none" class="lazy-media opacity-0 w-full h-full object-cover object-center" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline></video>`
-                : `<img data-src="${optImgUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover object-center">`;
+    const url = optimizeMediaUrl(media.url || media.image_url || media.video_url || media.src || (typeof media === 'string' ? media : ''), isClip);
+    const optImgUrl = optimizeMediaUrl(media.url || media.image_url || media.video_url || media.src || (typeof media === 'string' ? media : ''), false, 300);
+    const tagStr = media.tags || defaultTag;
+    const firstTag = tagStr.split(',')[0].trim() || defaultTag;
+    
+    // Check if it's a video or a TikTok
+    const isVideo = url.match(/\.(mp4|webm|ogg|mov)$/i) || (!url.match(/\.(jpeg|jpg|gif|png|webp)$/i) && isClip);
+    const isTikTok = url.match(/video\/(\d+)/);
+    
+    // Decide what to show
+    let mediaElement = '';
+    if (isTikTok) {
+        mediaElement = `<div class="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white transition-transform duration-700 group-hover:scale-105">
+            <span class="text-3xl mb-1">🎵</span>
+            <span class="text-[10px] font-bold text-slate-300">TikTok Clip</span>
+        </div>`;
+    } else if (isVideo) {
+        mediaElement = `<video data-src="${url}" preload="none" class="lazy-media opacity-0 w-full h-full object-cover object-center" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline></video>`;
+    } else {
+        mediaElement = `<img data-src="${optImgUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-full object-cover object-center">`;
+    }
 
-            return `
-                <div class="relative aspect-[4/5] rounded-[1rem] overflow-hidden bg-white dark:bg-slate-800 shadow-sm group cursor-pointer transition-colors duration-300">
-                    ${mediaElement}
-                    <div class="absolute top-2 left-2 text-white font-medium text-[10px] shadow-sm drop-shadow-md pointer-events-none">${firstTag}</div>
-                </div>
-            `;
-        }
+    return `
+        <div class="relative aspect-[4/5] rounded-[1rem] overflow-hidden bg-white dark:bg-slate-800 shadow-sm group cursor-pointer transition-colors duration-300">
+            ${mediaElement}
+            <div class="absolute top-2 left-2 text-white font-medium text-[10px] shadow-sm drop-shadow-md pointer-events-none">${firstTag}</div>
+        </div>
+    `;
+}
 
         function generateFullAssetMasonryHTML(asset, index) {
             const imgUrl = optimizeMediaUrl(asset.url || asset.image_url || asset.src || (typeof asset === 'string' ? asset : ''), false, 500);
@@ -6625,30 +6637,43 @@ const avg = Math.round((balanceSum + skillSum) / 10);
         }
 
         function generateClipCardHTML(clip, index) {
-            const clipUrl = optimizeMediaUrl(clip.url || clip.video_url || clip.src || (typeof clip === 'string' ? clip : ''), true);
-            const optImgUrl = optimizeMediaUrl(clip.url || clip.video_url || clip.src || (typeof clip === 'string' ? clip : ''), false, 500);
-            const firstTag = (clip.tags || 'Clip').split(',')[0].trim() || 'Clip';
-            const isVideo = clipUrl.match(/\.(mp4|webm|ogg|mov)$/i) || !clipUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i);
-            const rawUrl = (clip.url || clip.video_url || clip.src || clip);
-            const cardId = clip.cardId || currentActiveModelData?.id || 0;
-            const tagsStr = (clip.tags || '').replace(/'/g, "\\'");
-            const isInInfinite = infiniteItems.some(i => i.url === rawUrl);
-            const inlineStyle = isInInfinite ? "background-color: #7fe826; color: #111; border-color: #7fe826; opacity: 1;" : "";
+    const clipUrl = optimizeMediaUrl(clip.url || clip.video_url || clip.src || (typeof clip === 'string' ? clip : ''), true);
+    const optImgUrl = optimizeMediaUrl(clip.url || clip.video_url || clip.src || (typeof clip === 'string' ? clip : ''), false, 500);
+    const firstTag = (clip.tags || 'Clip').split(',')[0].trim() || 'Clip';
+    
+    // Check if it's a video or a TikTok
+    const isVideo = clipUrl.match(/\.(mp4|webm|ogg|mov)$/i) || !clipUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i);
+    const isTikTok = clipUrl.match(/video\/(\d+)/);
+    
+    const rawUrl = (clip.url || clip.video_url || clip.src || clip);
+    const cardId = clip.cardId || currentActiveModelData?.id || 0;
+    const tagsStr = (clip.tags || '').replace(/'/g, "\\'");
+    const isInInfinite = infiniteItems.some(i => i.url === rawUrl);
+    const inlineStyle = isInInfinite ? "background-color: #7fe826; color: #111; border-color: #7fe826; opacity: 1;" : "";
 
-            const mediaElement = isVideo
-                ? `<video data-src="${clipUrl}" preload="none" class="lazy-media opacity-0 w-full h-auto block transition-transform duration-700 group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline></video>`
-                : `<img data-src="${optImgUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-auto block transition-transform duration-700 group-hover:scale-105">`;
+    // Decide what to show
+    let mediaElement = '';
+    if (isTikTok) {
+        mediaElement = `<div class="w-full h-auto aspect-[4/5] flex flex-col items-center justify-center bg-slate-900 text-white transition-transform duration-700 group-hover:scale-105">
+            <span class="text-4xl mb-2">🎵</span>
+            <span class="text-xs font-bold text-slate-300">TikTok Clip</span>
+        </div>`;
+    } else if (isVideo) {
+        mediaElement = `<video data-src="${clipUrl}" preload="none" class="lazy-media opacity-0 w-full h-auto block transition-transform duration-700 group-hover:scale-105" muted loop onmouseover="safePlayVideo(this)" onmouseout="safePauseVideo(this)" playsinline></video>`;
+    } else {
+        mediaElement = `<img data-src="${optImgUrl}" loading="lazy" decoding="async" class="lazy-media opacity-0 w-full h-auto block transition-transform duration-700 group-hover:scale-105">`;
+    }
 
-            return `
-                <div onclick="openLightbox(${index}, true)" class="relative group cursor-pointer transition-all duration-500 hover:-translate-y-1 overflow-hidden w-full self-start break-inside-avoid mb-6 sm:mb-8 rounded-2xl bg-slate-100">
-                    ${mediaElement}
-                    <div class="absolute top-4 left-4 bg-white/95 text-[#111] font-bold text-[11px] px-4 py-2 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all z-10 pointer-events-none">${firstTag}</div>
-                    <button onclick="toggleInfiniteCanvas('${rawUrl.replace(/'/g, "\\'")}', ${cardId}, '${tagsStr}', this, event)" class="absolute top-4 right-4 z-20 bg-white/95 hover:bg-[#7fe826] text-[#111] text-[10px] font-bold p-2.5 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all border border-slate-200" style="${inlineStyle}" title="Toggle Infinite Canvas">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18.5 8c-2.5 0-4.5 2-6.5 4s-4 4-6.5 4a4 4 0 0 1 0-8c2.5 0 4.5 2 6.5 4s4 4 6.5 4a4 4 0 0 0 0-8z"></path></svg>
-                    </button>
-                </div>
-            `;
-        }
+    return `
+        <div onclick="openLightbox(${index}, true)" class="relative group cursor-pointer transition-all duration-500 hover:-translate-y-1 overflow-hidden w-full self-start break-inside-avoid mb-6 sm:mb-8 rounded-2xl bg-slate-100">
+            ${mediaElement}
+            <div class="absolute top-4 left-4 bg-white/95 text-[#111] font-bold text-[11px] px-4 py-2 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all z-10 pointer-events-none">${firstTag}</div>
+            <button onclick="toggleInfiniteCanvas('${rawUrl.replace(/'/g, "\\'")}', ${cardId}, '${tagsStr}', this, event)" class="absolute top-4 right-4 z-20 bg-white/95 hover:bg-[#7fe826] text-[#111] text-[10px] font-bold p-2.5 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all border border-slate-200" style="${inlineStyle}" title="Toggle Infinite Canvas">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18.5 8c-2.5 0-4.5 2-6.5 4s-4 4-6.5 4a4 4 0 0 1 0-8c2.5 0 4.5 2 6.5 4s4 4 6.5 4a4 4 0 0 0 0-8z"></path></svg>
+            </button>
+        </div>
+    `;
+}
 
         function buildFilters() {
             let tagSet = new Set();
@@ -7313,103 +7338,104 @@ function filterClipsByModel(modelId) {
         }
 
 function renderYTClipsGrid(clearFirst = false) {
-            const grid = document.getElementById('ytClipsGrid');
-            if (clearFirst && grid) grid.innerHTML = '';
-
-            // Track how many items are already rendered to avoid duplicates.
-            // When clearFirst=true, render all; otherwise only render items after the already-rendered count.
-            const alreadyRendered = clearFirst ? 0 : (grid ? grid.children.length : 0);
-            let itemsToRender = ytGlobalClips.slice(alreadyRendered);
-
-            // --- TAG FILTERING LOGIC ---
-            if (currentClipTagFilter) {
-                itemsToRender = itemsToRender.filter(clip => {
-                    let tagString = clip.tags || (clip.cards ? clip.cards.tags : '');
-                    if (typeof tagString === 'string') {
-                        const tagsArray = tagString.split(',').map(t => t.trim().toLowerCase());
-                        return tagsArray.includes(currentClipTagFilter.toLowerCase());
-                    } else if (Array.isArray(tagString)) {
-                        return tagString.some(t => t.toLowerCase() === currentClipTagFilter.toLowerCase());
-                    }
-                    return false;
-                });
+    const grid = document.getElementById('ytClipsGrid');
+    if (clearFirst && grid) grid.innerHTML = '';
+    
+    const alreadyRendered = clearFirst ? 0 : (grid ? grid.children.length : 0);
+    let itemsToRender = ytGlobalClips.slice(alreadyRendered);
+    
+    // --- TAG FILTERING LOGIC ---
+    if (currentClipTagFilter) {
+        itemsToRender = itemsToRender.filter(clip => {
+            let tagString = clip.tags || (clip.cards ? clip.cards.tags : '');
+            if (typeof tagString === 'string') {
+                const tagsArray = tagString.split(',').map(t => t.trim().toLowerCase());
+                return tagsArray.includes(currentClipTagFilter.toLowerCase());
+            } else if (Array.isArray(tagString)) {
+                return tagString.some(t => t.toLowerCase() === currentClipTagFilter.toLowerCase());
             }
+            return false;
+        });
+    }
 
-            if (!itemsToRender || itemsToRender.length === 0) {
-                if (clearFirst && grid) {
-                    grid.innerHTML = `<div class="col-span-full py-20 text-center text-slate-500 font-medium">No clips found matching this filter.</div>`;
-                }
-                return;
-            }
-
-            const html = itemsToRender.map(clip => {
-                const hasModel = !!(clip.card_id || (Array.isArray(clip.card_ids) && clip.card_ids.length));
-                const modelName = clip.cards ? clip.cards.title : (hasModel ? 'Unknown Model' : null);
-                
-                // --- AVATAR LOOKUP LOGIC ---
-                let avatarUrl = clip.cards ? optimizeMediaUrl(clip.cards.main_image_url, false, 100) : '';
-                const fullCard = allLoadedCards.find(c => c.id === clip.card_id);
-                if (fullCard && fullCard.related_images_with_tags) {
-                    const avatarAsset = fullCard.related_images_with_tags.find(a => {
-                        const t = typeof a === 'string' ? '' : (a.tags || '');
-                        return t.toLowerCase().includes('avatar');
-                    });
-                    if (avatarAsset) {
-                        avatarUrl = optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset, false, 100);
-                    }
-                }
-
-                const clipUrl = optimizeMediaUrl(clip.url, true);
-                const dateStr = new Date(clip.created_at).toLocaleDateString();
-
-                // Flag clips that need duration backfilled (null, blank, or '0:00')
-                const needsDuration = !clip.duration || clip.duration === '0:00';
-                return `
-                    <div class="flex flex-col gap-3 group" data-clip-id="${clip.id}">
-                        <div class="relative w-full aspect-video bg-slate-200 dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm cursor-pointer" onclick="openYTPlayer(${clip.id})">
-                            <video data-src="${clipUrl}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 lazy-clip-thumb" muted loop playsinline webkit-playsinline preload="none"
-                                data-clip-id="${clip.id}" ${needsDuration ? 'data-needs-duration="1"' : ''}></video>
-                            <div class="absolute bottom-2 right-2 bg-black/80 text-white text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm" id="dur-badge-${clip.id}">${clip.duration && clip.duration !== '0:00' ? clip.duration : '0:00'}</div>
-                            <button onclick="event.stopPropagation(); openYTEditModal(${clip.id})" class="absolute top-2 left-2 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-[#7fe826] hover:text-[#111] transition-all backdrop-blur-sm" title="Edit Clip">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                            </button>
-                            <button onclick="event.stopPropagation(); openSaveToPlaylistModal(${clip.id})" class="absolute top-2 right-2 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-[#7fe826] hover:text-[#111] transition-all backdrop-blur-sm" title="Save to Playlist">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
-                            </button>
-                        </div>
-                        
-                        <div class="flex gap-3 px-1">
-                            ${hasModel || avatarUrl ? `<img src="${avatarUrl}" 
-                                 onclick="${clip.card_id ? `openModelById(${clip.card_id})` : ''}" 
-                                 class="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700 mt-0.5 ${clip.card_id ? 'cursor-pointer hover:scale-110' : 'cursor-default'} transition-transform shadow-sm flex-shrink-0" 
-                                 onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2212%22 fill=%22%23cbd5e1%22/></svg>'" 
-                                 title="${modelName ? 'View ' + modelName : ''}">` : `<div class="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 border border-slate-200 dark:border-slate-700 mt-0.5 flex-shrink-0 flex items-center justify-center"><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg></div>`}
-                            
-                            <div class="flex flex-col min-w-0">
-                                <h4 class="font-bold text-slate-900 dark:text-white text-sm line-clamp-2 leading-tight cursor-pointer hover:text-[#7fe826] transition-colors" 
-                                    onclick="openYTPlayer(${clip.id})">${clip.title}</h4>
-                                
-                                ${modelName ? `<span class="text-xs text-slate-500 dark:text-slate-400 mt-1 cursor-pointer hover:text-slate-900 dark:hover:text-white transition-colors font-medium w-max" 
-                                      onclick="${clip.card_id ? `openModelById(${clip.card_id})` : ''}" 
-                                      title="View ${modelName}">${modelName}</span>` : `<span class="text-xs text-slate-400 dark:text-slate-600 mt-1 font-medium w-max italic">No model assigned</span>`}
-                                
-                                <div class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5">
-                                    <span>${clip.views || 0} views</span><span>•</span><span>${dateStr}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            if(grid) {
-                grid.insertAdjacentHTML('beforeend', html);
-                // Backfill real durations for any clips that have '0:00' or no duration stored
-                backfillClipDurations();
-                // Initialize lazy thumbnails for newly added cards (Safari-safe)
-                initLazyClipThumbs();
+    if (!itemsToRender || itemsToRender.length === 0) {
+        if (clearFirst && grid) {
+            grid.innerHTML = `<div class="col-span-full py-20 text-center text-slate-500 font-medium">No clips found matching this filter.</div>`;
+        }
+        return;
+    }
+    
+    const html = itemsToRender.map(clip => {
+        const hasModel = !!(clip.card_id || (Array.isArray(clip.card_ids) && clip.card_ids.length));
+        const modelName = clip.cards ? clip.cards.title : (hasModel ? 'Unknown Model' : null);
+        
+        // --- AVATAR LOOKUP LOGIC ---
+        let avatarUrl = clip.cards ? optimizeMediaUrl(clip.cards.main_image_url, false, 100) : '';
+        const fullCard = allLoadedCards.find(c => c.id === clip.card_id);
+        if (fullCard && fullCard.related_images_with_tags) {
+            const avatarAsset = fullCard.related_images_with_tags.find(a => {
+                const t = typeof a === 'string' ? '' : (a.tags || '');
+                return t.toLowerCase().includes('avatar');
+            });
+            if (avatarAsset) {
+                avatarUrl = optimizeMediaUrl(avatarAsset.url || avatarAsset.image_url || avatarAsset.src || avatarAsset, false, 100);
             }
         }
+        
+        const clipUrl = optimizeMediaUrl(clip.url, true);
+        const dateStr = new Date(clip.created_at).toLocaleDateString();
+        
+        // Flag clips that need duration backfilled (null, blank, or '0:00')
+        const needsDuration = !clip.duration || clip.duration === '0:00';
+        
+        // --- TIKTOK CHECK ---
+        const isTikTok = clipUrl.match(/video\/(\d+)/);
+        let mediaElement = '';
+        if (isTikTok) {
+            mediaElement = `<div class="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white transition-transform duration-700 group-hover:scale-105">
+                <span class="text-4xl mb-2">🎵</span>
+                <span class="text-xs font-bold text-slate-300">TikTok Clip</span>
+            </div>`;
+        } else {
+            mediaElement = `<video data-src="${clipUrl}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 lazy-clip-thumb" muted loop playsinline webkit-playsinline preload="none" data-clip-id="${clip.id}" ${needsDuration ? 'data-needs-duration="1"' : ''}></video>`;
+        }
+        
+        return `
+            <div class="flex flex-col gap-3 group" data-clip-id="${clip.id}">
+                <div class="relative w-full aspect-video bg-slate-200 dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm cursor-pointer" onclick="openYTPlayer(${clip.id})">
+                    ${mediaElement}
+                    <div class="absolute bottom-2 right-2 bg-black/80 text-white text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm" id="dur-badge-${clip.id}">${clip.duration && clip.duration !== '0:00' ? clip.duration : '0:00'}</div>
+                    <button onclick="event.stopPropagation(); openYTEditModal(${clip.id})" class="absolute top-2 left-2 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-[#7fe826] hover:text-[#111] transition-all backdrop-blur-sm" title="Edit Clip">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                    </button>
+                    <button onclick="event.stopPropagation(); openSaveToPlaylistModal(${clip.id})" class="absolute top-2 right-2 w-8 h-8 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-[#7fe826] hover:text-[#111] transition-all backdrop-blur-sm" title="Save to Playlist">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+                    </button>
+                </div>
+                <div class="flex gap-3 px-1">
+                    ${hasModel || avatarUrl ? `<img src="${avatarUrl}" onclick="${clip.card_id ? `openModelById(${clip.card_id})` : ''}" class="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700 mt-0.5 ${clip.card_id ? 'cursor-pointer hover:scale-110' : 'cursor-default'} transition-transform shadow-sm flex-shrink-0" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2212%22 fill=%22%23cbd5e1%22/></svg>'" title="${modelName ? 'View ' + modelName : ''}">` : `<div class="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 border border-slate-200 dark:border-slate-700 mt-0.5 flex-shrink-0 flex items-center justify-center"><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg></div>`}
+                    <div class="flex flex-col min-w-0">
+                        <h4 class="font-bold text-slate-900 dark:text-white text-sm line-clamp-2 leading-tight cursor-pointer hover:text-[#7fe826] transition-colors" onclick="openYTPlayer(${clip.id})">${clip.title}</h4>
+                        ${hasModel ? `<span class="text-xs text-slate-500 dark:text-slate-400 mt-1 cursor-pointer hover:text-slate-900 dark:hover:text-white transition-colors font-medium w-max" onclick="openModelById(${clip.card_id})" title="View ${modelName}">${modelName}</span>` : `<span class="text-xs text-slate-400 dark:text-slate-600 mt-1 font-medium w-max italic">No model assigned</span>`}
+                        <div class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5">
+                            <span>${clip.views || 0} views</span><span>•</span><span>${dateStr}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if(grid) {
+        grid.insertAdjacentHTML('beforeend', html);
+        
+        // Backfill real durations for any clips that have '0:00' or no duration stored
+        backfillClipDurations();
+        
+        // Initialize lazy thumbnails for newly added cards (Safari-safe)
+        initLazyClipThumbs();
+    }
+}
 
         // ── In-place update of a single clip card in the grid ──────────────────
         // Called after an edit save so the UI updates instantly without
