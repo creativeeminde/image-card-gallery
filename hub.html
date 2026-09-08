@@ -4665,6 +4665,7 @@
             <div class="w-full flex-shrink-0" style="aspect-ratio:16/9; min-height:180px;">
                 <div class="w-full h-full bg-black rounded-[1.5rem] overflow-hidden shadow-2xl border border-white/5 relative flex items-center justify-center">
                     <video id="ytPlayerVideo" controls autoplay playsinline webkit-playsinline x-webkit-airplay="allow" class="w-full h-full object-contain outline-none"></video>
+                    <iframe id="ytTikTokPlayerIframe" class="w-full h-full object-contain rounded-[1.5rem] border-0 hidden" allow="fullscreen; autoplay;"></iframe>
                 </div>
             </div>
             
@@ -5419,6 +5420,7 @@
         // ==========================================
         // VIDEO HOVER UTILITIES
         // ==========================================
+        
         window.safePlayVideo = function(vid) {
             if (!vid) return;
             vid._playPromise = vid.play();
@@ -5482,7 +5484,16 @@
                 }
             });
         }, { rootMargin: '350px' });
+        
+function getTikTokVideoId(url) {
+    if (!url) return null;
+    const match = url.match(/video\/(\d+)/);
+    return match ? match[1] : null;
+}
 
+function isTikTokUrl(url) {
+    return Boolean(getTikTokVideoId(url));
+}
         function optimizeMediaUrl(url, isVideo = false, width = null) {
             if (!url) return '';
             if (url.startsWith('data:')) return url;
@@ -7847,50 +7858,48 @@ let editingClipId = null; // Track if we are editing
         }
 
         function autoDetectClipDuration(url) {
-            clearTimeout(_durationProbeTimer);
-            const spinner = document.getElementById('ytDurationSpinner');
-            const badge   = document.getElementById('ytDurationBadge');
+    const durationInput = document.getElementById('ytClipDuration');
+    const durationDisplay = document.getElementById('ytClipDurationDisplay');
+    const spinner = document.getElementById('ytDurationSpinner');
+    const badge = document.getElementById('ytDurationBadge');
+    const probe = document.getElementById('ytDurationProbe');
 
-            // Reset on empty
-            if (!url || !url.trim()) {
-                _setDurationUI('0:00', false);
-                return;
-            }
+    if (!url) return;
 
-            // Show spinner while waiting
-            if (spinner) spinner.classList.remove('hidden');
-            if (badge)   badge.classList.add('hidden');
-
-            // Debounce: only probe after user stops typing for 600ms
-            _durationProbeTimer = setTimeout(() => {
-                const probe = document.getElementById('ytDurationProbe');
-                if (!probe) { if (spinner) spinner.classList.add('hidden'); return; }
-
-                // Clean up old listeners
-                probe.onloadedmetadata = null;
-                probe.onerror = null;
-                probe.src = '';
-
-                probe.onloadedmetadata = () => {
-                    const dur = probe.duration;
-                    probe.src = ''; // free the resource
-                    if (dur && isFinite(dur)) {
-                        _setDurationUI(_secondsToMMSS(dur), true);
-                    } else {
-                        _setDurationUI('0:00', false);
-                        if (spinner) spinner.classList.add('hidden');
-                    }
-                };
-
-                probe.onerror = () => {
-                    // CORS or unsupported URL — silently fall back, let user type manually
-                    probe.src = '';
-                    if (spinner) spinner.classList.add('hidden');
-                };
-
-                probe.src = url.trim();
-            }, 600);
+    // 1. Check if it is a TikTok link first
+    const tikTokMatch = url.match(/video\/(\d+)/);
+    if (tikTokMatch) {
+        if (spinner) spinner.classList.add('hidden');
+        if (badge) {
+            badge.classList.remove('hidden');
+            badge.textContent = 'TikTok';
         }
+        if (durationInput) durationInput.value = 'TikTok';
+        if (durationDisplay) durationDisplay.textContent = 'TikTok Clip';
+        return; // Stop here so it doesn't try to load as an MP4
+    }
+
+    // 2. If it's a normal video (MP4), do the normal check
+    if (spinner) spinner.classList.remove('hidden');
+    if (probe) {
+        probe.src = url;
+        probe.onloadedmetadata = function() {
+            if (spinner) spinner.classList.add('hidden');
+            if (badge) {
+                badge.classList.remove('hidden');
+                badge.textContent = 'Auto';
+            }
+            const mins = Math.floor(probe.duration / 60);
+            const secs = Math.floor(probe.duration % 60).toString().padStart(2, '0');
+            const timeStr = `${mins}:${secs}`;
+            if (durationInput) durationInput.value = timeStr;
+            if (durationDisplay) durationDisplay.textContent = timeStr;
+        };
+        probe.onerror = function() {
+            if (spinner) spinner.classList.add('hidden');
+        };
+    }
+}
         // ─────────────────────────────────────────────────────────────────────
 
         function closeYTUploadModal() { 
@@ -7931,43 +7940,73 @@ let editingClipId = null; // Track if we are editing
             // If NOT from player, do nothing (normal close behaviour)
         }
         // --- YT Player Modal ---
-       function openYTPlayer(id) {
+     function openYTPlayer(id) {
     const clip = ytGlobalClips.find(c => c.id === id);
     if (!clip) return;
-    
+
+    // Get both players
     const vidEl = document.getElementById('ytPlayerVideo');
-    // Safari requires: pause → clear src → load() → set src → load() → play()
-    // Without this sequence, Safari shows a black screen with a slashed play icon.
-    try { vidEl.pause(); } catch(e) {}
-    vidEl.removeAttribute('src');
-    try { vidEl.load(); } catch(e) {}
-    // Ensure playsinline is set (required for iOS inline playback)
-    vidEl.setAttribute('playsinline', '');
-    vidEl.setAttribute('webkit-playsinline', '');
-    // Use a <source> element for best Safari codec compatibility
-    vidEl.innerHTML = '';
-    const srcEl = document.createElement('source');
-    // Detect URL type and set appropriate type hint for Safari
-    const rawUrl = (clip.url || '').toLowerCase().split('?')[0];
-    if (rawUrl.endsWith('.m3u8')) {
-        srcEl.type = 'application/x-mpegURL';
-    } else if (rawUrl.endsWith('.mp4') || rawUrl.includes('.mp4')) {
-        srcEl.type = 'video/mp4';
-    } else if (rawUrl.endsWith('.webm')) {
-        srcEl.type = 'video/webm';
-    } else if (rawUrl.endsWith('.mov')) {
-        srcEl.type = 'video/quicktime';
-    }
-    srcEl.src = clip.url;
-    vidEl.appendChild(srcEl);
-    vidEl.load();
-    const _playPromise = vidEl.play();
-    if (_playPromise && _playPromise.catch) {
-        _playPromise.catch(e => {
-            console.log("Autoplay prevented:", e);
-            // Safari may block autoplay on first gesture — controls are already shown
-            vidEl.controls = true;
-        });
+    const iframe = document.getElementById('ytTikTokPlayerIframe');
+    
+    // Check if the link is a TikTok link
+    const tikTokMatch = clip.url.match(/video\/(\d+)/);
+
+    if (tikTokMatch && tikTokMatch[1]) {
+        // --- IT IS A TIKTOK VIDEO ---
+        // Stop and hide the normal video player
+        try { vidEl.pause(); } catch(e) {}
+        vidEl.classList.add('hidden');
+        
+        // Show and load the TikTok player
+        iframe.src = `https://www.tiktok.com/player/v1/${tikTokMatch[1]}?music_info=1&description=1`;
+        iframe.classList.remove('hidden');
+
+    } else {
+        // --- IT IS A NORMAL VIDEO (MP4) ---
+        // Hide the TikTok player
+        if (iframe) {
+            iframe.src = '';
+            iframe.classList.add('hidden');
+        }
+        
+        // Show the normal video player
+        vidEl.classList.remove('hidden');
+
+        // --- START OF YOUR ORIGINAL SAFARI CODE ---
+        // Safari requires: pause → clear src → load() → set src → load() → play()
+        try { vidEl.pause(); } catch(e) {}
+        vidEl.removeAttribute('src');
+        try { vidEl.load(); } catch(e) {}
+        
+        vidEl.setAttribute('playsinline', '');
+        vidEl.setAttribute('webkit-playsinline', '');
+        
+        vidEl.innerHTML = '';
+        const srcEl = document.createElement('source');
+        
+        const rawUrl = (clip.url || '').toLowerCase().split('?')[0];
+        if (rawUrl.endsWith('.m3u8')) {
+            srcEl.type = 'application/x-mpegURL';
+        } else if (rawUrl.endsWith('.mp4') || rawUrl.includes('.mp4')) {
+            srcEl.type = 'video/mp4';
+        } else if (rawUrl.endsWith('.webm')) {
+            srcEl.type = 'video/webm';
+        } else if (rawUrl.endsWith('.mov')) {
+            srcEl.type = 'video/quicktime';
+        }
+        
+        srcEl.src = clip.url;
+        vidEl.appendChild(srcEl);
+        vidEl.load();
+        
+        const _playPromise = vidEl.play();
+        if (_playPromise && _playPromise.catch) {
+            _playPromise.catch(e => {
+                console.log("Autoplay prevented:", e);
+                vidEl.controls = true;
+            });
+        }
+        // --- END OF YOUR ORIGINAL SAFARI CODE ---
     }
 
     const ytTitleEl = document.getElementById('ytPlayerVideoTitle');
@@ -8212,15 +8251,23 @@ let editingClipId = null; // Track if we are editing
         }
 
         function closeYTPlayer() {
-            const modal = document.getElementById('ytPlayerModal');
-            modal.classList.remove('active');
-            const vidEl = document.getElementById('ytPlayerVideo');
-            try { vidEl.pause(); } catch(e) {}
-            vidEl.innerHTML = ''; // Remove any <source> children added by Safari fix
-            vidEl.removeAttribute('src');
-            try { vidEl.load(); } catch(e) {} // Reset Safari decoder state
-            currentPlayingYTClipId = null;
-        }
+    // Stop and hide TikTok player
+    const iframe = document.getElementById('ytTikTokPlayerIframe');
+    if (iframe) {
+        iframe.src = '';
+        iframe.classList.add('hidden');
+    }
+    
+    // Stop and hide normal video player
+    const videoEl = document.getElementById('ytPlayerVideo');
+    if (videoEl) {
+        videoEl.pause();
+        videoEl.src = '';
+    }
+    
+    // Hide the modal
+    document.getElementById('ytPlayerModal').classList.remove('active');
+}
 
         // ===== LEADERBOARD BAR LOGIC =====
         let lbDataLoaded = false;
