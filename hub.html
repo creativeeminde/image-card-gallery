@@ -4825,6 +4825,15 @@
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Clip Title</label>
                     <input type="text" id="ytClipTitle" required class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none">
                 </div>
+
+                <!-- Cloudflare R2 direct file uploader (separate from existing URL form) -->
+                <div id="r2Uploader" class="p-4 rounded-xl border border-lime-500/30 bg-lime-500/5 space-y-3">
+                  <div class="font-bold text-sm dark:text-white">Upload video files to Cloudflare R2</div>
+                  <input id="r2FilePicker" type="file" multiple accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov" class="block w-full text-sm dark:text-white">
+                  <button id="r2UploadButton" type="button" class="px-4 py-2 rounded-lg font-bold bg-[#7fe826] text-black">Upload files to R2</button>
+                  <div id="r2UploadStatus" class="text-xs whitespace-pre-wrap dark:text-slate-300" role="status"></div>
+                  <p class="text-xs text-slate-500">Maximum 95 MiB per file. Uploaded videos are added to OnlyClips automatically.</p>
+                </div>
                 <!-- ── Upload Mode Toggle ── -->
                 <div id="ytUploadModeToggle" class="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-900 rounded-xl w-fit">
                     <button type="button" id="ytSingleModeBtn" onclick="setYTUploadMode('single')"
@@ -16825,7 +16834,7 @@ wall.addEventListener('input',e=>{const action=e.target.dataset.action;if(!actio
 let dragIndex=null;wall.addEventListener('dragstart',e=>{const el=e.target.closest('.gw-panel');if(!el||!state.edit)return;dragIndex=+el.dataset.index;el.classList.add('dragging')});wall.addEventListener('dragover',e=>{if(state.edit)e.preventDefault()});wall.addEventListener('drop',e=>{e.preventDefault();const el=e.target.closest('.gw-panel');if(el&&dragIndex!==null&&!state.panels[+el.dataset.index].lockedPosition){const j=+el.dataset.index;[state.panels[dragIndex],state.panels[j]]=[state.panels[j],state.panels[dragIndex]];layoutWall()}dragIndex=null});
 view.addEventListener('click',async e=>{const b=e.target.closest('[data-gw]');if(!b)return;const action=b.dataset.gw;switch(action){case'play':playAll();break;case'pause':allVideos().forEach(v=>v.pause());break;case'mute':state.globalMute=true;allVideos().forEach(v=>v.muted=true);break;case'unmute':state.globalMute=false;state.panels.forEach(p=>p.muted=false);allVideos().forEach(v=>{v.muted=false;if(v.volume===0)v.volume=1});scheduleSave();break;case'loop':state.panels.forEach(p=>p.loop=!p.loop);allVideos().forEach((v,i)=>v.loop=state.panels[i]?.loop);break;case'shuffle':shuffle();break;case'sync':allVideos().forEach(v=>{v.currentTime=0;v.play().catch(()=>{})});break;case'fullscreen':if(document.fullscreenElement)document.exitFullscreen();else view.requestFullscreen?.();break;case'extraFullscreen':toggleExtraFullscreen();break;case'reset':if(confirm('Clear media wall?')){gwSeenVideos.clear();Array.from(wall.children).forEach(gwUnloadVideos);state.panels=Array.from({length:count()},panel);layoutWall()}break;case'immersive':immersive();break;case'tight':view.classList.toggle('tight');break;case'focus':state.focus=!state.focus;layoutWall();break;case'edit':state.edit=!state.edit;b.classList.toggle('active',state.edit);layoutWall();break;case'equal':state.panels.forEach(p=>p.span=1);layoutWall();break;case'save':await saveSession();break;case'refreshsessions':await listPresets();break;case'closepicker':$('gwPicker').style.display='none';break;case'pickrandom':applyMedia(pickerIndex,randomMedia(pickerIndex));$('gwPicker').style.display='none';break;case'addurl':{const url=$('gwDirect').value.trim();if(!/^https?:\/\//i.test(url)){notify('Enter a valid HTTPS or HTTP URL');break}const type=$('gwDirectType').value;applyMedia(pickerIndex,{key:'url:'+url,url,type,model:'Direct URL',title:url.split('/').pop(),modelId:'',source:'url'});$('gwPicker').style.display='none';break}case'favclips':shuffle('favorites');break;case'favmodels':shuffle('favorites');break;case'similar':shuffle('rated');break;case'category':{const m=state.panels[state.selected]?.media,cat=m?.category;state.panels.forEach((p,i)=>{const pool=available(p).filter(x=>x.category===cat);if(pool.length)applyMedia(i,pool[Math.floor(Math.random()*pool.length)])});break}}});
 $('gwScopeType').addEventListener('change',()=>{gwRenderScopeOptions();gwApplyScope();scheduleSave()});$('gwScopeValue').addEventListener('change',e=>{gwScope.value=e.target.value;gwUpdateScopeCount();gwApplyScope();scheduleSave()});
-$('gwLayout').onchange=e=>{state.layout=e.target.value;if(state.layout==='custom'){const n=Number(prompt('Number of custom panels (1–16)',state.panels.length));if(n>=1&&n<=16)state.panels.length=n;else state.layout='4'}layoutWall()};$('gwMode').onchange=e=>{state.mode=e.target.value;state.panels.forEach((p,i)=>{if(p.media&&state.mode!=='mixed'&&p.media.type!==state.mode)applyMedia(i,null)});layoutWall()};for(const id of ['gwSearch','gwModelFilter','gwCategoryFilter','gwTagFilter','gwRatingFilter','gwFavoritesOnly'])$(id).addEventListener('input',renderPicker);for(const id of ['gwShuffleTime','gwShuffleMode','gwSlideTime','gwFocusInterval','gwAutoFocus','gwFocusMute','gwExclude'])$(id).addEventListener('change',startTimers);
+$('gwLayout').onchange=e=>{state.layout=e.target.value;if(state.layout==='custom'){const n=Number(prompt('Number of custom panels (1–16)',state.panels.length));if(Number.isInteger(n)&&n>=1&&n<=16){while(state.panels.length<n)state.panels.push(panel());while(state.panels.length>n)state.panels.pop();}else{state.layout=String(state.panels.length||4);}}layoutWall()};$('gwMode').onchange=e=>{state.mode=e.target.value;state.panels.forEach((p,i)=>{if(p.media&&state.mode!=='mixed'&&p.media.type!==state.mode)applyMedia(i,null)});layoutWall()};for(const id of ['gwSearch','gwModelFilter','gwCategoryFilter','gwTagFilter','gwRatingFilter','gwFavoritesOnly'])$(id).addEventListener('input',renderPicker);for(const id of ['gwShuffleTime','gwShuffleMode','gwSlideTime','gwFocusInterval','gwAutoFocus','gwFocusMute','gwExclude'])$(id).addEventListener('change',startTimers);
 document.addEventListener('keydown',e=>{if(view.classList.contains('hidden')||e.target.closest('input,textarea,select,[contenteditable]'))return;const key=e.key.toLowerCase();if([' ','m','r','f','g','l','arrowright','arrowleft','escape'].includes(key)||/^[1-9]$/.test(key))e.preventDefault();if(key===' '){allVideos().some(v=>!v.paused)?allVideos().forEach(v=>v.pause()):playAll()}else if(key==='m'){state.globalMute=!state.globalMute;if(!state.globalMute)state.panels.forEach(p=>p.muted=false);allVideos().forEach(v=>{v.muted=state.globalMute;if(!state.globalMute&&v.volume===0)v.volume=1});scheduleSave()}else if(key==='r')shuffle();else if(key==='f'){document.fullscreenElement?document.exitFullscreen():view.requestFullscreen?.()}else if(key==='g')immersive();else if(key==='l')state.panels.forEach((p,i)=>{p.loop=!p.loop;const v=wall.children[i]?.querySelector('video');if(v)v.loop=p.loop});else if(/^[1-9]$/.test(key)){state.selected=+key-1;if(state.selected>=state.panels.length)state.selected=0;updateSelection()}else if(key==='arrowright')next(state.selected,1);else if(key==='arrowleft')next(state.selected,-1);else if(key==='escape'){if(view.classList.contains('gw-extra-fullscreen'))toggleExtraFullscreen(false);else if(state.immersive)immersive();else if(state.focus){state.focus=false;layoutWall()}else $('gwPicker').style.display='none'}});
 function init(){loadBusy=true;try{const draft=JSON.parse(localStorage.getItem('studiohub_gooning_draft_v1'));if(draft)restore(draft);else layoutWall()}catch(e){layoutWall()}loadBusy=false;fetchLibrary().then(()=>{state.panels.forEach((p,i)=>{if(p.media)applyMedia(i,resolve(p.media),false)});listPresets()})}if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, {once:true}); else init();document.querySelector('.nav-item[data-target="gooningView"]')?.addEventListener('click',()=>{fetchLibrary();listPresets()});document.querySelectorAll('.nav-item:not([data-target="gooningView"])').forEach(b=>b.addEventListener('click',()=>{allVideos().forEach(v=>v.pause());if(state.immersive)immersive();if(view.classList.contains('gw-extra-fullscreen'))toggleExtraFullscreen(false)}));
 })();
@@ -16881,6 +16890,65 @@ function history(){const p=tournament.participants;$('trApp').innerHTML=`<div cl
 async function home(){const root=$('trApp');root.innerHTML='<div class="tr-panel">Loading saved tournaments…</div>';try{const {data,error}=await db().from('studiohub_tournaments').select('id,name,size,status,state,updated_at').order('updated_at',{ascending:false}).limit(100);if(error)throw error;root.innerHTML=`<div class="tr-panel"><h2 class="text-xl font-bold mb-4">Saved tournaments</h2>${(data||[]).length?data.map(t=>`<div class="flex justify-between items-center border-b border-slate-300 dark:border-slate-700 py-3 gap-3"><div><b>${E(t.name)}</b><p class="text-xs opacity-60">${t.size} models · ${E(t.status)}</p></div><div class="flex gap-2"><button class="tr-btn" data-open="${E(t.id)}">Open</button><button class="tr-secondary" data-delete="${E(t.id)}">Delete</button></div></div>`).join(''):'No saved tournaments yet.'}</div>`;root.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{const t=data.find(x=>String(x.id)===b.dataset.open);tournament={...t.state,id:t.id};tournament.status==='completed'?finish():battle()});root.querySelectorAll('[data-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this tournament?'))return;const {error}=await db().from('studiohub_tournaments').delete().eq('id',b.dataset.delete);if(error)alert(error.message);else home()})}catch(e){root.innerHTML=`<div class="tr-panel">Could not load tournaments: ${E(e.message)}. Run the supplied SQL in Supabase first.</div>`}}
 document.addEventListener('DOMContentLoaded',()=>{$('trNew').onclick=setup;document.querySelector('[data-target="tournamentView"]')?.addEventListener('click',home)});
 })();
+</script>
+
+<script>
+// CONFIGURE THESE TWO VALUES BEFORE USING THE R2 UPLOADER.
+const STUDIOHUB_R2_WORKER_URL = 'https://studiohub-r2-upload.genievibes1.workers.dev';
+const STUDIOHUB_R2_PUBLIC_URL = 'https://pub-88330a1394e34fc1b5ca616f5436a513.r2.dev';
+document.getElementById('r2UploadButton')?.addEventListener('click', async function(){
+  const files = Array.from(document.getElementById('r2FilePicker').files || []);
+  const status = document.getElementById('r2UploadStatus');
+  if(!files.length) {status.textContent='Select video files first.'; return;}
+  if(STUDIOHUB_R2_WORKER_URL.includes('REPLACE-') || STUDIOHUB_R2_PUBLIC_URL.includes('REPLACE-')) {status.textContent='Configure Worker URL and R2 public URL in the HTML first.';return;}
+  const btn=this; btn.disabled=true;
+  const raw = document.getElementById('selectedModelId')?.value || '';
+  const cardIds=raw.split(',').map(Number).filter(Boolean);
+  const catIds=typeof getSelectedClipCategoryIds==='function'?getSelectedClipCategoryIds().map(Number).filter(Boolean):[];
+  const siteName=document.getElementById('ytClipSiteName')?.value?.trim()||null;
+  const title=document.getElementById('ytClipTitle')?.value?.trim()||'';
+  let successful=0;
+  for(let i=0;i<files.length;i++){
+    const file=files[i];
+    try {
+      if(file.size > 95*1024*1024) throw new Error('File exceeds 95 MiB');
+      const types={mp4:'video/mp4',webm:'video/webm',mov:'video/quicktime'};
+      const ext=file.name.split('.').pop().toLowerCase();
+      const mime=types[ext]; if(!mime) throw new Error('Only MP4, WebM and MOV are supported');
+      status.textContent=`Uploading ${i+1}/${files.length}: ${file.name}
+Completed: ${successful}`;
+      const response=await fetch(STUDIOHUB_R2_WORKER_URL.replace(/\/$/,'')+'/upload',{
+        method:'POST', headers:{'Content-Type':mime,'X-File-Name':encodeURIComponent(file.name)},body:file
+      });
+      const result=await response.json();
+      if(!response.ok || !result.key) throw new Error(result.error||`Upload failed (${response.status})`);
+      const url=STUDIOHUB_R2_PUBLIC_URL.replace(/\/$/,'')+'/'+result.key.split('/').map(encodeURIComponent).join('/');
+      const clipData={title:title?(files.length===1?title:`${title} ${i+1}`):file.name.replace(/\.[^.]+$/,''),url,duration:'0:00',category_id:catIds[0]||null,category_ids:catIds.length?catIds:null,card_id:cardIds[0]||null,card_ids:cardIds.length?cardIds:null,site_name:siteName};
+      const {error}=await supabaseClient.from('studiohub_global_clips').insert([clipData]);
+      if(error) throw new Error(`Video uploaded to R2, but Supabase save failed: ${error.message}. URL: ${url}`);
+      successful++;
+    }catch(err){status.textContent+=`
+ERROR for ${file.name}: ${err.message}`;console.error(err);}
+  }
+  status.textContent+=`
+Finished: ${successful}/${files.length} saved to R2 and Supabase.`;
+  btn.disabled=false;
+  // The top R2 button is a complete upload action; the bottom Upload Clip
+  // button remains exclusively for manually entered video URLs.
+  if (successful > 0) {
+    try {
+      if (typeof fetchYTClips === 'function') await fetchYTClips(true);
+    } catch (refreshError) {
+      console.warn('Clip saved, but gallery refresh failed:', refreshError);
+    }
+  }
+  // Close only when every selected file was saved to both R2 and Supabase.
+  // On partial failure keep the dialog open so errors remain visible.
+  if (successful === files.length) {
+    status.textContent = '';
+    if (typeof closeYTUploadModal === 'function') closeYTUploadModal();
+  }
+});
 </script>
 </body>
 </html>
