@@ -16685,23 +16685,44 @@ function gwUnloadVideos(root){
  });
 }
 function gwShuffleUniqueVideos(){
- state.panels.forEach(p=>{if(p.media?.type==='video')gwSeenVideos.add(p.media.key)});
- const candidates=library.filter(m=>m.type==='video'&&gwMatchesScope(m)&&!gwSeenVideos.has(m.key));
- for(let i=candidates.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[candidates[i],candidates[j]]=[candidates[j],candidates[i]];}
- // Calculate eligibility once, before mutating any panel or starting network requests.
- const nextMedia=state.panels.map(p=>{
-  const allowed=new Set(available(p).map(m=>m.key));
-  const index=candidates.findIndex(m=>allowed.has(m.key));
-  return index<0?null:candidates.splice(index,1)[0];
+ // Build the pool from the SAME website/category and panel restrictions used by playback.
+ // Previously the session-wide seen set could exhaust this smaller pool and silently
+ // replace every panel with null, creating an entirely black fullscreen wall.
+ const previousKeys=new Set(state.panels.map(p=>p.media?.key).filter(Boolean));
+ previousKeys.forEach(k=>gwSeenVideos.add(k));
+ const eligible=state.panels.map(p=>available(p).filter(m=>m.type==='video'));
+ const allKeys=new Set(eligible.flat().map(m=>m.key));
+ if(!allKeys.size){notify('No clips match the current website and category.');return false;}
+ let fresh=new Set([...allKeys].filter(k=>!gwSeenVideos.has(k)));
+ if(!fresh.size){
+  // All matching clips have been shown. Start a fresh rotation rather than blanking the wall.
+  gwSeenVideos.clear();
+  fresh=new Set(allKeys);
+ }
+ const selected=new Set();
+ const nextMedia=eligible.map((pool,i)=>{
+  const shuffled=pool.slice().sort(()=>Math.random()-.5);
+  // Prefer unseen clips, then clips not already on the wall, then any distinct clip.
+  const choice=shuffled.find(m=>fresh.has(m.key)&&!selected.has(m.key)&&!previousKeys.has(m.key))
+   ||shuffled.find(m=>fresh.has(m.key)&&!selected.has(m.key))
+   ||shuffled.find(m=>!selected.has(m.key)&&!previousKeys.has(m.key))
+   ||shuffled.find(m=>!selected.has(m.key))
+   ||null;
+  if(choice)selected.add(choice.key);
+  return choice;
  });
- // Full teardown barrier: no new source is attached until every old decoder is retired.
+ // Do not discard an existing video merely because the filtered pool is smaller
+ // than the grid. Preserve its playback instead of turning the panel black.
+ const finalMedia=nextMedia.map((m,i)=>m||state.panels[i].media||null);
+ if(!finalMedia.some(Boolean))return false;
  Array.from(wall.children).forEach(gwUnloadVideos);
  state.panels.forEach((p,i)=>{
-  const media=nextMedia[i];p.media=media;
+  const media=finalMedia[i];p.media=media;
   if(media){gwSeenVideos.add(media.key);p.history.push(media.key);p.cursor=p.history.length-1;}
  });
  state.panels.forEach((_,i)=>renderPanel(i));
  scheduleSave();
+ return true;
 }
 function shuffle(mode='all'){if(!library.length){fetchLibrary().then(()=>shuffle(mode));return}let indices=state.panels.map((_,i)=>i);if(mode==='one')indices=[Math.floor(Math.random()*indices.length)];if(mode==='completed')indices=indices.filter(i=>!wall.children[i]?.querySelector('video')||wall.children[i].querySelector('video').ended);for(const i of indices){const p=state.panels[i],extra=mode==='same'?{same:p.media?.modelId}:mode==='different'?{different:p.media?.modelId}:mode==='favorites'?{favorites:true}:mode==='rated'?{rated:true}:{};applyMedia(i,randomMedia(i,extra))}}
 function gwShuffleFullscreen(){
@@ -16713,7 +16734,7 @@ function gwShuffleFullscreen(){
   // Preserve the sound settings selected before entering Extra Fullscreen.
   state.panels.forEach(p=>{p.loop=true;});
   if(!library.length){notify('Videos are still loading. Try Shuffle again when the library is ready.');fetchLibrary();return;}
-  gwShuffleUniqueVideos();
+  if(!gwShuffleUniqueVideos())return;
   // One play request per new element; do not register repeated canplay retries.
   for(const v of allVideos()){
    if(generation!==gwShuffleGeneration)break;
