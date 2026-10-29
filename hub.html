@@ -15166,7 +15166,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
 
             // ── Parse URLs ───────────────────────────────────────────────────
             const rawUrls = document.getElementById('poseImageUrlsInput').value;
-            const urls    = rawUrls.split('\n').map(u => u.trim()).filter(u => u.length > 0);
+            const urls = [...new Set((rawUrls.match(/https?:\/\/[^\s<>"']+/gi) || []).map(u => u.trim().replace(/[),;]+$/, '')).filter(u => { try { return ['http:', 'https:'].includes(new URL(u).protocol); } catch { return false; } }))];
             if (urls.length === 0) {
                 errEl.textContent = 'Please enter at least one image URL.';
                 errEl.classList.remove('hidden'); return;
@@ -15195,18 +15195,23 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
                         poseId = newPose.id;
                     }
 
-                    // Only insert URLs not already linked to this category (avoid duplicates)
-                    const { data: existingRows } = await supabaseClient
-                        .from('studiohub_pose_images').select('image_url').eq('pose_id', poseId).in('image_url', urls);
-                    const existingUrls = new Set((existingRows || []).map(r => r.image_url));
-                    const newUrls = urls.filter(u => !existingUrls.has(u));
+                    // Process URLs in small batches to avoid oversized Supabase URL filters,
+                    // request limits and one failed request hiding all other results.
                     let inserted = [];
-                    if (newUrls.length > 0) {
+                    for (let offset = 0; offset < urls.length; offset += 25) {
+                        const batch = urls.slice(offset, offset + 25);
+                        const { data: existingRows, error: lookupErr } = await supabaseClient
+                            .from('studiohub_pose_images').select('image_url')
+                            .eq('pose_id', poseId).in('image_url', batch);
+                        if (lookupErr) throw new Error(`Checking image links ${offset + 1}–${offset + batch.length}: ${lookupErr.message}`);
+                        const existingUrls = new Set((existingRows || []).map(r => r.image_url));
+                        const newUrls = batch.filter(u => !existingUrls.has(u));
+                        if (!newUrls.length) continue;
                         const inserts = newUrls.map(url => ({ pose_id: poseId, image_url: url, safety_type: safetyType }));
                         const { data: ins, error: imgErr } = await supabaseClient
                             .from('studiohub_pose_images').insert(inserts).select('*, poses:studiohub_poses(name)');
-                        if (imgErr) throw imgErr;
-                        inserted = ins || [];
+                        if (imgErr) throw new Error(`Saving image links ${offset + 1}–${offset + batch.length}: ${imgErr.message}`);
+                        inserted.push(...(ins || []));
                     }
                     allInserted = allInserted.concat(inserted);
 
