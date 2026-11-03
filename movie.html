@@ -130,6 +130,10 @@
                 transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity !important;
             }
         }
+        .map-ui .map-control { background:#202027; color:white; border:1px solid #ffffff22; border-radius:10px; padding:10px 12px; font-size:12px; font-weight:700; }
+        .map-ui .map-control:disabled { opacity:.35; }
+        .map-ui .map-node { transition:color .2s, opacity .2s; }
+        @media(min-width:768px){.map-ui .map-control{background:white;color:#222;border-color:#dce0e6}}
     </style>
 </head>
 <body>
@@ -907,6 +911,224 @@
             return <>{desktopCard}{mobileCard}</>;
         }
 
+
+        // MovieGather similarity map: TMDB signals, deterministic spatial layout, and local exploration history.
+        const mapCache = new Map();
+        const mapFetch = async (path, signal) => {
+            const url = `${TMDB_BASE_URL}${path}${path.includes('?') ? '&' : '?'}api_key=${TMDB_API_KEY}`;
+            if (mapCache.has(url)) return mapCache.get(url);
+            const res = await fetch(url, {signal});
+            if (!res.ok) throw new Error(`TMDB request failed (${res.status})`);
+            const data = await res.json();
+            mapCache.set(url, data);
+            return data;
+        };
+        const mapKey = t => `${t.media_type || t.type}:${t.id}`;
+        const mapTitle = t => t.title || t.name || 'Untitled';
+        const mapGenres = t => (t.genres || []).map(g => typeof g === 'object' ? g.id : g);
+        const mapOverlap = (a,b) => { const x=new Set(a), y=new Set(b); return x.size && y.size ? [...x].filter(v=>y.has(v)).length / Math.max(1,new Set([...x,...y]).size) : 0; };
+        // Content-first ranking: a shared broad genre alone is never sufficient.
+        const mapStop = new Set('the a an and or of to in on for with from by at as is are was were be been it its their his her this that into about after before while when who which they them he she you your one two new young life world story film movie series family man woman people years year finds find must can will has have had but not all'.split(' '));
+        const mapTokens = text => (text||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(w=>w.length>2&&!mapStop.has(w));
+        const mapTextScore = (a,b) => {
+            const x=mapTokens(a),y=mapTokens(b);if(!x.length||!y.length)return 0;
+            const freq=arr=>{const m=new Map();arr.forEach(w=>m.set(w,(m.get(w)||0)+1));return m;};
+            const A=freq(x),B=freq(y),terms=new Set([...A.keys(),...B.keys()]);
+            let dot=0,na=0,nb=0;for(const w of terms){const av=A.get(w)||0,bv=B.get(w)||0;dot+=av*bv;na+=av*av;nb+=bv*bv;}
+            return dot/Math.sqrt(na*nb);
+        };
+        const mapScore = (seed, candidate, entry, seedKeywords, candidateKeywords) => {
+            const genres=mapOverlap(mapGenres(seed),mapGenres(candidate));
+            const keys=mapOverlap(seedKeywords,candidateKeywords);
+            const cast=mapOverlap((seed.credits?.cast||[]).slice(0,8).map(x=>x.id),(candidate.credits?.cast||[]).slice(0,8).map(x=>x.id));
+            const plot=mapTextScore(seed.overview,candidate.overview);
+            const rec=entry.rec===undefined?0:Math.max(0,1-entry.rec/45);
+            const sim=entry.sim===undefined?0:Math.max(0,1-entry.sim/35);
+            const specific=keys>=.08||plot>=.12||cast>=.15;
+            const corroborated=entry.rec!==undefined&&entry.sim!==undefined;
+            const evidence=(specific?1:0)+(corroborated?1:0);
+            // Genre-only and popularity-only discoveries are excluded, regardless of score.
+            if(!specific&&!corroborated)return 0;
+            if(genres<.12&&keys<.12&&plot<.20&&!corroborated)return 0;
+            const score=.26*rec+.09*sim+.24*keys+.26*plot+.10*genres+.05*cast+(corroborated?.07:0);
+            return Math.min(1,score)*(evidence===1?.92:1);
+        };
+        // Persist the exact map layout across tab switches, details navigation, and reloads.
+        const MAP_STATE_STORAGE_KEY = 'moviegather.map.state.v1';
+        const readMovieMapState = () => {
+            try {
+                const data = JSON.parse(localStorage.getItem(MAP_STATE_STORAGE_KEY) || 'null');
+                if (!data || data.version !== 1 || !Array.isArray(data.nodes)) return null;
+                return data;
+            } catch (_) { return null; }
+        };
+        let movieMapSession = readMovieMapState();
+        function MovieMap({openDetails, trackedItems, handleTrackItem}) {
+            const initialMap = useRef(movieMapSession || readMovieMapState());
+            const savedMap = initialMap.current;
+            const [center,setCenter]=useState(savedMap?.center || null), [nodes,setNodes]=useState(savedMap?.nodes || []), [query,setQuery]=useState(savedMap?.query || ''), [suggestions,setSuggestions]=useState([]);
+            const [filter,setFilter]=useState(savedMap?.filter || 'all'), [density,setDensity]=useState(savedMap?.density || 40), [busy,setBusy]=useState(false), [error,setError]=useState('');
+            const [history,setHistory]=useState(savedMap?.history || (savedMap?.center ? [savedMap.center] : [])), [historyIndex,setHistoryIndex]=useState(savedMap?.historyIndex ?? (savedMap?.center ? 0 : -1)), [preview,setPreview]=useState(null);
+            const [view,setView]=useState(savedMap?.view || {x:0,y:0,z:1});
+            const restoredRequestKey=useRef(savedMap?.center && savedMap.nodes?.length ? `${savedMap.center.media_type || 'movie'}:${savedMap.center.id}:${savedMap.filter || 'all'}:${savedMap.density || 40}` : null);
+            const mapStateRef=useRef(null);
+            mapStateRef.current={version:1,center,nodes,query,filter,density,history,historyIndex,view};
+            useEffect(()=>{
+                // Keep the exact node coordinates, rather than recomputing the layout on return.
+                const snapshot=mapStateRef.current;
+                movieMapSession=snapshot;
+                try { localStorage.setItem(MAP_STATE_STORAGE_KEY,JSON.stringify(snapshot)); } catch (_) {}
+            },[center,nodes,query,filter,density,history,historyIndex,view]);
+            useEffect(()=>()=>{
+                // Save synchronously on unmount so navigation cannot lose the latest viewport.
+                movieMapSession=mapStateRef.current;
+                try { localStorage.setItem(MAP_STATE_STORAGE_KEY,JSON.stringify(mapStateRef.current)); } catch (_) {}
+            },[]);
+            const area=useRef(null), drag=useRef(null), pinch=useRef(null), request=useRef(0), controller=useRef(null);
+            const previewCloseTimer=useRef(null);
+            const cancelPreviewClose=()=>{if(previewCloseTimer.current!==null){clearTimeout(previewCloseTimer.current);previewCloseTimer.current=null;}};
+            const schedulePreviewClose=()=>{cancelPreviewClose();previewCloseTimer.current=setTimeout(()=>{setPreview(null);previewCloseTimer.current=null;},400);};
+            useEffect(()=>()=>{if(previewCloseTimer.current!==null)clearTimeout(previewCloseTimer.current);},[]);
+            const selectCenter=(item,fromHistory=false)=>{
+                const t={...item,media_type:item.media_type||item.type||'movie'};
+                cancelPreviewClose();setNodes([]);setCenter(t);setPreview(null);setView({x:0,y:0,z:1});
+                if(!fromHistory){setHistory(h=>[...h.slice(0,historyIndex+1),t]);setHistoryIndex(i=>i+1);}
+            };
+            useEffect(()=>{
+                if(initialMap.current?.center)return;
+                const c=new AbortController();mapFetch('/trending/all/week',c.signal).then(d=>{
+                    const t=d.results.find(x=>x.media_type==='movie'||x.media_type==='tv');if(t)setCenter(old=>old||t);
+                }).catch(()=>{});return()=>c.abort();
+            },[]);
+            useEffect(()=>{
+                if(!query.trim()){setSuggestions([]);return;}
+                const c=new AbortController();const timer=setTimeout(()=>mapFetch(`/search/multi?query=${encodeURIComponent(query.trim())}`,c.signal).then(d=>setSuggestions((d.results||[]).filter(x=>x.media_type==='movie'||x.media_type==='tv').slice(0,7))).catch(()=>{}),300);
+                return()=>{clearTimeout(timer);c.abort();};
+            },[query]);
+            useEffect(()=>{
+                if(!center)return;
+                const requestKey=`${center.media_type || 'movie'}:${center.id}:${filter}:${density}`;
+                if(restoredRequestKey.current===requestKey){restoredRequestKey.current=null;return;}
+                restoredRequestKey.current=null;
+                const token=++request.current;controller.current?.abort();const c=new AbortController();controller.current=c;setBusy(true);setError('');
+                (async()=>{
+                    const type=center.media_type||'movie',id=center.id;
+                    if(!['movie','tv'].includes(type)||!Number.isFinite(Number(id))||Number(id)<=0)throw new Error('Invalid library title identifier');
+                    const [detail,rec,sim,keywords,rec2,sim2]=await Promise.all([
+                        mapFetch(`/${type}/${id}?append_to_response=credits`,c.signal),
+                        mapFetch(`/${type}/${id}/recommendations`,c.signal).catch(()=>({results:[]})),
+                        mapFetch(`/${type}/${id}/similar`,c.signal).catch(()=>({results:[]})),
+                        mapFetch(`/${type}/${id}/keywords`,c.signal).catch(()=>({keywords:[],results:[]})),
+                        mapFetch(`/${type}/${id}/recommendations?page=2`,c.signal).catch(()=>({results:[]})),
+                        mapFetch(`/${type}/${id}/similar?page=2`,c.signal).catch(()=>({results:[]}))
+                    ]);
+                    const ranked=new Map();
+                    const add=(item,source,index)=>{if(!item?.id||item.id===id&&type===(item.media_type||type))return;const t={...item,media_type:item.media_type||type};const k=mapKey(t);const old=ranked.get(k)||{item:t};old[source]=Math.min(old[source]??999,index);ranked.set(k,old);};
+                    [...(rec.results||[]),...(rec2.results||[])].forEach((x,i)=>add(x,'rec',i));[...(sim.results||[]),...(sim2.results||[])].forEach((x,i)=>add(x,'sim',i));
+                    const opposite=type==='movie'?'tv':'movie';
+                    const genres=(detail.genres||[]).map(x=>x.id);
+                    // Cross-media candidates require shared specific keywords, not broad genres.
+                    const seedKeywordList=(keywords.keywords||keywords.results||[]).map(x=>x.id);
+                    if(seedKeywordList.length){
+                        const cross=await mapFetch(`/discover/${opposite}?sort_by=vote_count.desc&vote_count.gte=30&with_keywords=${seedKeywordList.slice(0,3).join('|')}`,c.signal).catch(()=>({results:[]}));
+                        (cross.results||[]).forEach((x,i)=>add({...x,media_type:opposite},'cross',i));
+                    }
+                    const seedKeywords=(keywords.keywords||keywords.results||[]).map(x=>x.id);
+                    const candidates=[...ranked.values()].slice(0,120);
+                    const enriched=await Promise.all(candidates.map(async entry=>{
+                        const item=entry.item;
+                        // Extra metadata only for a limited top subset to avoid excessive TMDB calls.
+                        let detailCandidate=item, keyIds=[];
+                        if(true){
+                            const [d,k]=await Promise.all([
+                                mapFetch(`/${item.media_type}/${item.id}?append_to_response=credits`,c.signal).catch(()=>item),
+                                mapFetch(`/${item.media_type}/${item.id}/keywords`,c.signal).catch(()=>({}))
+                            ]);
+                            detailCandidate={...item,...d};keyIds=(k.keywords||k.results||[]).map(x=>x.id);
+                        }
+                        const score=mapScore(detail,detailCandidate,entry,seedKeywords,keyIds);
+                        return {...detailCandidate,media_type:item.media_type,score};
+                    }));
+                    if(token!==request.current)return;
+                    // Density is a maximum, not a promise to insert unrelated titles.
+                    // Include moderately strong, evidence-backed candidates instead of discarding nearly everything.
+                    const chosen=enriched.filter(t=>t.score>=.085&&(filter==='all'||t.media_type===filter)).sort((a,b)=>b.score-a.score).slice(0,density);
+                    const placed=[];
+                    chosen.forEach((t,i)=>{
+                        // Compact similarity-based spiral: nearby titles stay visibly grouped.
+                        // Only the score determines the preferred radial band; density controls angular packing.
+                        const radius=58+(1-t.score)*175;
+                        const angle=i*2.399963229728653;
+                        let x=Math.cos(angle)*radius,y=Math.sin(angle)*radius;
+                        // Try nearby angles first, then expand only enough to avoid overlapping labels.
+                        const width=t=>Math.min(190,Math.max(65,mapTitle(t).length*7+18));
+                        const collides=(cx,cy)=>placed.some(p=>Math.abs(p.x-cx)<(width(p)+width(t))/2+12&&Math.abs(p.y-cy)<29);
+                        if(collides(x,y)){
+                            let found=false;
+                            for(let ring=0;ring<16&&!found;ring++){
+                                const r=radius+ring*17;
+                                for(let step=0;step<48;step++){
+                                    const a=angle+(step%2===0?1:-1)*Math.ceil(step/2)*.145;
+                                    const cx=Math.cos(a)*r,cy=Math.sin(a)*r;
+                                    if(!collides(cx,cy)){x=cx;y=cy;found=true;break;}
+                                }
+                            }
+                        }
+                        placed.push({...t,x,y});
+                    });
+                    setNodes(placed);setCenter(old=>old&&mapKey(old)===mapKey(center)?{...old,...detail,media_type:type}:old);
+                })().catch(e=>{if(e.name!=='AbortError'&&token===request.current)setError('Could not load recommendations. Please try another title.');}).finally(()=>{if(token===request.current)setBusy(false);});
+                return()=>c.abort();
+            },[center?.id,center?.media_type,filter,density]);
+            const zoom=(factor)=>setView(v=>({...v,z:Math.max(.35,Math.min(2.7,v.z*factor))}));
+            const onPointerDown=e=>{if(e.target.closest('button'))return;e.currentTarget.setPointerCapture(e.pointerId);drag.current={x:e.clientX,y:e.clientY,origin:view,moved:false};};
+            const onPointerMove=e=>{if(!drag.current)return;const dx=e.clientX-drag.current.x,dy=e.clientY-drag.current.y;if(Math.abs(dx)+Math.abs(dy)>5)drag.current.moved=true;setView({...drag.current.origin,x:drag.current.origin.x+dx,y:drag.current.origin.y+dy});};
+            const onWheel=e=>{e.preventDefault();zoom(e.deltaY<0?1.12:.89);};
+            useEffect(()=>{const el=area.current;if(!el)return;el.addEventListener('wheel',onWheel,{passive:false});return()=>el.removeEventListener('wheel',onWheel);},[]);
+            const tracked=t=>trackedItems.find(x=>Number(x.media_id)===Number(t.id)&&x.media_type===t.media_type);
+            const renderNode=(t,isCenter=false)=>{
+                const saved=tracked(t);return <button key={mapKey(t)} style={{position:'absolute',left:`calc(50% + ${t.x||0}px)`,top:`calc(50% + ${t.y||0}px)`,transform:'translate(-50%,-50%)',maxWidth:190}}
+                    onPointerEnter={e=>{if(e.pointerType==='mouse'){cancelPreviewClose();setPreview(t);}}} onPointerLeave={e=>{if(e.pointerType==='mouse')schedulePreviewClose();}}
+                    onClick={e=>{e.stopPropagation();if(!isCenter)selectCenter(t);else setPreview(t);}}
+                    className={`map-node text-center whitespace-normal leading-tight rounded-lg px-2 py-1 ${isCenter?'font-black text-base md:text-xl text-blue-500':'font-semibold text-[11px] md:text-[13px] text-gray-200 md:text-gray-800 hover:text-blue-400 md:hover:text-blue-600'}`}>
+                    {mapTitle(t)}{saved&&<span className="ml-1 text-blue-400" title={saved.status}>●</span>}
+                </button>;
+            };
+            return <div className="map-ui relative min-w-0 text-white md:text-gray-900">
+                <div className="flex flex-wrap items-center gap-2 mb-3 relative z-30">
+                    <div className="relative flex-1 min-w-[180px] max-w-lg"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search movies or TV shows..." className="w-full rounded-xl px-4 py-3 bg-[#202027] md:bg-white border border-white/10 md:border-gray-200 outline-none text-sm"/>
+                        {suggestions.length>0&&<div className="absolute top-full mt-1 w-full max-h-80 overflow-y-auto rounded-xl bg-[#202027] md:bg-white shadow-xl border border-white/10 md:border-gray-200">{suggestions.map(t=><button key={mapKey(t)} onClick={()=>{selectCenter(t);setQuery('');setSuggestions([]);}} className="w-full flex items-center gap-3 text-left px-3 py-2 hover:bg-white/10 md:hover:bg-gray-100 text-xs border-b border-white/5 md:border-gray-100 last:border-0"><span className="w-10 h-[60px] shrink-0 rounded-md overflow-hidden bg-white/10 md:bg-gray-100 flex items-center justify-center">{t.poster_path?<img src={`https://image.tmdb.org/t/p/w92${t.poster_path}`} alt="" loading="lazy" className="w-full h-full object-cover"/>:<Icon name="Film" className="h-5 w-5 text-gray-400"/>}</span><span className="min-w-0 flex-1"><span className="block font-bold text-[13px] leading-snug line-clamp-2">{mapTitle(t)}</span><span className="block mt-1 text-[11px] text-gray-400 md:text-gray-500">{t.media_type==='tv'?'TV Show':'Movie'} · {(t.release_date||t.first_air_date||'').slice(0,4)||'Year unknown'}</span></span></button>)}</div>}
+                    </div>
+                    <select value={filter} onChange={e=>setFilter(e.target.value)} className="map-control"><option value="all">All</option><option value="movie">Movies</option><option value="tv">TV Shows</option></select>
+                    <select value={density} onChange={e=>setDensity(Number(e.target.value))} className="map-control">{[20,40,60,100].map(n=><option key={n} value={n}>{n} titles</option>)}</select>
+                    <button className="map-control" disabled={historyIndex<1} onClick={()=>{setHistoryIndex(i=>i-1);setCenter(history[historyIndex-1]);}}>← Back</button>
+                    <button className="map-control" disabled={historyIndex>=history.length-1} onClick={()=>{setHistoryIndex(i=>i+1);setCenter(history[historyIndex+1]);}}>Forward →</button>
+                    <button className="map-control" onClick={()=>zoom(1.2)}>＋</button><button className="map-control" onClick={()=>zoom(.83)}>−</button>
+                    <button className="map-control" onClick={()=>setView({x:0,y:0,z:1})}>Reset</button>
+                    <button className="map-control" onClick={async()=>{try{const d=await mapFetch(`/trending/all/week?page=${1+Math.floor(Math.random()*10)}`);const a=d.results.filter(x=>['movie','tv'].includes(x.media_type));if(a.length)selectCenter(a[Math.floor(Math.random()*a.length)]);}catch(e){setError('Could not choose a random title.');}}}>Random</button>
+                    <button className="map-control" onClick={()=>{const library=trackedItems.filter(x=>['movie','tv'].includes(x.media_type)&&Number.isFinite(Number(x.media_id))&&Number(x.media_id)>0);if(!library.length){setError('Add titles to your library first.');return;}const selected=library[Math.floor(Math.random()*library.length)];setError('');selectCenter({id:Number(selected.media_id),media_type:selected.media_type,title:selected.title||selected.name||'Library title',poster_path:selected.poster_path});}}>My Library</button>
+                </div>
+                <div ref={area} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={()=>drag.current=null} onPointerCancel={()=>drag.current=null}
+                    className="relative overflow-hidden rounded-2xl bg-[#101014] md:bg-white border border-white/10 md:border-gray-200 select-none cursor-grab active:cursor-grabbing" style={{height:'min(76vh,850px)',minHeight:480,touchAction:'none'}}>
+                    <div className="absolute inset-0" style={{transform:`translate(${view.x}px,${view.y}px) scale(${view.z})`,transformOrigin:'center',transition:drag.current?'none':'transform 180ms ease-out'}}>
+                        {center&&renderNode({...center,x:0,y:0,media_type:center.media_type||'movie'},true)}
+                        {nodes.map(t=>renderNode(t))}
+                    </div>
+                    {busy&&<div className="absolute top-4 left-4 text-xs bg-black/70 text-white rounded-full px-3 py-2">Generating recommendations...</div>}
+                    {error&&<div className="absolute bottom-4 left-4 right-4 text-xs text-red-400 bg-black/80 rounded-xl p-3">{error}</div>}
+                    <div className="absolute bottom-3 right-3 pointer-events-none text-[10px] text-gray-400">Drag to pan · Scroll to zoom · {nodes.length} relevant titles</div>
+                </div>
+                {preview&&<div onPointerEnter={cancelPreviewClose} onPointerLeave={schedulePreviewClose} className="fixed z-[110] bottom-20 right-4 md:bottom-6 md:right-6 w-[min(330px,calc(100vw-32px))] rounded-2xl bg-[#1d1d24] text-white shadow-2xl border border-white/15 p-3 flex gap-3">
+                    {preview.poster_path&&<img src={`https://image.tmdb.org/t/p/w185${preview.poster_path}`} className="w-20 h-28 rounded-lg object-cover shrink-0"/>}
+                    <div className="min-w-0 flex-1"><div className="flex justify-between gap-2"><b className="text-sm line-clamp-2">{mapTitle(preview)}</b><button onClick={()=>{cancelPreviewClose();setPreview(null);}}>✕</button></div>
+                        <p className="text-[11px] text-gray-400 mt-1">{(preview.release_date||preview.first_air_date||'').slice(0,4)} · ★ {(preview.vote_average||0).toFixed(1)} · {preview.media_type==='tv'?'TV':'Movie'}</p>
+                        <p className="text-[11px] text-gray-300 line-clamp-2 mt-1">{preview.overview||'No synopsis available.'}</p>
+                        <div className="flex gap-2 mt-2"><button className="bg-white text-black rounded-lg px-2 py-1.5 text-[10px] font-bold" onClick={()=>openDetails(preview.id,preview.media_type)}>View Details</button><button className="border border-white/30 rounded-lg px-2 py-1.5 text-[10px]" onClick={()=>handleTrackItem(preview,'Plan to Watch')}>{tracked(preview)?tracked(preview).status:'＋ Watchlist'}</button></div>
+                    </div>
+                </div>}
+            </div>;
+        }
+
         function App() {
             const [activeTab, setActiveTab] = useState('BOARD');
             const [isTrailerModalOpen, setIsTrailerModalOpen] = useState(false);
@@ -1357,7 +1579,7 @@
 
             useEffect(() => {
                 const handleScroll = () => {
-                    if (selectedItem || selectedPerson || selectedEpisode || activeTab === 'FAVORITES' || activeTab === 'LIBRARY') return; 
+                    if (selectedItem || selectedPerson || selectedEpisode || activeTab === 'FAVORITES' || activeTab === 'LIBRARY' || activeTab === 'MAP') return; 
                     if (window.innerHeight + document.documentElement.scrollTop + 100 >= document.documentElement.offsetHeight) {
                         if (!isLoading && (['MOVIES', 'SERIES', 'NEW', 'SEARCH'].includes(activeTab))) setPage((prevPage) => prevPage + 1);
                     }
@@ -1437,7 +1659,7 @@
             }, [activeTab, boardGenre]);
 
             useEffect(() => {
-                if (activeTab === 'BOARD' || selectedItem || selectedPerson || selectedEpisode || activeTab === 'FAVORITES' || activeTab === 'LIBRARY') return;
+                if (activeTab === 'BOARD' || selectedItem || selectedPerson || selectedEpisode || activeTab === 'FAVORITES' || activeTab === 'LIBRARY' || activeTab === 'MAP') return;
 
                 const fetchDynamicData = async () => {
                     setIsLoading(true);
@@ -1593,7 +1815,7 @@
                         </div>
 
                         <nav className="hidden md:flex w-full md:w-auto space-x-4 md:space-x-10 pb-2 md:pb-0 justify-center">
-                            {['BOARD', 'NEW', 'MOVIES', 'SERIES', 'LIBRARY'].map((tab) => (
+                            {['BOARD', 'NEW', 'MOVIES', 'SERIES', 'MAP', 'LIBRARY'].map((tab) => (
                                 <button key={tab} onClick={() => handleTabChange(tab)} className={`relative py-1 md:py-2 text-[10px] md:text-xs font-extrabold tracking-widest uppercase transition-colors shrink-0 ${activeTab === tab ? 'text-black' : 'text-gray-500 hover:text-black'}`}>
                                     {tab}{activeTab === tab && <div className="absolute bottom-0 left-0 right-0 h-[2px] md:h-[3px] bg-black rounded-t-sm" />}
                                 </button>
@@ -1628,7 +1850,7 @@
                     {}
                     <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[#0a0a0c]/95 backdrop-blur-md border-t border-white/10 z-[110] pb-[env(safe-area-inset-bottom)]">
                         <div className="flex justify-around items-center h-[60px] px-2">
-                            {[{ id: 'BOARD', label: 'Board', icon: 'LayoutGrid' }, { id: 'NEW', label: 'New', icon: 'Sparkles' }, { id: 'MOVIES', label: 'Movies', icon: 'Film' }, { id: 'SERIES', label: 'Series', icon: 'Tv' }, { id: 'LIBRARY', label: 'Library', icon: 'Bookmark' }].map((tab) => {
+                            {[{ id: 'BOARD', label: 'Board', icon: 'LayoutGrid' }, { id: 'NEW', label: 'New', icon: 'Sparkles' }, { id: 'MOVIES', label: 'Movies', icon: 'Film' }, { id: 'SERIES', label: 'Series', icon: 'Tv' }, { id: 'MAP', label: 'Map', icon: 'Map' }, { id: 'LIBRARY', label: 'Library', icon: 'Bookmark' }].map((tab) => {
                                 const isActive = activeTab === tab.id;
                                 return (
                                     <button key={tab.id} onClick={() => handleTabChange(tab.id)} className={`flex flex-col items-center justify-center w-16 h-full space-y-1 transition-colors ${isActive ? 'text-white' : 'text-gray-500'}`}>
@@ -1888,6 +2110,8 @@
                                     )}
                                 </div>
                             </React.Fragment>
+                        ) : activeTab === 'MAP' ? (
+                            <MovieMap openDetails={openDetails} trackedItems={trackedItems} handleTrackItem={handleTrackItem} />
                         ) : activeTab === 'FAVORITES' ? (
                             <div className="animate-in fade-in duration-500">
                                 <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 md:mb-8 gap-4">
