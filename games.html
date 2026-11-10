@@ -679,6 +679,14 @@
                 </div>
             </div>
 
+            <!-- DEVELOPER STUDIO VIEW -->
+            <div id="developer-view" class="hidden flex-col w-full pb-12">
+                <button onclick="returnFromDeveloper()" class="text-gray-400 hover:text-brand text-sm font-semibold flex items-center gap-2 mb-6"><i data-lucide="arrow-left" class="w-4 h-4"></i> Back to game</button>
+                <div class="border-b border-gray-800 pb-6 mb-6"><p class="text-brand text-xs uppercase tracking-widest font-bold mb-2">Developer / Studio</p><h2 id="developer-page-name" class="text-3xl md:text-4xl font-black"></h2><p id="developer-page-count" class="text-gray-400 text-sm mt-2">Loading studio games...</p></div>
+                <div id="developer-page-games" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4"></div>
+                <button id="developer-load-more" onclick="loadDeveloperGames()" class="hidden mx-auto mt-8 px-6 py-3 bg-dark-input hover:bg-brand hover:text-black rounded-xl font-semibold">Load more games</button>
+            </div>
+
             <!-- GAME DETAILS VIEW -->
             <div id="game-details-view" class="hidden flex-col w-full pb-10">
                 <!-- Back Action -->
@@ -871,6 +879,162 @@
         let debounceTimer;
 
         lucide.createIcons();
+
+
+        // RAWG-first, GameBrain fallback. GameBrain IDs are negative locally to
+        // prevent collisions with RAWG IDs in playlists and the game library.
+        const GAMEBRAIN_API_KEY = '3b63dd2596914a88953848dc1e31c232';
+        const GAMEBRAIN_BASE = 'https://api.gamebrain.co/v1';
+        const nativeGameFetch = window.fetch.bind(window);
+        let gamebrainQueue = Promise.resolve();
+        let rawgUnavailableUntil = 0;
+        const gamebrainMemory = new Map();
+        const gamebrainCachePrefix = 'gamerz-gb-v1:';
+        const GB_CACHE_MS = 24 * 60 * 60 * 1000;
+
+        function gamebrainResponse(body) {
+            return new Response(JSON.stringify(body), {
+                status: 200, headers: {'Content-Type': 'application/json'}
+            });
+        }
+        // Normalize platform labels across RAWG, GameBrain and saved library entries.
+        // PC is the requested display fallback when the provider omits platforms.
+        function displayPlatform(value) {
+            const name = typeof value === 'string' ? value :
+                (value?.platform?.name || value?.name || '');
+            return (!name || /^(unknown|undefined|null|n\/a|not available|\[object object\])$/i.test(String(name).trim())) ? 'PC' : String(name);
+        }
+        function displayGamePlatform(game) {
+            return displayPlatform(game?.platforms?.[0]);
+        }
+        function gbGame(g, detailed = false) {
+            const id = -Math.abs(Number(g.id));
+            const screenshots = (g.screenshots || []).map((s, i) => ({
+                id: i, image: typeof s === 'string' ? s : (s.image || s.url || '')
+            })).filter(s => s.image);
+            const platforms = (g.platforms || []).map(p => ({
+                platform: {name: typeof p === 'string' ? p : (p.name || p.platform?.name || 'PC'), slug: typeof p === 'string' ? '' : (p.value || p.slug || '')}
+            }));
+            const genres = (g.genres || []).map(x => ({
+                name: typeof x === 'string' ? x : x.name,
+                slug: typeof x === 'string' ? x.toLowerCase() : (x.value || x.slug || '')
+            }));
+            const rating = g.rating?.mean == null ? 0 : +(g.rating.mean * 5).toFixed(2);
+            return {
+                id, name: g.name || 'Unknown Game', slug: String(g.id),
+                released: g.release_date || (g.year ? `${g.year}-01-01` : null),
+                background_image: g.image || screenshots[0]?.image || '',
+                rating, ratings_count: g.rating?.count || 0,
+                metacritic: g.rating?.mean_critics == null ? null : Math.round(g.rating.mean_critics * 100),
+                platforms, genres, short_screenshots: screenshots,
+                description_raw: g.description || g.short_description || '',
+                description: g.description || g.short_description || '',
+                developers: g.developer ? [{name:g.developer}] : [],
+                publishers: [], tags: (g.tags || []).map(t => ({name:typeof t === 'string' ? t : t.name})),
+                playtime: g.playtime?.median || 0,
+                website: g.link || '',
+                _provider: 'gamebrain'
+            };
+        }
+        function gbQueryFromRawg(url) {
+            const developer = url.searchParams.get('developers');
+            if (developer) return developer.replace(/-/g, ' ') + ' games';
+            const search = url.searchParams.get('search');
+            if (search) return search;
+            const genres = url.searchParams.get('genres');
+            const platforms = url.searchParams.get('platforms');
+            const ordering = url.searchParams.get('ordering') || '';
+            if (genres) return genres.replace(/-/g,' ') + ' games';
+            if (url.searchParams.has('dates')) return 'new PlayStation games';
+            if (platforms) return 'PlayStation games';
+            if (ordering.includes('metacritic') || ordering.includes('rating')) return 'top rated video games';
+            return 'popular video games';
+        }
+        async function gbRequest(path) {
+            const cacheKey = gamebrainCachePrefix + path;
+            if (gamebrainMemory.has(path)) return gamebrainMemory.get(path);
+            try {
+                const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+                if (cached && Date.now() - cached.time < GB_CACHE_MS) {
+                    gamebrainMemory.set(path, cached.body);
+                    return cached.body;
+                }
+            } catch(e) {}
+            // The free tier allows only one concurrent request.
+            const work = async () => {
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 12000);
+                try {
+                    const res = await nativeGameFetch(GAMEBRAIN_BASE + path, {
+                        headers: {'x-api-key': GAMEBRAIN_API_KEY},
+                        signal: controller.signal
+                    });
+                    if (!res.ok) throw new Error('GameBrain HTTP ' + res.status);
+                    const body = await res.json();
+                    gamebrainMemory.set(path, body);
+                    try { localStorage.setItem(cacheKey, JSON.stringify({time:Date.now(), body})); } catch(e) {}
+                    return body;
+                } finally { clearTimeout(timer); }
+            };
+            const queued = gamebrainQueue.then(work, work);
+            gamebrainQueue = queued.catch(() => {});
+            return queued;
+        }
+        async function gbFallback(url) {
+            const parts = url.pathname.slice('/api/games'.length).split('/').filter(Boolean);
+            if (parts.length) {
+                const id = Number(parts[0]);
+                if (parts[1] === 'achievements') return gamebrainResponse({results:[]});
+                if (parts[1] === 'screenshots') {
+                    const detail = await gbRequest('/games/' + Math.abs(id));
+                    return gamebrainResponse({results:gbGame(detail, true).short_screenshots});
+                }
+                const detail = await gbRequest('/games/' + Math.abs(id));
+                return gamebrainResponse(gbGame(detail, true));
+            }
+            const pageSize = Math.min(10, Math.max(1, Number(url.searchParams.get('page_size')) || 10));
+            const page = Math.max(1, Number(url.searchParams.get('page')) || 1);
+            const query = gbQueryFromRawg(url);
+            const offset = Math.min(1000, (page - 1) * pageSize);
+            const path = '/games?query=' + encodeURIComponent(query) +
+                '&limit=' + pageSize + '&offset=' + offset +
+                '&generate_filter_options=false';
+            const data = await gbRequest(path);
+            const results = (data.results || []).map(gbGame);
+            const total = Number(data.total_results || results.length);
+            const next = offset + pageSize < total
+                ? (() => { const n = new URL(url.href); n.searchParams.set('page', String(page+1)); return n.href; })()
+                : null;
+            return gamebrainResponse({results, count:total, next, previous:null});
+        }
+        // Only intercept RAWG game requests; all Supabase and other requests remain untouched.
+        window.fetch = async function(input, init) {
+            const raw = typeof input === 'string' ? input : input?.url;
+            if (!raw || !raw.startsWith('https://api.rawg.io/api/games')) {
+                return nativeGameFetch(input, init);
+            }
+            const url = new URL(raw);
+            const localId = Number(url.pathname.split('/')[3]);
+            if (localId < 0) return gbFallback(url);
+            if (Date.now() < rawgUnavailableUntil) return gbFallback(url);
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 3500);
+            try {
+                const res = await nativeGameFetch(input, {...(init || {}), signal:controller.signal});
+                if (!res.ok) throw new Error('RAWG HTTP ' + res.status);
+                // Some failed APIs return 200 with a non-game payload.
+                const body = await res.clone().json();
+                if (!body || (url.pathname === '/api/games' && !Array.isArray(body.results)))
+                    throw new Error('Invalid RAWG game response');
+                return res;
+            } catch(error) {
+                console.warn('RAWG unavailable; switching to GameBrain:', error);
+                rawgUnavailableUntil = Date.now() + 60000;
+                return gbFallback(url);
+            } finally {
+                clearTimeout(timer);
+            }
+        };
 
         // --- FETCHERS ---
         async function fetchHomeGames() {
@@ -1245,6 +1409,121 @@
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitModal();
         });
 
+        // --- DEVELOPER / STUDIO GAME CATALOG ---
+        let studioState = null;
+        function studioEscape(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+        function returnFromDeveloper() { if (currentGameId != null) viewGameDetails(currentGameId); else switchTab('discover'); }
+        async function openDeveloperPage(name, slug) {
+            studioState = {name, slug: slug || name.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-'), page:0, next:true, loading:false};
+            document.getElementById('developer-page-name').textContent = name;
+            document.getElementById('developer-page-count').textContent = 'Loading games...';
+            document.getElementById('developer-page-games').innerHTML = '';
+            switchTab('developer');
+            await loadDeveloperGames();
+        }
+        function studioNameMatches(actual, wanted) {
+            const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const a=norm(actual), b=norm(wanted);
+            return !!a && !!b && (a === b || a.includes(b) || b.includes(a));
+        }
+        async function loadDeveloperGames() {
+            const state = studioState;
+            if (!state || state.loading || !state.next) return;
+            state.loading = true;
+            const btn = document.getElementById('developer-load-more');
+            btn.classList.add('hidden');
+            const count = document.getElementById('developer-page-count');
+            count.textContent = 'Searching for games developed by ' + state.name + '...';
+            const grid = document.getElementById('developer-page-games');
+            const addGame = g => {
+                if (!g?.id || !g.name || grid.querySelector(`[data-game-id="${g.id}"]`)) return;
+                globalGameCache.set(g.id, g);
+                const card = document.createElement('button');
+                card.type = 'button';
+                card.dataset.gameId = String(g.id);
+                card.className = 'bg-card rounded-xl border border-gray-800 overflow-hidden text-left hover:border-brand transition-colors group';
+                const img = document.createElement('img');
+                img.src = g.background_image || '';
+                img.alt = g.name;
+                img.loading = 'lazy';
+                img.className = 'w-full aspect-[4/3] object-cover bg-dark';
+                const title = document.createElement('div');
+                title.className = 'p-3 text-sm font-semibold group-hover:text-brand';
+                title.textContent = g.name;
+                card.append(img, title);
+                card.onclick = () => viewGameDetails(g.id);
+                grid.append(card);
+            };
+            try {
+                // The game that led here is already a confirmed studio credit.
+                if (state.page === 0 && currentGameId != null) {
+                    const original = globalGameCache.get(currentGameId);
+                    if (original && (original.developers || []).some(d => studioNameMatches(d.name, state.name))) addGame(original);
+                }
+                const nextPage = state.page + 1;
+                // RAWG supports a developer filter; GameBrain does NOT. Never feed
+                // developer slugs into the generic RAWG->GameBrain adapter and
+                // interpret the results as a verified studio catalog.
+                let rawgWorked = false;
+                if (Date.now() >= rawgUnavailableUntil) {
+                    try {
+                        const url = `${RAWG_BASE_URL}?key=${encodeURIComponent(RAWG_API_KEY)}&developers=${encodeURIComponent(state.slug)}&page_size=30&page=${nextPage}`;
+                        const controller = new AbortController();
+                        const timer = setTimeout(() => controller.abort(), 3500);
+                        let response;
+                        try { response = await nativeGameFetch(url, {signal: controller.signal}); }
+                        finally { clearTimeout(timer); }
+                        if (!response.ok) throw Error('RAWG HTTP '+response.status);
+                        const data = await response.json();
+                        if (!Array.isArray(data.results)) throw Error('Invalid RAWG response');
+                        for (const game of data.results) addGame(game);
+                        rawgWorked = true;
+                        state.next = !!data.next;
+                    } catch(e) {
+                        console.warn('RAWG studio catalog unavailable:',e);
+                        rawgUnavailableUntil = Date.now() + 60000;
+                    }
+                }
+                if (!rawgWorked) {
+                    // Search GameBrain by the studio name, then check individual
+                    // game details. Its search results don't contain developers.
+                    const query = encodeURIComponent(state.name);
+                    const offset = (nextPage - 1) * 10;
+                    const result = await gbRequest(`/games?query=${query}&limit=10&offset=${offset}&generate_filter_options=false`);
+                    const candidates = Array.isArray(result.results) ? result.results : [];
+                    let matched = 0;
+                    for (const candidate of candidates) {
+                        try {
+                            const detail = await gbRequest(`/games/${candidate.id}`);
+                            if (studioNameMatches(detail.developer, state.name)) {
+                                addGame(gbGame(detail, true));
+                                matched++;
+                            }
+                        } catch(e) { console.warn('Studio game verification failed:',candidate.id,e); }
+                    }
+                    state.next = offset + candidates.length < (Number(result.total_results) || 0) && candidates.length > 0;
+                    // GameBrain's semantic search isn't a complete developer index.
+                    // Avoid endless pagination of irrelevant matches.
+                    if (!matched && nextPage >= 2) state.next = false;
+                }
+                if (studioState !== state) return;
+                state.page = nextPage;
+                btn.classList.toggle('hidden', !state.next);
+                count.textContent = grid.children.length
+                    ? `${grid.children.length} verified game${grid.children.length === 1 ? '' : 's'} displayed${!rawgWorked ? ' · GameBrain search may omit some studio titles' : ''}`
+                    : 'No studio games could be verified from the available APIs. GameBrain does not provide a complete developer catalog.';
+            } catch(e) {
+                console.error('Studio games error:',e);
+                count.textContent = grid.children.length
+                    ? `${grid.children.length} game(s) displayed · Additional games could not be loaded`
+                    : 'Could not load studio games. The API may be unavailable or its daily quota exhausted.';
+                btn.classList.remove('hidden');
+            } finally {
+                state.loading = false;
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+
         // --- NAVIGATION ---
         function switchTab(tab, event) {
             if(event) event.preventDefault();
@@ -1281,7 +1560,7 @@
             });
 
             // Set active Desktop link
-            if (tab !== 'details' && tab !== 'playlist-details' && tab !== 'playnow-details' && tab !== 'category') {
+            if (tab !== 'details' && tab !== 'playlist-details' && tab !== 'playnow-details' && tab !== 'category' && tab !== 'developer') {
                 const activeLink = document.getElementById(`nav-${tab}`);
                 if(activeLink) {
                     activeLink.classList.remove('text-gray-400');
@@ -1294,13 +1573,13 @@
                 }
             }
 
-            ['home', 'discover', 'mygames', 'playlists', 'playlist-details', 'details', 'playnow', 'playnow-details', 'category', 'trailers'].forEach(t => {
+            ['home', 'discover', 'mygames', 'playlists', 'playlist-details', 'details', 'playnow', 'playnow-details', 'category', 'trailers', 'developer'].forEach(t => {
                 const targetId = t === 'details' ? 'game-details-view' : `${t}-view`;
                 const el = document.getElementById(targetId);
                 if (el) {
                     el.classList.toggle('hidden', tab !== t);
                     if (tab === t) {
-                        if (['discover', 'mygames', 'playlists', 'playlist-details', 'details', 'playnow', 'playnow-details', 'category', 'trailers'].includes(t)) {
+                        if (['discover', 'mygames', 'playlists', 'playlist-details', 'details', 'playnow', 'playnow-details', 'category', 'trailers', 'developer'].includes(t)) {
                             el.classList.add('flex');
                             el.style.display = 'flex';
                         } else {
@@ -1624,7 +1903,7 @@
                     .eq('user_id', 'default_user');
                 if (error) throw error;
                 if (data) {
-                    data.forEach(game => libraryMap.set(game.game_id, game));
+                    data.forEach(game => { game.platform = displayPlatform(game.platform); libraryMap.set(game.game_id, game); });
                 }
                 if(typeof refreshActiveView === 'function') refreshActiveView();
             } catch (err) { console.error("Error fetching library from Supabase:", err); }
@@ -1648,7 +1927,7 @@
                 title: game ? game.name : libraryMap.get(gameId).title,
                 thumbnail: game ? (game.background_image || '') : libraryMap.get(gameId).thumbnail,
                 genre: game ? (game.genres?.[0]?.name || 'Game') : libraryMap.get(gameId).genre,
-                platform: game ? (game.platforms?.[0]?.platform?.name || 'Unknown') : libraryMap.get(gameId).platform,
+                platform: game ? displayGamePlatform(game) : displayPlatform(libraryMap.get(gameId).platform),
                 status: status
             };
 
@@ -1747,7 +2026,7 @@
                             </div>
                             
                             <div class="mt-auto pt-2 md:pt-3 border-t border-gray-800 flex items-center justify-between">
-                                <span class="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-wider"><i data-lucide="gamepad-2" class="w-3 h-3 md:w-3.5 md:h-3.5 inline"></i> ${game.platform.split(' ')[0]}</span>
+                                <span class="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-wider"><i data-lucide="gamepad-2" class="w-3 h-3 md:w-3.5 md:h-3.5 inline"></i> ${displayPlatform(game.platform).split(' ')[0]}</span>
                                 <div class="w-24 md:w-32" onclick="event.stopPropagation()">${generateLibraryActionHTML(game.game_id)}</div>
                             </div>
                         </div>
@@ -2059,21 +2338,40 @@
             
             if (game.platforms && game.platforms.length > 0) {
                 document.getElementById('detail-platforms').innerHTML = game.platforms.map(p => 
-                    `<span class="bg-dark-input px-2 py-0.5 md:px-2.5 md:py-1 rounded text-[9px] md:text-[10px] font-bold text-gray-300 uppercase border border-gray-700">${p.platform.name}</span>`
+                    `<span class="bg-dark-input px-2 py-0.5 md:px-2.5 md:py-1 rounded text-[9px] md:text-[10px] font-bold text-gray-300 uppercase border border-gray-700">${displayPlatform(p)}</span>`
                 ).join('');
             } else {
-                document.getElementById('detail-platforms').innerHTML = `<span class="text-gray-500 text-xs md:text-sm">Unknown</span>`;
+                document.getElementById('detail-platforms').innerHTML = `<span class="text-gray-500 text-xs md:text-sm">PC</span>`;
             }
 
             if (game.genres && game.genres.length > 0) {
-                document.getElementById('detail-genres').innerHTML = game.genres.map(g => 
-                    `<span class="bg-brand/10 text-brand px-2 py-0.5 md:px-2.5 md:py-1 rounded text-[9px] md:text-[10px] font-bold uppercase">${g.name}</span>`
-                ).join('');
+                const genreContainer = document.getElementById('detail-genres');
+                genreContainer.replaceChildren();
+                game.genres.forEach(g => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'bg-brand/10 text-brand px-2 py-0.5 md:px-2.5 md:py-1 rounded text-[9px] md:text-[10px] font-bold uppercase hover:bg-brand hover:text-black focus:outline-none focus:ring-2 focus:ring-brand transition-colors cursor-pointer';
+                    button.textContent = g.name;
+                    button.title = `Find ${g.name} games`;
+                    button.addEventListener('click', () => openGenreSearch(g.slug || g.name, g.name));
+                    genreContainer.appendChild(button);
+                });
             } else {
                 document.getElementById('detail-genres').innerHTML = `<span class="text-gray-500 text-xs md:text-sm">None</span>`;
             }
 
-            document.getElementById('detail-developer').innerText = game.developers && game.developers.length > 0 ? game.developers.map(d=>d.name).join(', ') : 'Unknown';
+            document.getElementById('detail-developer').innerHTML = '';
+            const devEl = document.getElementById('detail-developer');
+            if (game.developers?.length) {
+                game.developers.forEach((dev, i) => {
+                    if (i) devEl.append(document.createTextNode(', '));
+                    const button = document.createElement('button');
+                    button.type = 'button'; button.textContent = dev.name;
+                    button.className = 'text-white hover:text-brand hover:underline underline-offset-4 text-left transition-colors';
+                    button.onclick = () => openDeveloperPage(dev.name, dev.slug || null);
+                    devEl.append(button);
+                });
+            } else devEl.textContent = 'Unknown';
             document.getElementById('detail-publisher').innerText = game.publishers && game.publishers.length > 0 ? game.publishers.map(p=>p.name).join(', ') : 'Unknown';
 
             const ssContainer = document.getElementById('detail-screenshots');
@@ -2349,7 +2647,7 @@
             container.innerHTML = games.map(game => {
                 const bg = game.background_image || 'https://via.placeholder.com/400x300/1a1a1a/333333?text=No+Image';
                 const platformIcon = getPlatformIcon(game.platforms);
-                const platformText = game.platforms && game.platforms.length > 0 ? game.platforms[0].platform.name : 'Unknown';
+                const platformText = displayGamePlatform(game);
                 const genreText = game.genres && game.genres.length > 0 ? game.genres[0].name : 'Game';
                 const ratingBlock = game.rating ? `<i data-lucide="star" class="w-3.5 h-3.5 text-yellow-500 fill-yellow-500 inline pb-0.5"></i> ${game.rating}` : '';
 
@@ -2437,6 +2735,30 @@
             document.getElementById('global-search').value = val;
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => { handleFilterChange('search', event); }, 600);
+        }
+
+        function openGenreSearch(slug, name) {
+            const selectedSlug = String(slug || name || '').toLowerCase().trim()
+                .replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-');
+            discoverState.search = '';
+            discoverState.platform = '';
+            discoverState.genre = selectedSlug;
+            discoverState.sort = '-added';
+            document.getElementById('global-search').value = '';
+            document.getElementById('filter-search').value = '';
+            document.getElementById('filter-platform').value = '';
+            const genreSelect = document.getElementById('filter-genre');
+            if (![...genreSelect.options].some(o => o.value === selectedSlug)) {
+                const opt = document.createElement('option');
+                opt.value = selectedSlug;
+                opt.textContent = name;
+                opt.dataset.dynamicGenre = 'true';
+                genreSelect.appendChild(opt);
+            }
+            genreSelect.value = selectedSlug;
+            document.getElementById('filter-sort').value = '-added';
+            switchTab('discover');
+            updateURLFilters();
         }
 
         function handleFilterChange(key, event) {
@@ -2635,9 +2957,9 @@
 
         // --- RENDER DOM GRIDS ---
         function getPlatformIcon(platforms) {
-            if(!platforms) return `<i data-lucide="gamepad-2" class="w-3.5 h-3.5 md:w-4 md:h-4"></i>`;
-            const hasPC = platforms.some(p => p.platform.name.toLowerCase().includes('pc'));
-            const hasPS = platforms.some(p => p.platform.name.toLowerCase().includes('playstation'));
+            if(!platforms || !platforms.length) return `<i data-lucide="monitor" class="w-3.5 h-3.5 md:w-4 md:h-4"></i>`;
+            const hasPC = platforms.some(p => displayPlatform(p).toLowerCase().includes('pc'));
+            const hasPS = platforms.some(p => displayPlatform(p).toLowerCase().includes('playstation'));
             if (hasPC) return `<i data-lucide="monitor" class="w-3.5 h-3.5 md:w-4 md:h-4"></i>`;
             if (hasPS) return `<i data-lucide="gamepad-2" class="w-3.5 h-3.5 md:w-4 md:h-4"></i>`;
             return `<i data-lucide="smartphone" class="w-3.5 h-3.5 md:w-4 md:h-4"></i>`;
@@ -2818,7 +3140,7 @@
             container.innerHTML = dataToRender.map(game => {
                 const bg = game.background_image || 'https://via.placeholder.com/400x300/1a1a1a/333333?text=No+Image';
                 const platformIcon = getPlatformIcon(game.platforms);
-                const platformText = game.platforms && game.platforms.length > 0 ? game.platforms[0].platform.name : 'Unknown';
+                const platformText = displayGamePlatform(game);
                 const ratingBlock = game.rating ? `<i data-lucide="star" class="w-3 h-3 text-yellow-500 fill-yellow-500 inline pb-[1px]"></i> ${game.rating}` : '';
 
                 let metaBlock = '';
@@ -2891,7 +3213,7 @@
             const html = games.map(game => {
                 const bg = game.background_image || 'https://via.placeholder.com/400x300/1a1a1a/333333?text=No+Image';
                 const platformIcon = getPlatformIcon(game.platforms);
-                const platformText = game.platforms && game.platforms.length > 0 ? game.platforms[0].platform.name : 'Unknown';
+                const platformText = displayGamePlatform(game);
                 const genreText = game.genres && game.genres.length > 0 ? game.genres[0].name : 'Game';
                 const ratingBlock = game.rating ? `<i data-lucide="star" class="w-3.5 h-3.5 text-yellow-500 fill-yellow-500 inline pb-0.5"></i> ${game.rating}` : '';
 
