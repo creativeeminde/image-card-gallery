@@ -261,6 +261,14 @@
             box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         }
         
+
+        /* Playlist artwork: four equal album-cover tiles, no gaps. */
+        .playlist-collage { width:100%; aspect-ratio:1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(2,minmax(0,1fr)); overflow:hidden; border-radius:10px; background:#171b2a; box-shadow:0 5px 15px rgba(0,0,0,.2); }
+        .playlist-collage .playlist-tile { min-width:0; min-height:0; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#242b3b; color:#64748b; }
+        .playlist-collage .playlist-tile:nth-child(2), .playlist-collage .playlist-tile:nth-child(3) { background:#1b2230; }
+        .playlist-collage .playlist-tile img { width:100%; height:100%; object-fit:cover; border-radius:0; aspect-ratio:auto; box-shadow:none; display:block; }
+        .playlist-collage .playlist-tile i { font-size:clamp(14px,2vw,30px); opacity:.6; }
+
         .collection-card h4 { font-size: 1.05rem; font-weight: 600; color: var(--text-main); margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .collection-card p { font-size: 0.85rem; color: var(--text-muted); margin:0; margin-top: 2px; }
 
@@ -1698,18 +1706,6 @@
             .fs-lyrics-container { scroll-behavior: auto !important; }
         }
 
-        .custom-toast {
-            position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%) translateY(20px);
-            background: #111827; border: 1px solid var(--glass-border); color: var(--text-main);
-            padding: 12px 24px; border-radius: 30px; box-shadow: 0 15px 30px rgba(0,0,0,0.6); display: none;
-            align-items: center; gap: 12px; z-index: 100000; opacity: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            pointer-events: none; font-weight: 500; font-size: 0.95rem;
-        }
-
-        @media (max-width: 900px) {
-            .custom-toast { bottom: 120px; width: 90%; max-width: 400px; justify-content: center; }
-        }
-
 /* Spotify-inspired visual system: original app logic and identifiers remain intact. */
 :root{--primary-color:#1ed760;--bg-color:#121212;--glass-border:#303030;--glass-highlight:#282828;--text-main:#fff;--text-muted:#b3b3b3;color-scheme:dark}
 html,body{width:100%;height:100%;background:#000!important}
@@ -2420,11 +2416,6 @@ body{display:block;overflow:hidden}
     </div>
 </div>
 
-<div id="custom-toast" class="custom-toast">
-    <i id="custom-toast-icon" class="fas fa-info-circle"></i>
-    <span id="custom-toast-text"></span>
-</div>
-
 <div class="modal-overlay" id="custom-confirm-modal" style="z-index: 100000;">
     <div class="modal">
         <h2 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
@@ -2642,38 +2633,8 @@ body{display:block;overflow:hidden}
              .replace(/'/g, "&#039;");
     }
 
-    function showToast(message, type = 'info') {
-        const toast = document.getElementById('custom-toast');
-        if (!toast) return;
-        const text = document.getElementById('custom-toast-text');
-        const icon = document.getElementById('custom-toast-icon');
-        
-        text.innerText = message;
-        
-        if (type === 'error') {
-            icon.className = 'fas fa-exclamation-circle';
-            icon.style.color = '#ef4444';
-        } else if (type === 'success') {
-            icon.className = 'fas fa-check-circle';
-            icon.style.color = '#10b981';
-        } else {
-            icon.className = 'fas fa-info-circle';
-            icon.style.color = 'var(--primary-color)';
-        }
-        
-        toast.style.display = 'flex';
-        toast.offsetHeight;
-        toast.style.opacity = '1';
-        toast.style.transform = 'translateY(0)';
-        
-        setTimeout(() => {
-            toast.style.opacity = '0';
-            toast.style.transform = 'translateY(20px)';
-            setTimeout(() => {
-                toast.style.display = 'none';
-            }, 300);
-        }, 4000);
-    }
+    // Toast popups disabled; keep existing action handlers unchanged.
+    function showToast(message, type = 'info') {}
 
     function showConfirm(message, onConfirm) {
         const modalConfirm = document.getElementById('custom-confirm-modal');
@@ -3371,6 +3332,7 @@ body{display:block;overflow:hidden}
                 extractArtworkFromMp3(song.mp3_url).then(extractedBase64 => {
                     if (extractedBase64) {
                         extractedCoversCache[song.id] = extractedBase64;
+                        renderPlaylistsTab();
                         const thumbEl = document.getElementById(`thumb-${song.id}`);
                         if (thumbEl) thumbEl.src = extractedBase64;
                         if (currentIndex !== -1 && songs[currentIndex]?.id === song.id) {
@@ -4252,14 +4214,13 @@ body{display:block;overflow:hidden}
             const plSongs = songs.filter(s => s.playlists && s.playlists.includes(pl));
             const count = plSongs.length;
             
-            let cover = 'https://via.placeholder.com/300/00030F/ffffff?text=Playlist';
-            if (plSongs.length > 0) {
-                if (plSongs[0].cover_url) cover = plSongs[0].cover_url;
-                else if (extractedCoversCache[plSongs[0].id]) cover = extractedCoversCache[plSongs[0].id];
-            }
-            if (pl === 'Favorites') {
-                cover = "data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 400'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23334155'/%3E%3Cstop offset='100%25' stop-color='%23020617'/%3E%3C/linearGradient%3E%3Cfilter id='glow'%3E%3CfeGaussianBlur stdDeviation='10' result='coloredBlur'/%3E%3CfeMerge%3E%3CfeMergeNode in='coloredBlur'/%3E%3CfeMergeNode in='SourceGraphic'/%3E%3C/feMerge%3E%3C/filter%3E%3C/defs%3E%3Crect width='400' height='400' fill='url(%23bg)'/%3E%3Cpath d='M 200 110 L 222.4 179 L 295 179 L 236 222 L 258.7 291 L 200 248 L 141.2 291 L 163.9 222 L 105 179 L 177.5 179 Z' fill='%23fbbf24' filter='url(%23glow)'/%3E%3C/svg%3E";
-            }
+            // The first four songs in the playlist determine its artwork, in their current order.
+            // Empty positions remain neutral until a song is added.
+            const collage = `<div class="playlist-collage" aria-label="Cover collage for ${escapeHtml(pl)}">${Array.from({length:4}, (_,i) => {
+                const song = plSongs[i];
+                const url = song && (song.cover_url || extractedCoversCache[song.id]);
+                return `<div class="playlist-tile">${url ? `<img src="${escapeHtml(url)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">` : ''}<i class="fas fa-music" style="${url ? 'display:none' : ''}"></i></div>`;
+            }).join('')}</div>`;
 
             const actionsHtml = (pl !== 'Favorites' && pl !== 'General') ? `
                 <div class="playlist-actions-overlay">
@@ -4271,7 +4232,7 @@ body{display:block;overflow:hidden}
             return `
                 <div class="collection-card" style="position: relative;" onclick="openCollectionModal('Playlist', '${escapeHtml(pl).replace(/&#039;/g, "\\'")}')">
                     ${actionsHtml}
-                    <img src="${cover}" alt="cover">
+                    ${collage}
                     <div>
                         <h4>${escapeHtml(pl)}</h4>
                         <p>${count} songs</p>
@@ -5037,6 +4998,7 @@ body{display:block;overflow:hidden}
                 extractArtworkFromMp3(song.mp3_url).then(extractedBase64 => {
                     if (extractedBase64) {
                         extractedCoversCache[song.id] = extractedBase64;
+                        renderPlaylistsTab();
                         const thumbEl = document.getElementById(`artist-thumb-${song.id}`);
                         if (thumbEl) thumbEl.src = extractedBase64;
                         
