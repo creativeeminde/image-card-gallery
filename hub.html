@@ -4915,6 +4915,10 @@ body:has(#reelView:not(.hidden)) > header{display:none!important}
 </div>
 <!-- ===== /HERO SECTION ===== -->
 <div class="p-4 sm:p-6">
+<div class="flex flex-wrap items-center justify-between gap-3 mb-4" id="onlyClipsBrowseControls">
+ <div class="flex items-center gap-2"><label for="onlyClipsSort" class="text-xs font-bold text-slate-600 dark:text-slate-300">Sort clips</label><select id="onlyClipsSort" onchange="setOnlyClipsSort(this.value)" class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-3 py-2 text-sm"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></div>
+ <label class="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300 cursor-pointer"><input id="onlyClipsFeaturedToggle" type="checkbox" checked onchange="toggleOnlyClipsFeatured(this.checked)" class="accent-lime-500">Show Featured section</label>
+</div>
 <div id="clipBulkToolbar" class="flex flex-wrap items-center gap-2 mb-4 p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
 <button type="button" onclick="toggleClipBulkMode()" id="clipBulkModeBtn" class="px-4 py-2 rounded-full bg-slate-900 text-white dark:bg-slate-700 text-xs font-bold">Select Multiple</button>
 <span id="clipBulkCount" class="text-xs font-semibold text-slate-500">0 selected</span>
@@ -8346,7 +8350,7 @@ function filterClipsByModel(modelId) {
             
             try {
                 // FIXED QUERY HERE: Added 'tags' to the cards select so the filter can see them
-                let query = supabaseClient.from('studiohub_global_clips').select('*, cards:studiohub_models(id, title, main_image_url, tags)').order('created_at', { ascending: false });
+                let query = supabaseClient.from('studiohub_global_clips').select('*, cards:studiohub_models(id, title, main_image_url, tags)').order('created_at', { ascending: window.onlyClipsSortOrder === 'oldest' });
                 
                 if (currentCategoryFilter) {
                     // Match clips where the legacy category_id matches OR the category_ids array contains the selected category
@@ -20104,6 +20108,28 @@ document.addEventListener('DOMContentLoaded',()=>{
  document.addEventListener('visibilitychange',()=>{const v=$('reelVideoSlot').querySelector('video');if(v){if(document.hidden)v.pause();else if(visible())v.play().catch(()=>{})}});
 });
 })();
+</script>
+<script>
+// OnlyClips browse preferences; sorting happens at the database level before pagination.
+window.onlyClipsSortOrder = localStorage.getItem('onlyClipsSortOrder') === 'oldest' ? 'oldest' : 'newest';
+function setOnlyClipsSort(value) {
+ window.onlyClipsSortOrder = value === 'oldest' ? 'oldest' : 'newest';
+ localStorage.setItem('onlyClipsSortOrder', window.onlyClipsSortOrder);
+ if (typeof fetchYTClips === 'function') fetchYTClips(true);
+}
+function toggleOnlyClipsFeatured(show) {
+ localStorage.setItem('onlyClipsShowFeatured', show ? '1' : '0');
+ const hero = document.getElementById('clipsHeroSection');
+ if (hero) hero.style.display = show ? '' : 'none';
+}
+document.addEventListener('DOMContentLoaded', () => {
+ const sort = document.getElementById('onlyClipsSort');
+ if (sort) sort.value = window.onlyClipsSortOrder;
+ const show = localStorage.getItem('onlyClipsShowFeatured') !== '0';
+ const toggle = document.getElementById('onlyClipsFeaturedToggle');
+ if (toggle) toggle.checked = show;
+ toggleOnlyClipsFeatured(show);
+});
 </script>
 </body>
 </html>
