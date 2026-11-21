@@ -63,6 +63,24 @@
         /* Smooth transitions for images */
         .img-transition { transition: transform 0.5s ease; }
         .hover-card:hover .img-transition { transform: scale(1.05); }
+        /* Opaque, viewport-layered playlist selector */
+        #pl-dropdown-menu {
+            position: fixed !important;
+            background: #151515 !important;
+            background-color: #151515 !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            border: 1px solid #424242;
+            box-shadow: 0 18px 55px rgba(0,0,0,.85);
+            z-index: 1000 !important;
+            min-height: 0;
+        }
+        #pl-dropdown-list { min-height: 0; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+        #pl-dropdown-menu > div:first-child, #pl-dropdown-menu > div:last-child { background: #151515 !important; flex-shrink: 0; }
+        @media (max-width: 767px) {
+            #pl-dropdown-menu { max-height: min(65dvh, 420px) !important; }
+            #pl-dropdown-list { overflow-y: auto !important; }
+        }
     </style>
 </head>
 <body class="bg-dark text-white font-sans h-screen overflow-hidden flex relative">
@@ -1317,8 +1335,9 @@
         window.addEventListener('click', function(e) {
             const dropdown = document.getElementById('pl-dropdown-menu');
             if (dropdown && !dropdown.classList.contains('hidden')) {
-                if (!e.target.closest('#pl-dropdown-wrapper')) {
+                if (!e.target.closest('#pl-dropdown-wrapper') && !dropdown.contains(e.target)) {
                     dropdown.classList.add('hidden');
+                    dropdown.classList.remove('flex');
                 }
             }
         });
@@ -2679,15 +2698,50 @@
             lucide.createIcons();
         }
 
-        function togglePLDropdown(event) {
-            const dropdown = document.getElementById('pl-dropdown-menu');
-            dropdown.classList.toggle('hidden');
-            dropdown.classList.toggle('flex');
-            
-            const urlParams = new URLSearchParams(window.location.search);
-            const gameId = parseInt(urlParams.get('id'));
-            if(gameId) updatePlaylistDropdownUI(gameId);
+        function positionPLDropdown() {
+            const menu = document.getElementById('pl-dropdown-menu');
+            const button = document.querySelector('#pl-dropdown-wrapper > button');
+            if (!menu || !button || menu.classList.contains('hidden')) return;
+            const rect = button.getBoundingClientRect();
+            const mobile = window.innerWidth < 768;
+            const gap = 8;
+            const side = 12;
+            const width = mobile ? Math.min(window.innerWidth - side * 2, 420) : 256;
+            const left = Math.max(side, Math.min(rect.left, window.innerWidth - width - side));
+            menu.style.width = width + 'px';
+            menu.style.left = left + 'px';
+            menu.style.right = 'auto';
+            menu.style.bottom = 'auto';
+            menu.style.margin = '0';
+            if (mobile) {
+                // On phones, open downward, below the hero, so the entire list can scroll.
+                const top = Math.min(window.innerHeight - 110, Math.max(rect.bottom + gap, 80));
+                menu.style.top = top + 'px';
+                menu.style.maxHeight = Math.max(100, window.innerHeight - top - 18) + 'px';
+            } else {
+                const availableAbove = Math.max(100, rect.top - gap - 12);
+                const height = Math.min(320, availableAbove);
+                menu.style.maxHeight = height + 'px';
+                menu.style.top = Math.max(12, rect.top - gap - height) + 'px';
+            }
         }
+
+        function togglePLDropdown(event) {
+            if (event) event.stopPropagation();
+            const dropdown = document.getElementById('pl-dropdown-menu');
+            if (dropdown.parentElement !== document.body) document.body.appendChild(dropdown);
+            const opening = dropdown.classList.contains('hidden');
+            dropdown.classList.toggle('hidden', !opening);
+            dropdown.classList.toggle('flex', opening);
+            if (opening) {
+                const urlParams = new URLSearchParams(window.location.search);
+                const gameId = parseInt(urlParams.get('id'));
+                if (gameId) updatePlaylistDropdownUI(gameId);
+                positionPLDropdown();
+            }
+        }
+        window.addEventListener('resize', positionPLDropdown);
+        document.addEventListener('scroll', positionPLDropdown, true);
 
         function updatePlaylistDropdownUI(gameId) {
             const listContainer = document.getElementById('pl-dropdown-list');
