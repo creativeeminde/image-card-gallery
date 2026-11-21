@@ -5981,9 +5981,16 @@ Or paste comma-separated URLs..." rows="5"></textarea>
 <!-- Selected chips summary -->
 <div class="hidden flex-wrap gap-1.5 mt-2.5" id="poseSelectedChips"></div>
 </div>
+<!-- Cloudflare R2 image uploader -->
+<div>
+<label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Upload Images to Cloudflare R2</label>
+<input id="poseR2Picker" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple class="hidden"/>
+<button id="poseR2Button" type="button" onclick="document.getElementById('poseR2Picker').click()" class="w-full rounded-xl border-2 border-dashed border-[#7fe826]/60 bg-[#7fe826]/10 px-4 py-4 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-[#7fe826]/20 transition-colors">☁ Upload Images from Device</button>
+<p id="poseR2Status" aria-live="polite" class="text-xs text-slate-500 dark:text-slate-400 mt-2">Select multiple JPG, PNG, WebP or GIF images. Uploaded links will be added below automatically.</p>
+</div>
 <!-- Image URLs textarea -->
 <div>
-<label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Image URLs <span class="text-red-400">*</span></label>
+<label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Image URLs (or upload above)</label>
 <textarea class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl px-4 py-3 outline-none text-sm shadow-sm focus:ring-2 focus:ring-[#7fe826] resize-none font-mono" id="poseImageUrlsInput" placeholder="Paste one or more image URLs, one per line:
 https://example.com/image1.jpg
 https://example.com/image2.jpg" rows="5"></textarea>
@@ -5997,10 +6004,10 @@ https://example.com/image2.jpg" rows="5"></textarea>
 </div>
 <div id="poseSafetyToggleWrap">
 <label id="poseSafetyToggle">
-<input id="poseNsfwCheckbox" onchange="updateSafetyLabel()" type="checkbox"/>
+<input id="poseNsfwCheckbox" onchange="updateSafetyLabel()" type="checkbox" checked/>
 <span class="track"></span>
 </label>
-<span id="poseSafetyLabel" onclick="document.getElementById('poseNsfwCheckbox').click(); updateSafetyLabel();">SFW</span>
+<span id="poseSafetyLabel" onclick="document.getElementById('poseNsfwCheckbox').click(); updateSafetyLabel();">NSFW</span>
 </div>
 </div>
 <!-- Error message -->
@@ -16021,8 +16028,8 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
         function resetPoseSafetyToggle() {
             const cb    = document.getElementById('poseNsfwCheckbox');
             const label = document.getElementById('poseSafetyLabel');
-            if (cb)    cb.checked    = false;
-            if (label) label.textContent = 'SFW';
+            if (cb)    cb.checked    = true;
+            updateSafetyLabel();
         }
 
         // ── Span calculator ──────────────────────────────────────────────────
@@ -16068,6 +16075,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
         function openPosesUploadModal() {
             poseSelectedCategories.clear();
             document.getElementById('poseImageUrlsInput').value = '';
+            document.getElementById('poseR2Status').textContent = 'Select multiple JPG, PNG, WebP or GIF images. Uploaded links will be added below automatically.';
             document.getElementById('poseNewNameInput').value = '';
             document.getElementById('poseDuplicateError').classList.add('hidden');
             document.getElementById('posesUploadError').classList.add('hidden');
@@ -16164,6 +16172,7 @@ ALTER TABLE playlist_clips ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 
         }
 
         async function submitPosesUpload() {
+            if (poseR2Uploading) { const e=document.getElementById('posesUploadError'); e.textContent='Wait for the Cloudflare uploads to finish.'; e.classList.remove('hidden'); return; }
             const btn    = document.getElementById('posesSubmitBtn');
             const errEl  = document.getElementById('posesUploadError');
             const dupErr = document.getElementById('poseDuplicateError');
@@ -18345,6 +18354,48 @@ document.addEventListener('DOMContentLoaded',()=>{$('trNew').onclick=setup;docum
 // CONFIGURE THESE TWO VALUES BEFORE USING THE R2 UPLOADER.
 const STUDIOHUB_R2_WORKER_URL = 'https://studiohub-r2-upload.noorstudiotest.workers.dev';
 const STUDIOHUB_R2_PUBLIC_URL = 'https://pub-a2a38a8dc8ba4702b5fa5df9f5cca625.r2.dev';
+
+// Poses: upload files to the existing Cloudflare R2 Worker, then save their URLs through the normal pose form.
+let poseR2Uploading = false;
+document.getElementById('poseR2Picker')?.addEventListener('change', async function () {
+  const files = [...(this.files || [])];
+  if (!files.length || poseR2Uploading) return;
+  const button = document.getElementById('poseR2Button');
+  const submit = document.getElementById('posesSubmitBtn');
+  const status = document.getElementById('poseR2Status');
+  const urlsInput = document.getElementById('poseImageUrlsInput');
+  poseR2Uploading = true;
+  button.disabled = true;
+  submit.disabled = true;
+  let uploaded = 0, failed = 0;
+  try {
+    for (let i=0; i<files.length; i++) {
+      const file = files[i];
+      status.textContent = `Uploading ${i+1}/${files.length}: ${file.name}…`;
+      if (!['image/jpeg','image/png','image/webp','image/gif'].includes(file.type) || file.size > 95*1024*1024) {
+        failed++; status.textContent = `Skipped unsupported or oversized file: ${file.name}`; continue;
+      }
+      try {
+        const response = await fetch(STUDIOHUB_R2_WORKER_URL.replace(/\/$/, '')+'/upload', {
+          method:'POST', headers:{'Content-Type':file.type,'X-File-Name':encodeURIComponent(file.name)}, body:file
+        });
+        const result = await response.json();
+        if (!response.ok || !result.key) throw new Error(result.error || `HTTP ${response.status}`);
+        const url = STUDIOHUB_R2_PUBLIC_URL.replace(/\/$/, '')+'/'+result.key.split('/').map(encodeURIComponent).join('/');
+        const existing = urlsInput.value.trim();
+        urlsInput.value = existing ? existing+'\n'+url : url;
+        urlsInput.dispatchEvent(new Event('input',{bubbles:true}));
+        uploaded++;
+      } catch (error) { failed++; console.error('Pose R2 upload failed', file.name, error); status.textContent = `Failed: ${file.name} — ${error.message}`; }
+    }
+    status.textContent = `${uploaded} image(s) uploaded to Cloudflare R2${failed ? `; ${failed} failed` : ''}. Click Upload Images to save them to your pose categories.`;
+  } finally {
+    poseR2Uploading = false;
+    button.disabled = false;
+    submit.disabled = false;
+    this.value = '';
+  }
+});
 
 // Add New Model: upload the main image to R2 and fill the existing required URL field.
 document.getElementById('newModelR2Picker')?.addEventListener('change', async function () {
