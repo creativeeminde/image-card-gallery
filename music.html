@@ -1969,6 +1969,11 @@ body:has(#artist-modal.open) .player-bar {
 @media (max-width:900px){.desktop-now-playing{display:none}}
 @media(prefers-reduced-motion:reduce){.now-playing-wave i{animation:none}}
 </style>
+<style>
+body:has(#artist-modal.open.from-fullscreen) #artist-modal { inset:0; height:100%; max-height:none; z-index:100000; }
+body:has(#artist-modal.open.from-fullscreen) .player-bar { z-index:50; }
+#fs-artist:focus-visible { outline:2px solid var(--primary-color); outline-offset:4px; }
+</style>
 </head>
 <body>
 
@@ -2167,7 +2172,7 @@ body:has(#artist-modal.open) .player-bar {
                     <span aria-hidden="true" style="width: 90px; flex-shrink: 0;"></span>
                     <div style="display: flex; gap: 0.5rem;">
                         <button class="hero-btn round toggle-select-btn" onclick="toggleMultiSelectMode()" title="Select Songs"><i class="fas fa-check-square"></i></button>
-                        <button class="hero-btn round" onclick="if(currentArtistSongs.length > 0) playSongActionById(currentArtistSongs[0].id);" title="Play Top Song"><i class="fas fa-play"></i></button>
+                        <button class="hero-btn round" onclick="if(currentArtistSongs.length > 0) playArtistSong(songs.findIndex(s => String(s.id) === String(currentArtistSongs[0].id)));" title="Play Top Song"><i class="fas fa-play"></i></button>
                     </div>
                 </div>
                 <div class="artist-hero-content">
@@ -2201,7 +2206,7 @@ body:has(#artist-modal.open) .player-bar {
                 </div>
                 <div class="fs-track-info">
                     <h2 id="fs-title">No Song Selected</h2>
-                    <p id="fs-artist">Select a track to play</p>
+                    <p id="fs-artist" class="clickable-artist-name" role="button" tabindex="0" title="Open artist page" onclick="openFullscreenArtist(event)" onkeydown="if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openFullscreenArtist(event); }">Select a track to play</p>
                 </div>
                 <div class="fs-progress-container">
                     <div class="fs-time-info">
@@ -3306,7 +3311,8 @@ body:has(#artist-modal.open) .player-bar {
             updateBulkUI();
             renderAllSongLists();
         } else {
-            playSongAction(index);
+            if (artistFromFullscreen && event?.target.closest('#artist-song-list')) playArtistSong(index);
+            else playSongAction(index);
         }
     }
 
@@ -4872,6 +4878,7 @@ body:has(#artist-modal.open) .player-bar {
         const cacheKey = `${safeArtist}-${safeTitle}`;
         isSyncedLyrics = false; parsedLyricsArray = []; currentLyricIndex = -1;
 
+        const currentToken = ++lyricsRequestToken;
         if (lyricsCache[cacheKey]) {
             if (lyricsCache[cacheKey].type === 'synced') {
                 isSyncedLyrics = true;
@@ -4896,7 +4903,6 @@ body:has(#artist-modal.open) .player-bar {
         };
 
         try {
-            const currentToken = ++lyricsRequestToken;
             let finalData = null;
             
             // 1. Try exact match on lrclib with a strict timeout
@@ -5154,6 +5160,7 @@ body:has(#artist-modal.open) .player-bar {
     }
 
     function exitFullscreenMode() {
+        if (artistFromFullscreen) closeArtistModal();
         const fsPlayer = document.getElementById('fullscreen-player');
         if (fsPlayer) fsPlayer.classList.remove('active');
     }
@@ -5201,6 +5208,22 @@ body:has(#artist-modal.open) .player-bar {
         }
     }
 
+    let artistFromFullscreen = false;
+    const artistModalHome = document.getElementById('artist-modal').parentNode;
+    const artistModalNext = document.getElementById('artist-modal').nextSibling;
+    function openFullscreenArtist(event) {
+        if (currentIndex < 0 || !songs[currentIndex]?.artist) return;
+        artistFromFullscreen = true;
+        const modal = document.getElementById('artist-modal');
+        modal.classList.add('from-fullscreen');
+        document.getElementById('fullscreen-player').appendChild(modal);
+        openArtistPage(songs[currentIndex].artist, event);
+    }
+    function playArtistSong(index) {
+        if (index < 0 || index >= songs.length) return;
+        if (artistFromFullscreen) closeArtistModal();
+        playSongAction(index);
+    }
     function openArtistPage(artistName, event) {
         if (event) event.stopPropagation();
         saveArtistScrollPosition();
@@ -5268,7 +5291,11 @@ body:has(#artist-modal.open) .player-bar {
         saveArtistScrollPosition();
         activeArtistScrollKey = null;
         const modal = document.getElementById('artist-modal');
-        if (modal) modal.classList.remove('open');
+        if (modal) {
+            modal.classList.remove('open', 'from-fullscreen');
+            if (artistFromFullscreen) artistModalHome.insertBefore(modal, artistModalNext);
+        }
+        artistFromFullscreen = false;
         cancelBulkSelect(); 
     }
 
