@@ -2534,6 +2534,43 @@ body:has(#artist-modal.open.from-fullscreen) .player-bar { z-index:50; }
     let currentIndex = -1;
     let isPlaying = false;
     let isShuffle = false;
+    let shufflePool = [], shuffleOrder = [], shufflePosition = -1;
+    function shuffleContext() {
+        if (document.getElementById('artist-modal')?.classList.contains('open')) return {label:'Artist', list:currentArtistSongs};
+        const home = document.querySelector('#main-tabs .tab-item.active') === document.querySelector('#main-tabs .tab-item');
+        if (home && currentPlaylist !== 'All') return {label:currentPlaylist,list:songs.filter(s=>s.playlists.includes(currentPlaylist))};
+        if (home && currentMood !== 'All') return {label:currentMood,list:songs.filter(s=>s.mood===currentMood)};
+        if (home && currentGenre !== 'All') return {label:currentGenre,list:songs.filter(s=>s.genre===currentGenre)};
+        return {label:'Library',list:songs};
+    }
+    function shuffled(ids) {
+        const result = [...ids];
+        for(let i=result.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [result[i],result[j]]=[result[j],result[i]];}
+        return result;
+    }
+    function resetShuffle(list, anchor = songs[currentIndex]?.id) {
+        shufflePool = [...new Set(list.map(s=>String(s.id)))];
+        const id = String(anchor);
+        shuffleOrder = shuffled(shufflePool.filter(x=>x!==id));
+        if(shufflePool.includes(id)){shuffleOrder.unshift(id);shufflePosition=0;}else shufflePosition=-1;
+    }
+    function stepShuffle(direction, wasPlaying) {
+        const valid = new Set(songs.map(s=>String(s.id)));
+        shufflePool = shufflePool.filter(id=>valid.has(id));
+        if(!shufflePool.length)return;
+        let pos=shufflePosition+direction;
+        while(pos>=0 && pos<shuffleOrder.length && !valid.has(shuffleOrder[pos]))pos+=direction;
+        if(direction<0 && pos<0)return;
+        if(pos>=shuffleOrder.length){
+            const last=shuffleOrder[shufflePosition];
+            const cycle=shuffled(shufflePool);
+            if(cycle.length>1 && cycle[0]===last){[cycle[0],cycle[1]]=[cycle[1],cycle[0]];}
+            pos=shuffleOrder.length;shuffleOrder.push(...cycle);
+        }
+        const index=songs.findIndex(s=>String(s.id)===shuffleOrder[pos]);
+        if(index<0)return;
+        shufflePosition=pos;loadSong(index);if(wasPlaying)playAudio();
+    }
     let isLuckyModeActive = false;
     
     let upNextQueue = [];
@@ -3574,6 +3611,7 @@ body:has(#artist-modal.open.from-fullscreen) .player-bar { z-index:50; }
             return;
         }
 
+        if (isShuffle) toggleShuffle();
         isLuckyModeActive = true;
         if (luckyBtn) luckyBtn.classList.add('active');
         if (luckyText) luckyText.innerText = 'Stop Lucky';
@@ -3623,6 +3661,8 @@ body:has(#artist-modal.open.from-fullscreen) .player-bar { z-index:50; }
 
     function nextSong(forcePlay = false) {
         const wasPlaying = !audio.paused || forcePlay;
+        if (isShuffle) { stepShuffle(1, wasPlaying); return; }
+        if (!songs.length) return;
         if (currentIndex !== -1) playHistory.push(currentIndex);
         
         if (upNextQueue.length > 0) {
@@ -3635,15 +3675,9 @@ body:has(#artist-modal.open.from-fullscreen) .player-bar { z-index:50; }
             }
         }
 
-        if (isShuffle) {
-            let nextIdx;
-            do { nextIdx = Math.floor(Math.random() * songs.length); } while (nextIdx === currentIndex && songs.length > 1);
-            loadSong(nextIdx);
-        } else {
-            let nextIdx = currentIndex + 1;
-            if (nextIdx >= songs.length) nextIdx = 0;
-            loadSong(nextIdx);
-        }
+        let nextIdx = currentIndex + 1;
+        if (nextIdx >= songs.length) nextIdx = 0;
+        loadSong(nextIdx);
         if (wasPlaying) playAudio();
     }
 
@@ -3656,6 +3690,8 @@ body:has(#artist-modal.open.from-fullscreen) .player-bar { z-index:50; }
             return;
         }
         
+        if (isShuffle) { stepShuffle(-1, wasPlaying); return; }
+        if (!songs.length) return;
         if (playHistory.length > 0) {
             const prevIdx = playHistory.pop();
             loadSong(prevIdx);
@@ -3668,6 +3704,12 @@ body:has(#artist-modal.open.from-fullscreen) .player-bar { z-index:50; }
     }
 
     function toggleShuffle() {
+        if (!isShuffle) {
+            const context = shuffleContext();
+            if (!context.list.length) { showToast('No songs to shuffle'); return; }
+            if (isLuckyModeActive) feelingLucky();
+            resetShuffle(context.list);
+        }
         isShuffle = !isShuffle;
         const shufBtn = document.getElementById('shuffle-btn');
         const mobShufBtn = document.getElementById('mobile-shuffle-btn');
@@ -3677,7 +3719,7 @@ body:has(#artist-modal.open.from-fullscreen) .player-bar { z-index:50; }
         if (mobShufBtn) mobShufBtn.classList.toggle('active', isShuffle);
         if (fsShufBtn) fsShufBtn.classList.toggle('active', isShuffle);
         
-        showToast(isShuffle ? 'Shuffle enabled' : 'Shuffle disabled');
+        showToast(isShuffle ? 'Shuffle enabled: ' + shuffleContext().label + ' (' + shufflePool.length + ' songs)' : 'Shuffle disabled');
     }
 
     function toggleLoop() {
@@ -3817,7 +3859,13 @@ body:has(#artist-modal.open.from-fullscreen) .player-bar { z-index:50; }
         
         await fetchPlaylists();
         
-        const { data, error } = await _supabase.from('songs').select('*').order('created_at', { ascending: false });
+        const data = []; let error = null;
+        for (let offset=0;;offset+=500) {
+            const page = await _supabase.from('songs').select('*').order('created_at', { ascending: false }).order('id', { ascending: true }).range(offset,offset+499);
+            if(page.error){error=page.error;break;}
+            data.push(...(page.data||[]));
+            if(!page.data || page.data.length<500)break;
+        }
 
         if (error) {
             console.error('Error fetching songs:', error);
@@ -3825,6 +3873,7 @@ body:has(#artist-modal.open.from-fullscreen) .player-bar { z-index:50; }
             return;
         }
 
+        const previousSongId = songs[currentIndex]?.id;
         songs = (data || []).map(song => {
             let pl = [];
             try {
@@ -3834,6 +3883,7 @@ body:has(#artist-modal.open.from-fullscreen) .player-bar { z-index:50; }
             return { ...song, playlists: pl };
         });
         
+        if (previousSongId != null) currentIndex = songs.findIndex(s=>String(s.id)===String(previousSongId));
         populateMoodOptions();
         
         renderArtistsTab();
@@ -5119,8 +5169,9 @@ body:has(#artist-modal.open.from-fullscreen) .player-bar { z-index:50; }
         });
     }
 
-    function playSongAction(index) {
+    function playSongAction(index, context = shuffleContext().list) {
         if (index < 0 || index >= songs.length) return;
+        if (isShuffle) resetShuffle(context.some(s=>String(s.id)===String(songs[index].id)) ? context : songs, songs[index].id);
         if (currentIndex !== index) {
             if (currentIndex !== -1) playHistory.push(currentIndex);
             loadSong(index);
@@ -5221,8 +5272,9 @@ body:has(#artist-modal.open.from-fullscreen) .player-bar { z-index:50; }
     }
     function playArtistSong(index) {
         if (index < 0 || index >= songs.length) return;
+        const context = [...currentArtistSongs];
         if (artistFromFullscreen) closeArtistModal();
-        playSongAction(index);
+        playSongAction(index, context);
     }
     function openArtistPage(artistName, event) {
         if (event) event.stopPropagation();
