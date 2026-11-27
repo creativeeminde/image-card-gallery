@@ -507,7 +507,7 @@ https://example.com/image2.jpg" rows="5"></textarea>
 <div class="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 flex items-center justify-between gap-4">
 <div>
 <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Content Type</p>
-<p class="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Mark images as NSFW to blur them in the gallery by default.</p>
+<p class="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Mark images as NSFW to hide them in SFW mode.</p>
 </div>
 <div id="poseSafetyToggleWrap">
 <label id="poseSafetyToggle">
@@ -570,7 +570,7 @@ https://example.com/image2.jpg" rows="5"></textarea>
 <div class="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 flex items-center justify-between gap-4">
 <div>
 <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Content Type</p>
-<p class="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Mark images as NSFW to blur them in the gallery by default.</p>
+<p class="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Mark images as NSFW to hide them in SFW mode.</p>
 </div>
 <div id="poseSafetyToggleWrap">
 <label id="poseEditSafetyToggle" style="position:relative;width:46px;height:26px;display:inline-block;flex-shrink:0;">
@@ -681,7 +681,9 @@ const showToast=showSuccessToast;
         let posesLoaded      = false;    // true after first activation
         let isCreatingNewPose = false;
         let posesSentinelObserver = null;
-        let posesContentMode = 'sfw';   // 'sfw' | 'nsfw' — gallery blur mode
+        let posesContentMode = 'sfw';   // 'sfw' = safe only; 'nsfw' = all images
+        let contentRevision = 0;
+        function safetyFilter(query, mode = posesContentMode) { return mode === 'sfw' ? query.eq('safety_type', 'sfw') : query; }
 
         // ── Entry point ──────────────────────────────────────────────────────
         function posesOnViewActivated() {
@@ -710,6 +712,8 @@ const showToast=showSuccessToast;
         async function loadPoseTagsOnly() {
             if (!supabaseClient) return;
             try {
+                const revision = contentRevision;
+                const mode = posesContentMode;
                 const { data: categories, error } = await supabaseClient.from('studiohub_poses').select('id,name').order('name');
                 if (error) throw error;
                 posesTagsList = (categories || []).map(c => c.name);
@@ -717,23 +721,24 @@ const showToast=showSuccessToast;
                 // Query each category with a count-only request and a one-row oldest-image request.
                 const metadata = await Promise.all((categories || []).map(async c => {
                     const [countResult, coverResult] = await Promise.all([
-                        supabaseClient.from('studiohub_pose_images').select('id',{count:'exact',head:true}).eq('pose_id',c.id),
-                        supabaseClient.from('studiohub_pose_images').select('image_url').eq('pose_id',c.id).order('created_at',{ascending:true}).order('id',{ascending:true}).limit(1)
+                        safetyFilter(supabaseClient.from('studiohub_pose_images').select('id',{count:'exact',head:true}).eq('pose_id',c.id), mode),
+                        safetyFilter(supabaseClient.from('studiohub_pose_images').select('image_url').eq('pose_id',c.id).order('created_at',{ascending:true}).order('id',{ascending:true}).limit(1), mode)
                     ]);
                     if (countResult.error) throw countResult.error;
                     if (coverResult.error) throw coverResult.error;
                     return {id:c.id,name:c.name,count:countResult.count||0,cover:coverResult.data?.[0]?.image_url||''};
                 }));
                 const [total, first] = await Promise.all([
-                    supabaseClient.from('studiohub_pose_images').select('id',{count:'exact',head:true}),
-                    supabaseClient.from('studiohub_pose_images').select('image_url').order('created_at',{ascending:true}).order('id',{ascending:true}).limit(1)
+                    safetyFilter(supabaseClient.from('studiohub_pose_images').select('id',{count:'exact',head:true}), mode),
+                    safetyFilter(supabaseClient.from('studiohub_pose_images').select('image_url').order('created_at',{ascending:true}).order('id',{ascending:true}).limit(1), mode)
                 ]);
                 if (total.error) throw total.error;
                 if (first.error) throw first.error;
                 // Optional saved overrides: if the SQL hasn't been installed yet, oldest covers still work.
                 const overrides = await supabaseClient.from('studiohub_pose_category_covers').select('pose_id,image_url');
                 const saved = new Map((overrides.data||[]).map(x=>[String(x.pose_id),x.image_url]));
-                poseCategoryMetadata = [{name:'All',count:total.count||0,cover:first.data?.[0]?.image_url||'',value:'all'},...metadata.map(c=>({...c,cover:saved.get(String(c.id))||c.cover,value:c.name}))];
+                if (revision !== contentRevision) return;
+                poseCategoryMetadata = [{name:'All',count:total.count||0,cover:first.data?.[0]?.image_url||'',value:'all'},...metadata.map(c=>({...c,cover:(mode === 'nsfw' ? saved.get(String(c.id)) : null)||c.cover,value:c.name}))];
                 renderPosesFilterBar();
             } catch (e) { console.error('Pose category metadata error:',e); }
         }
@@ -746,6 +751,7 @@ const showToast=showSuccessToast;
             if (!posesHasMore && !reset) return;
 
             posesFetching = true;
+            const revision = contentRevision;
 
             if (reset) {
                 posesPageOffset = 0;
@@ -763,7 +769,7 @@ const showToast=showSuccessToast;
 
             // ── Shuffle: fetch ALL remaining rows then randomise client-side ──
             if (posesSortOrder === 'shuffle') {
-                await _fetchPosesAllAndShuffle();
+                await _fetchPosesAllAndShuffle(revision);
                 return;
             }
 
@@ -804,7 +810,8 @@ const showToast=showSuccessToast;
                     else if(poseDateFilter==='month')d.setMonth(d.getMonth()-1);
                     query=query.gte('created_at',d.toISOString());
                 }
-                const { data, error } = await query;
+                const { data, error } = await safetyFilter(query);
+                if (revision !== contentRevision) return;
                 if (error) throw error;
 
                 const batch = data || [];
@@ -831,7 +838,7 @@ const showToast=showSuccessToast;
         }
 
         // ── Shuffle helper: fetch every row for the current filter, randomise ─
-        async function _fetchPosesAllAndShuffle() {
+        async function _fetchPosesAllAndShuffle(revision) {
             // Fetch in chunks of 1000 (Supabase max per request) until exhausted
             const CHUNK = 1000;
             let offset = 0;
@@ -863,7 +870,8 @@ const showToast=showSuccessToast;
                         .range(offset, offset + CHUNK - 1);
                     if (poseRowId) q = q.eq('pose_id', poseRowId);
 
-                    const { data, error } = await q;
+                    const { data, error } = await safetyFilter(q);
+                    if (revision !== contentRevision) { posesFetching = false; return; }
                     if (error) throw error;
                     const chunk = data || [];
                     allRows = allRows.concat(chunk);
@@ -954,9 +962,7 @@ const showToast=showSuccessToast;
                 card.dataset.poseImageId    = img.id;          // needed for delete + edit
                 card.dataset.safety         = (String(img.safety_type).toLowerCase() === 'nsfw') ? 'nsfw' : 'sfw';
                 // Apply blur immediately if currently in SFW mode and card is NSFW
-                if (posesContentMode === 'sfw' && card.dataset.safety === 'nsfw') {
-                    card.classList.add('nsfw-blurred');
-                }
+                if (posesContentMode === 'sfw' && img.safety_type !== 'sfw') return;
                 card.onclick = () => openPosesLightbox(img.image_url, poseName);
                 card.innerHTML = `
                     <img src="${img.image_url}" alt="${poseName}" loading="lazy" decoding="async"
@@ -1043,7 +1049,7 @@ const showToast=showSuccessToast;
             const grid=document.getElementById('poseCoverPickerGrid');
             const more=document.getElementById('poseCoverMore');more.disabled=true;
             try{
-                const {data,error}=await supabaseClient.from('studiohub_pose_images').select('id,image_url').eq('pose_id',poseCoverPickerCategory.id).order('created_at',{ascending:true}).order('id',{ascending:true}).range(poseCoverPickerOffset,poseCoverPickerOffset+39);
+                const {data,error}=await safetyFilter(supabaseClient.from('studiohub_pose_images').select('id,image_url').eq('pose_id',poseCoverPickerCategory.id).order('created_at',{ascending:true}).order('id',{ascending:true}).range(poseCoverPickerOffset,poseCoverPickerOffset+39));
                 if(error)throw error;
                 for(const item of data||[]){if(!item.image_url)continue;
                     const btn=document.createElement('button');btn.type='button';btn.className='pose-cover-choice'+(item.image_url===poseCoverPickerSelected?' selected':'');
@@ -1078,6 +1084,13 @@ const showToast=showSuccessToast;
         function setPosesContentMode(mode) {
             if (mode === posesContentMode) return;
             posesContentMode = mode;
+            contentRevision++;
+            closePosesLightbox();
+            closePoseCoverPicker();
+            document.getElementById('posesGrid').replaceChildren();
+            document.getElementById('posesFilterBar').replaceChildren();
+            loadPoseTagsOnly();
+            fetchPosesPage(true);
 
             // Update toggle button states
             const sfwBtn  = document.getElementById('posesSFWBtn');
@@ -1093,12 +1106,9 @@ const showToast=showSuccessToast;
         }
 
         function applyPosesContentMode() {
-            document.querySelectorAll('#posesGrid .pose-card[data-safety="nsfw"]').forEach(card => {
-                if (posesContentMode === 'sfw') {
-                    card.classList.add('nsfw-blurred');
-                } else {
-                    card.classList.remove('nsfw-blurred');
-                }
+            document.querySelectorAll('#posesGrid .pose-card').forEach(card => {
+                card.classList.remove('nsfw-blurred');
+                if (posesContentMode === 'sfw' && card.dataset.safety !== 'sfw') card.remove();
             });
         }
 
@@ -1565,7 +1575,7 @@ const showToast=showSuccessToast;
                         // Update safety type on card + re-apply blur mode
                         card.dataset.safety = newSafetyType;
                         if (posesContentMode === 'sfw' && newSafetyType === 'nsfw') {
-                            card.classList.add('nsfw-blurred');
+                            card.remove();
                         } else {
                             card.classList.remove('nsfw-blurred');
                         }
@@ -1589,6 +1599,7 @@ const showToast=showSuccessToast;
                 renderPosesFilterBar();
 
                 closePoseEditCatModal();
+                refreshPoseCategories();
                 const label = targetCats.length > 1 ? `${targetCats.length} categories` : `"${firstCat}"`;
                 showSuccessToast(`Categories updated → ${label}`);
 
